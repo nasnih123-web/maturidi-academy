@@ -1,0 +1,32 @@
+name: Desktop builds (Tauri)
+on:
+  workflow_dispatch:
+  push:
+    tags: ["desktop-v*"]
+
+jobs:
+  build:
+    # نکتهٔ فاز ۲: Tauri روی هر سیستم‌عامل باید روی runner همان OS بیلد شود —
+    # cross-compile از یک کانتینر لینوکسی ممکن نیست.
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+      - run: npm run tauri build
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: apps/desktop/src-tauri/target/release/bundle/
+          retention-days: 90
+# خروجی‌ها در MinIO نگه‌داری می‌شوند (۱۰ بیلد آخر هر پلتفرم) — اتصال در فاز ۱۴.
