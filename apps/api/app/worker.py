@@ -15,12 +15,16 @@ from arq import run_worker
 
 from app.core.queues import QUEUES, worker_settings_for
 
+# ثبت کرون‌جاب‌ها (side-effect آگاهانه در entrypoint ورکر — نه در مسیر سرویس API)
+from app.modules.content import calendar_tasks as _calendar_tasks  # noqa: F401
+
 
 def _make_settings_class(queue_name: str) -> type:
     cfg = worker_settings_for(queue_name)
 
     class WorkerSettings:
         functions = cfg["functions"]
+        cron_jobs = cfg["cron_jobs"]
         redis_settings = cfg["redis_settings"]
         queue_name = cfg["queue_name"]
         max_jobs = cfg["max_jobs"]

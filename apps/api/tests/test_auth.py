@@ -91,25 +91,43 @@ async def test_full_lifecycle(tc):
     )
     assert r.status_code == 200
     fresh = r.json()
+    # استفادهٔ مجدد از توکن چرخش‌خورده → همان 401/invalid_token، ولی کل نشست
+    # باطل می‌شود (reuse detection — الگوی turbo: نشانهٔ دزدیده‌شدن توکن)
     r = await client.post(
         f"{BASE}/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
     )
     assert r.status_code == 401
     assert r.json()["error"]["code"] == "invalid_token"
-
-    # 8) خروج از همهٔ دستگاه‌ها — رفرش جدید هم باید باطل شود
-    r = await client.post(
-        f"{BASE}/auth/logout-all", headers=_auth(fresh["access_token"])
-    )
-    assert r.status_code == 200
+    # نشست مرده است: حتی توکن‌های جدیدِ همان نشست هم باطل‌اند
     r = await client.post(
         f"{BASE}/auth/refresh", json={"refresh_token": fresh["refresh_token"]}
     )
     assert r.status_code == 401
+    r = await client.get(f"{BASE}/users/me", headers=_auth(fresh["access_token"]))
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "session_revoked"
+
+    # ورود مجدد برای ادامهٔ چرخه
+    tokens = await _login(client, email)
+
+    # 8) خروج از همهٔ دستگاه‌ها — رفرش و access هم باید باطل شوند
+    r = await client.post(
+        f"{BASE}/auth/logout-all", headers=_auth(tokens["access_token"])
+    )
+    assert r.status_code == 200
+    r = await client.post(
+        f"{BASE}/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert r.status_code == 401
+    r = await client.get(f"{BASE}/users/me", headers=_auth(tokens["access_token"]))
+    assert r.status_code == 401
+
+    # ورود مجدد برای ادامهٔ چرخه
+    tokens = await _login(client, email)
 
     # 9) export دادهٔ شخصی (قبل از حذف)
     r = await client.post(
-        f"{BASE}/users/me/export", headers=_auth(fresh["access_token"])
+        f"{BASE}/users/me/export", headers=_auth(tokens["access_token"])
     )
     assert r.status_code == 200
     data = r.json()
@@ -118,10 +136,10 @@ async def test_full_lifecycle(tc):
 
     # 10) حذف حساب — بعدش ورود و پروفایل باید 401 بدهند
     r = await client.delete(
-        f"{BASE}/users/me", headers=_auth(fresh["access_token"])
+        f"{BASE}/users/me", headers=_auth(tokens["access_token"])
     )
     assert r.status_code == 200
-    r = await client.get(f"{BASE}/users/me", headers=_auth(fresh["access_token"]))
+    r = await client.get(f"{BASE}/users/me", headers=_auth(tokens["access_token"]))
     assert r.status_code == 401
     r = await client.post(
         f"{BASE}/auth/login",

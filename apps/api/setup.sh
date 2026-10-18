@@ -12,7 +12,7 @@ if [ ! -d .venv ]; then
 fi
 
 echo ">>> نصب وابستگی‌ها..."
-.venv/bin/pip install -q -r requirements.txt
+.venv/bin/pip install -q --default-timeout=180 --retries=10 -r requirements.txt
 
 echo ">>> اجرای migrationها..."
 .venv/bin/alembic upgrade head

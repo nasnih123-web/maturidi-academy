@@ -17,9 +17,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.database import engine
+from app.core.platform_settings import (
+    bump_settings_version,
+    encode_setting_value,
+    get_setting,
+    stage_setting,
+)
 from app.core.secrets import encrypt_value
 from app.core.security import hash_password
+from app.modules.content.cms_service import ensure_calendar_settings, seed_legal_pages
 from app.models.models import (
+    HomeSection,
     Permission,
     PlatformSetting,
     Role,
@@ -48,6 +56,243 @@ BASE_ROLES = [
     ("scholar", "عالم/مفتی — فتوا و محتوا"),
     ("user", "کاربر عادی"),
 ]
+
+
+def _L(fa: str, ar: str, en: str) -> dict:
+    """LocalizedText — قرارداد §۱۵.۴: هرگز متن قابل‌مشاهده هاردکدِ تک‌زبانه نیست."""
+    return {"fa": fa, "ar": ar, "en": en}
+
+
+_SOON = {
+    "empty_title": _L("به‌زودی", "قريباً", "Coming soon"),
+    "empty_hint": _L(
+        "این بخش به‌زودی فعال می‌شود.",
+        "سيتم تفعيل هذا القسم قريباً.",
+        "This section will be available soon.",
+    ),
+}
+
+# seed بخش‌های خانه — فاز ۳. ترتیب sort_order همان ترتیب نمایش است.
+# بخش‌هایی که ماژول‌شان هنوز در فازهای بعد ساخته نشده: data=null + پیام «به‌زودی».
+HOME_SECTIONS_SEED: list[dict] = [
+    {
+        "key": "hero",
+        "sort_order": 1,
+        "title": _L("آکادمی ماتریدی", "أكاديمية الماتريدي", "Maturidi Academy"),
+        "subtitle": _L(
+            "آموزش اصیل اسلامی؛ از عقیده تا عمل",
+            "تعليم إسلامي أصيل؛ من العقيدة إلى العمل",
+            "Authentic Islamic learning — from creed to practice",
+        ),
+        "data": {"search_enabled": True},
+    },
+    {
+        "key": "live_status",
+        "sort_order": 2,
+        "title": _L("پخش زنده", "البث المباشر", "Live Now"),
+        "subtitle": _L(
+            "کلاس‌ها و برنامه‌های زندهٔ آکادمی",
+            "دروس الأكاديمية وبرامجها المباشرة",
+            "Academy live classes and programs",
+        ),
+        "data": None,
+        **_SOON,
+    },
+    {
+        "key": "latest_fatwas",
+        "sort_order": 3,
+        "title": _L("تازه‌ترین فتواها", "أحدث الفتاوى", "Latest Fatwas"),
+        "subtitle": _L(
+            "پاسخ‌های شرعی علمای آکادمی",
+            "أجوبة العلماء الشرعية",
+            "Scholarly answers from the academy",
+        ),
+        "data": None,
+        **_SOON,
+    },
+    {
+        "key": "quran_of_day",
+        "sort_order": 4,
+        "title": _L("آیهٔ روز", "آية اليوم", "Verse of the Day"),
+        "subtitle": _L(
+            "آیه‌ای برای تأمل روزانه",
+            "آية للتأمل اليومي",
+            "A verse for daily reflection",
+        ),
+        "data": None,
+        **_SOON,
+    },
+    {
+        "key": "suggested_lessons",
+        "sort_order": 5,
+        "title": _L("درس‌های پیشنهادی", "دروس مقترحة", "Suggested Lessons"),
+        "subtitle": _L(
+            "مسیر یادگیری متناسب با شما",
+            "مسار تعلم يناسبك",
+            "A learning path tailored for you",
+        ),
+        "data": None,
+        **_SOON,
+    },
+    {
+        "key": "fresh_library",
+        "sort_order": 6,
+        "title": _L("تازه‌های کتابخانه", "جديد المكتبة", "New in the Library"),
+        "subtitle": _L(
+            "کتاب‌ها و منابع تازه منتشرشده",
+            "كتب وموارد منشورة حديثاً",
+            "Recently published books and resources",
+        ),
+        "data": None,
+        **_SOON,
+    },
+    {
+        "key": "community",
+        "sort_order": 7,
+        "title": _L("جامعه", "المجتمع", "Community"),
+        "subtitle": _L(
+            "همراه با دیگر دانشجویان",
+            "مع بقية الطلاب",
+            "Learn alongside fellow students",
+        ),
+        "data": None,
+        **_SOON,
+    },
+    {
+        "key": "nearby_map",
+        "sort_order": 8,
+        "title": _L("نقشهٔ نزدیک", "الخريطة القريبة", "Nearby Map"),
+        "subtitle": _L(
+            "مساجد و مراکز آموزشی نزدیک شما",
+            "المساجد والمراكز التعليمية القريبة منك",
+            "Mosques and learning centers near you",
+        ),
+        "data": None,
+        **_SOON,
+    },
+    {
+        "key": "donation_banner",
+        "sort_order": 9,
+        "title": _L("حمایت از آکادمی", "ادعم الأكاديمية", "Support the Academy"),
+        "subtitle": _L(
+            "با حمایت شما، آموزش رایگان می‌ماند",
+            "بدعمكم يبقى التعليم مجانياً",
+            "Your support keeps learning free",
+        ),
+        "data": {"cta_url": "/donate"},  # مسیر فازهای بعد — فعلاً بی‌اثر
+    },
+    {
+        "key": "footer",
+        "sort_order": 10,
+        "title": _L("آکادمی ماتریدی", "أكاديمية الماتريدي", "Maturidi Academy"),
+        "subtitle": None,
+        "data": None,
+    },
+]
+
+
+async def seed_home_sections(db: AsyncSession) -> None:
+    """upsert idempotent بخش‌های خانه بر اساس key.
+
+    روی رکورد موجود: عنوان/زیرعنوان/داده/empty و sort_order به‌روز می‌شود،
+    ولی `visible` دست نخورده می‌ماند (ادمین ممکن است بخشی را پنهان کرده باشد).
+    """
+    for spec in HOME_SECTIONS_SEED:
+        row = (
+            await db.execute(select(HomeSection).where(HomeSection.key == spec["key"]))
+        ).scalar_one_or_none()
+        if row is None:
+            row = HomeSection(key=spec["key"], visible=True)
+            db.add(row)
+        row.sort_order = spec["sort_order"]
+        row.title = spec["title"]
+        row.subtitle = spec.get("subtitle")
+        row.data = spec.get("data")
+        row.empty_title = spec.get("empty_title")
+        row.empty_hint = spec.get("empty_hint")
+    await db.flush()
+
+
+async def seed_platform_settings_defaults(db: AsyncSession) -> list[str]:
+    """مقداردهی اولیهٔ idempotent کلیدهای polish (Track A) — فقط کلیدِ غایب seed می‌شود.
+
+    - particles: پیش‌فرض ذرات مشترک وب/CRM
+    - fonts.<locale>: ‏null = فونت داخلی (Vazirmatn/Cairo/Inter)
+    - home.sections: اسلات‌های زیرِ هیرو به ترتیب فعلی seed بخش‌ها
+    - hero.<locale>: کپی فعلی هیروی وب (از apps/web/messages + seed بخش hero)
+    """
+    defaults: dict[str, Any] = {
+        "particles": {
+            "enabled": True,
+            "count": 100,
+            "speed": 1.0,
+            "parallax": 1.0,
+            "lines": True,
+        },
+        "fonts.fa": None,
+        "fonts.ar": None,
+        "fonts.en": None,
+        "home.sections": [
+            {"id": key, "variant": key, "enabled": True}
+            for key in (
+                "live_status",
+                "latest_fatwas",
+                "quran_of_day",
+                "suggested_lessons",
+                "fresh_library",
+                "community",
+                "nearby_map",
+                "donation_banner",
+                "footer",
+            )
+        ],
+        "hero.fa": {
+            "title": "آکادمی ماتریدی",
+            "subtitle": "آموزش اصیل اسلامی؛ از عقیده تا عمل",
+            "primary_cta": {"label": "شروع یادگیری", "href": "/fa/courses"},
+            "secondary_cta": {"label": "مشاهدهٔ کتابخانه", "href": "/fa/library"},
+        },
+        "hero.ar": {
+            "title": "أكاديمية الماتريدي",
+            "subtitle": "تعليم إسلامي أصيل؛ من العقيدة إلى العمل",
+            "primary_cta": {"label": "ابدأ التعلم", "href": "/ar/courses"},
+            "secondary_cta": {"label": "تصفح المكتبة", "href": "/ar/library"},
+        },
+        "hero.en": {
+            "title": "Maturidi Academy",
+            "subtitle": "Authentic Islamic learning — from creed to practice",
+            "primary_cta": {"label": "Start learning", "href": "/en/courses"},
+            "secondary_cta": {"label": "Browse library", "href": "/en/library"},
+        },
+    }
+    seeded: list[str] = []
+    for key, value in defaults.items():
+        if await get_setting(db, key) is None:
+            await stage_setting(db, key, encode_setting_value("json", value, key))
+            seeded.append(key)
+    if seeded:
+        bump_settings_version(seeded)
+        await db.flush()
+    return seeded
+    """upsert idempotent بخش‌های خانه بر اساس key.
+
+    روی رکورد موجود: عنوان/زیرعنوان/داده/empty و sort_order به‌روز می‌شود،
+    ولی `visible` دست نخورده می‌ماند (ادمین ممکن است بخشی را پنهان کرده باشد).
+    """
+    for spec in HOME_SECTIONS_SEED:
+        row = (
+            await db.execute(select(HomeSection).where(HomeSection.key == spec["key"]))
+        ).scalar_one_or_none()
+        if row is None:
+            row = HomeSection(key=spec["key"], visible=True)
+            db.add(row)
+        row.sort_order = spec["sort_order"]
+        row.title = spec["title"]
+        row.subtitle = spec.get("subtitle")
+        row.data = spec.get("data")
+        row.empty_title = spec.get("empty_title")
+        row.empty_hint = spec.get("empty_hint")
+    await db.flush()
 
 
 async def _get_or_create_role(db: AsyncSession, name: str, description: str) -> Role:
@@ -161,6 +406,16 @@ async def main() -> None:
                     is_active=True,
                 )
             )
+
+        # بخش‌های خانه — فاز ۳ (idempotent)
+        await seed_home_sections(db)
+
+        # صفحه‌های حقوقی + تنظیمات تقویم — فاز ۴ (idempotent)
+        await seed_legal_pages(db)
+        await ensure_calendar_settings(db)
+
+        # پیش‌فرض‌های تنظیمات polish — میل‌استون polish (idempotent)
+        await seed_platform_settings_defaults(db)
 
         await db.commit()
     print("seed انجام شد.")
