@@ -1,0 +1,40 @@
+# Secrets — هرگز کامیت نشود (فاز ۰ §۳)
+.env
+.env.local
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+*.local
+
+# Rust / Tauri
+target/
+
+# Expo
+.expo/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads / local data
+uploads/
+*.sqlite3
+*.db

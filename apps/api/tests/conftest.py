@@ -1,0 +1,65 @@
+"""فیکسچرهای تست — دیتابیس SQLite جدا، override کردن get_db، ضبط ایمیل/پیامک."""
+from __future__ import annotations
+
+import os
+
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+TEST_DB = "/tmp/maturidi_test_phase1.db"
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def tc():
+    """کلاینت HTTP + دیتابیس تست تازه + ضبط ایمیل/پیامک."""
+    from app.core.database import Base
+    import app.models  # noqa: F401 — ثبت همهٔ جدول‌ها در metadata قبل از create_all
+
+    if os.path.exists(TEST_DB):
+        os.remove(TEST_DB)
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{TEST_DB}", connect_args={"check_same_thread": False}
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    from app.core.database import get_db
+    from app.main import app
+
+    async def _override():
+        async with maker() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = _override
+
+    import app.core.email as email_mod
+    import app.core.sms as sms_mod
+
+    sent: dict = {"emails": [], "sms": []}
+
+    async def _fake_email(to, subject, body_text, body_html=None):
+        sent["emails"].append({"to": to, "subject": subject, "body": body_text})
+        return True
+
+    async def _fake_sms(phone, message):
+        sent["sms"].append({"phone": phone, "message": message})
+        return True
+
+    email_mod.send_email = _fake_email
+    sms_mod.send_sms = _fake_sms
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield {"client": client, "sent": sent, "maker": maker}
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def db_session(tc):
+    """دسترسی مستقیم به دیتابیس تست (برای seed نقش/مجوز در تست ادمین)."""
+    maker = tc["maker"]
+    async with maker() as session:
+        yield session
+        await session.rollback()
