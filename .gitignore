@@ -39,3 +39,7 @@ Thumbs.db
 uploads/
 *.sqlite3
 *.db
+
+# Runtime static files (custom fonts uploaded via CRM — polish milestone)
+apps/api/static/
+*.tsbuildinfo
