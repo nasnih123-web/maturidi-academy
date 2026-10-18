@@ -36,6 +36,8 @@ BASE_PERMISSIONS = [
     ("content.publish", "انتشار محتوا"),
     ("fatwa.approve", "تأیید فتوا"),
     ("settings.manage", "مدیریت تنظیمات پلتفرم"),
+    ("platform.settings", "تنظیمات پلتفرم — فقط super_admin (فاز ۲)"),
+    ("realtime.admin", "اشتراک کانال‌های مدیریتی بلادرنگ (فاز ۲)"),
     ("media.manage", "مدیریت رسانه"),
     ("finance.manage", "مدیریت مالی"),
 ]
