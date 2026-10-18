@@ -1,0 +1,25 @@
+name: Mobile builds (Expo EAS)
+on:
+  workflow_dispatch:
+  push:
+    tags: ["mobile-v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - run: npm ci && eas build --platform all --non-interactive --no-wait
+# خروجی‌ها در MinIO نگه‌داری می‌شوند (۱۰ بیلد آخر هر پلتفرم) — اتصال در فاز ۱۴.
+# امضای اپ: Apple Developer و Google Play Console را شما تهیه می‌کنید (فاز ۲).
