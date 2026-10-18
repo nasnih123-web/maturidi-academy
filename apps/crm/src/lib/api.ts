@@ -159,3 +159,31 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
 export function apiUrl(): string {
   return API_URL;
 }
+
+/**
+ * POST multipart/form-data with the auth header (file uploads).
+ * apiFetch forces application/json, so uploads need their own path —
+ * with the same 401 → refresh → retry cycle.
+ */
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const send = (token: string | null): Promise<Response> => {
+    const headers = new Headers();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    return fetch(`${API_URL}${path}`, { method: "POST", headers, body: form });
+  };
+
+  let res = await send(accessToken);
+  if (res.status === 401) {
+    try {
+      await refreshTokens();
+    } catch {
+      clearTokens();
+      throw new ApiError(401, "session_expired", "Session expired", null);
+    }
+    res = await send(accessToken);
+  }
+
+  if (!res.ok) throw await parseError(res);
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
