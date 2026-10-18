@@ -36,6 +36,16 @@ class Settings(BaseSettings):
     sms_provider: str = ""
     sms_api_key: str = ""
 
+    # رصدپذیری — فاز ۲ §۱۱ (خالی = غیرفعال)
+    sentry_dsn: str = ""
+    otel_exporter_otlp_endpoint: str = ""
+    log_format: str = "text"  # text | json
+
+    # بلادرنگ — فاز ۲
+    dispatcher_poll_interval: float = 1.0  # ثانیه — فاصلهٔ polling جدول domain_events
+    ws_heartbeat_interval: int = 25  # ثانیه — ping/pong دوره‌ای WebSocket
+    ws_heartbeat_timeout: int = 60  # ثانیه — قطع اتصال بعد از این مدت بی‌پاسخی
+
     @property
     def is_dev(self) -> bool:
         return self.app_env == "dev"
