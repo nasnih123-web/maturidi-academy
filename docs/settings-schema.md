@@ -1,0 +1,97 @@
+# قرارداد اسکیمای تنظیمات پلتفرم — میل‌استون polish (Track A)
+
+> منبع حقیقت کد: `apps/api/app/core/platform_settings.py` (`SETTING_DEFS`)
+> و `apps/api/app/seed.py` (`seed_platform_settings_defaults`).
+> همهٔ مقادیر در DB با envelope رمزنگاری‌شده ذخیره می‌شوند (فاز ۰ §۳).
+
+## ۱) کلیدهای جدید polish
+
+| کلید | نوع | پیش‌فرض (seed) | مصرف‌کننده | اعتبارسنجی |
+|---|---|---|---|---|
+| `particles` | json (object) | `{enabled: true, count: 100, speed: 1.0, parallax: 1.0, lines: true}` | web (AtmosphericEngine) + CRM (لایهٔ ذرات) | object؛ فیلد ناشناخته → ۴۰۰؛ `enabled`/`lines` بولی، `count` عدد صحیح ۰..۱۰۰۰، `speed`/`parallax` عدد ≥ ۰؛ فیلدهای غایب با پیش‌فرض پر می‌شوند |
+| `fonts.fa` / `fonts.ar` / `fonts.en` | json (object \| null) | `null` = فونت داخلی (fa→Vazirmatn، ar→Cairo، en→Inter) | web + CRM (فونت هر لوکیل؛ آپلودشده بر داخلی اولویت دارد) | `null` یا `{family: string غیرخالی, url: string غیرخالی}` |
+| `home.sections` | json (array) | ۹ اسلات زیرِ هیرو به ترتیب فعلی seed بخش‌ها (`live_status` … `footer`) | web (ترتیب/فعال‌بودن اسلات‌ها) | آرایه‌ای از `{id: string غیرخالی و یکتا, variant: string غیرخالی, enabled: bool}` |
+| `hero.fa` / `hero.ar` / `hero.en` | json (object) | کپی فعلی هیروی وب (title/subtitle/primary_cta/secondary_cta هر لوکیل) | web (متن هیرو) | `title` غیرخالی الزامی؛ `subtitle` رشته؛ `primary_cta`/`secondary_cta` یا `null` یا `{label: string, href: string}` |
+
+### واریانت‌های `home.sections` (۱۰ مدل بخش — مستندسازی برای Track C)
+
+`variant` هر رشتهٔ غیرخالی را می‌پذیرد (بدون نیاز به migration برای واریانت جدید)؛
+۱۰ مدل فعلی از `seed_home_sections`:
+
+`hero`، `live_status`، `latest_fatwas`، `quran_of_day`، `suggested_lessons`،
+`fresh_library`، `community`، `nearby_map`، `donation_banner`، `footer`
+
+پیش‌فرض seed فقط ۹ تای زیرِ هیرو را دارد (`hero` جدا با `hero.<locale>` مدیریت می‌شود).
+
+### نوع `json` (جدید در این میل‌استون)
+
+پنجمین نوع تنظیمات در کنار `secret | string | localized | uuid`. مقدار ورودی
+باید JSON-serializable باشد؛ برای کلیدهای polish اعتبارسنج اختصاصی اعمال و
+خروجی canonical ذخیره می‌شود. `decode` در GET، آبجکت/آرایهٔ واقعی برمی‌گرداند
+(نه رشتهٔ JSON).
+
+## ۲) revalidation تنظیمات (تسک #۳)
+
+- `GET /api/v1/admin/settings` هر آیتم را با `updated_at` (زمان UTC آخرین نوشتن
+  همان کلید، ISO 8601) و کل پاسخ را با `version` (عدد صحیح) برمی‌گرداند.
+- `PUT /api/v1/admin/settings` و endpointهای فونت بعد از هر commit موفق،
+  نسخه را بالا می‌برند (`bump_settings_version`) و کش را باطل می‌کنند —
+  hot-reload بدون ری‌استارت (ADR-002).
+- کش درون‌فرایندی: تنها کش سمت‌سرور تنظیمات است. هر ورودی حداکثر
+  `SETTINGS_CACHE_TTL = 60` ثانیه عمر دارد (`app/core/platform_settings.py`)؛
+  نوشتن فوراً باطلش می‌کند. وب per-request می‌خواند و با `version` revalidate می‌کند.
+- کلیدهای حساس همچنان در GET به‌صورت `"***"` mask می‌شوند و در audit فقط
+  `{"changed": true}` ثبت می‌شود (فاز ۰ §۱۴).
+
+## ۳) endpointهای فونت (تسک #۶)
+
+- `POST /api/v1/admin/fonts` (multipart؛ مجوز `platform.settings` — عملاً super_admin):
+  فیلدها `locale` (fa|ar|en)، `family` (۱..۱۲۰ نویسه)، `file`.
+  اعتبارسنجی (قرارداد §۷): پسوند ∈ {woff2, woff, ttf}، حجم ≤ ۵MB،
+  magic bytes (`wOF2` / `wOFF` / `00 01 00 00`) — رد با پاکت خطای استاندارد
+  (`invalid_font_extension` / `font_too_large` ۴۱۳ / `invalid_font_file` /
+  `invalid_locale` / `invalid_font_family`).
+  ذخیره‌سازی: `apps/api/static/fonts/<locale>/<slug>-<rand8>.<ext>` و سرو از
+  `/static` (در `main.py` با `StaticFiles` mount شده؛ دایرکتوری runtime است و
+  در `.gitignore` قرار دارد). موفق → `fonts.<locale> = {family, url}` + پاسخ ۲۰۱
+  `{locale, family, url, version}` + audit و domain event.
+- `DELETE /api/v1/admin/fonts/{locale}`: `fonts.<locale> = null`، حذف فایل
+  (با محافظت در برابر path traversal)، پاسخ `{locale, family: null, url: null, version}`.
+- OpenAPI خودکار از FastAPI (قرارداد §۱ — دستی نوشته نشده).
+
+## ۴) حذف dark mode (تسک #۹ — بخش بک‌اند)
+
+جست‌وجوی کامل بک‌اند (`apps/api`: کلیدهای تنظیمات، منطق تم/حالت) هیچ کلید یا
+منطق dark-mode/theme-mode نداشت — چیزی برای حذف نبود. استایل imperial
+dark-obsidian تنها تم است و در `platform_settings` ثبت نشده بود.
+
+## ۵) مصرف وب (Track C — `apps/web`)
+
+- **اندپوینت:** `GET /api/v1/settings/public` (ثابت `PUBLIC_SETTINGS_PATH` در
+  `apps/web/lib/settings.ts`). پاسخ مورد انتظار: `{ settings: {<کلید>: <مقدار>}, version, updated_at }` —
+  مقادیر ممکن است آبجکت/آرایهٔ آماده یا رشتهٔ JSON باشند (هر دو پذیرفته می‌شود)؛
+  شکل لیستی `[{key, value}]` هم تحمل می‌شود.
+- **سرویس:** `getSiteConfig()` — هر درخواست با `cache: 'no-store'` (بدون کش Next،
+  بدون دادهٔ کهنه). غیرپرتابه: هر خطایی → مقادیر پیش‌فرض تایپ‌شده = رفتار امروز.
+  `version` / `updated_at` روی خروجی نگه داشته می‌شود (مشاهده‌پذیری)؛ چون چیزی
+  کش نمی‌شود، revalidation شرطی لازم نیست — هر درخواست نسخهٔ آخر را می‌بیند.
+- **امنیت parse:** `family` فونت فقط حروف/عدد/فاصله/خط‌تیره؛ همهٔ URLها از
+  `safeHref` (فقط same-origin یا `http(s)`)؛ اعداد clamp؛ شکل نامعتبر → پیش‌فرض.
+- **نقاط مصرف:**
+  - لی‌آوت: `AtmosphericEngine config={siteConfig.particles}` (کلید `particles`:
+    `enabled`/`count`/`speed`/`parallax` (ضریب عددی)/`lines`)؛ فونت آپلودشدهٔ
+    `fonts.<locale>` → بلوک `<style>` با `@font-face` (`font-display: swap`) +
+    بازنویسی `--font-main` همان لوکیل (فونت توکار می‌ماند fallback).
+  - صفحهٔ اول: `home.sections` موجود و غیرخالی → `ComposedSections` (ترتیب
+    اسلات‌ها، `variant` = شناسهٔ رجیستری `components/sections/registry.ts`،
+    `enabled: false` رد می‌شود)؛ وگرنه رفتار امروز (`HomeSections`).
+    `variant` ناشناخته/خالی برای یک سکشن → رندرر اختصاصی همان سکشن (امروز).
+    توجه: seed پیش‌فرض `variant` را برابر کلید سکشن می‌گذارد — این مقادیر
+    شناسهٔ رجیستری نیستند و عمداً به رفتار امروز برمی‌گردند.
+  - هیرو: `hero.<locale>` → بازنویسی title/subtitle/CTAها؛ فیلد خالی → کپی امروز.
+- **تفکیک کش:** ترکیب صفحه (اسلات/واریانت/ذرات/هیرو/فونت) per-request زنده است؛
+  محتوای داخل سکشن‌ها (`home/sections` و سطوح CMS) همچنان `revalidate: 120`.
+- **رجیستری واریانت‌ها** (`SECTION_VARIANTS` در `components/sections/registry.ts`)
+  کانونی است؛ CRM همان id/labelها را mirror می‌کند (ایمپورت cross-app ممکن نیست).
+- **صفحهٔ نمایشی** `/demo/sections` (فقط dev؛ در production ‏۴۰۴): هر ۱۰ واریانت
+  با دادهٔ نمایشی `lib/demo-fixtures.ts` — هرگز در مسیر production استفاده نمی‌شود.
