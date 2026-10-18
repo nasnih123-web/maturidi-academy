@@ -31,6 +31,9 @@ class TokenPair(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    # افزودنیِ سازگار با قرارداد (الگوی turbo): اگر کاربر نقش مدیریتی دارد ولی
+    # هنوز 2FA ثبت‌نام نکرده، True است تا CRM ورود را مشروط کند (قرارداد §۲).
+    must_enroll_2fa: bool = False
 
 
 class RefreshIn(BaseModel):

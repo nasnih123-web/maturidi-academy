@@ -39,9 +39,11 @@ from app.models.models import (
     PhoneVerificationCode,
     RecoveryCode,
     RefreshToken,
+    Role,
     Session,
     User,
     UserConsent,
+    UserRole,
 )
 from app.modules.auth.schemas import (
     LoginIn,
@@ -51,6 +53,7 @@ from app.modules.auth.schemas import (
     TwoFAEnableIn,
     TwoFARecoverIn,
 )
+from app.modules.content.legal import LEGAL_TEXT_VERSION
 
 REFRESH_EXPIRE_DAYS = 30
 EMAIL_VERIFY_EXPIRE_HOURS = 24
@@ -85,6 +88,44 @@ async def _revoke_user_tokens(db: AsyncSession, user_id: uuid.UUID) -> None:
     )
 
 
+async def _revoke_session(db: AsyncSession, session_id: uuid.UUID) -> None:
+    """ابطال یک نشست خاص: همهٔ رفرش‌توکن‌هایش + خود نشست (الگوی turbo — reuse)."""
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.session_id == session_id, RefreshToken.revoked.is_(False))
+        .values(revoked=True)
+    )
+    await db.execute(
+        update(Session).where(Session.id == session_id).values(revoked=True)
+    )
+
+
+# نقش‌هایی که طبق قرارداد فاز ۰ §۲ ثبت‌نام 2FA برایشان اجباری است
+PRIVILEGED_ROLE_NAMES = frozenset({"admin", "super_admin"})
+
+
+async def user_role_names(db: AsyncSession, user_id: uuid.UUID) -> set[str]:
+    """نام نقش‌های کاربر — همیشه از user_roles، هرگز از ستون role (که نداریم)."""
+    rows = await db.execute(
+        select(Role.name)
+        .select_from(UserRole)
+        .join(Role, Role.id == UserRole.role_id)
+        .where(UserRole.user_id == user_id)
+    )
+    return set(rows.scalars().all())
+
+
+async def must_enroll_2fa(db: AsyncSession, user: User) -> bool:
+    """ادمین/super_admin بدون TOTP باید 2FA ثبت‌نام کند (قرارداد §۲، الگوی turbo).
+
+    فقط یک پرچم برمی‌گرداند — تصمیمِ «وارد CRM نشود» با کلاینت (CRM) است؛
+    قرارداد API با افزودن همین فیلد دست‌نخورده می‌ماند.
+    """
+    if user.totp_secret:
+        return False
+    return bool(await user_role_names(db, user.id) & PRIVILEGED_ROLE_NAMES)
+
+
 # ---------- register ----------
 
 async def register(
@@ -112,13 +153,15 @@ async def register(
     db.add(user)
     await db.flush()
 
-    # رضایت صریح — GDPR از روز اول (فاز ۱)
+    # رضایت صریح — GDPR از روز اول (فاز ۱).
+    # نسخهٔ متن حقوقی همان LEGAL_TEXT_VERSION است که صفحه‌های terms/privacy
+    # در CMS با آن seed می‌شوند — تا ثابت شود کاربر کدام نسخه را پذیرفته است.
     for consent_type in ("terms", "privacy"):
         db.add(
             UserConsent(
                 user_id=user.id,
                 consent_type=consent_type,
-                text_version="v1",
+                text_version=LEGAL_TEXT_VERSION,
                 accepted_at=_utcnow(),
                 ip=ip,
             )
@@ -233,37 +276,73 @@ async def create_session_pair(
         user_agent=device_info,
     )
     await db.commit()
-    return create_access_token(str(user.id)), plain
+    # sid در access token می‌نشیند تا get_current_user بتواند ابطال نشست را
+    # بی‌درنگ اعمال کند (الگوی turbo — وگرنه توکن تا ۱۵ دقیقه زنده می‌ماند).
+    return create_access_token(str(user.id), extra={"sid": str(session.id)}), plain
 
 
 async def refresh_pair(db: AsyncSession, refresh_token: str) -> tuple[str, str]:
-    token = (
+    row = (
         await db.execute(
             select(RefreshToken).where(RefreshToken.token_hash == hash_token(refresh_token))
         )
     ).scalar_one_or_none()
-    if not token or token.revoked or ensure_aware(token.expires_at) < _utcnow():
+    if not row or ensure_aware(row.expires_at) < _utcnow():
         raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
-    user = await db.get(User, token.user_id)
+
+    if row.revoked:
+        # تشخیص استفادهٔ مجدد (reuse detection — الگوی turbo):
+        # اگر این توکن با rotation جایگزین شده (جانشین دارد) و دوباره ارائه شود،
+        # یعنی توکن دزدیده شده؛ کل نشست باطل می‌شود. کد خطا همان invalid_token
+        # می‌ماند تا قرارداد API نشکند.
+        successor = (
+            await db.execute(
+                select(RefreshToken.id)
+                .where(RefreshToken.rotated_from == row.id)
+                .limit(1)
+            )
+        ).first()
+        if successor is not None and row.session_id is not None:
+            await _revoke_session(db, row.session_id)
+            await emit_event(
+                db,
+                aggregate_type="user",
+                aggregate_id=str(row.user_id),
+                event_type="token.reuse_detected",
+                payload={"session_id": str(row.session_id)},
+            )
+            await log_audit(
+                db,
+                actor_id=row.user_id,
+                actor_type="user",
+                action="token.reuse_detected",
+                entity_type="refresh_token",
+                entity_id=str(row.id),
+                new_values={"session_revoked": True},
+            )
+            await db.commit()
+        raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
+
+    user = await db.get(User, row.user_id)
     if not user or not user.is_active:
         raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر است")
 
     # rotation: توکن قبلی باطل، توکن جدید صادر می‌شود (فاز ۰ §۲)
-    token.revoked = True
+    row.revoked = True
     new_plain = generate_refresh_token()
     db.add(
         RefreshToken(
             user_id=user.id,
-            session_id=token.session_id,
+            session_id=row.session_id,
             token_hash=hash_token(new_plain),
-            rotated_from=token.id,
+            rotated_from=row.id,
             expires_at=_utcnow() + timedelta(days=REFRESH_EXPIRE_DAYS),
         )
     )
-    if token.session_id:
+    if row.session_id:
         await db.execute(
             update(Session)
-            .where(Session.id == token.session_id)
+            .where(Session.id == row.session_id)
             .values(last_active_at=_utcnow())
         )
     await emit_event(
@@ -271,7 +350,7 @@ async def refresh_pair(db: AsyncSession, refresh_token: str) -> tuple[str, str]:
         aggregate_type="user",
         aggregate_id=str(user.id),
         event_type="token.refreshed",
-        payload={"rotated_from": str(token.id)},
+        payload={"rotated_from": str(row.id)},
     )
     await log_audit(
         db,
@@ -279,10 +358,11 @@ async def refresh_pair(db: AsyncSession, refresh_token: str) -> tuple[str, str]:
         actor_type="user",
         action="token.refresh",
         entity_type="refresh_token",
-        entity_id=str(token.id),
+        entity_id=str(row.id),
     )
     await db.commit()
-    return create_access_token(str(user.id)), new_plain
+    extra = {"sid": str(row.session_id)} if row.session_id else None
+    return create_access_token(str(user.id), extra=extra), new_plain
 
 
 async def logout(db: AsyncSession, user: User, refresh_token: str) -> None:
@@ -293,6 +373,10 @@ async def logout(db: AsyncSession, user: User, refresh_token: str) -> None:
     ).scalar_one_or_none()
     if token and token.user_id == user.id:
         token.revoked = True
+        # خروج از یک دستگاه = پایان همان نشست؛ access token هم بی‌درنگ می‌میرد
+        # (الگوی turbo — وگرنه تا ۱۵ دقیقه زنده می‌ماند).
+        if token.session_id:
+            await _revoke_session(db, token.session_id)
         await emit_event(
             db,
             aggregate_type="user",
