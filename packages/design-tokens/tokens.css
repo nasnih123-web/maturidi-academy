@@ -1,0 +1,195 @@
+/**
+ * @maturidi/design-tokens — tokens.css
+ *
+ * Single source of truth for the Maturidi Academy visual identity.
+ * Every custom property is prefixed `--ma-`. Apps and component libraries
+ * consume these with `var(--ma-*, <fallback>)` — never hardcode the values.
+ *
+ * Runtime theme overrides arrive from the backend `platform_settings`
+ * service (`theme.palette.<suffix>` / `theme.fonts.<name>`); the `<suffix>`
+ * maps 1:1 onto the token name after `--ma-`
+ * (see README.md "platform_settings override mapping").
+ *
+ * No business logic lives here — pure presentation tokens only (§15, ADR 0002).
+ */
+
+:root {
+  /* ------------------------------------------------------------------ */
+  /* Palette — base scales                                               */
+  /* ------------------------------------------------------------------ */
+
+  /* Emerald — primary brand green */
+  --ma-color-emerald-50: #ecfdf5;
+  --ma-color-emerald-100: #d1fae5;
+  --ma-color-emerald-200: #a7f3d0;
+  --ma-color-emerald-300: #6ee7b7;
+  --ma-color-emerald-400: #34d399;
+  --ma-color-emerald-500: #10b981;
+  --ma-color-emerald-600: #059669;
+  --ma-color-emerald-700: #047857;
+  --ma-color-emerald-800: #065f46;
+  --ma-color-emerald-900: #064e3b;
+
+  /* Gold — accent */
+  --ma-color-gold-100: #fdf6e3;
+  --ma-color-gold-200: #faedc4;
+  --ma-color-gold-300: #f6e09a;
+  --ma-color-gold-400: #f1d070;
+  --ma-color-gold-500: #e9b949;
+  --ma-color-gold-600: #d19a2a;
+  --ma-color-gold-700: #a97a1c;
+
+  /* Neutral gray */
+  --ma-color-gray-50: #f8fafc;
+  --ma-color-gray-100: #f1f5f9;
+  --ma-color-gray-200: #e2e8f0;
+  --ma-color-gray-300: #cbd5e1;
+  --ma-color-gray-400: #94a3b8;
+  --ma-color-gray-500: #64748b;
+  --ma-color-gray-600: #475569;
+  --ma-color-gray-700: #334155;
+  --ma-color-gray-800: #1e293b;
+  --ma-color-gray-900: #0f172a;
+
+  /* Status hues (kept off the brand scales so status never reads as brand) */
+  --ma-color-info-100: #dbeafe;
+  --ma-color-info-700: #1d4ed8;
+  --ma-color-warning-100: #fef3c7;
+  --ma-color-warning-700: #b45309;
+  --ma-color-danger-100: #fee2e2;
+  --ma-color-danger-700: #b91c1c;
+
+  /* ------------------------------------------------------------------ */
+  /* Semantic aliases — the tokens components should actually use        */
+  /* ------------------------------------------------------------------ */
+
+  --ma-color-primary-50: var(--ma-color-emerald-50);
+  --ma-color-primary-100: var(--ma-color-emerald-100);
+  --ma-color-primary-200: var(--ma-color-emerald-200);
+  --ma-color-primary-300: var(--ma-color-emerald-300);
+  --ma-color-primary-400: var(--ma-color-emerald-400);
+  --ma-color-primary-500: var(--ma-color-emerald-500);
+  --ma-color-primary-600: var(--ma-color-emerald-600);
+  --ma-color-primary-700: var(--ma-color-emerald-700);
+  --ma-color-primary-800: var(--ma-color-emerald-800);
+  --ma-color-primary-900: var(--ma-color-emerald-900);
+
+  --ma-color-accent-100: var(--ma-color-gold-100);
+  --ma-color-accent-200: var(--ma-color-gold-200);
+  --ma-color-accent-300: var(--ma-color-gold-300);
+  --ma-color-accent-400: var(--ma-color-gold-400);
+  --ma-color-accent-500: var(--ma-color-gold-500);
+  --ma-color-accent-600: var(--ma-color-gold-600);
+  --ma-color-accent-700: var(--ma-color-gold-700);
+
+  --ma-color-neutral-50: var(--ma-color-gray-50);
+  --ma-color-neutral-100: var(--ma-color-gray-100);
+  --ma-color-neutral-200: var(--ma-color-gray-200);
+  --ma-color-neutral-300: var(--ma-color-gray-300);
+  --ma-color-neutral-400: var(--ma-color-gray-400);
+  --ma-color-neutral-500: var(--ma-color-gray-500);
+  --ma-color-neutral-600: var(--ma-color-gray-600);
+  --ma-color-neutral-700: var(--ma-color-gray-700);
+  --ma-color-neutral-800: var(--ma-color-gray-800);
+  --ma-color-neutral-900: var(--ma-color-gray-900);
+
+  /* Surfaces & text — default pairs pass WCAG 2.2 AA (see README table) */
+  --ma-color-surface: #ffffff;
+  --ma-color-surface-subtle: var(--ma-color-neutral-50);
+  --ma-color-text: var(--ma-color-neutral-900);
+  --ma-color-text-muted: var(--ma-color-neutral-600);
+  --ma-color-border: var(--ma-color-neutral-200);
+
+  /* Status pairs (bg = 100 tint, text = 700) */
+  --ma-color-success-bg: var(--ma-color-primary-100);
+  --ma-color-success-text: var(--ma-color-primary-800);
+  --ma-color-info-bg: var(--ma-color-info-100);
+  --ma-color-info-text: var(--ma-color-info-700);
+  --ma-color-warning-bg: var(--ma-color-warning-100);
+  --ma-color-warning-text: var(--ma-color-warning-700);
+  --ma-color-danger-bg: var(--ma-color-danger-100);
+  --ma-color-danger-text: var(--ma-color-danger-700);
+  --ma-color-danger-solid: var(--ma-color-danger-700);
+
+  /* ------------------------------------------------------------------ */
+  /* Typography                                                          */
+  /* ------------------------------------------------------------------ */
+
+  --ma-font-body: "Vazirmatn", "Segoe UI", Tahoma, Arial, sans-serif;
+  /* Display face for key h1/h2 — Lalezar covers Arabic script (fa/ar) + Latin */
+  --ma-font-heading: "Lalezar", "Vazirmatn", "Segoe UI", Tahoma, sans-serif;
+
+  --ma-font-size-xs: 0.75rem;
+  --ma-font-size-sm: 0.8rem;
+  --ma-font-size-base: 0.9rem;
+  --ma-font-size-lg: 1rem;
+  --ma-font-size-xl: 1.25rem;
+  --ma-font-size-2xl: 1.5rem;
+  --ma-font-size-3xl: 2rem;
+
+  --ma-font-weight-normal: 400;
+  --ma-font-weight-medium: 500;
+  --ma-font-weight-semibold: 600;
+  --ma-font-weight-bold: 700;
+
+  --ma-leading-tight: 1.25;
+  --ma-leading-snug: 1.375;
+  --ma-leading-normal: 1.6;
+  --ma-leading-relaxed: 1.8;
+
+  /* ------------------------------------------------------------------ */
+  /* Spacing / radii / shadows                                           */
+  /* ------------------------------------------------------------------ */
+
+  --ma-space-0: 0;
+  --ma-space-1: 0.25rem;
+  --ma-space-2: 0.5rem;
+  --ma-space-3: 0.75rem;
+  --ma-space-4: 1rem;
+  --ma-space-5: 1.25rem;
+  --ma-space-6: 1.5rem;
+  --ma-space-8: 2rem;
+  --ma-space-10: 2.5rem;
+  --ma-space-12: 3rem;
+  --ma-space-16: 4rem;
+  --ma-space-20: 5rem;
+  --ma-space-24: 6rem;
+
+  --ma-radius-sm: 4px;
+  --ma-radius-md: 8px;
+  --ma-radius-lg: 12px;
+  --ma-radius-xl: 16px;
+  --ma-radius-2xl: 24px;
+  --ma-radius-full: 9999px;
+
+  --ma-shadow-sm: 0 1px 2px rgb(15 23 42 / 0.06);
+  --ma-shadow-md: 0 4px 12px rgb(15 23 42 / 0.08);
+  --ma-shadow-lg: 0 12px 32px rgb(15 23 42 / 0.12);
+
+  /* ------------------------------------------------------------------ */
+  /* Focus                                                               */
+  /* ------------------------------------------------------------------ */
+
+  --ma-focus-ring: 3px solid var(--ma-color-primary-500);
+  --ma-focus-ring-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Base a11y rules (logical properties only — no physical left/right)      */
+/* ---------------------------------------------------------------------- */
+
+:focus-visible {
+  outline: var(--ma-focus-ring);
+  outline-offset: var(--ma-focus-ring-offset);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

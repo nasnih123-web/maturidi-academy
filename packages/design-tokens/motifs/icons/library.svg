@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <!-- library: bookshelf -->
+  <rect x="4" y="3" width="16" height="18" rx="1"/>
+  <path d="M4 9.5h16M4 15.5h16"/>
+  <path d="M8 6v3.5M11 6.5v3M15 12v3.5M9.5 12v3.5"/>
+</svg>

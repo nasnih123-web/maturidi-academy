@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <!-- fatwa: edict scroll with seal -->
+  <path d="M6 3h8l4 4v14H6z"/>
+  <path d="M14 3v4h4"/>
+  <path d="M9 12h6M9 14.5h6"/>
+  <circle cx="15.5" cy="17.8" r="2.4"/>
+  <path d="M15.5 16.6v2.4M14.3 17.8h2.4"/>
+</svg>

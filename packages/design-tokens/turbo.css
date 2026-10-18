@@ -1,0 +1,94 @@
+/**
+ * @maturidi/design-tokens — turbo.css
+ *
+ * Imperial Islamic Luxury visual system (ported from the turbo UI source).
+ * This is the PRIMARY semantic token layer for the web presentation:
+ * plain-CSS custom properties consumed as `hsl(var(--text-primary))` etc.
+ *
+ * Coexistence contract with `tokens.css` (`--ma-*`):
+ * - `tokens.css` stays the source of truth for `--ma-*`; nothing here
+ *   overrides a `--ma-*` var, so `platform_settings` theme overrides
+ *   (`theme.palette.<suffix>` → `--ma-<suffix>`) keep working untouched.
+ * - The ported web UI consumes the semantic vars below; `--ma-*` remains
+ *   available for any component that still references it.
+ *
+ * No business logic — pure presentation tokens only (§15, ADR 0002).
+ */
+
+:root {
+  /* ---- semantic colors — light (independently designed) ---- */
+  --background: 45 35% 98%;
+  --surface: 0 0% 100%;
+  --surface-elevated: 0 0% 100%;
+  --surface-glass: 0 0% 100% / 0.72;
+  --text-primary: 165 20% 12%;
+  --text-secondary: 165 10% 30%;
+  --text-muted: 165 6% 48%;
+  --border: 150 16% 88%;
+  --border-strong: 160 12% 78%;
+  --accent: 42 72% 44%;
+  --accent-soft: 42 72% 44% / 0.14;
+  --primary: 161 58% 24%;
+  --primary-hover: 161 55% 30%;
+  --primary-soft: 161 58% 24% / 0.10;
+  --success: 152 48% 30%;
+  --warning: 34 72% 42%;
+  --danger: 0 58% 42%;
+  --info: 205 60% 36%;
+  --focus: 161 58% 24%;
+
+  /* legacy aliases (kept for migration) */
+  --foreground: var(--text-primary);
+  --muted: var(--background);
+  --muted-foreground: var(--text-muted);
+
+  /* ---- typography ---- */
+  --font-main: "Vazirmatn", "Segoe UI", Tahoma, sans-serif;
+  --font-display: "Lalezar", "Vazirmatn", "Segoe UI", sans-serif;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1.1rem;
+  --radius-xl: 1.6rem;
+  --shadow-1: 0 1px 2px hsl(165 30% 10% / 0.05);
+  --shadow-2: 0 4px 14px hsl(165 30% 10% / 0.07);
+  --shadow-3: 0 14px 34px hsl(165 30% 10% / 0.11);
+  --dur-fast: 120ms;
+  --dur-base: 220ms;
+  --dur-slow: 420ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --focus-ring: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--focus));
+  --container: 78rem;
+  --section-y: clamp(3.5rem, 7vw, 6.5rem);
+
+  /* ---- imperial palette (obsidian / gold) ---- */
+  --obsidian-0: #04100d;
+  --obsidian-1: #081c16;
+  --emerald-glass: rgba(7, 35, 28, 0.75);
+  --gold-1: #e5c07b;
+  --gold-2: #d4af37;
+  --gold-3: #996515;
+  --gold-glow: 0 0 15px rgba(212, 175, 55, 0.25);
+  --ivory: #ede6d6;
+}
+
+[data-theme="dark"] {
+  --background: 166 65% 6%;
+  --surface: 165 64% 8%;
+  --surface-elevated: 165 60% 10%;
+  --surface-glass: rgba(7, 35, 28, 0.75);
+  --text-primary: 46 36% 92%;
+  --text-secondary: 46 20% 74%;
+  --text-muted: 46 12% 55%;
+  --border: 43 30% 22%;
+  --border-strong: 43 45% 34%;
+  --accent: 43 65% 58%;
+  --accent-soft: 43 66% 58% / 0.16;
+  --primary: 160 45% 34%;
+  --primary-hover: 160 42% 44%;
+  --primary-soft: 160 42% 36% / 0.2;
+  --success: 150 40% 48%;
+  --warning: 34 60% 52%;
+  --danger: 0 48% 56%;
+  --info: 205 45% 55%;
+  --focus: 43 66% 58%;
+}
