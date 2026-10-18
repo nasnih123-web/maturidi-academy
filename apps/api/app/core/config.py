@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     otel_exporter_otlp_endpoint: str = ""
     log_format: str = "text"  # text | json
 
+    # CORS — خالی = غیرفعال؛ کاما-جدا یا "*" (مثلاً برای تست موقت یا فرانت جدا)
+    cors_allow_origins: str = ""
+
     # بلادرنگ — فاز ۲
     dispatcher_poll_interval: float = 1.0  # ثانیه — فاصلهٔ polling جدول domain_events
     ws_heartbeat_interval: int = 25  # ثانیه — ping/pong دوره‌ای WebSocket
@@ -54,3 +57,32 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+# ---------- نگهبان secrets در production (فاز ۰ §۳ و §۱۵ قانون ۳) ----------
+
+_PLACEHOLDER_SECRETS = frozenset({"", "CHANGE_ME"})
+
+
+def assert_production_secrets_ok(settings: Settings | None = None) -> None:
+    """fail-fast در startup: در محیط واقعی، secret پیش‌فرض/placeholder ممنوع است.
+
+    در dev سکوت می‌کند تا توسعه و تست سبک بمانند؛ در staging/production با
+    jwt_secret یا encryption_key برابر CHANGE_ME (یا خالی) بالا نمی‌آید.
+    """
+    s = settings or get_settings()
+    if s.is_dev:
+        return
+    bad = [
+        name
+        for name, value in (
+            ("jwt_secret", s.jwt_secret),
+            ("encryption_key", s.encryption_key),
+        )
+        if value.strip() in _PLACEHOLDER_SECRETS
+    ]
+    if bad:
+        raise RuntimeError(
+            f"Refusing to start in env={s.app_env}: placeholder secret(s) "
+            f"{', '.join(bad)} — set real values via environment / secrets manager"
+        )

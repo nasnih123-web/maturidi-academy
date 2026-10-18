@@ -69,6 +69,41 @@ def register_task(queue_name: str) -> Callable:
     return decorator
 
 
+# رجیستری کرون‌جاب‌ها — فاز ۴: هر ورودی (queue, fn, kwargsِ arq.cron)
+_CRON_REGISTRY: list[dict[str, Any]] = []
+
+
+def register_cron(queue_name: str, **cron_kwargs: Any) -> Callable:
+    """دکوراتور ثبت یک کرون‌جاب ARQ روی صف مشخص.
+
+    مثال: @register_cron("notifications", name="x", hour=0, minute=5)
+    kwargs مستقیم به arq.cron می‌رسد. run_at_startup پیش‌فرض False است تا
+    در دیباگ/تست، ورکر با اجرای فوری شروع نکند.
+    """
+    if queue_name not in QUEUES:
+        raise ValueError(f"unknown queue: {queue_name}")
+    cron_kwargs.setdefault("run_at_startup", False)
+
+    def decorator(fn: Callable) -> Callable:
+        _CRON_REGISTRY.append(
+            {"queue": queue_name, "fn": fn, "kwargs": dict(cron_kwargs)}
+        )
+        return fn
+
+    return decorator
+
+
+def cron_jobs_for(queue_name: str) -> list[Any]:
+    """ساخت لیست arq.cron برای WorkerSettings یک صف."""
+    from arq import cron as _cron  # noqa: PLC0415 — import سنگین فقط وقتی لازم است
+
+    return [
+        _cron(entry["fn"], **entry["kwargs"])
+        for entry in _CRON_REGISTRY
+        if entry["queue"] == queue_name
+    ]
+
+
 def tasks_for(queue_name: str) -> list[Callable]:
     return list(_TASK_REGISTRY[queue_name])
 
@@ -85,6 +120,7 @@ def worker_settings_for(queue_name: str) -> dict[str, Any]:
     q = QUEUES[queue_name]
     return {
         "functions": tasks_for(queue_name),
+        "cron_jobs": cron_jobs_for(queue_name),
         "redis_settings": get_arq_redis_settings(),
         "queue_name": queue_name,
         "max_jobs": q["max_jobs"],
