@@ -49,7 +49,11 @@ async def login(data: LoginIn, request: Request, db: AsyncSession = Depends(get_
     ip, ua = _client(request)
     user = await service.authenticate(db, data, ip)
     access, refresh = await service.create_session_pair(db, user, ua, ip)
-    return TokenPair(access_token=access, refresh_token=refresh)
+    return TokenPair(
+        access_token=access,
+        refresh_token=refresh,
+        must_enroll_2fa=await service.must_enroll_2fa(db, user),
+    )
 
 
 @router.post("/refresh", response_model=TokenPair)

@@ -13,11 +13,12 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -254,6 +255,32 @@ class DomainEvent(Base):
     failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class HomeSection(Base):
+    """بخش‌های صفحهٔ خانه — فاز ۳.
+
+    چیدمان و نمایش خانه بدون FK به جدول‌های ماژول‌های آینده (§۹.۵: no future-FK coupling):
+    هر بخش فقط یک `key` پایدار دارد که فرانت‌اند/ماژول‌های بعدی روی آن سوئیچ می‌کنند.
+    متن‌های قابل‌مشاهده LocalizedText هستند (§۱۵.۴)؛ data ساخت‌یافتهٔ هر بخش است
+    (برای بخش‌هایی که ماژول‌شان هنوز نیست: data=null + empty_title/empty_hint).
+    """
+
+    __tablename__ = "home_sections"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText {"fa","ar","en"}
+    subtitle: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # LocalizedText
+    data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # دادهٔ ساخت‌یافتهٔ بخش
+    empty_title: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # LocalizedText
+    empty_hint: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # LocalizedText
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
 class PlatformSetting(Base):
     """value رمزنگاری‌شده با envelope نسخه‌دار فاز ۰ §۳ — هرگز plaintext."""
 
@@ -262,6 +289,169 @@ class PlatformSetting(Base):
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
     value: Mapped[dict] = mapped_column(JSONB)  # {"v": key_version, "data": "<fernet token>"}
     encryption_key_version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+# ---------------------------------------------------------------------------
+# فاز ۴ — CMS + تقویم اسلامی (قرارداد §۹.۵)
+#
+# - همهٔ جدول‌های قابل‌انتشار: workflow_status طبق ماشین مشترک §۹
+#   (پیاده‌سازی در app/core/workflow.py) + version (خوش‌بینی) + created_by.
+# - distribution: JSONB {"web","mobile","desktop","telegram","ai_knowledge"} —
+#   تاگل مستقل هر surface (§۹.۵). پیش‌فرض‌ها را لایهٔ service اعمال می‌کند:
+#   هنگام انتشار web=true و بقیه false.
+# - nav_items وضعیت گردش‌کار ندارد: نمایش با visible + پنجرهٔ زمانی کنترل می‌شود.
+# ---------------------------------------------------------------------------
+
+
+class _PublishableMixin:
+    """ستون‌های مشترک همهٔ موجودیت‌های قابل‌انتشار CMS."""
+
+    workflow_status: Mapped[str] = mapped_column(String(16), default="draft", index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    distribution: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+
+class IslamicEvent(Base, _PublishableMixin):
+    """رویداد تقویم اسلامی — فاز ۴.
+
+    اتصال به theme_id یعنی «وقتی این رویداد فعال است، تم پلتفرم عوض شود»؛
+    کرون روزانه (calendar_tasks) فعال‌سازی/بازگشت را انجام می‌دهد.
+    """
+
+    __tablename__ = "islamic_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    hijri_month: Mapped[int] = mapped_column(Integer, index=True)
+    hijri_day: Mapped[int] = mapped_column(Integer, index=True)
+    recurring: Mapped[bool] = mapped_column(Boolean, default=True)
+    theme_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("themes.id"), nullable=True
+    )
+    auto_publish: Mapped[bool] = mapped_column(Boolean, default=False)
+    needs_admin_confirmation: Mapped[bool] = mapped_column(Boolean, default=True)
+    image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class ScholarQuote(Base, _PublishableMixin):
+    """نقل‌قول علما — placements لیست surfaceهاست (مثل ["homepage","scholar_profile"])."""
+
+    __tablename__ = "scholar_quotes"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    text: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    scholar: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    source: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    quote_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    placements: Mapped[list] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class Page(Base, _PublishableMixin):
+    """صفحهٔ CMS — blocks لیست بلاک‌های ویرایشگر دیداری (GrapesJS)؛
+    content_type یکی از page | article | faq است و روی وب schema.org را می‌سازد."""
+
+    __tablename__ = "pages"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    slug: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    blocks: Mapped[list] = mapped_column(JSONB, default=list)  # بلاک‌های ویرایشگر
+    seo_meta: Mapped[dict] = mapped_column(JSONB, default=dict)
+    content_type: Mapped[str] = mapped_column(String(16), default="page", index=True)
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class NavItem(Base):
+    """آیتم ناوبری — درخت با parent_id؛ ترتیب با sort_order؛
+    locale=null یعنی همهٔ زبان‌ها. نمایش = visible و درون پنجرهٔ زمانی."""
+
+    __tablename__ = "nav_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    label: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("nav_items.id"), nullable=True, index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    locale: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    link_type: Mapped[str] = mapped_column(String(16), default="internal")
+    url: Mapped[str] = mapped_column(String(1024))
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class Banner(Base, _PublishableMixin):
+    """بنر تبلیغاتی/اطلاع‌رسانی — placement مثل homepage؛ اولویت با priority."""
+
+    __tablename__ = "banners"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    subtitle: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # LocalizedText
+    media: Mapped[dict] = mapped_column(
+        JSONB, default=dict
+    )  # {"type": "image"|"video", "url": ..., "variants"?: {...}}
+    cta: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True
+    )  # {"text": LocalizedText, "url": ...}
+    placement: Mapped[str] = mapped_column(String(64), default="homepage", index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    audience: Mapped[dict] = mapped_column(JSONB, default=dict)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class Announcement(Base):
+    """اعلان سراسری/جایگاهی — قابل بستن بودن با dismissible."""
+
+    __tablename__ = "announcements"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    workflow_status: Mapped[str] = mapped_column(String(16), default="draft", index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    message: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    dismissible: Mapped[bool] = mapped_column(Boolean, default=True)
+    audience: Mapped[dict] = mapped_column(JSONB, default=dict)
+    placement: Mapped[str] = mapped_column(String(64), default="global", index=True)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    distribution: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )

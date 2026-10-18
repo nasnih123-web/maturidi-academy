@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -15,6 +15,7 @@ from app.modules.auth.dependencies import require_permission
 from app.modules.admin import service
 from app.modules.admin.schemas import (
     DeadLetterPage,
+    FontOut,
     MessageOut,
     SettingsOut,
     SettingsUpdate,
@@ -71,3 +72,33 @@ async def retry_dead_letter_event(
     ip, ua = _client(request)
     event = await service.retry_dead_letter(db, user, event_id, ip, ua)
     return MessageOut(message=f"رویداد {event.event_id} به چرخهٔ پردازش برگشت")
+
+
+@router.post("/fonts", response_model=FontOut, status_code=201)
+async def upload_font(
+    request: Request,
+    locale: str = Form(...),
+    family: str = Form(...),
+    file: UploadFile = File(...),
+    user: User = Depends(require_permission("platform.settings")),
+    db: AsyncSession = Depends(get_db),
+):
+    """آپلود فونت سفارشی یک لوکیل (woff2/woff/ttf، حداکثر ۵MB، magic-byte چک می‌شود).
+
+    موفق: fonts.<locale> = {family, url} و فایل زیر /static/fonts/<locale>/ سرو می‌شود.
+    """
+    ip, ua = _client(request)
+    content = await file.read()
+    return await service.upload_font(db, user, locale, family, content, file.filename, ip, ua)
+
+
+@router.delete("/fonts/{locale}", response_model=FontOut)
+async def delete_font(
+    locale: str,
+    request: Request,
+    user: User = Depends(require_permission("platform.settings")),
+    db: AsyncSession = Depends(get_db),
+):
+    """حذف فونت سفارشی یک لوکیل — بازگشت به فونت داخلی (fonts.<locale> = null)."""
+    ip, ua = _client(request)
+    return await service.delete_font(db, user, locale, ip, ua)

@@ -8,7 +8,10 @@
 """
 from __future__ import annotations
 
+import json
+import re
 import uuid
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import func, select
@@ -32,6 +35,156 @@ from app.models.models import DomainEvent, PlatformSetting, User
 from app.modules.admin.schemas import DeadLetterEventOut
 
 MASKED = "***"
+
+# ---------------------------------------------------------------------------
+# آپلود فونت سفارشی (میل‌استون polish، تسک Track A شمارهٔ ۳)
+# قرارداد §۷: اعتبارسنجی پسوند + magic-byte + سقف حجم. فایل‌ها زیر دایرکتوری
+# static سرو می‌شوند (/static — در main.py mount شده).
+# ---------------------------------------------------------------------------
+
+# ریشهٔ static — apps/api/static (تک منبع حقیقت؛ main.py هم از همین می‌خواند)
+STATIC_DIR = Path(__file__).resolve().parents[3] / "static"
+
+FONT_LOCALES = ("fa", "ar", "en")
+# پسوند → magic bytes اول فایل (قرارداد §۷ — پسوند به‌تنهایی قابل جعل است)
+FONT_MAGIC: dict[str, bytes] = {
+    ".woff2": b"wOF2",
+    ".woff": b"wOFF",
+    ".ttf": b"\x00\x01\x00\x00",
+}
+FONT_MAX_BYTES = 5 * 1024 * 1024  # ۵ مگابایت
+
+
+def _font_key(locale: str) -> str:
+    return f"fonts.{locale}"
+
+
+def _slugify_family(family: str) -> str:
+    slug = re.sub(r"[^a-z0-9_-]+", "-", family.strip().lower()).strip("-")
+    return slug[:60] or "font"
+
+
+async def upload_font(
+    db: AsyncSession,
+    user: User,
+    locale: str,
+    family: str,
+    content: bytes,
+    filename: str | None,
+    ip: str | None,
+    user_agent: str | None,
+) -> dict:
+    """اعتبارسنجی + ذخیرهٔ فونت و ثبت در fonts.<locale>."""
+    locale = (locale or "").strip().lower()
+    if locale not in FONT_LOCALES:
+        raise APIError(400, "invalid_locale", "لوکیل باید یکی از fa/ar/en باشد")
+    family = (family or "").strip()
+    if not family or len(family) > 120:
+        raise APIError(400, "invalid_font_family", "نام فونت باید ۱ تا ۱۲۰ نویسه باشد")
+
+    ext = Path(filename or "").suffix.lower()
+    magic = FONT_MAGIC.get(ext)
+    if magic is None:
+        raise APIError(
+            400,
+            "invalid_font_extension",
+            "پسوند فونت باید یکی از woff2/woff/ttf باشد",
+            {"allowed": sorted(FONT_MAGIC)},
+        )
+    if len(content) > FONT_MAX_BYTES:
+        raise APIError(
+            413,
+            "font_too_large",
+            "حجم فونت نباید بیش از ۵ مگابایت باشد",
+            {"max_bytes": FONT_MAX_BYTES},
+        )
+    if len(content) < 4 or content[:4] != magic:
+        raise APIError(400, "invalid_font_file", "محتوای فایل با پسوند اعلام‌شده سازگار نیست")
+
+    safe_name = f"{_slugify_family(family)}-{uuid.uuid4().hex[:8]}{ext}"
+    target = STATIC_DIR / "fonts" / locale
+    target.mkdir(parents=True, exist_ok=True)
+    (target / safe_name).write_bytes(content)
+
+    url = f"/static/fonts/{locale}/{safe_name}"
+    key = _font_key(locale)
+    value = {"family": family, "url": url}
+    await stage_setting(db, key, encode_setting_value("json", value, key))
+
+    await emit_event(
+        db,
+        aggregate_type="platform",
+        aggregate_id="settings",
+        event_type="platform.settings_updated",
+        payload={"keys": [key], "updated_by": str(user.id), "action": "font_upload"},
+        source_client="crm",
+    )
+    await log_audit(
+        db,
+        actor_id=user.id,
+        actor_type="admin",
+        action="platform.font_upload",
+        entity_type="platform_setting",
+        entity_id=key,
+        new_values={"family": family, "url": url},
+        ip=ip,
+        user_agent=user_agent,
+    )
+    await db.commit()
+    version = bump_settings_version([key])
+    return {"locale": locale, "family": family, "url": url, "version": version}
+
+
+async def delete_font(
+    db: AsyncSession,
+    user: User,
+    locale: str,
+    ip: str | None,
+    user_agent: str | None,
+) -> dict:
+    """برگرداندن فونت به داخلی (fonts.<locale> = null) + حذف فایل."""
+    locale = (locale or "").strip().lower()
+    if locale not in FONT_LOCALES:
+        raise APIError(400, "invalid_locale", "لوکیل باید یکی از fa/ar/en باشد")
+
+    key = _font_key(locale)
+    raw = await get_setting(db, key)
+    if raw:
+        try:
+            current = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            current = None
+        url = (current or {}).get("url") or ""
+        prefix = f"/static/fonts/{locale}/"
+        if url.startswith(prefix):
+            name = url[len(prefix):]
+            # محافظت در برابر path traversal — فقط نام فایل ساده
+            if name and "/" not in name and "\\" not in name and not name.startswith("."):
+                (STATIC_DIR / "fonts" / locale / name).unlink(missing_ok=True)
+
+    await stage_setting(db, key, encode_setting_value("json", None, key))
+    await emit_event(
+        db,
+        aggregate_type="platform",
+        aggregate_id="settings",
+        event_type="platform.settings_updated",
+        payload={"keys": [key], "updated_by": str(user.id), "action": "font_delete"},
+        source_client="crm",
+    )
+    await log_audit(
+        db,
+        actor_id=user.id,
+        actor_type="admin",
+        action="platform.font_delete",
+        entity_type="platform_setting",
+        entity_id=key,
+        new_values={"reverted_to_builtin": True},
+        ip=ip,
+        user_agent=user_agent,
+    )
+    await db.commit()
+    version = bump_settings_version([key])
+    return {"locale": locale, "family": None, "url": None, "version": version}
 
 
 async def list_settings(db: AsyncSession) -> dict:
@@ -78,7 +231,7 @@ async def update_settings(
         if meta.get("sensitive") and raw_value == MASKED:
             continue  # بدون تغییر
         try:
-            plaintext = encode_setting_value(meta["type"], raw_value)
+            plaintext = encode_setting_value(meta["type"], raw_value, key)
         except ValueError as exc:
             raise APIError(400, "invalid_setting_value", f"{key}: {exc}")
         await stage_setting(db, key, plaintext)

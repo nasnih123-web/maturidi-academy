@@ -48,5 +48,14 @@ class DeadLetterPage(BaseModel):
     total: int
 
 
+class FontOut(BaseModel):
+    """نتیجهٔ آپلود/حذف فونت — url مسیر static سرو‌شده است (null = فونت داخلی)."""
+
+    locale: str
+    family: str | None = None
+    url: str | None = None
+    version: int = Field(description="نسخهٔ hot-reload تنظیمات بعد از این عملیات")
+
+
 class MessageOut(BaseModel):
     message: str

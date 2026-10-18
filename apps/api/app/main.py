@@ -1,27 +1,38 @@
 """نقطهٔ ورود API — فاز ۲.
 
 - پاکت خطای یکدست برای همهٔ خطاها (فاز ۰ §۱) + request_id در هدر و context
+- میدل‌ویرها: request-id → لاگ دسترسی/متریک → هدرهای امنیتی
 - روترها: auth، users، meta، admin، content — همه زیر /api/v1
 - WebSocket بلادرنگ: /ws/events (احراز هویت JWT در handshake)
-- lifespan: راه‌اندازی/توقف dispatcher رویدادها + Sentry + OpenTelemetry
+- lifespan: نگهبان secrets در production + راه‌اندازی/توقف dispatcher رویدادها + Sentry + OpenTelemetry
 - لاگ ساختاریافته (text یا JSON با LOG_FORMAT=json) — فاز ۲ §۱۱
+- /metrics: خروجی Prometheus (متریک درون‌حافظه‌ای، بدون وابستگی جدید)
 """
-import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Request, WebSocket
+from fastapi import Depends, FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
-from app.core.context import request_id_var
+from app.core.config import assert_production_secrets_ok, get_settings
 from app.core.database import get_db
 from app.core.dispatcher import start_realtime, stop_realtime
 from app.core.errors import register_error_handlers
 from app.core.logging import logger, setup_logging
+from app.core.metrics import METRICS
+from app.core.middleware import (
+    AccessLogMiddleware,
+    RequestIdMiddleware,
+    SecurityHeadersMiddleware,
+)
 from app.core.realtime import websocket_endpoint
 from app.modules.admin.router import router as admin_router
 from app.modules.auth.router import router as auth_router
+from app.modules.content.cms_router import router as cms_router
 from app.modules.content.router import router as content_router
+from app.modules.home.router import router as home_router
 from app.modules.meta.router import router as meta_router
 from app.modules.users.router import router as users_router
 
@@ -72,6 +83,7 @@ def _init_otel() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    assert_production_secrets_ok(settings)
     _init_sentry()
     _init_otel()
     await start_realtime(app)
@@ -87,22 +99,40 @@ app = FastAPI(
 )
 
 
-@app.middleware("http")
-async def _request_id_middleware(request: Request, call_next):
-    rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())
-    request_id_var.set(rid)
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = rid
-    return response
+# ترتیب اجرا: RequestId (بیرونی‌ترین — اول) → AccessLog → SecurityHeaders.
+# add_middleware در ابتدای صف می‌نشاند، پس آخرین فراخوانی بیرونی‌ترین است.
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(AccessLogMiddleware)
+app.add_middleware(RequestIdMiddleware)
+
+# CORS فقط وقتی CORS_ALLOW_ORIGINS تنظیم شده باشد (پیش‌فرض: غیرفعال).
+_cors = [o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()]
+if _cors:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 register_error_handlers(app)
+
+# فایل‌های static (فعلاً: فونت‌های سفارشی آپلودشده از CRM — میل‌استون polish).
+# دایرکتوری runtime ساخته می‌شود و در git نیست؛ URLها به‌صورت /static/... برمی‌گردند.
+from app.modules.admin.service import STATIC_DIR  # noqa: E402
+
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(meta_router)
 app.include_router(admin_router)
 app.include_router(content_router)
+app.include_router(cms_router)
+app.include_router(home_router)
 
 # دروازهٔ بلادرنگ — دکوراتور @app.websocket (نه add_websocket_route استارلت)
 # چون فقط مسیر APIWebSocketRoute وابستگی‌ها (Depends/get_db) را حل می‌کند.
@@ -119,3 +149,11 @@ async def health():
 @app.get("/api/v1/health")
 async def health_v1():
     return {"status": "ok", "env": settings.app_env, "api": "v1"}
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    """خروجی Prometheus — فقط خواندنی، بدون PII (الگوی turbo، قرارداد §۱۱)."""
+    return Response(
+        content=METRICS.exposition(), media_type="text/plain; version=0.0.4"
+    )

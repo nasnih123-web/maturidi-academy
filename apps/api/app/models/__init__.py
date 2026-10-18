@@ -5,6 +5,7 @@
 from app.models.models import (  # noqa: F401
     AuditLog,
     DomainEvent,
+    HomeSection,
     MediaAsset,
     NotificationPreference,
     PasswordResetToken,
