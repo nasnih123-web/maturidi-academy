@@ -1,16 +1,87 @@
-import type { ReactNode } from 'react';
-import { NextIntlClientProvider } from 'next-intl';
-import { getMessages } from 'next-intl/server';
-import { bodyFont, headingFont } from '@/lib/fonts';
-import './globals.css';
-// Design tokens (built by the design-tokens package track). Imported here so
-// `--ma-*` vars resolve before our fallbacks; our CSS keeps local fallbacks
-// so the page still renders if the package is unavailable.
-// NOTE: this import is added only when packages/design-tokens/tokens.css exists.
-import '@maturidi/design-tokens/tokens.css';
+import type { Metadata } from "next";
+import type { ReactNode } from "react";
+import { NextIntlClientProvider } from "next-intl";
+import { getMessages, getTranslations, setRequestLocale } from "next-intl/server";
+import { AtmosphericEngine } from "@/components/AtmosphericEngine";
+import { SiteHeader, type HeaderLabels } from "@/components/SiteHeader";
+import { SiteFooter, type FooterColumn, type FooterLabels } from "@/components/SiteFooter";
+import { getHomeSections } from "@/lib/api";
+import { getSiteConfig, uploadedFontCss, type Locale } from "@/lib/settings";
+import { getNavItems } from "@/lib/content";
+import { finalizeNav, getCmsNav, getNavColumns, type NavEntryFinal } from "@/lib/section-data";
+import "./globals.css";
+// Design tokens: `--ma-*` system (source of truth for platform_settings
+// theme overrides) + the imperial semantic system (`turbo.css`, imported
+// from globals.css). Both stay available; the ported UI is imperial-first.
+import "@maturidi/design-tokens/tokens.css";
 
-// direction بخشی صریح از layout است، مستقل از locale (فاز ۰/۳)
-const DIRECTION: Record<string, 'rtl' | 'ltr'> = { fa: 'rtl', ar: 'rtl', en: 'ltr' };
+const DIRECTION: Record<string, "rtl" | "ltr"> = { fa: "rtl", ar: "rtl", en: "ltr" };
+const LOCALES = ["fa", "ar", "en"] as const;
+
+function siteUrl(): string {
+  return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+}
+
+export function generateStaticParams() {
+  return LOCALES.map((locale) => ({ locale }));
+}
+
+export async function generateMetadata({
+  params: { locale },
+}: {
+  params: { locale: string };
+}): Promise<Metadata> {
+  setRequestLocale(locale);
+  const t = await getTranslations({ locale, namespace: "home" });
+  const tRoot = await getTranslations({ locale });
+  const base = siteUrl();
+  const title = t("metaTitle");
+  const description = t("metaDescription");
+  return {
+    title: { default: title, template: `%s — ${tRoot("appName")}` },
+    description,
+    icons: { icon: "/icon.png", apple: "/apple-icon.png", shortcut: "/icon.png" },
+    alternates: {
+      canonical: `${base}/${locale}`,
+      languages: { fa: `${base}/fa`, ar: `${base}/ar`, en: `${base}/en`, "x-default": `${base}/fa` },
+    },
+    openGraph: {
+      title,
+      description,
+      locale,
+      type: "website",
+      url: `${base}/${locale}`,
+      images: [{ url: `${base}/logo.jpg`, alt: tRoot("appName") }],
+    },
+    twitter: { card: "summary", title, description, images: [`${base}/logo.jpg`] },
+  };
+}
+
+function headerLabels(
+  tHeader: Awaited<ReturnType<typeof getTranslations>>,
+  tRoot: Awaited<ReturnType<typeof getTranslations>>,
+  tHome: Awaited<ReturnType<typeof getTranslations>>,
+): HeaderLabels {
+  return {
+    skip: tHome("skipToContent"),
+    brandName: tRoot("appName"),
+    brandSub: tRoot("brandSub"),
+    navAria: tHeader("navAria"),
+    mobileNavAria: tHeader("mobileNavAria"),
+    searchPlaceholder: tHeader("searchPlaceholder"),
+    searchAria: tHeader("searchAria"),
+    langAria: tHeader("langAria"),
+    langNames: {
+      fa: tHeader("langNames.fa"),
+      ar: tHeader("langNames.ar"),
+      en: tHeader("langNames.en"),
+    },
+    menuAria: tHeader("menuAria"),
+    closeAria: tHeader("closeAria"),
+    submenuAria: tHeader("submenuAria"),
+    submenuExpandTemplate: tHeader.raw("submenuExpand"),
+  };
+}
 
 export default async function LocaleLayout({
   children,
@@ -19,15 +90,70 @@ export default async function LocaleLayout({
   children: ReactNode;
   params: { locale: string };
 }) {
+  setRequestLocale(locale);
   const messages = await getMessages();
+  const t = await getTranslations({ locale, namespace: "home" });
+  const tRoot = await getTranslations({ locale });
+  const tHeader = await getTranslations({ locale, namespace: "header" });
+  const tFooter = await getTranslations({ locale, namespace: "footer" });
+
+  // Primary nav: CMS-driven (`GET /api/v1/content/public/nav`) — nested
+  // tree, visible, locale-filtered and schedule-resolved server-side.
+  // Falls back to the localized static IA only when the API returns empty,
+  // so the menu never breaks. Footer columns are already API-driven
+  // (footer section `data.columns`); the static columns are its fallback.
+  const staticNav: NavEntryFinal[] = (tHeader.raw("nav") as { href: string; label: string }[]).map(
+    (n) => ({ href: `/${locale}${n.href}`, label: n.label, external: false, children: [] }),
+  );
+  let nav: NavEntryFinal[] = staticNav;
+  const apiNav = await getNavItems(locale as "fa" | "ar" | "en");
+  if (apiNav.length > 0) {
+    const cmsNav = finalizeNav(getCmsNav(apiNav, locale), locale);
+    if (cmsNav.length > 0) nav = cmsNav;
+  }
+
+  const footerColumns: FooterColumn[] = tFooter.raw("columns") as FooterColumn[];
+  // Footer nav columns are API-driven (footer section `data.columns`);
+  // the localized static columns are the fallback when the API has none.
+  let apiColumns: FooterColumn[] = [];
+  try {
+    const res = await getHomeSections();
+    const footerSection = res.sections.find((s) => s.key === "footer" && s.visible !== false);
+    if (footerSection) apiColumns = getNavColumns(footerSection.data, locale);
+  } catch {
+    apiColumns = [];
+  }
+  const footerLabels: FooterLabels = {
+    brandName: tRoot("appName"),
+    tagline: tFooter("tagline"),
+    rights: tFooter("rights", { year: String(new Date().getFullYear()) }),
+    navFallback: footerColumns,
+  };
+
+  // Platform settings (per request, no stale cache — issue #3): particles,
+  // uploaded per-locale fonts, hero copy, homepage slots. Non-throwing;
+  // missing settings → today's defaults.
+  const siteConfig = await getSiteConfig();
+  const loc = (["fa", "ar", "en"].includes(locale) ? locale : "fa") as Locale;
+  const uploadedFont = siteConfig.fonts[loc];
+
   return (
-    <html
-      lang={locale}
-      dir={DIRECTION[locale] ?? 'rtl'}
-      className={`${bodyFont.variable} ${headingFont.variable}`}
-    >
+    // Imperial dark-obsidian is the only theme (polish milestone: the
+    // dark-mode toggle was removed). `data-theme="dark"` is now a constant.
+    <html lang={locale} dir={DIRECTION[locale] ?? "rtl"} data-locale={locale} data-theme="dark">
       <body>
-        <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
+        {uploadedFont ? <style>{uploadedFontCss(loc, uploadedFont)}</style> : null}
+        <NextIntlClientProvider messages={messages}>
+          {/* global living background — behind every page, even the footer */}
+          <div className="site-atmosphere" aria-hidden>
+            <AtmosphericEngine config={siteConfig.particles} />
+          </div>
+          <SiteHeader locale={locale} labels={headerLabels(tHeader, tRoot, t)} nav={nav} />
+          <main id="main-content" aria-label={t("mainLandmark")}>
+            {children}
+          </main>
+          <SiteFooter locale={locale} labels={footerLabels} columns={apiColumns} />
+        </NextIntlClientProvider>
       </body>
     </html>
   );

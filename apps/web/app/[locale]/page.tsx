@@ -1,120 +1,187 @@
-import type { Metadata } from 'next';
-import { getTranslations } from 'next-intl/server';
-import { getHomeSections, API_BASE_URL, ApiError } from '@/lib/api';
-import { themeCssText } from '@/lib/theme';
-import { getNavColumns } from '@/lib/section-data';
-import { HomeSections } from '@/components/home/HomeSections';
-import { SiteFooter } from '@/components/home/SiteFooter';
-import type { SearchLabels } from '@/components/home/SearchBox';
-import type { HomeSection } from '@/lib/types';
+import { getTranslations, setRequestLocale } from "next-intl/server";
+import { getHomeSections } from "@/lib/api";
+import { getSiteConfig, type Locale } from "@/lib/settings";
+import {
+  getAnnouncements,
+  getBanners,
+  getCalendarTheme,
+  getIslamicEvents,
+  getScholarQuotes,
+} from "@/lib/content";
+import {
+  getAnnouncementViews,
+  getEventView,
+  getScholarQuoteViews,
+} from "@/lib/section-data";
+import { buildHomeLabels } from "@/lib/home-labels";
+import { themeCssText } from "@/lib/theme";
+import { HomeSections, HomeSectionRenderer } from "@/components/HomeSections";
+import { ComposedSections } from "@/components/sections/SectionSlot";
+import { AnnouncementsBar } from "@/components/AnnouncementsBar";
+import { HomeBanners } from "@/components/HomeBanners";
+import { EventBanner } from "@/components/EventBanner";
+import { ScholarQuotes } from "@/components/ScholarQuotes";
+import type { HomeSection } from "@/lib/types";
 
 export function generateStaticParams() {
-  return [{ locale: 'fa' }, { locale: 'ar' }, { locale: 'en' }];
+  return [{ locale: "fa" }, { locale: "ar" }, { locale: "en" }];
 }
 
-export async function generateMetadata({
-  params: { locale },
-}: {
-  params: { locale: string };
-}): Promise<Metadata> {
-  const t = await getTranslations({ locale, namespace: 'home' });
-  return { title: t('metaTitle'), description: t('metaDescription') };
-}
-
-function searchLabels(t: Awaited<ReturnType<typeof getTranslations>>): SearchLabels {
-  return {
-    label: t('search.label'),
-    placeholder: t('search.placeholder'),
-    loading: t('search.loading'),
-    noResults: t('search.noResults'),
-    resultsSummaryTemplate: t('search.resultsSummary'),
-    searchUnavailable: t('search.searchUnavailable'),
-    clear: t('search.clear'),
-    typeNames: {
-      fatwa: t('search.types.fatwa'),
-      lesson: t('search.types.lesson'),
-      book: t('search.types.book'),
-      verse: t('search.types.verse'),
-      article: t('search.types.article'),
-      course: t('search.types.course'),
-      page: t('search.types.page'),
-    },
-  };
+function hijriDateLabel(
+  t: Awaited<ReturnType<typeof getTranslations>>,
+  locale: string,
+  month: number | null,
+  day: number | null,
+): string | null {
+  if (!month || !day || month < 1 || month > 12) return null;
+  const months = t.raw("events.months") as unknown;
+  const name = Array.isArray(months) ? (months[month - 1] as string | undefined) : undefined;
+  if (!name) return null;
+  const template = t.raw("events.hijriDate") as string;
+  const dayTag = locale === "ar" ? "ar-EG" : locale === "en" ? "en-US" : "fa-IR";
+  let dayStr = String(day);
+  try {
+    dayStr = day.toLocaleString(dayTag);
+  } catch {
+    /* keep latin digits */
+  }
+  return template.split("{month}").join(name).split("{day}").join(dayStr);
 }
 
 /**
- * Homepage (Phase 3): React Server Component.
+ * Homepage: React Server Component.
  * All 10 sections come from GET /api/v1/home/sections — rendered in `order`,
- * skipping `visible: false`. If the API is unreachable we render a graceful,
- * localized error state (contract §15: no mock data, never fake sections).
- * The only client-side JS on this page is the search box.
+ * skipping `visible: false`. Phase-4 CMS surfaces are fetched in parallel:
+ * announcements (placement=global), banners (placement=homepage, server
+ * priority order), the active Islamic event (calendar/theme → events for
+ * today's hijri date), and scholar quotes (placement=homepage). Each fetch
+ * is non-throwing and its surface renders nothing when the API has no data.
+ * If the API is unreachable we render a graceful, localized error state
+ * (contract §15: no mock data, never fake sections).
+ * Platform settings (`platform_settings`, fetched per request via
+ * lib/settings.ts) drive: homepage slot composition (`home.sections`),
+ * hero copy (`hero.<locale>`), particles and uploaded fonts (in the
+ * layout). When the settings endpoint is missing, everything falls back
+ * to today's behavior.
+ * Client-side JS on this page: search autocomplete, sliders, announcement
+ * dismissal, atmospheric canvas (all progressive enhancement —
+ * content is server-rendered).
  */
 export default async function HomePage({ params: { locale } }: { params: { locale: string } }) {
-  const t = await getTranslations({ locale, namespace: 'home' });
-  const tRoot = await getTranslations({ locale });
+  setRequestLocale(locale);
+  const t = await getTranslations({ locale, namespace: "home" });
+  const tContent = await getTranslations({ locale, namespace: "content" });
 
   let sections: HomeSection[] = [];
-  let themeCss = '';
-  let footerSection: HomeSection | null = null;
+  let themeCss = "";
   let apiFailed = false;
 
-  try {
-    const res = await getHomeSections();
-    sections = res.sections;
-    themeCss = themeCssText(res.theme);
-    footerSection = res.sections.find((s) => s.key === 'footer' && s.visible !== false) ?? null;
-  } catch (err) {
+  const [homeRes, announcements, banners, calTheme, quotes, siteConfig] = await Promise.all([
+    getHomeSections().then(
+      (res) => ({ ok: true as const, res }),
+      () => ({ ok: false as const }),
+    ),
+    getAnnouncements("global"),
+    getBanners("homepage"),
+    getCalendarTheme(),
+    getScholarQuotes("homepage"),
+    getSiteConfig(),
+  ]);
+
+  if (homeRes.ok) {
+    sections = homeRes.res.sections;
+    themeCss = themeCssText(homeRes.res.theme);
+  } else {
     apiFailed = true;
     // eslint-disable-next-line no-console
-    console.error('[web] home sections fetch failed:', err instanceof ApiError ? err.message : err);
+    console.error("[web] home sections fetch failed");
   }
 
-  const year = String(new Date().getFullYear());
+  // Settings-driven composition (issue #3): when the `home.sections` key is
+  // present, slots render in settings order with the chosen variants;
+  // otherwise today's behavior (API order + SPECS). Hero copy comes from
+  // `hero.<locale>` with fallback to the API section copy.
+  const loc = (["fa", "ar", "en"].includes(locale) ? locale : "fa") as Locale;
+  const slots = siteConfig.homeSections;
+  const heroOverride = siteConfig.hero[loc];
+  const homeLabels = buildHomeLabels(t);
+  // The `home.sections` key holds the slots BELOW the hero (per the seed);
+  // the hero section itself always renders first, with the hero.<locale>
+  // settings override applied.
+  const heroSection = sections.find((s) => s.key === "hero" && s.visible !== false);
+
+  const announcementViews = getAnnouncementViews(announcements, locale);
+
+  // Active Islamic event: today's hijri date comes from calendar/theme;
+  // prefer the themed event_id, fall back to the first event of the day.
+  let activeEvent = null as ReturnType<typeof getEventView>;
+  let hijriDate: string | null = null;
+  if (calTheme?.hijri) {
+    const { month, day } = calTheme.hijri;
+    const events = await getIslamicEvents(month, day);
+    const match =
+      calTheme.event_id != null
+        ? events.find((e) => String(e.id) === calTheme.event_id)
+        : undefined;
+    activeEvent = getEventView(match ?? events[0], locale);
+    hijriDate = hijriDateLabel(tContent, locale, month, day);
+  }
+
+  const quoteViews = getScholarQuoteViews(quotes, locale);
 
   return (
-    <div className="ma-page">
+    <>
       {themeCss ? <style>{themeCss}</style> : null}
-      <a className="ma-skip" href="#ma-main">
-        {t('skipToContent')}
-      </a>
-
-      <header className="ma-header" aria-label={t('headerLandmark')}>
-        <div className="ma-header__inner">
-          <a className="ma-brand" href={`/${locale}`}>
-            {tRoot('appName')}
+      {apiFailed ? (
+        <div className="error-state" role="alert">
+          <h1>{t("errorTitle")}</h1>
+          <p>{t("errorDescription")}</p>
+          <a className="btn-secondary" href={`/${locale}`}>
+            {t("errorRetry")}
           </a>
         </div>
-      </header>
-
-      <main id="ma-main" className="ma-main" aria-label={t('mainLandmark')}>
-        {apiFailed ? (
-          <div className="ma-error" role="alert">
-            <h1>{t('errorTitle')}</h1>
-            <p>{t('errorDescription')}</p>
-            <a className="ma-error__retry" href={`/${locale}`}>
-              {t('errorRetry')}
-            </a>
-          </div>
-        ) : (
-          <HomeSections
-            sections={sections}
-            locale={locale}
-            apiBaseUrl={API_BASE_URL}
-            searchLabels={searchLabels(t)}
-            emptyFallback={t('emptyFallback')}
+      ) : (
+        <>
+          <AnnouncementsBar
+            items={announcementViews.map((a) => ({ id: a.id, message: a.message }))}
+            dismissLabel={tContent("announcements.dismiss")}
+            listAria={tContent("announcements.listAria")}
           />
-        )}
-      </main>
-
-      <SiteFooter
-        brand={tRoot('appName')}
-        tagline={tRoot('tagline')}
-        navLabel={t('footer.navLabel')}
-        localeLabel={t('footer.localeLabel')}
-        rights={t('footer.rights', { year })}
-        locale={locale}
-        columns={footerSection ? getNavColumns(footerSection.data, locale) : []}
-      />
-    </div>
+          <EventBanner
+            event={activeEvent}
+            locale={locale}
+            ariaLabel={tContent("events.aria")}
+            hijriDate={hijriDate}
+          />
+          <HomeBanners banners={banners} locale={locale} />
+          {slots ? (
+            <>
+              {heroSection ? (
+                <HomeSectionRenderer
+                  section={heroSection}
+                  locale={locale}
+                  labels={homeLabels}
+                  heroOverride={heroOverride}
+                />
+              ) : null}
+              <ComposedSections
+                sections={sections}
+                slots={slots}
+                locale={locale}
+                labels={homeLabels}
+                heroOverride={heroOverride}
+              />
+            </>
+          ) : (
+            <HomeSections sections={sections} locale={locale} labels={homeLabels} heroOverride={heroOverride} />
+          )}
+          <ScholarQuotes
+            quotes={quoteViews}
+            heading={tContent("quotes.heading")}
+            ariaLabel={tContent("quotes.aria")}
+          />
+        </>
+      )}
+    </>
   );
 }
