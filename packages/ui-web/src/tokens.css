@@ -1,0 +1,10 @@
+/**
+ * @maturidi/ui-web — theme entry.
+ *
+ * Import this file once at the application root to load the design-token
+ * layer (`--ma-*` custom properties) that every component in this package
+ * consumes via `var(--ma-*, <fallback>)`. Equivalent to importing
+ * `@maturidi/design-tokens/tokens.css` directly; this re-export keeps the
+ * import path package-local.
+ */
+@import "@maturidi/design-tokens/tokens.css";

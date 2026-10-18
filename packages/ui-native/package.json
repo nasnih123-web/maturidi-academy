@@ -1,0 +1,1 @@
+{"dependencies":{"@maturidi/design-tokens":"workspace:*"},"description":"Shared React Native UI layer for the Maturidi Academy platform (Phase 3 scaffold — native components land in a later phase)","main":"./src/index.ts","name":"@maturidi/ui-native","private":true,"types":"./src/index.ts","version":"0.1.0"}
