@@ -107,7 +107,7 @@
       },
       {
         "href": "/voice",
-        "label": "Voice Assistant"
+        "label": "Voice"
       }
     ],
     "navAria": "Primary navigation",
@@ -897,6 +897,8 @@
     "clearConversation": "Clear conversation",
     "emptyHint": "No conversation yet.",
     "dismissAria": "Dismiss error",
+    "noticeTtsUnavailable": "Text-to-speech is not configured right now; the text answer is complete.",
+    "noticeSttUnavailable": "Speech transcription was unavailable.",
     "errors": {
       "mic_unsupported": "Your browser does not support audio recording.",
       "mic_denied": "Microphone access was denied.",
