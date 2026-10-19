@@ -56,6 +56,7 @@ const NAV_GROUPS: NavGroupDef[] = [
     groupKey: "nav.groupMain",
     items: [
       { to: "/", labelKey: "nav.dashboard", icon: "M3 12l9-8 9 8M5 10v10h5v-6h4v6h5V10", superAdmin: false },
+      { to: "/my-notifications", labelKey: "nav.myNotifications", icon: "M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6M10 20a2 2 0 004 0", superAdmin: false },
       { to: "/events", labelKey: "nav.events", icon: "M3 12h4l2.5-7 4 14 2.5-7H21", superAdmin: false },
       { to: "/content", labelKey: "nav.content", icon: "M6 3h8l4 4v14H6zM14 3v5h4M9 13h6M9 16h4", superAdmin: false },
       { to: "/fatwa", labelKey: "nav.fatwa", icon: "M12 3v18M5 8l7-5 7 5M7 21h10", superAdmin: true },
@@ -70,6 +71,13 @@ const NAV_GROUPS: NavGroupDef[] = [
       { to: "/voice", labelKey: "nav.voice", icon: "M12 1a3 3 0 013 3v8a3 3 0 01-6 0V4a3 3 0 013-3zM19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8", superAdmin: true },
       { to: "/api-keys", labelKey: "nav.apiKeys", icon: "M4 7h16M4 12h16M4 17h10M17 17l2 2 4-4", superAdmin: true },
       { to: "/finance", labelKey: "nav.finance", icon: "M3 7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2zM3 7v5a2 2 0 002 2h14M16 15h2", superAdmin: true },
+    ],
+  },
+  {
+    groupKey: "nav.groupTeam",
+    items: [
+      { to: "/projects", labelKey: "nav.projects", icon: "M3 3h7v7H3zM14 3h7v4h-7zM14 10h7v11h-7zM3 13h7v8H3z", superAdmin: true },
+      { to: "/staff", labelKey: "nav.staff", icon: "M6 4h12a1 1 0 011 1v14a1 1 0 01-1 1H6a1 1 0 01-1-1V5a1 1 0 011-1zM9 9h6M9 13h6M9 17h4", superAdmin: true },
     ],
   },
   {

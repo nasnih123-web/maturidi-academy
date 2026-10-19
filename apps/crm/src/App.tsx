@@ -25,6 +25,9 @@ import Quran from "./pages/Quran";
 import Telegram from "./pages/Telegram";
 import Places from "./pages/Places";
 import Voice from "./pages/Voice";
+import Projects from "./pages/Projects";
+import Staff from "./pages/Staff";
+import MyNotifications from "./pages/MyNotifications";
 import Sync from "./pages/Sync";
 import ApiKeys from "./pages/ApiKeys";
 import Connections from "./pages/Connections";
@@ -81,6 +84,9 @@ export default function App(): React.ReactElement {
             <Route path="telegram" element={<Telegram />} />
             <Route path="places" element={<Places />} />
             <Route path="voice" element={<Voice />} />
+            <Route path="projects" element={<Projects />} />
+            <Route path="staff" element={<Staff />} />
+            <Route path="my-notifications" element={<MyNotifications />} />
             <Route path="sync" element={<Sync />} />
             <Route path="api-keys" element={<ApiKeys />} />
             <Route path="connections" element={<Connections />} />

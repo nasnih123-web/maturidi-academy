@@ -1,7 +1,9 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, statusTone } from "@maturidi/ui-web";
 import { useAuth } from "../lib/auth";
+import { taskPriorityTone, taskStatusTone, useTasksByEntity } from "../lib/projects16";
 import { formatDate, useI18n, type Locale } from "../lib/i18n";
 import { type LocalizedText } from "../lib/contentApi";
 import LocalizedInput from "../components/LocalizedInput";
@@ -63,8 +65,9 @@ type MediaTab =
   | "ai"
   | "versions"
   | "review"
-  | "placement";
-const TABS: MediaTab[] = ["list", "upload", "transcript", "ai", "versions", "review", "placement"];
+  | "placement"
+  | "tasks";
+const TABS: MediaTab[] = ["list", "upload", "transcript", "ai", "versions", "review", "placement", "tasks"];
 
 const TAB_KEY: Record<MediaTab, string> = {
   list: "media.tabList",
@@ -74,6 +77,7 @@ const TAB_KEY: Record<MediaTab, string> = {
   versions: "media.tabVersions",
   review: "media.tabReview",
   placement: "media.tabPlacement",
+  tasks: "media.tabTasks",
 };
 
 function initialTab(): MediaTab {
@@ -1912,6 +1916,66 @@ function PlacementTab({ item }: { item: LibraryItem }): React.ReactElement {
 /* page                                                                */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Phase 16 (Track 3, CRM) — reverse direction of the related-entity link:
+ * tasks that were linked to this library item from the project board
+ * (GET /api/v1/projects/tasks/by-entity). Read-only here; linking and
+ * editing happen on /projects. ADR-001: rendering only — the hook lives in
+ * lib/projects16.ts.
+ */
+function TasksTab({ item }: { item: LibraryItem }): React.ReactElement {
+  const { t, locale, formatDate } = useI18n();
+  const linked = useTasksByEntity("library_item", item.id);
+  const tasks = linked.data ?? [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("proj16.itemLinkedTasks")}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="hint" style={{ marginTop: 0 }}>
+          {t("proj16.itemLinkedTasksHint")}{" "}
+          <Link to="/projects">{t("proj16.goToProjects")}</Link>
+        </p>
+        {linked.isLoading && <p className="empty">{t("common.loading")}</p>}
+        {linked.isError && <p className="form-error">{errText(linked.error)}</p>}
+        {linked.isSuccess && tasks.length === 0 && (
+          <p className="empty">{t("proj16.emptyColumn")}</p>
+        )}
+        {linked.isSuccess && tasks.length > 0 && (
+          <table className="data">
+            <thead>
+              <tr>
+                <th>{t("proj16.title")}</th>
+                <th>{t("proj16.status")}</th>
+                <th>{t("proj16.assignee")}</th>
+                <th>{t("proj16.dueDate")}</th>
+                <th>{t("proj16.priority")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.map((task) => (
+                <tr key={task.id}>
+                  <td>{l10n(locale, task.title) || task.id.slice(0, 8)}</td>
+                  <td>
+                    <Badge tone={taskStatusTone(task.status)}>{t(`proj16.status_${task.status}`)}</Badge>
+                  </td>
+                  <td>{task.assignee_name ?? t("proj16.unassigned")}</td>
+                  <td>{task.due_date ? formatDate(task.due_date) : "—"}</td>
+                  <td>
+                    <Badge tone={taskPriorityTone(task.priority)}>{t(`proj16.priority_${task.priority}`)}</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function DetailGate({
   itemId,
   children,
@@ -1944,7 +2008,7 @@ export default function MediaManager(): React.ReactElement {
     setTab("upload");
   };
 
-  const detailTabs: MediaTab[] = ["upload", "transcript", "ai", "versions", "placement"];
+  const detailTabs: MediaTab[] = ["upload", "transcript", "ai", "versions", "placement", "tasks"];
 
   return (
     <div className="page">
@@ -2017,6 +2081,9 @@ export default function MediaManager(): React.ReactElement {
           )}
           {tab === "placement" && (
             <DetailGate itemId={selectedId}>{(item) => <PlacementTab item={item} />}</DetailGate>
+          )}
+          {tab === "tasks" && (
+            <DetailGate itemId={selectedId}>{(item) => <TasksTab item={item} />}</DetailGate>
           )}
         </>
       )}
