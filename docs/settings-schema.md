@@ -120,6 +120,22 @@ dark-obsidian تنها تم است و در `platform_settings` ثبت نشده �
 | `telegram.phone_masked` | string | نمایش وضعیت CRM | فقط ۴ رقم آخر |
 | `telegram.pending_*` | secret/string | جریان دومرحله‌ای اتصال | داخلی؛ TTL ده دقیقه، یک‌بارمصرف |
 
+## ۹) کلیدهای پوش — فاز ۱۳ (ADR-0010)
+
+| کلید | نوع | مصرف‌کننده | نکته |
+|---|---|---|---|
+| `push.fcm_server_key` | secret | پوش موبایل (FCM) | staged و خالی؛ از CRM وارد می‌شود؛ هرگز لاگ نمی‌شود |
+| `push.vapid_public_key` | string | web push (مرورگر) | staged و خالی؛ کلید عمومی در سرویس‌ورکر وب استفاده می‌شود |
+| `push.vapid_private_key` | secret | web push (مرورگر) | staged و خالی؛ هرگز لاگ نمی‌شود |
+
+کانال‌های `notification_preferences` (مقداری، بدون migration):
+`email` | `sms` | `push` (FCM — موبایل) | `web_push` (مجزا — مرورگر) | `in_app`.
+ثبت‌نام پیش‌فرض برای هر پنج کانال ردیف می‌سازد (`web_push` مثل `push`:
+مارکتینگ پیش‌فرض خاموش). کاربران موجود ردیف `web_push` ندارند — backfill
+یا endpoint مدیریت ترجیحات، کار فاز بعد است (صادقانه: در این فاز فقط seed
+ثبت‌نام جدید پوشش داده شده).
+
+
 ## ۷) مصرف وب (Track C — `apps/web`)
 
 - **اندپوینت:** `GET /api/v1/settings/public` (ثابت `PUBLIC_SETTINGS_PATH` در
