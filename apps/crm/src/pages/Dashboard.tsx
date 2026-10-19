@@ -65,6 +65,9 @@ const NAV_GROUPS: NavGroupDef[] = [
       { to: "/calculators", labelKey: "nav.calculators", icon: "M9 3h6M10 3v5.5L4.8 17a2.4 2.4 0 002.1 3.5h10.2a2.4 2.4 0 002.1-3.5L14 8.5V3M7.5 14h9", superAdmin: true },
       { to: "/lms", labelKey: "nav.lms", icon: "M22 10L12 5 2 10l10 5 10-5zM6 12v5c3 3 9 3 12 0v-5M12 22v-6", superAdmin: true },
       { to: "/media", labelKey: "nav.media", icon: "M4 7h16v10H4zM4 7l2-2h4l2 2M10 11l4 2.5-4 2.5z", superAdmin: true },
+      { to: "/telegram", labelKey: "nav.telegram", icon: "M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z", superAdmin: true },
+      { to: "/places", labelKey: "nav.places", icon: "M12 21s-7-5.5-7-11a7 7 0 0114 0c0 5.5-7 11-7 11zM12 12a2.5 2.5 0 100-5 2.5 2.5 0 000 5z", superAdmin: true },
+      { to: "/api-keys", labelKey: "nav.apiKeys", icon: "M4 7h16M4 12h16M4 17h10M17 17l2 2 4-4", superAdmin: true },
     ],
   },
   {

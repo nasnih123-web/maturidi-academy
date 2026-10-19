@@ -18,6 +18,9 @@ import Moderation from "./pages/Moderation";
 import FatwaSubmissions from "./pages/FatwaSubmissions";
 import Clusters from "./pages/Clusters";
 import Quran from "./pages/Quran";
+import Telegram from "./pages/Telegram";
+import Places from "./pages/Places";
+import ApiKeys from "./pages/ApiKeys";
 import Settings from "./pages/Settings";
 
 function ProtectedRoute(): React.ReactElement {
@@ -62,6 +65,9 @@ export default function App(): React.ReactElement {
             <Route path="lms" element={<LMS />} />
             <Route path="media" element={<MediaManager />} />
             <Route path="quran" element={<Quran />} />
+            <Route path="telegram" element={<Telegram />} />
+            <Route path="places" element={<Places />} />
+            <Route path="api-keys" element={<ApiKeys />} />
             <Route path="settings" element={<Settings />} />
             <Route path="appearance" element={<Appearance />} />
             <Route path="branding" element={<Branding />} />

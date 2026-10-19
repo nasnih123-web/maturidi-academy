@@ -1320,3 +1320,84 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
 @media (prefers-reduced-motion: reduce) {
   .soc-btn { transition: none; }
 }
+
+/* ═══ Phase 11 — religious places map (Leaflet, imperial dark-obsidian) ═══ */
+.places-map-block { display: flex; flex-direction: column; gap: 1rem; }
+.places-status { color: hsl(var(--text-secondary)); }
+.places-filter { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.places-chip {
+  border: 1px solid rgba(229,192,123,0.45); border-radius: 999px;
+  background: transparent; color: hsl(var(--text-primary));
+  padding: 0.35rem 1rem; font-size: 0.85rem; cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.places-chip:hover { background: rgba(229,192,123,0.12); }
+.places-chip[aria-pressed="true"] { background: #e5c07b; border-color: #e5c07b; color: #14100a; font-weight: 700; }
+.places-map-shell {
+  position: relative; border: 1px solid rgba(229,192,123,0.4);
+  border-radius: var(--radius-lg); overflow: hidden; background: #0b0e13;
+}
+.places-map { inline-size: 100%; block-size: min(64vh, 600px); min-block-size: 380px; z-index: 0; }
+.places-map-overlay {
+  position: absolute; inset: 0; z-index: 500; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 0.8rem;
+  background: rgba(11,14,19,0.82); color: hsl(var(--text-primary));
+}
+.places-spinner {
+  inline-size: 2rem; block-size: 2rem; border-radius: 50%;
+  border: 3px solid rgba(229,192,123,0.25); border-block-start-color: #e5c07b;
+  animation: places-spin 0.9s linear infinite;
+}
+@keyframes places-spin { to { transform: rotate(360deg); } }
+.places-retry {
+  border: 1px solid rgba(229,192,123,0.6); border-radius: 999px; background: transparent;
+  color: #e5c07b; padding: 0.4rem 1.2rem; cursor: pointer;
+}
+.places-count { color: hsl(var(--text-secondary)); font-size: 0.85rem; margin: 0; }
+
+/* Leaflet marker: gold dot with pulse (no image assets needed) */
+.place-pin { background: none; border: none; }
+.place-dot { position: relative; display: block; inline-size: 18px; block-size: 18px; margin: 6px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffe9bd, #e5c07b 60%, #b98a2e);
+  border: 2px solid #0b0e13; box-shadow: 0 0 0 2px rgba(229,192,123,0.55), 0 2px 8px rgba(0,0,0,0.6); }
+.place-dot::after { content: ""; position: absolute; inset: -8px; border-radius: 50%;
+  border: 2px solid rgba(229,192,123,0.5); animation: place-ping 2.2s ease-out infinite; }
+@keyframes place-ping { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(1.25); opacity: 0; } }
+
+/* Leaflet chrome on dark theme */
+.places-map .leaflet-popup-content-wrapper {
+  background: #12161d; color: #f2e8d5; border: 1px solid rgba(229,192,123,0.45); border-radius: 12px;
+}
+.places-map .leaflet-popup-content { margin: 0.9rem 1.1rem; line-height: 1.7; font-family: inherit; }
+.places-map .leaflet-popup-tip { background: #12161d; border: 1px solid rgba(229,192,123,0.45); }
+.places-map .leaflet-popup-close-button { color: #e5c07b !important; inset-inline-end: 4px !important; }
+.place-popup strong { display: block; color: #e5c07b; font-size: 0.95rem; margin-block-end: 0.15rem; }
+.pp-type { display: block; font-size: 0.78rem; color: hsl(var(--text-secondary)); margin-block-end: 0.5rem; }
+.pp-link { color: #e5c07b; font-size: 0.85rem; font-weight: 700; }
+.places-map .leaflet-bar a { background: #12161d; color: #e5c07b; border-color: rgba(229,192,123,0.35); }
+.places-map .leaflet-control-attribution { background: rgba(11,14,19,0.7); color: #9aa3ad; font-size: 0.65rem; }
+.places-map .leaflet-control-attribution a { color: #c9a959; }
+
+/* Place detail */
+.place-back { display: inline-block; color: #e5c07b; margin-block-end: 1rem; font-size: 0.9rem; }
+.place-detail .place-type-badge {
+  display: inline-block; border: 1px solid rgba(229,192,123,0.5); border-radius: 999px;
+  padding: 0.25rem 1rem; font-size: 0.85rem; color: #e5c07b;
+}
+.place-desc { line-height: 2.1; max-inline-size: 46rem; color: hsl(var(--text-primary)); }
+.place-meta { margin: 1.2rem 0; }
+.place-meta > div { display: flex; gap: 1rem; align-items: baseline; }
+.place-meta dt { color: hsl(var(--text-secondary)); font-size: 0.85rem; }
+.place-meta dd { margin: 0; color: hsl(var(--text-primary)); }
+.place-tour { margin-block-start: 1.6rem; border: 1px solid rgba(229,192,123,0.45); border-radius: var(--radius-lg);
+  padding: 1.2rem 1.4rem; background: rgba(229,192,123,0.06); max-inline-size: 46rem; }
+.place-tour-link {
+  display: inline-block; background: #e5c07b; color: #14100a; font-weight: 800;
+  border-radius: 999px; padding: 0.55rem 1.6rem;
+}
+.place-tour-hint { margin: 0.6rem 0 0; font-size: 0.85rem; color: hsl(var(--text-secondary)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .places-spinner, .place-dot::after { animation: none; }
+  .places-chip { transition: none; }
+}
