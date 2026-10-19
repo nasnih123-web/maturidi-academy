@@ -24,6 +24,9 @@ hijri-converter==2.3.0
 reportlab==4.2.5
 arabic-reshaper==3.0.0
 python-bidi==0.6.6
+# فاز ۱۱ — تلگرام دوطرفه (بات + Telethon)
+python-telegram-bot==21.9
+telethon==1.41.2
 # فاز ۲ — رصدپذیری (init در main.py فقط وقتی env تنظیم شده باشد)
 sentry-sdk==2.72.0
 opentelemetry-sdk==1.45.1
