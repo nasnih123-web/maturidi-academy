@@ -58,6 +58,12 @@ const SECTIONS: SectionDef[] = [
       { key: "ai.model", labelKey: "settings.fields.model", secret: false },
       { key: "ai.api_key", labelKey: "settings.fields.apiKey", secret: true },
       { key: "ai.fallback_model", labelKey: "settings.fields.fallback", secret: false },
+      // Phase 6 AI production controls (backend track registers these in SETTING_DEFS).
+      { key: "ai.provider", labelKey: "settings.fields.aiProvider", secret: false },
+      { key: "ai.claude_model", labelKey: "settings.fields.aiClaudeModel", secret: false },
+      { key: "ai.daily_quota_per_user", labelKey: "settings.fields.aiDailyQuota", secret: false },
+      { key: "ai.rate_per_minute", labelKey: "settings.fields.aiRatePerMinute", secret: false },
+      { key: "ai.external_research_enabled", labelKey: "settings.fields.aiExternalResearch", secret: false },
     ],
   },
   {

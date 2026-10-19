@@ -176,10 +176,25 @@ async def test_seed_polish_defaults(tc, db_session):
     from app.models.models import PlatformSetting
     from app.seed import seed_platform_settings_defaults
 
-    # شبیه‌سازی نصب تازه: کلیدهای polish را پاک می‌کنیم (بقیهٔ تست‌ها ممکن است ست کرده باشند)
+    # شبیه‌سازی نصب تازه: کلیدهای polish + فاز ۵ را پاک می‌کنیم
+    # (بقیهٔ تست‌ها ممکن است ست کرده باشند)
     polish_keys = [
         "particles", "fonts.fa", "fonts.ar", "fonts.en", "home.sections",
         "hero.fa", "hero.ar", "hero.en",
+        # فاز ۵ (Track 1): قرآن / مناجات
+        "quran.provider", "quran.translations", "quran.tafsirs", "quran.reciters",
+        "quran.active_languages", "quran.show_translation", "quran.show_tafsir",
+        "quran.highlight_mode", "quran.font_size", "quran.playback",
+        "munajat.enabled", "munajat.window",
+        # یکپارچه‌سازی coordinator: پیش‌فرض اذان
+        "adhan.defaults",
+        # فاز ۶: موتور فتوای هوشمند
+        "ai.provider", "ai.claude_model", "ai.daily_quota_per_user",
+        "ai.rate_per_minute", "ai.external_research_enabled",
+        "ai.stream_timeout_s", "ai.embedding_provider",
+        "ai.embedding_endpoint", "ai.embedding_model",
+        # فاز ۹: کتابخانهٔ چندرسانه‌ای
+        "media.auto_pipeline", "media.ocr_langs",
     ]
     await db_session.execute(delete(PlatformSetting).where(PlatformSetting.key.in_(polish_keys)))
     await db_session.commit()

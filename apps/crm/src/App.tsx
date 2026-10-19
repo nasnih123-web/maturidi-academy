@@ -6,10 +6,15 @@ import { useCrmFonts } from "./lib/fonts";
 import { useUploadedFonts } from "./lib/appearance";
 import Appearance from "./pages/Appearance";
 import Branding from "./pages/Branding";
+import Calculators from "./pages/Calculators";
 import Content from "./pages/Content";
 import { DashboardHome, DashboardLayout } from "./pages/Dashboard";
 import Events from "./pages/Events";
+import Fatwa from "./pages/Fatwa";
+import LMS from "./pages/LMS";
 import Login from "./pages/Login";
+import MediaManager from "./pages/MediaManager";
+import Quran from "./pages/Quran";
 import Settings from "./pages/Settings";
 
 function ProtectedRoute(): React.ReactElement {
@@ -46,6 +51,11 @@ export default function App(): React.ReactElement {
             <Route index element={<DashboardHome />} />
             <Route path="events" element={<Events />} />
             <Route path="content" element={<Content />} />
+            <Route path="fatwa" element={<Fatwa />} />
+            <Route path="calculators" element={<Calculators />} />
+            <Route path="lms" element={<LMS />} />
+            <Route path="media" element={<MediaManager />} />
+            <Route path="quran" element={<Quran />} />
             <Route path="settings" element={<Settings />} />
             <Route path="appearance" element={<Appearance />} />
             <Route path="branding" element={<Branding />} />

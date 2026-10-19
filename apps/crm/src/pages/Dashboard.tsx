@@ -58,11 +58,16 @@ const NAV_GROUPS: NavGroupDef[] = [
       { to: "/", labelKey: "nav.dashboard", icon: "M3 12l9-8 9 8M5 10v10h5v-6h4v6h5V10", superAdmin: false },
       { to: "/events", labelKey: "nav.events", icon: "M3 12h4l2.5-7 4 14 2.5-7H21", superAdmin: false },
       { to: "/content", labelKey: "nav.content", icon: "M6 3h8l4 4v14H6zM14 3v5h4M9 13h6M9 16h4", superAdmin: false },
+      { to: "/fatwa", labelKey: "nav.fatwa", icon: "M12 3v18M5 8l7-5 7 5M7 21h10", superAdmin: true },
+      { to: "/calculators", labelKey: "nav.calculators", icon: "M9 3h6M10 3v5.5L4.8 17a2.4 2.4 0 002.1 3.5h10.2a2.4 2.4 0 002.1-3.5L14 8.5V3M7.5 14h9", superAdmin: true },
+      { to: "/lms", labelKey: "nav.lms", icon: "M22 10L12 5 2 10l10 5 10-5zM6 12v5c3 3 9 3 12 0v-5M12 22v-6", superAdmin: true },
+      { to: "/media", labelKey: "nav.media", icon: "M4 7h16v10H4zM4 7l2-2h4l2 2M10 11l4 2.5-4 2.5z", superAdmin: true },
     ],
   },
   {
     groupKey: "nav.groupSystem",
     items: [
+      { to: "/quran", labelKey: "nav.quran", icon: "M4 19.5A2.5 2.5 0 016.5 17H20M6.5 2A2.5 2.5 0 014 4.5v15A2.5 2.5 0 006.5 22H20V2H6.5zM9 7h7M9 11h5", superAdmin: true },
       { to: "/settings", labelKey: "nav.settings", icon: "M12 8a4 4 0 100 8 4 4 0 000-8zM3 12h3M18 12h3M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1", superAdmin: true },
       { to: "/appearance", labelKey: "nav.appearance", icon: "M4 8h10M18 8h2M4 16h2M10 16h10M14 4v4M6 12v4", superAdmin: true },
       { to: "/branding", labelKey: "nav.branding", icon: "M12 3a9 9 0 100 18c1.4 0 2-.8 2-1.8 0-1.4-1.2-1.8-1.2-3 0-1.2 1-2.2 2.4-2.2H17a4.5 4.5 0 004.5-4.5C21.5 5.6 17.2 3 12 3zM7.5 12.5a1.3 1.3 0 100-2.6 1.3 1.3 0 000 2.6z", superAdmin: true },
