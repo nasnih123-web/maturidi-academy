@@ -1,1 +1,745 @@
-{"appName": "أكاديمية الماتريدي", "brandSub": "مدرسة الإمام الماتريدي", "footer": {"columns": [{"heading": "المنصة", "links": [{"href": "/fatwa", "label": "الفتوى"}, {"href": "/courses", "label": "الدورات"}, {"href": "/library", "label": "المكتبة"}, {"href": "/quran", "label": "القرآن"}]}, {"heading": "المعرفة", "links": [{"href": "/articles", "label": "المقالات"}, {"href": "/places", "label": "الأماكن"}]}, {"heading": "المؤسسة", "links": [{"href": "/terms", "label": "الشروط"}, {"href": "/privacy", "label": "الخصوصية"}]}], "rights": "© {year} أكاديمية الماتريدي — جميع الحقوق محفوظة.", "tagline": "مدرسة الإمام الماتريدي — منصة شاملة للعلوم الإسلامية: بحث وتعليم وفتوى ومكتبة رقمية."}, "header": {"closeAria": "إغلاق", "langAria": "اختيار اللغة", "langNames": {"ar": "العربية", "en": "English", "fa": "فارسی"}, "menuAria": "القائمة", "mobileNavAria": "قائمة التنقل", "nav": [{"href": "", "label": "الرئيسية"}, {"href": "/fatwa", "label": "الفتوى"}, {"href": "/courses", "label": "الدورات"}, {"href": "/library", "label": "المكتبة"}, {"href": "/quran", "label": "القرآن"}, {"href": "/articles", "label": "المقالات"}, {"href": "/places", "label": "الأماكن"}], "navAria": "التنقل الرئيسي", "searchAria": "بحث شامل", "searchPlaceholder": "بحث…", "submenuAria": "القائمة الفرعية", "submenuExpand": "فتح القائمة الفرعية لـ {label}"}, "home": {"card": {"details": "التفاصيل ←", "pause": "إيقاف", "play": "تشغيل", "seal": "ختم", "sliderNext": "التالي", "sliderPrev": "السابق", "verified": "توثيق شرعي", "view": "عرض"}, "donateCtaLabel": "ادعم مالياً", "emptyFallback": "لا يوجد محتوى للعرض حالياً.", "errorDescription": "تعذّر الاتصال بالخادم. تحقق من اتصال الإنترنت وحاول مجدداً.", "errorRetry": "إعادة المحاولة", "errorTitle": "تعذّر تحميل الصفحة", "headerLandmark": "ترويسة الموقع", "hero": {"ctaPrimary": "ابدأ التعلم", "ctaSecondary": "تصفح المكتبة"}, "mainLandmark": "المحتوى الرئيسي للصفحة", "mapNote": "ستُفعَّل خريطة الأماكن القريبة التفاعلية في المراحل القادمة.", "metaDescription": "منصة تعليمية إسلامية شاملة — بحث وفتوى وقرآن ومكتبة رقمية", "metaTitle": "أكاديمية الماتريدي — مدرسة الإمام الماتريدي", "quoteAria": "آية اليوم", "search": {"clear": "مسح البحث", "label": "بحث شامل", "loading": "جارٍ البحث…", "noResults": "لم يتم العثور على نتائج.", "placeholder": "ابحث في المنصة…", "resultsSummary": "{count} نتيجة", "searchButton": "بحث", "searchUnavailable": "البحث غير متاح حالياً.", "types": {"article": "مقال", "book": "كتاب", "course": "دورة", "fatwa": "فتوى", "lesson": "درس", "page": "صفحة", "section": "قسم", "theme": "سمة", "verse": "آية"}}, "skipToContent": "تجاوز إلى المحتوى", "status": {"aria": "التاريخ وأوقات الصلاة", "gregorian": "التاريخ الميلادي", "hijri": "التاريخ الهجري", "solar": "التاريخ الشمسي"}, "viewAllLabel": "عرض الكل"}, "searchPage": {"errorDescription": "تعذّر الاتصال بالخادم. حاول مجدداً.", "errorTitle": "البحث غير متاح", "hint": "للبحث، أدخل العبارة المطلوبة في مربع البحث أعلى الصفحة.", "metaTitle": "بحث", "noResults": "لم يتم العثور على نتائج. جرّب عبارة أخرى.", "resultsFor": "نتائج «{q}»", "title": "نتائج البحث"}, "tagline": "منصة تعليمية إسلامية شاملة", "content": {"announcements": {"dismiss": "إغلاق الإعلان", "listAria": "الإعلانات العامة"}, "events": {"aria": "المناسبة الإسلامية الحالية", "months": ["محرم", "صفر", "ربيع الأول", "ربيع الثاني", "جمادى الأولى", "جمادى الثانية", "رجب", "شعبان", "رمضان", "شوال", "ذو القعدة", "ذو الحجة"], "hijriDate": "{day} {month} هجري"}, "quotes": {"heading": "أقوال العلماء", "aria": "أقوال العلماء والأئمة"}, "page": {"home": "الرئيسية", "updatedOn": "آخر تحديث:", "previewBadge": "معاينة — هذه الصفحة غير منشورة بعد", "breadcrumbAria": "مسار الصفحة", "errorTitle": "الصفحة غير موجودة"}}}
+{
+  "appName": "أكاديمية الماتريدي",
+  "brandSub": "مدرسة الإمام الماتريدي",
+  "footer": {
+    "columns": [
+      {
+        "heading": "المنصة",
+        "links": [
+          {
+            "href": "/fatwa",
+            "label": "الفتوى"
+          },
+          {
+            "href": "/courses",
+            "label": "الدورات"
+          },
+          {
+            "href": "/library",
+            "label": "المكتبة"
+          },
+          {
+            "href": "/quran",
+            "label": "القرآن"
+          }
+        ]
+      },
+      {
+        "heading": "المعرفة",
+        "links": [
+          {
+            "href": "/articles",
+            "label": "المقالات"
+          },
+          {
+            "href": "/places",
+            "label": "الأماكن"
+          }
+        ]
+      },
+      {
+        "heading": "المؤسسة",
+        "links": [
+          {
+            "href": "/terms",
+            "label": "الشروط"
+          },
+          {
+            "href": "/privacy",
+            "label": "الخصوصية"
+          }
+        ]
+      }
+    ],
+    "rights": "© {year} أكاديمية الماتريدي — جميع الحقوق محفوظة.",
+    "tagline": "مدرسة الإمام الماتريدي — منصة شاملة للعلوم الإسلامية: بحث وتعليم وفتوى ومكتبة رقمية."
+  },
+  "header": {
+    "closeAria": "إغلاق",
+    "langAria": "اختيار اللغة",
+    "langNames": {
+      "ar": "العربية",
+      "en": "English",
+      "fa": "فارسی"
+    },
+    "menuAria": "القائمة",
+    "mobileNavAria": "قائمة التنقل",
+    "nav": [
+      {
+        "href": "",
+        "label": "الرئيسية"
+      },
+      {
+        "href": "/fatwa",
+        "label": "الفتوى"
+      },
+      {
+        "href": "/inheritance",
+        "label": "الميراث"
+      },
+      {
+        "href": "/zakat",
+        "label": "الزكاة"
+      },
+      {
+        "href": "/courses",
+        "label": "الدورات"
+      },
+      {
+        "href": "/library",
+        "label": "المكتبة"
+      },
+      {
+        "href": "/quran",
+        "label": "القرآن"
+      },
+      {
+        "href": "/tasbih",
+        "label": "المسبحة"
+      },
+      {
+        "href": "/articles",
+        "label": "المقالات"
+      },
+      {
+        "href": "/places",
+        "label": "الأماكن"
+      }
+    ],
+    "navAria": "التنقل الرئيسي",
+    "searchAria": "بحث شامل",
+    "searchPlaceholder": "بحث…",
+    "submenuAria": "القائمة الفرعية",
+    "submenuExpand": "فتح القائمة الفرعية لـ {label}"
+  },
+  "home": {
+    "card": {
+      "details": "التفاصيل ←",
+      "pause": "إيقاف",
+      "play": "تشغيل",
+      "seal": "ختم",
+      "sliderNext": "التالي",
+      "sliderPrev": "السابق",
+      "verified": "توثيق شرعي",
+      "view": "عرض"
+    },
+    "donateCtaLabel": "ادعم مالياً",
+    "emptyFallback": "لا يوجد محتوى للعرض حالياً.",
+    "errorDescription": "تعذّر الاتصال بالخادم. تحقق من اتصال الإنترنت وحاول مجدداً.",
+    "errorRetry": "إعادة المحاولة",
+    "errorTitle": "تعذّر تحميل الصفحة",
+    "headerLandmark": "ترويسة الموقع",
+    "hero": {
+      "ctaPrimary": "ابدأ التعلم",
+      "ctaSecondary": "تصفح المكتبة"
+    },
+    "mainLandmark": "المحتوى الرئيسي للصفحة",
+    "mapNote": "ستُفعَّل خريطة الأماكن القريبة التفاعلية في المراحل القادمة.",
+    "metaDescription": "منصة تعليمية إسلامية شاملة — بحث وفتوى وقرآن ومكتبة رقمية",
+    "metaTitle": "أكاديمية الماتريدي — مدرسة الإمام الماتريدي",
+    "quoteAria": "آية اليوم",
+    "search": {
+      "clear": "مسح البحث",
+      "label": "بحث شامل",
+      "loading": "جارٍ البحث…",
+      "noResults": "لم يتم العثور على نتائج.",
+      "placeholder": "ابحث في المنصة…",
+      "resultsSummary": "{count} نتيجة",
+      "searchButton": "بحث",
+      "searchUnavailable": "البحث غير متاح حالياً.",
+      "types": {
+        "article": "مقال",
+        "book": "كتاب",
+        "course": "دورة",
+        "fatwa": "فتوى",
+        "lesson": "درس",
+        "page": "صفحة",
+        "section": "قسم",
+        "theme": "سمة",
+        "verse": "آية"
+      }
+    },
+    "skipToContent": "تجاوز إلى المحتوى",
+    "status": {
+      "aria": "التاريخ وأوقات الصلاة",
+      "gregorian": "التاريخ الميلادي",
+      "hijri": "التاريخ الهجري",
+      "solar": "التاريخ الشمسي"
+    },
+    "viewAllLabel": "عرض الكل"
+  },
+  "searchPage": {
+    "errorDescription": "تعذّر الاتصال بالخادم. حاول مجدداً.",
+    "errorTitle": "البحث غير متاح",
+    "hint": "للبحث، أدخل العبارة المطلوبة في مربع البحث أعلى الصفحة.",
+    "metaTitle": "بحث",
+    "noResults": "لم يتم العثور على نتائج. جرّب عبارة أخرى.",
+    "resultsFor": "نتائج «{q}»",
+    "title": "نتائج البحث"
+  },
+  "tagline": "منصة تعليمية إسلامية شاملة",
+  "content": {
+    "announcements": {
+      "dismiss": "إغلاق الإعلان",
+      "listAria": "الإعلانات العامة"
+    },
+    "events": {
+      "aria": "المناسبة الإسلامية الحالية",
+      "months": [
+        "محرم",
+        "صفر",
+        "ربيع الأول",
+        "ربيع الثاني",
+        "جمادى الأولى",
+        "جمادى الثانية",
+        "رجب",
+        "شعبان",
+        "رمضان",
+        "شوال",
+        "ذو القعدة",
+        "ذو الحجة"
+      ],
+      "hijriDate": "{day} {month} هجري"
+    },
+    "quotes": {
+      "heading": "أقوال العلماء",
+      "aria": "أقوال العلماء والأئمة"
+    },
+    "page": {
+      "home": "الرئيسية",
+      "updatedOn": "آخر تحديث:",
+      "previewBadge": "معاينة — هذه الصفحة غير منشورة بعد",
+      "breadcrumbAria": "مسار الصفحة",
+      "errorTitle": "الصفحة غير موجودة"
+    }
+  },
+  "quran": {
+    "metaTitle": "القرآن الكريم",
+    "metaDescription": "تلاوة القرآن الكريم مع الترجمة والتفسير والتظليل المتزامن مع الصوت",
+    "title": "القرآن الكريم",
+    "searchPlaceholder": "ابحث عن سورة… (الاسم أو الرقم)",
+    "searchAria": "البحث عن سورة",
+    "juzLabel": "الجزء",
+    "allJuz": "الكل",
+    "ayahsCount": "آية",
+    "noResults": "لم يتم العثور على سورة.",
+    "meccan": "مكية",
+    "medinan": "مدنية",
+    "loadFailed": "تعذّر تحميل بيانات القرآن. تحقق من الاتصال وحاول مجددًا.",
+    "surahMetaTitle": "سورة {n}",
+    "surahOf": "سورة",
+    "reciterLabel": "القارئ",
+    "playSurah": "تشغيل التلاوة",
+    "pause": "إيقاف مؤقت",
+    "resume": "استئناف",
+    "stop": "إيقاف",
+    "prevSurah": "السورة السابقة",
+    "nextSurah": "السورة التالية",
+    "audioUnavailable": "لا يتوفر صوت لهذه السورة.",
+    "audioFailed": "تعذّر تشغيل الصوت.",
+    "ayahLink": "رابط مباشر للآية",
+    "showTranslation": "إظهار الترجمة",
+    "showTafsir": "إظهار التفسير",
+    "bismillah": "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
+    "playAyah": "تشغيل هذه الآية",
+    "playing": "قيد التشغيل",
+    "translationLabel": "الترجمة",
+    "tafsirLabel": "التفسير",
+    "ayahNumber": "آية",
+    "notesTitle": "ملاحظات الآية",
+    "addNote": "إضافة ملاحظة",
+    "notePlaceholder": "اكتب ملاحظتك الخاصة…",
+    "saveNote": "حفظ",
+    "cancel": "إلغاء",
+    "editNote": "تعديل",
+    "deleteNote": "حذف",
+    "deleteConfirm": "هل تريد حذف هذه الملاحظة؟",
+    "privateNote": "خاصة",
+    "publicNote": "عامة",
+    "signInPrompt": "سجّل الدخول لحفظ ملاحظات خاصة.",
+    "signIn": "تسجيل الدخول",
+    "notesEmpty": "لا توجد ملاحظات بعد.",
+    "notesFailed": "تعذّر تحميل الملاحظات.",
+    "noteSaved": "تم حفظ الملاحظة.",
+    "noteDeleted": "تم حذف الملاحظة."
+  },
+  "tasbih": {
+    "metaTitle": "المسبحة الرقمية",
+    "metaDescription": "عدّاد رقمي للأذكار مع العدّ الصوتي",
+    "title": "المسبحة الرقمية",
+    "subtitle": "للحساب، المس الزر الكبير أو اضغط مسافة/إدخال.",
+    "tapHint": "اضغط",
+    "targetLabel": "الهدف",
+    "customTarget": "بلا هدف",
+    "finishSession": "إنهاء الجلسة",
+    "reset": "تصفير",
+    "undo": "إنقاص",
+    "dailyTotals": "المجموع اليومي",
+    "sessionsCount": "جلسة",
+    "totalCount": "ذكر",
+    "targetReached": "ما شاء الله! بلغت الهدف.",
+    "voiceStart": "بدء العدّ الصوتي",
+    "voiceStop": "إيقاف العدّ الصوتي",
+    "voiceUnsupported": "متصفحك لا يدعم العدّ الصوتي.",
+    "voiceListening": "أستمع الآن… كل ذكر منطوق يُحتسب.",
+    "signInToSync": "لا توجد جلسات بعد. سجّل الدخول لمزامنة جلساتك.",
+    "presets": [
+      {
+        "key": "subhanallah",
+        "text": "سُبْحَانَ ٱللَّٰهِ"
+      },
+      {
+        "key": "alhamdulillah",
+        "text": "ٱلْحَمْدُ لِلَّٰهِ"
+      },
+      {
+        "key": "allahuakbar",
+        "text": "ٱللَّٰهُ أَكْبَرُ"
+      },
+      {
+        "key": "lailahaillallah",
+        "text": "لَا إِلَٰهَ إِلَّا ٱللَّٰهُ"
+      },
+      {
+        "key": "astaghfirullah",
+        "text": "أَسْتَغْفِرُ ٱللَّٰهَ"
+      }
+    ],
+    "todaySynced": "مُزامَن اليوم"
+  },
+  "adhan": {
+    "metaTitle": "مواقيت الصلاة",
+    "metaDescription": "مواقيت الصلاة والعدّ التنازلي للصلاة القادمة",
+    "title": "مواقيت الصلاة",
+    "subtitle": "تُحسب مواقيت الصلاة حسب موقعك.",
+    "nextPrayer": "الصلاة القادمة",
+    "prayers": {
+      "fajr": "الفجر",
+      "sunrise": "الشروق",
+      "dhuhr": "الظهر",
+      "asr": "العصر",
+      "maghrib": "المغرب",
+      "isha": "العشاء",
+      "imsak": "الإمساك",
+      "midnight": "منتصف الليل"
+    },
+    "useGps": "استخدام موقع الجهاز (GPS)",
+    "manualTitle": "إدخال الإحداثيات يدويًا",
+    "latLabel": "خط العرض",
+    "lngLabel": "خط الطول",
+    "cityLabel": "اسم المدينة (اختياري)",
+    "applyLocation": "تأكيد",
+    "changeLocation": "تغيير الموقع",
+    "hijriLabel": "التاريخ الهجري",
+    "methodLabel": "طريقة الحساب",
+    "needsLocation": "حدّد موقعك لعرض مواقيت الصلاة.",
+    "timesFailed": "تعذّر تحميل مواقيت الصلاة.",
+    "timesInvalid": "الأوقات المستلمة غير صالحة.",
+    "gpsDenied": "تم رفض الوصول إلى الموقع؛ أدخل الإحداثيات يدويًا.",
+    "gpsUnsupported": "متصفحك لا يدعم تحديد الموقع.",
+    "invalidCoords": "الإحداثيات غير صالحة.",
+    "countdownAria": "العدّ التنازلي للصلاة القادمة",
+    "stripPrefix": "حتى",
+    "stripSetup": "مواقيت الصلاة"
+  },
+  "munajat": {
+    "toggleOn": "الوضع الليلي: مفعّل",
+    "toggleOff": "الوضع الليلي: معطّل",
+    "toggleAuto": "الوضع الليلي: تلقائي",
+    "toggleAria": "تبديل وضع المناجاة الليلية",
+    "ambientPlay": "تشغيل الصوت المحيطي",
+    "ambientPause": "إيقاف الصوت المحيطي"
+  },
+  "auth": {
+    "signIn": "تسجيل الدخول",
+    "signInHint": "سجّل الدخول بالبريد الإلكتروني أو رقم الهاتف وكلمة المرور.",
+    "identifier": "البريد الإلكتروني أو رقم الهاتف",
+    "password": "كلمة المرور",
+    "totp": "رمز التحقق الثنائي",
+    "loginFailed": "تعذّر تسجيل الدخول."
+  },
+  "fatwa": {
+    "metaTitle": "اسأل الفتوى | أكاديمية الماتريدي",
+    "metaDescription": "مساعد الفتوى الذكي المبني على مصادر معتمدة — ليس بديلاً عن المفتي.",
+    "title": "مساعد الفتوى الذكي",
+    "subtitle": "اطرح سؤالك الفقهي؛ تُستخرج الإجابة من قاعدة المعرفة المعتمدة.",
+    "noticeTitle": "مساعد ذكي — ليس مفتياً",
+    "noticeBody": "هذا مساعد ذكاء اصطناعي وليس مرجع فتوى. تُستخرج الإجابات فقط من المحتوى المعتمد في قاعدة المعرفة، وكل إجابة تعرض مصادرها. للحكم القاطع راجع عالماً مؤهلاً.",
+    "questionLabel": "سؤالك",
+    "questionPlaceholder": "اكتب سؤالك الفقهي هنا…",
+    "ask": "اسأل",
+    "cancel": "إلغاء",
+    "streamingLabel": "جارٍ استلام الإجابة…",
+    "categoryAll": "كل التصنيفات",
+    "categoriesLoading": "جارٍ تحميل التصنيفات…",
+    "categoriesFailed": "تعذّر تحميل التصنيفات",
+    "historyTitle": "المحادثات السابقة",
+    "historyEmpty": "لا توجد محادثات محفوظة بعد.",
+    "clearHistory": "مسح",
+    "newChat": "محادثة جديدة",
+    "showHistory": "عرض السجل",
+    "hideHistory": "إخفاء السجل",
+    "citationsTitle": "مصادر الإجابة",
+    "idkTitle": "لا أعرف — خارج قاعدة المعرفة",
+    "idkBody": "لم يُعثر على إجابة هذا السؤال في المصادر المعتمدة، وتم الامتناع عن التخمين.",
+    "llmUnavailableTitle": "خدمة الذكاء الاصطناعي غير متاحة مؤقتاً",
+    "llmUnavailableBody": "يرجى المحاولة لاحقاً.",
+    "askFailed": "خطأ في استلام الإجابة",
+    "emptyHint": "اطرح سؤالك؛ ستظهر الإجابة مع الاستشهاد بالمصادر.",
+    "youLabel": "أنت",
+    "assistantLabel": "المساعد",
+    "usageLabel": "الاستهلاك",
+    "compareTitle": "مقارنة المذاهب",
+    "compareSubtitle": "موقف كل مذهب في موضوع فقهي، مع الأدلة.",
+    "evidenceLabel": "الأدلة والمراجع",
+    "emptyCompare": "لم يُعثر على مقارنة لهذا الموضوع.",
+    "compareFailed": "خطأ في تحميل المقارنة",
+    "madhabNames": {
+      "hanafi": "حنفي",
+      "maliki": "مالكي",
+      "shafi": "شافعي",
+      "hanbali": "حنبلي"
+    }
+  },
+  "quiz": {
+    "metaTitle": "الاختبار الشرعي | أكاديمية الماتريدي",
+    "metaDescription": "اختبار المعرفة الشرعية المولّد من المحتوى المعتمد فقط.",
+    "title": "الاختبار الشرعي",
+    "subtitle": "تُولَّد الأسئلة من المحتوى المعتمد فقط؛ لا تُكشف الإجابة الصحيحة.",
+    "startTitle": "اختبار جديد",
+    "startHint": "اختر عدد الأسئلة والتصنيف.",
+    "countLabel": "عدد الأسئلة",
+    "categoryLabel": "التصنيف",
+    "categoryAny": "كل التصنيفات",
+    "generate": "بدء الاختبار",
+    "generating": "جارٍ توليد الأسئلة…",
+    "questionOf": "السؤال {current} من {total}",
+    "next": "التالي",
+    "prev": "السابق",
+    "submit": "تسليم الإجابات",
+    "submitting": "جارٍ التسليم…",
+    "unansweredHint": "للتسليم، أجب عن كل الأسئلة",
+    "scoreTitle": "نتيجة الاختبار",
+    "scoreOf": "{score} من {total}",
+    "reviewTitle": "مراجعة الإجابات",
+    "correctLabel": "صحيح",
+    "wrongLabel": "خطأ",
+    "explanationLabel": "المصدر",
+    "retake": "اختبار جديد",
+    "generateFailed": "تعذّر توليد الاختبار",
+    "submitFailed": "تعذّر تسليم الإجابات",
+    "emptyFailed": "لم تُولَّد أسئلة",
+    "categoriesLoading": "جارٍ تحميل التصنيفات…"
+  },
+  "verify": {
+    "metaTitle": "التحقق من المحتوى | أكاديمية الماتريدي",
+    "metaDescription": "قارن النص الملصق مع المحتوى المنشور في الأكاديمية.",
+    "title": "التحقق من المحتوى",
+    "subtitle": "الصق نصاً أو اقتباساً لمقارنته مع المحتوى المنشور في الأكاديمية.",
+    "inputLabel": "النص المراد فحصه",
+    "inputPlaceholder": "الصق النص هنا…",
+    "check": "فحص",
+    "checking": "جارٍ الفحص…",
+    "cancel": "إلغاء",
+    "inputEmpty": "لم يُدخل نص.",
+    "checkFailed": "خطأ في الفحص",
+    "verdictVerifiedTitle": "موثّق",
+    "verdictVerifiedBody": "هذا النص مطابق للمحتوى المنشور في الأكاديمية.",
+    "verdictNotFoundTitle": "لم يُعثر عليه",
+    "verdictNotFoundBody": "لم يُعثر على هذا النص في المحتوى المنشور في الأكاديمية.",
+    "verdictConflictTitle": "تعارض",
+    "verdictConflictBody": "هذا النص يتعارض مع بعض المصادر المنشورة.",
+    "sourcesTitle": "المصادر",
+    "nearestLabel": "أقرب مشابه"
+  },
+  "calculators": {
+    "madhabs": {
+      "hanafi": "حنفي",
+      "maliki": "مالكي",
+      "shafi": "شافعي",
+      "hanbali": "حنبلي"
+    },
+    "heirTypes": {
+      "husband": "الزوج",
+      "wife": "الزوجة",
+      "father": "الأب",
+      "mother": "الأم",
+      "son": "الابن",
+      "daughter": "البنت",
+      "sons_son": "ابن الابن",
+      "sons_daughter": "بنت الابن",
+      "paternal_grandfather": "الجدّ لأب",
+      "paternal_grandmother": "الجدّة لأب",
+      "maternal_grandmother": "الجدّة لأم",
+      "full_brother": "الأخ الشقيق",
+      "full_sister": "الأخت الشقيقة",
+      "paternal_brother": "الأخ لأب",
+      "paternal_sister": "الأخت لأب",
+      "maternal_brother": "الأخ لأم",
+      "maternal_sister": "الأخت لأم"
+    },
+    "inheritance": {
+      "metaTitle": "حاسبة الميراث | أكاديمية الماتريدي",
+      "metaDescription": "حساب حصص الميراث وفق القواعد المعتمدة لكل مذهب من المذاهب الأربعة.",
+      "title": "حاسبة الميراث",
+      "subtitle": "احسب حصة كل وارث وفق القواعد المعتمدة في مذهبك.",
+      "madhabLabel": "المذهب",
+      "estateLabel": "قيمة التركة الإجمالية",
+      "estatePlaceholder": "مثال: ١٬٠٠٠٬٠٠٠",
+      "estateHint": "القيمة الإجمالية لأموال المتوفى بالعملة المتداولة.",
+      "heirsTitle": "الورثة",
+      "heirTypeLabel": "نوع الوارث",
+      "heirCountLabel": "العدد",
+      "addHeir": "إضافة وارث",
+      "removeHeir": "حذف هذا الوارث",
+      "calculate": "احسب الحصص",
+      "calculating": "جارٍ الحساب…",
+      "estateInvalid": "يرجى إدخال قيمة التركة رقمًا صحيحًا.",
+      "needHeir": "أضف وارثًا واحدًا على الأقل.",
+      "countInvalid": "يجب أن يكون عدد كل وارث بين ١ و٩٩.",
+      "resultTitle": "نتيجة قسمة التركة",
+      "heirCol": "الوارث",
+      "countCol": "العدد",
+      "shareCol": "الحصة",
+      "amountCol": "المبلغ",
+      "totalLabel": "المجموع",
+      "ruleVersion": "أساس الحساب: الإصدار {version} من القواعد المعتمدة",
+      "notesTitle": "ملاحظات",
+      "print": "طباعة",
+      "save": "حفظ في الملف الشخصي",
+      "saveLoginHint": "سجّل الدخول لحفظ هذا الحساب في ملفك الشخصي.",
+      "saving": "جارٍ الحفظ…",
+      "saved": "تم الحفظ",
+      "saveFailed": "فشل الحفظ؛ حاول مرة أخرى.",
+      "recalculate": "إعادة الحساب",
+      "failed": "فشل الحساب؛ تحقق من الاتصال وحاول مرة أخرى.",
+      "pendingTitle": "قريبًا — بانتظار الاعتماد العلمي",
+      "pendingBody": "لم تُراجَع قواعد الميراث لهذا المذهب بعد من قِبَل عالم مؤهل ولم تُعتمَد. لن يُجرى أي حساب حتى الاعتماد."
+    },
+    "zakat": {
+      "metaTitle": "حاسبة الزكاة | أكاديمية الماتريدي",
+      "metaDescription": "حساب زكاة الأموال بالنصاب المحدّث للذهب والفضة وفق القواعد المعتمدة.",
+      "title": "حاسبة الزكاة",
+      "subtitle": "أدخل الأموال الخاضعة للزكاة؛ يُحسب مبلغ الزكاة بالنصاب اليومي.",
+      "madhabLabel": "المذهب",
+      "assetsTitle": "الأموال",
+      "assetLabels": {
+        "gold_grams": "الذهب (غرام)",
+        "silver_grams": "الفضة (غرام)",
+        "cash": "النقد",
+        "bank_deposits": "الودائع البنكية",
+        "trade_goods": "عروض التجارة",
+        "receivables": "الديون المرجوّة",
+        "investments": "الاستثمارات"
+      },
+      "assetHints": {
+        "gold_grams": "وزن الذهب الخاضع للزكاة بالغرام.",
+        "silver_grams": "وزن الفضة الخاضعة للزكاة بالغرام.",
+        "cash": "",
+        "bank_deposits": "",
+        "trade_goods": "القيمة السوقية للبضائع المعدّة للبيع.",
+        "receivables": "الديون التي يُرجى تحصيلها.",
+        "investments": "القيمة السوقية للاستثمارات الخاضعة."
+      },
+      "debtsLabel": "الديون",
+      "debtsHint": "الديون المستحقة القابلة للخصم من الأموال.",
+      "calculate": "احسب الزكاة",
+      "calculating": "جارٍ الحساب…",
+      "invalidInput": "يرجى إدخال جميع القيم أرقامًا صحيحة (صفر أو أكثر).",
+      "failed": "فشل الحساب؛ تحقق من الاتصال وحاول مرة أخرى.",
+      "pendingTitle": "قريبًا — بانتظار الاعتماد العلمي",
+      "pendingBody": "لم تُراجَع قواعد الزكاة بعد من قِبَل عالم مؤهل ولم تُعتمَد. لن يُجرى أي حساب حتى الاعتماد.",
+      "recalculate": "إعادة الحساب",
+      "resultTitle": "نتيجة الزكاة",
+      "zakatableTotalLabel": "مجموع الأموال الخاضعة",
+      "debtsDeductedLabel": "الديون المخصومة",
+      "nisabThresholdLabel": "حدّ النصاب",
+      "zakatDueLabel": "الزكاة الواجبة",
+      "ruleVersion": "أساس الحساب: الإصدار {version} من القواعد المعتمدة",
+      "rateNote": "{note}",
+      "rateFresh": "السعر محدّث",
+      "rateStale": "السعر قديم",
+      "rateAsOf": "آخر تحديث: {date}",
+      "ratePending": "سعر النصاب بانتظار الاعتماد العلمي",
+      "rateFailed": "تعذّر جلب سعر النصاب",
+      "print": "طباعة"
+    }
+  },
+  "lms": {
+    "dashboardMetaTitle": "لوحة التعلّم | أكاديمية الماتريدي",
+    "dashboardMetaDescription": "دوراتي، الدروس المقترحة، مجموعات الدراسة وشهاداتي.",
+    "dashboardTitle": "لوحة التعلّم",
+    "dashboardSubtitle": "مسارك الدراسي في أكاديمية الماتريدي",
+    "courseMetaDescription": "مفردات الدروس والمتطلبات ومجموعات الدراسة لهذه الدورة.",
+    "lessonMetaTitle": "الدرس | أكاديمية الماتريدي",
+    "lessonMetaDescription": "نص الدرس واختبار قصير وتسجيل تقدّم الدراسة.",
+    "loginRequiredTitle": "سجّل الدخول لعرض اللوحة",
+    "loginRequiredBody": "تظهر لوحة التعلّم وتقدّم الدروس وشهاداتك بعد تسجيل الدخول.",
+    "loginCta": "تسجيل الدخول",
+    "loading": "جارٍ التحميل…",
+    "loadFailed": "خطأ في التحميل",
+    "retry": "إعادة المحاولة",
+    "continueTitle": "مواصلة التعلّم",
+    "continueEmpty": "لم تسجّل في أي دورة بعد. ابدأ من قائمة الدورات.",
+    "continueCta": "واصل",
+    "progressLabel": "مكتمل بنسبة {percent}٪",
+    "recommendationsTitle": "مقترحات لك",
+    "recommendationsEmpty": "لا توجد مقترحات بعد.",
+    "openLesson": "عرض الدرس",
+    "cohortsTitle": "مجموعاتي الدراسية",
+    "cohortsEmpty": "لم تسجّل في أي مجموعة دراسية.",
+    "seatsLeftLabel": "{n} مقاعد متبقية",
+    "enrolledBadge": "مسجَّل",
+    "certificatesTitle": "شهاداتي",
+    "certificatesEmpty": "لم تصدر أي شهادة بعد. بإتمام دورة تحصل على شهادة.",
+    "verifyCta": "التحقق من الشهادة",
+    "downloadPdf": "تنزيل PDF",
+    "reportTitle": "تقرير الدراسة",
+    "statLessons": "الدروس المكتملة",
+    "statAvgScore": "متوسط الدرجات",
+    "statStreak": "الأيام المتتالية",
+    "levelBeginner": "تمهيدي",
+    "levelIntermediate": "متوسط",
+    "levelAdvanced": "متقدم",
+    "startsAt": "البداية",
+    "endsAt": "النهاية",
+    "lessonsTitle": "مفردات الدروس",
+    "completedBadge": "مكتمل",
+    "quizBadge": "مع اختبار",
+    "courseCohortsTitle": "مجموعات هذه الدورة",
+    "courseCohortsEmpty": "لا توجد مجموعات دراسية معلنة لهذه الدورة حاليًا.",
+    "enroll": "التسجيل في المجموعة",
+    "enrolling": "جارٍ التسجيل…",
+    "enrolled": "تم التسجيل",
+    "enrollFailed": "خطأ في التسجيل",
+    "loginToEnroll": "سجّل الدخول للتسجيل في المجموعة الدراسية.",
+    "markComplete": "وضع علامة مكتمل",
+    "markingComplete": "جارٍ التسجيل…",
+    "saveFailed": "خطأ في حفظ التقدّم",
+    "quizSectionTitle": "اختبار الدرس القصير",
+    "certificateTitle": "تهانينا! صدرت شهادة الدورة",
+    "certificateBody": "أتممت هذه الدورة بنجاح. صدرت الشهادة التالية برمز فريد:",
+    "verifyCertificateCta": "التحقق من الشهادة وعرضها",
+    "backToCourse": "العودة إلى الدورة",
+    "progressSaving": "جارٍ الحفظ…",
+    "certificateMetaTitle": "التحقق من الشهادة | أكاديمية الماتريدي",
+    "certificateMetaDescription": "تحقق من أصالة الشهادة الدراسية برمزها الفريد.",
+    "certificateTitle2": "التحقق من الشهادة",
+    "certificateSubtitle": "أدخل الرمز الفريد على الشهادة للتحقق من أصالتها.",
+    "validTitle": "الشهادة صالحة",
+    "invalidTitle": "لم تُعثر على الشهادة",
+    "invalidBody": "لا توجد شهادة بهذا الرمز في النظام. تأكد من صحة الرمز.",
+    "courseLabel": "الدورة",
+    "recipientLabel": "اسم الدارس",
+    "issuedAtLabel": "تاريخ الإصدار",
+    "codeLabel": "رمز الشهادة",
+    "demoBadge": "صفحة تجريبية — للتطوير فقط",
+    "demoTitle": "معاينة لوحة التعلّم (المرحلة ٨)",
+    "demoNote": "جميع البيانات أدناه تجريبية (lib/demo-fixtures.ts) وليست محتوى حقيقيًا.",
+    "statOverall": "التقدّم العام",
+    "courseQuizAvg": "متوسط الاختبارات",
+    "reasonNextIncomplete": "مواصلة درسك غير المكتمل",
+    "reasonNextLevel": "خطوتك التالية في المستوى",
+    "inProgressBadge": "قيد الدراسة",
+    "notStartedBadge": "لم يبدأ",
+    "lessonsCountLabel": "{done} من {total} دروس",
+    "certificateEarned": "صدرت شهادة هذه الدورة",
+    "noCourseParam": "فُتح الدرس دون معرّف الدورة؛ ادخل من صفحة الدورة."
+  },
+  "library": {
+    "metaTitle": "المكتبة متعددة الوسائط",
+    "metaDescription": "المكتبة متعددة الوسائط لأكاديمية الماتريدي: فيديو، فيديو ٣٦٠ درجة، PDF، صوت وخرائط ذهنية",
+    "itemMetaTitle": "{title}",
+    "title": "المكتبة متعددة الوسائط",
+    "subtitle": "دروس وآثار العلماء بالفيديو والصوت وملفات PDF والعروض بزاوية ٣٦٠ درجة والخرائط الذهنية",
+    "kinds": {
+      "all": "الكل",
+      "video": "فيديو",
+      "video_360": "٣٦٠°",
+      "pdf": "PDF",
+      "audio": "صوت",
+      "mindmap": "خريطة ذهنية"
+    },
+    "openItem": "عرض",
+    "untitled": "بدون عنوان",
+    "searchPlaceholder": "ابحث في العنوان والوسوم والنص…",
+    "searchAria": "البحث في المكتبة",
+    "tagFilterLabel": "تصفية حسب الوسم",
+    "allTags": "كل الوسوم",
+    "noResults": "لم يتم العثور على نتائج.",
+    "noResultsHint": "جرّب عبارة أخرى أو أزل عوامل التصفية.",
+    "loadFailed": "تعذّر جلب البيانات.",
+    "loadFailedHint": "تحقق من الاتصال وحاول مجددًا.",
+    "retry": "إعادة المحاولة",
+    "loading": "جارٍ التحميل…",
+    "loadMore": "المزيد",
+    "relatedTitle": "مواد ذات صلة",
+    "breadcrumbAria": "مسار الصفحة",
+    "chaptersTitle": "فهرس المحتويات",
+    "captionsNote": "تُعرض الترجمة من هذا المشغّل عند توفيرها من الناشر.",
+    "seekToChapter": "انتقل إلى القسم",
+    "player": {
+      "play": "تشغيل",
+      "pause": "إيقاف مؤقت",
+      "seekBack": "رجوع ١٠ ثوانٍ",
+      "seekForward": "تقديم ١٠ ثوانٍ",
+      "speed": "سرعة التشغيل",
+      "loadingAudio": "جارٍ تجهيز الصوت…",
+      "audioFailed": "تعذّر تشغيل الصوت.",
+      "coverAlt": "غلاف العمل",
+      "loadingVideo": "جارٍ تجهيز الفيديو…",
+      "videoFailed": "تعذّر تشغيل الفيديو.",
+      "nowPlaying": "يُشغَّل الآن",
+      "close": "إغلاق المشغّل",
+      "expandAria": "فتح المشغّل",
+      "collapseAria": "طيّ المشغّل"
+    },
+    "transcript": {
+      "title": "النص الكامل",
+      "expandAria": "عرض النص الكامل",
+      "collapseAria": "إخفاء النص الكامل",
+      "searchPlaceholder": "ابحث في النص…",
+      "searchAria": "البحث في النص",
+      "matchLabel": "تم العثور على {n}",
+      "noTranscript": "لا يوجد نص مسجّل لهذا العمل.",
+      "noMatches": "لا توجد نتائج في النص."
+    },
+    "pdf": {
+      "previewAlt": "معاينة الصفحة الأولى",
+      "previewMissing": "لا توجد معاينة مسجّلة لهذا المستند.",
+      "download": "تنزيل المستند",
+      "downloadPreparing": "جارٍ تجهيز رابط التنزيل…",
+      "downloadFailed": "تعذّر جلب رابط التنزيل.",
+      "pageLabel": "صفحة {n} من {total}",
+      "prevPage": "الصفحة السابقة",
+      "nextPage": "الصفحة التالية",
+      "searchPlaceholder": "ابحث في نص المستند…",
+      "searchAria": "البحث في نص المستند",
+      "noMatches": "لا توجد نتائج في المستند.",
+      "matchJump": "التنقل بين النتائج"
+    },
+    "pano": {
+      "loading": "جارٍ تحميل العرض بزاوية ٣٦٠ درجة…",
+      "failed": "تعذّر تحميل العرض بزاوية ٣٦٠ درجة.",
+      "dragHint": "اسحب للتدوير؛ يمكنك أيضًا استخدام مفاتيح الأسهم. كبّر بعجلة الفأرة.",
+      "projectionLabel": "نوع الإسقاط",
+      "deviceNote": "هذا العرض مبني على صورة بانورامية كروية (equirectangular) ويعمل على جميع الأجهزة.",
+      "videoNote": "هذا فيديو بزاوية ٣٦٠ درجة؛ زر التشغيل يحرّك الصورة."
+    },
+    "mindmap": {
+      "empty": "لا توجد خريطة ذهنية مسجّلة لهذا العمل.",
+      "emptyHint": "تُضاف الخريطة الذهنية بعد النشر من هيئة التحرير.",
+      "expandAria": "فتح الخريطة الذهنية",
+      "collapseAria": "إغلاق الخريطة الذهنية"
+    },
+    "gate": {
+      "checking": "جارٍ التحقق من الصلاحية…",
+      "loginRequiredTitle": "يلزم تسجيل الدخول",
+      "loginRequiredBody": "هذا المحتوى مخصص للأعضاء المسجّلين. سجّل الدخول لعرضه.",
+      "loginCta": "تسجيل الدخول",
+      "notFoundTitle": "غير موجود",
+      "notFoundBody": "هذا العمل غير موجود أو غير منشور.",
+      "backToLibrary": "العودة إلى المكتبة"
+    }
+  }
+}

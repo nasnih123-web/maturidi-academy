@@ -65,6 +65,52 @@ export interface HomeSlotSetting {
   enabled: boolean;
 }
 
+/* ------------------------------------------------------------------ */
+/* Phase 5 settings: quran / munajat / adhan                            */
+/* ------------------------------------------------------------------ */
+
+/** Public settings contract for the Phase-5 Quran module.
+ *  Source of truth: apps/api/app/modules/quran/service.py `_DEFAULTS`
+ *  (keys `quran.show_translation`, `quran.show_tafsir`,
+ *  `quran.highlight_mode`, `quran.translations`, `quran.tafsirs`,
+ *  `quran.reciters`). The providers endpoint mirrors the same values;
+ *  the page prefers the providers config and falls back to these. */
+export interface QuranSettings {
+  defaultTranslation: string | null;
+  defaultTafsir: string | null;
+  defaultReciter: string | null;
+  showTranslation: boolean;
+  showTafsir: boolean;
+  /** "word" | "ayah" — highlight granularity hint for the audio player. */
+  highlightMode: 'word' | 'ayah';
+}
+
+/** Public settings contract for the night-munajat calm theme.
+ *  Backend keys: `munajat.enabled` (bool), `munajat.window` {start,end}
+ *  as "HH:MM" local-time strings (default 02:00–05:00). */
+export interface MunajatSettings {
+  enabled: boolean;
+  /** Local hour (0-23) when the calm theme starts; default 2. */
+  startHour: number;
+  /** Local hour (0-23) when the calm theme ends; default 5. */
+  endHour: number;
+  /** Optional ambient audio URL (safe href, same-origin or https). */
+  ambientAudioUrl: string | null;
+}
+
+/** Public settings contract for the adhan widget.
+ *  method ∈ {isna,mwl,egypt,karachi,makkah,jafari}; madhab ∈ {shafi,hanafi}
+ *  (backend enum — invalid values fall back to the defaults). */
+export interface AdhanSettings {
+  /** Calculation method id (backend-defined). */
+  method: string;
+  /** Madhab for Asr ("shafi" | "hanafi"). */
+  madhab: string;
+  /** Fallback coordinates when the user shares no location. */
+  defaultLat: number | null;
+  defaultLng: number | null;
+}
+
 export interface SiteConfig {
   version: number;
   updatedAt: string | null;
@@ -76,6 +122,10 @@ export interface SiteConfig {
    * empty → the homepage keeps today's behavior (API order + SPECS).
    */
   homeSections: HomeSlotSetting[] | null;
+  /** Phase 5 additions — all optional, typed defaults when missing. */
+  quran: QuranSettings;
+  munajat: MunajatSettings;
+  adhan: AdhanSettings;
 }
 
 export const DEFAULT_PARTICLES: ParticlesSettings = {
@@ -94,6 +144,9 @@ export function defaultSiteConfig(): SiteConfig {
     fonts: { fa: null, ar: null, en: null },
     hero: { fa: null, ar: null, en: null },
     homeSections: null,
+    quran: { ...DEFAULT_QURAN },
+    munajat: { ...DEFAULT_MUNAJAT },
+    adhan: { ...DEFAULT_ADHAN },
   };
 }
 
@@ -211,6 +264,109 @@ function parseHomeSections(v: unknown): HomeSlotSetting[] | null {
   return out.length > 0 ? out : null;
 }
 
+/* ------------------------------------------------------------------ */
+/* Phase 5 settings parsing (quran / munajat / adhan)                   */
+/* ------------------------------------------------------------------ */
+
+export const DEFAULT_QURAN: QuranSettings = {
+  defaultTranslation: null,
+  defaultTafsir: null,
+  defaultReciter: null,
+  showTranslation: true,
+  showTafsir: false,
+  highlightMode: 'ayah',
+};
+
+export const DEFAULT_MUNAJAT: MunajatSettings = {
+  enabled: true,
+  startHour: 2,
+  endHour: 5,
+  ambientAudioUrl: null,
+};
+
+const ADHAN_METHODS = ['isna', 'mwl', 'egypt', 'karachi', 'makkah', 'jafari'];
+const ADHAN_MADHABS = ['shafi', 'hanafi'];
+
+export const DEFAULT_ADHAN: AdhanSettings = {
+  method: 'mwl',
+  madhab: 'hanafi',
+  defaultLat: null,
+  defaultLng: null,
+};
+
+function strList(v: unknown): string[] {
+  if (!Array.isArray(v)) {
+    if (typeof v === 'string' && v.trim()) {
+      try {
+        const p: unknown = JSON.parse(v);
+        return Array.isArray(p) ? strList(p) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }
+  return v.filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
+}
+
+function parseQuranSettings(get: (key: string) => unknown): QuranSettings {
+  const translations = strList(get('quran.translations'));
+  const tafsirs = strList(get('quran.tafsirs'));
+  const reciters = strList(get('quran.reciters'));
+  const mode = get('quran.highlight_mode') === 'word' ? 'word' : 'ayah';
+  return {
+    defaultTranslation: translations[0] ?? null,
+    defaultTafsir: tafsirs[0] ?? null,
+    defaultReciter: reciters[0] ?? null,
+    showTranslation: bool(get('quran.show_translation'), true),
+    showTafsir: bool(get('quran.show_tafsir'), false),
+    highlightMode: mode,
+  };
+}
+
+function parseHour(v: unknown, fallback: number): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return Math.round(Math.min(23, Math.max(0, v)));
+  if (typeof v === 'string') {
+    const m = /^(\d{1,2})(?::(\d{2}))?/.exec(v.trim());
+    if (m) {
+      const h = Number(m[1]);
+      if (h >= 0 && h <= 23) return h;
+    }
+  }
+  return fallback;
+}
+
+function parseMunajatSettings(get: (key: string) => unknown): MunajatSettings {
+  const window = asObject(get('munajat.window'));
+  return {
+    enabled: bool(get('munajat.enabled'), true),
+    startHour: parseHour(window?.start, 2),
+    endHour: parseHour(window?.end, 5),
+    ambientAudioUrl: safeHref(get('munajat.ambient_audio_url')),
+  };
+}
+
+function parseAdhanSettings(get: (key: string) => unknown): AdhanSettings {
+  const methodRaw = get('adhan.method');
+  const madhabRaw = get('adhan.madhab');
+  const method =
+    typeof methodRaw === 'string' && ADHAN_METHODS.includes(methodRaw.toLowerCase())
+      ? methodRaw.toLowerCase()
+      : DEFAULT_ADHAN.method;
+  const madhab =
+    typeof madhabRaw === 'string' && ADHAN_MADHABS.includes(madhabRaw.toLowerCase())
+      ? madhabRaw.toLowerCase()
+      : DEFAULT_ADHAN.madhab;
+  const lat = typeof get('adhan.default_lat') === 'number' ? (get('adhan.default_lat') as number) : null;
+  const lng = typeof get('adhan.default_lng') === 'number' ? (get('adhan.default_lng') as number) : null;
+  return {
+    method,
+    madhab,
+    defaultLat: lat !== null && lat >= -90 && lat <= 90 ? lat : null,
+    defaultLng: lng !== null && lng >= -180 && lng <= 180 ? lng : null,
+  };
+}
+
 /**
  * Normalize the settings payload. Accepts the documented envelope
  * `{ settings: {<key>: <value>, …}, version, updated_at }`, a legacy
@@ -247,6 +403,9 @@ export function parseSiteConfig(body: unknown): SiteConfig {
     cfg.hero[l] = parseHero(get(`hero.${l}`));
   }
   cfg.homeSections = parseHomeSections(get('home.sections'));
+  cfg.quran = parseQuranSettings(get);
+  cfg.munajat = parseMunajatSettings(get);
+  cfg.adhan = parseAdhanSettings(get);
 
   return cfg;
 }

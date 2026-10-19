@@ -1,1 +1,745 @@
-{"appName": "Maturidi Academy", "brandSub": "Madrassa al-Imam al-Maturidi", "footer": {"columns": [{"heading": "Platform", "links": [{"href": "/fatwa", "label": "Fatwa"}, {"href": "/courses", "label": "Courses"}, {"href": "/library", "label": "Library"}, {"href": "/quran", "label": "Quran"}]}, {"heading": "Knowledge", "links": [{"href": "/articles", "label": "Articles"}, {"href": "/places", "label": "Places"}]}, {"heading": "Institution", "links": [{"href": "/terms", "label": "Terms"}, {"href": "/privacy", "label": "Privacy"}]}], "rights": "© {year} Maturidi Academy — All rights reserved.", "tagline": "Madrassa al-Imam al-Maturidi — a comprehensive Islamic sciences platform: research, teaching, fatwa and a digital library."}, "header": {"closeAria": "Close", "langAria": "Choose language", "langNames": {"ar": "العربية", "en": "English", "fa": "فارسی"}, "menuAria": "Menu", "mobileNavAria": "Navigation menu", "nav": [{"href": "", "label": "Home"}, {"href": "/fatwa", "label": "Fatwa"}, {"href": "/courses", "label": "Courses"}, {"href": "/library", "label": "Library"}, {"href": "/quran", "label": "Quran"}, {"href": "/articles", "label": "Articles"}, {"href": "/places", "label": "Places"}], "navAria": "Primary navigation", "searchAria": "Global search", "searchPlaceholder": "Search…", "submenuAria": "Submenu", "submenuExpand": "Open submenu for {label}"}, "home": {"card": {"details": "Details →", "pause": "Pause", "play": "Play", "seal": "Seal", "sliderNext": "Next", "sliderPrev": "Previous", "verified": "Scholarly verified", "view": "View"}, "donateCtaLabel": "Donate", "emptyFallback": "There is no content to show right now.", "errorDescription": "Could not reach the server. Check your connection and try again.", "errorRetry": "Retry", "errorTitle": "Page failed to load", "headerLandmark": "Site header", "hero": {"ctaPrimary": "Start learning", "ctaSecondary": "Browse library"}, "mainLandmark": "Page main content", "mapNote": "The interactive nearby-places map arrives in a later phase.", "metaDescription": "A comprehensive Islamic learning platform — research, fatwa, Quran and a digital library", "metaTitle": "Maturidi Academy — Madrassa al-Imam al-Maturidi", "quoteAria": "Verse of the day", "search": {"clear": "Clear search", "label": "Global search", "loading": "Searching…", "noResults": "No results found.", "placeholder": "Search the platform…", "resultsSummary": "{count} results", "searchButton": "Search", "searchUnavailable": "Search is currently unavailable.", "types": {"article": "Article", "book": "Book", "course": "Course", "fatwa": "Fatwa", "lesson": "Lesson", "page": "Page", "section": "Section", "theme": "Theme", "verse": "Verse"}}, "skipToContent": "Skip to main content", "status": {"aria": "Dates and prayer times", "gregorian": "Gregorian date", "hijri": "Hijri date", "solar": "Solar date"}, "viewAllLabel": "View all"}, "searchPage": {"errorDescription": "Could not reach the server. Please try again.", "errorTitle": "Search unavailable", "hint": "To search, type your query in the search box at the top of the page.", "metaTitle": "Search", "noResults": "No results found. Try a different query.", "resultsFor": "Results for “{q}”", "title": "Search results"}, "tagline": "A comprehensive Islamic learning platform", "content": {"announcements": {"dismiss": "Dismiss announcement", "listAria": "Site announcements"}, "events": {"aria": "Current Islamic event", "months": ["Muharram", "Safar", "Rabi’ al-Awwal", "Rabi’ al-Thani", "Jumada al-Ula", "Jumada al-Akhirah", "Rajab", "Sha’ban", "Ramadan", "Shawwal", "Dhu al-Qa’dah", "Dhu al-Hijjah"], "hijriDate": "{month} {day} AH"}, "quotes": {"heading": "Words of the Scholars", "aria": "Sayings of the scholars"}, "page": {"home": "Home", "updatedOn": "Last updated:", "previewBadge": "Preview — this page is not published yet", "breadcrumbAria": "Page breadcrumb", "errorTitle": "Page not found"}}}
+{
+  "appName": "Maturidi Academy",
+  "brandSub": "Madrassa al-Imam al-Maturidi",
+  "footer": {
+    "columns": [
+      {
+        "heading": "Platform",
+        "links": [
+          {
+            "href": "/fatwa",
+            "label": "Fatwa"
+          },
+          {
+            "href": "/courses",
+            "label": "Courses"
+          },
+          {
+            "href": "/library",
+            "label": "Library"
+          },
+          {
+            "href": "/quran",
+            "label": "Quran"
+          }
+        ]
+      },
+      {
+        "heading": "Knowledge",
+        "links": [
+          {
+            "href": "/articles",
+            "label": "Articles"
+          },
+          {
+            "href": "/places",
+            "label": "Places"
+          }
+        ]
+      },
+      {
+        "heading": "Institution",
+        "links": [
+          {
+            "href": "/terms",
+            "label": "Terms"
+          },
+          {
+            "href": "/privacy",
+            "label": "Privacy"
+          }
+        ]
+      }
+    ],
+    "rights": "© {year} Maturidi Academy — All rights reserved.",
+    "tagline": "Madrassa al-Imam al-Maturidi — a comprehensive Islamic sciences platform: research, teaching, fatwa and a digital library."
+  },
+  "header": {
+    "closeAria": "Close",
+    "langAria": "Choose language",
+    "langNames": {
+      "ar": "العربية",
+      "en": "English",
+      "fa": "فارسی"
+    },
+    "menuAria": "Menu",
+    "mobileNavAria": "Navigation menu",
+    "nav": [
+      {
+        "href": "",
+        "label": "Home"
+      },
+      {
+        "href": "/fatwa",
+        "label": "Fatwa"
+      },
+      {
+        "href": "/inheritance",
+        "label": "Inheritance"
+      },
+      {
+        "href": "/zakat",
+        "label": "Zakat"
+      },
+      {
+        "href": "/courses",
+        "label": "Courses"
+      },
+      {
+        "href": "/library",
+        "label": "Library"
+      },
+      {
+        "href": "/quran",
+        "label": "Quran"
+      },
+      {
+        "href": "/tasbih",
+        "label": "Tasbih"
+      },
+      {
+        "href": "/articles",
+        "label": "Articles"
+      },
+      {
+        "href": "/places",
+        "label": "Places"
+      }
+    ],
+    "navAria": "Primary navigation",
+    "searchAria": "Global search",
+    "searchPlaceholder": "Search…",
+    "submenuAria": "Submenu",
+    "submenuExpand": "Open submenu for {label}"
+  },
+  "home": {
+    "card": {
+      "details": "Details →",
+      "pause": "Pause",
+      "play": "Play",
+      "seal": "Seal",
+      "sliderNext": "Next",
+      "sliderPrev": "Previous",
+      "verified": "Scholarly verified",
+      "view": "View"
+    },
+    "donateCtaLabel": "Donate",
+    "emptyFallback": "There is no content to show right now.",
+    "errorDescription": "Could not reach the server. Check your connection and try again.",
+    "errorRetry": "Retry",
+    "errorTitle": "Page failed to load",
+    "headerLandmark": "Site header",
+    "hero": {
+      "ctaPrimary": "Start learning",
+      "ctaSecondary": "Browse library"
+    },
+    "mainLandmark": "Page main content",
+    "mapNote": "The interactive nearby-places map arrives in a later phase.",
+    "metaDescription": "A comprehensive Islamic learning platform — research, fatwa, Quran and a digital library",
+    "metaTitle": "Maturidi Academy — Madrassa al-Imam al-Maturidi",
+    "quoteAria": "Verse of the day",
+    "search": {
+      "clear": "Clear search",
+      "label": "Global search",
+      "loading": "Searching…",
+      "noResults": "No results found.",
+      "placeholder": "Search the platform…",
+      "resultsSummary": "{count} results",
+      "searchButton": "Search",
+      "searchUnavailable": "Search is currently unavailable.",
+      "types": {
+        "article": "Article",
+        "book": "Book",
+        "course": "Course",
+        "fatwa": "Fatwa",
+        "lesson": "Lesson",
+        "page": "Page",
+        "section": "Section",
+        "theme": "Theme",
+        "verse": "Verse"
+      }
+    },
+    "skipToContent": "Skip to main content",
+    "status": {
+      "aria": "Dates and prayer times",
+      "gregorian": "Gregorian date",
+      "hijri": "Hijri date",
+      "solar": "Solar date"
+    },
+    "viewAllLabel": "View all"
+  },
+  "searchPage": {
+    "errorDescription": "Could not reach the server. Please try again.",
+    "errorTitle": "Search unavailable",
+    "hint": "To search, type your query in the search box at the top of the page.",
+    "metaTitle": "Search",
+    "noResults": "No results found. Try a different query.",
+    "resultsFor": "Results for “{q}”",
+    "title": "Search results"
+  },
+  "tagline": "A comprehensive Islamic learning platform",
+  "content": {
+    "announcements": {
+      "dismiss": "Dismiss announcement",
+      "listAria": "Site announcements"
+    },
+    "events": {
+      "aria": "Current Islamic event",
+      "months": [
+        "Muharram",
+        "Safar",
+        "Rabi’ al-Awwal",
+        "Rabi’ al-Thani",
+        "Jumada al-Ula",
+        "Jumada al-Akhirah",
+        "Rajab",
+        "Sha’ban",
+        "Ramadan",
+        "Shawwal",
+        "Dhu al-Qa’dah",
+        "Dhu al-Hijjah"
+      ],
+      "hijriDate": "{month} {day} AH"
+    },
+    "quotes": {
+      "heading": "Words of the Scholars",
+      "aria": "Sayings of the scholars"
+    },
+    "page": {
+      "home": "Home",
+      "updatedOn": "Last updated:",
+      "previewBadge": "Preview — this page is not published yet",
+      "breadcrumbAria": "Page breadcrumb",
+      "errorTitle": "Page not found"
+    }
+  },
+  "quran": {
+    "metaTitle": "Holy Quran",
+    "metaDescription": "Quran recitation with translation, tafsir and audio-synced highlighting",
+    "title": "Holy Quran",
+    "searchPlaceholder": "Search surahs… (name or number)",
+    "searchAria": "Search surahs",
+    "juzLabel": "Juz",
+    "allJuz": "All",
+    "ayahsCount": "ayahs",
+    "noResults": "No surah found.",
+    "meccan": "Meccan",
+    "medinan": "Medinan",
+    "loadFailed": "Could not load Quran data. Check your connection and try again.",
+    "surahMetaTitle": "Surah {n}",
+    "surahOf": "Surah",
+    "reciterLabel": "Reciter",
+    "playSurah": "Play recitation",
+    "pause": "Pause",
+    "resume": "Resume",
+    "stop": "Stop",
+    "prevSurah": "Previous surah",
+    "nextSurah": "Next surah",
+    "audioUnavailable": "No audio is available for this surah.",
+    "audioFailed": "Audio playback failed.",
+    "ayahLink": "Direct link to ayah",
+    "showTranslation": "Show translation",
+    "showTafsir": "Show tafsir",
+    "bismillah": "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
+    "playAyah": "Play this ayah",
+    "playing": "Playing",
+    "translationLabel": "Translation",
+    "tafsirLabel": "Tafsir",
+    "ayahNumber": "Ayah",
+    "notesTitle": "Ayah notes",
+    "addNote": "Add note",
+    "notePlaceholder": "Write your private note…",
+    "saveNote": "Save",
+    "cancel": "Cancel",
+    "editNote": "Edit",
+    "deleteNote": "Delete",
+    "deleteConfirm": "Delete this note?",
+    "privateNote": "Private",
+    "publicNote": "Public",
+    "signInPrompt": "Sign in to save private notes.",
+    "signIn": "Sign in",
+    "notesEmpty": "No notes yet.",
+    "notesFailed": "Could not load notes.",
+    "noteSaved": "Note saved.",
+    "noteDeleted": "Note deleted."
+  },
+  "tasbih": {
+    "metaTitle": "Digital Tasbih",
+    "metaDescription": "Digital dhikr counter with voice counting",
+    "title": "Digital Tasbih",
+    "subtitle": "Tap the large button — or press Space/Enter — to count.",
+    "tapHint": "Tap",
+    "targetLabel": "Target",
+    "customTarget": "No target",
+    "finishSession": "Finish session",
+    "reset": "Reset",
+    "undo": "Undo",
+    "dailyTotals": "Daily totals",
+    "sessionsCount": "sessions",
+    "totalCount": "count",
+    "targetReached": "Masha'Allah! Target reached.",
+    "voiceStart": "Start voice counting",
+    "voiceStop": "Stop voice counting",
+    "voiceUnsupported": "Your browser does not support voice counting.",
+    "voiceListening": "Listening… each spoken dhikr counts.",
+    "signInToSync": "No sessions yet. Sign in to sync your sessions.",
+    "presets": [
+      {
+        "key": "subhanallah",
+        "text": "سُبْحَانَ ٱللَّٰهِ"
+      },
+      {
+        "key": "alhamdulillah",
+        "text": "ٱلْحَمْدُ لِلَّٰهِ"
+      },
+      {
+        "key": "allahuakbar",
+        "text": "ٱللَّٰهُ أَكْبَرُ"
+      },
+      {
+        "key": "lailahaillallah",
+        "text": "لَا إِلَٰهَ إِلَّا ٱللَّٰهُ"
+      },
+      {
+        "key": "astaghfirullah",
+        "text": "أَسْتَغْفِرُ ٱللَّٰهَ"
+      }
+    ],
+    "todaySynced": "Synced today"
+  },
+  "adhan": {
+    "metaTitle": "Prayer Times",
+    "metaDescription": "Prayer times and live countdown to the next prayer",
+    "title": "Prayer Times",
+    "subtitle": "Prayer times are calculated for your location.",
+    "nextPrayer": "Next prayer",
+    "prayers": {
+      "fajr": "Fajr",
+      "sunrise": "Sunrise",
+      "dhuhr": "Dhuhr",
+      "asr": "Asr",
+      "maghrib": "Maghrib",
+      "isha": "Isha",
+      "imsak": "Imsak",
+      "midnight": "Midnight"
+    },
+    "useGps": "Use device location (GPS)",
+    "manualTitle": "Enter coordinates manually",
+    "latLabel": "Latitude",
+    "lngLabel": "Longitude",
+    "cityLabel": "City name (optional)",
+    "applyLocation": "Apply",
+    "changeLocation": "Change location",
+    "hijriLabel": "Hijri date",
+    "methodLabel": "Method",
+    "needsLocation": "Set your location to see prayer times.",
+    "timesFailed": "Could not load prayer times.",
+    "timesInvalid": "Received times are invalid.",
+    "gpsDenied": "Location access denied; enter coordinates manually.",
+    "gpsUnsupported": "Your browser does not support geolocation.",
+    "invalidCoords": "Invalid coordinates.",
+    "countdownAria": "Countdown to next prayer",
+    "stripPrefix": "until",
+    "stripSetup": "Prayer times"
+  },
+  "munajat": {
+    "toggleOn": "Night theme: on",
+    "toggleOff": "Night theme: off",
+    "toggleAuto": "Night theme: auto",
+    "toggleAria": "Toggle night munajat theme",
+    "ambientPlay": "Play ambient sound",
+    "ambientPause": "Pause ambient sound"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signInHint": "Sign in with your email or phone number and password.",
+    "identifier": "Email or phone number",
+    "password": "Password",
+    "totp": "Two-factor code",
+    "loginFailed": "Sign-in failed."
+  },
+  "fatwa": {
+    "metaTitle": "Ask Fatwa | Maturidi Academy",
+    "metaDescription": "AI fatwa assistant grounded in approved sources — not a mufti replacement.",
+    "title": "AI Fatwa Assistant",
+    "subtitle": "Ask your fiqh question; the answer is drawn from the approved knowledge base.",
+    "noticeTitle": "AI assistant — not a mufti",
+    "noticeBody": "This is an AI assistant, not a fatwa authority. Answers are extracted only from approved knowledge-base content, and every answer shows its sources. Consult a qualified scholar for a binding ruling.",
+    "questionLabel": "Your question",
+    "questionPlaceholder": "Write your fiqh question here…",
+    "ask": "Ask",
+    "cancel": "Cancel",
+    "streamingLabel": "Receiving answer…",
+    "categoryAll": "All categories",
+    "categoriesLoading": "Loading categories…",
+    "categoriesFailed": "Could not load categories",
+    "historyTitle": "Previous chats",
+    "historyEmpty": "No saved chats yet.",
+    "clearHistory": "Clear",
+    "newChat": "New chat",
+    "showHistory": "Show history",
+    "hideHistory": "Hide history",
+    "citationsTitle": "Answer sources",
+    "idkTitle": "I don't know — outside the knowledge base",
+    "idkBody": "No answer to this question was found in the approved sources, so no guess was made.",
+    "llmUnavailableTitle": "AI service temporarily unavailable",
+    "llmUnavailableBody": "Please try again later.",
+    "askFailed": "Failed to get an answer",
+    "emptyHint": "Ask your question; the answer appears with source citations.",
+    "youLabel": "You",
+    "assistantLabel": "Assistant",
+    "usageLabel": "Usage",
+    "compareTitle": "Madhab Comparison",
+    "compareSubtitle": "Each madhab's position on a fiqh topic, with evidence.",
+    "evidenceLabel": "Evidence & references",
+    "emptyCompare": "No comparison found for this topic.",
+    "compareFailed": "Failed to load the comparison",
+    "madhabNames": {
+      "hanafi": "Hanafi",
+      "maliki": "Maliki",
+      "shafi": "Shafi'i",
+      "hanbali": "Hanbali"
+    }
+  },
+  "quiz": {
+    "metaTitle": "Fiqh Quiz | Maturidi Academy",
+    "metaDescription": "Fiqh knowledge quiz generated only from approved content.",
+    "title": "Fiqh Quiz",
+    "subtitle": "Questions come only from approved content; correct answers are never leaked.",
+    "startTitle": "New quiz",
+    "startHint": "Choose the number of questions and a category.",
+    "countLabel": "Question count",
+    "categoryLabel": "Category",
+    "categoryAny": "All categories",
+    "generate": "Start quiz",
+    "generating": "Generating questions…",
+    "questionOf": "Question {current} of {total}",
+    "next": "Next",
+    "prev": "Previous",
+    "submit": "Submit answers",
+    "submitting": "Submitting…",
+    "unansweredHint": "Answer all questions to submit",
+    "scoreTitle": "Quiz result",
+    "scoreOf": "{score} of {total}",
+    "reviewTitle": "Answer review",
+    "correctLabel": "Correct",
+    "wrongLabel": "Wrong",
+    "explanationLabel": "Source",
+    "retake": "Retake quiz",
+    "generateFailed": "Failed to generate the quiz",
+    "submitFailed": "Failed to submit answers",
+    "emptyFailed": "No questions were generated",
+    "categoriesLoading": "Loading categories…"
+  },
+  "verify": {
+    "metaTitle": "Verify Content | Maturidi Academy",
+    "metaDescription": "Check pasted text against the Academy's published content.",
+    "title": "Verify Content",
+    "subtitle": "Paste a text or quote to check it against the Academy's published content.",
+    "inputLabel": "Text to check",
+    "inputPlaceholder": "Paste the text here…",
+    "check": "Check",
+    "checking": "Checking…",
+    "cancel": "Cancel",
+    "inputEmpty": "No text entered.",
+    "checkFailed": "Check failed",
+    "verdictVerifiedTitle": "Verified",
+    "verdictVerifiedBody": "This text matches the Academy's published content.",
+    "verdictNotFoundTitle": "Not found",
+    "verdictNotFoundBody": "This text was not found in the Academy's published content.",
+    "verdictConflictTitle": "Conflicting",
+    "verdictConflictBody": "This text conflicts with some published sources.",
+    "sourcesTitle": "Sources",
+    "nearestLabel": "Nearest match"
+  },
+  "calculators": {
+    "madhabs": {
+      "hanafi": "Hanafi",
+      "maliki": "Maliki",
+      "shafi": "Shafi'i",
+      "hanbali": "Hanbali"
+    },
+    "heirTypes": {
+      "husband": "Husband",
+      "wife": "Wife",
+      "father": "Father",
+      "mother": "Mother",
+      "son": "Son",
+      "daughter": "Daughter",
+      "sons_son": "Son's son",
+      "sons_daughter": "Son's daughter",
+      "paternal_grandfather": "Paternal grandfather",
+      "paternal_grandmother": "Paternal grandmother",
+      "maternal_grandmother": "Maternal grandmother",
+      "full_brother": "Full brother",
+      "full_sister": "Full sister",
+      "paternal_brother": "Paternal brother",
+      "paternal_sister": "Paternal sister",
+      "maternal_brother": "Maternal brother",
+      "maternal_sister": "Maternal sister"
+    },
+    "inheritance": {
+      "metaTitle": "Inheritance Calculator | Maturidi Academy",
+      "metaDescription": "Calculate inheritance shares under the approved rules of all four madhabs.",
+      "title": "Inheritance Calculator",
+      "subtitle": "Calculate each heir's share under your madhab's approved rules.",
+      "madhabLabel": "Madhab",
+      "estateLabel": "Total estate value",
+      "estatePlaceholder": "e.g. 1,000,000",
+      "estateHint": "Total value of the deceased's assets in the local currency.",
+      "heirsTitle": "Heirs",
+      "heirTypeLabel": "Heir type",
+      "heirCountLabel": "Count",
+      "addHeir": "Add heir",
+      "removeHeir": "Remove this heir",
+      "calculate": "Calculate shares",
+      "calculating": "Calculating…",
+      "estateInvalid": "Please enter the estate value as a valid number.",
+      "needHeir": "Add at least one heir.",
+      "countInvalid": "Each heir's count must be between 1 and 99.",
+      "resultTitle": "Estate division result",
+      "heirCol": "Heir",
+      "countCol": "Count",
+      "shareCol": "Share",
+      "amountCol": "Amount",
+      "totalLabel": "Total",
+      "ruleVersion": "Basis: version {version} of the approved rules",
+      "notesTitle": "Notes",
+      "print": "Print",
+      "save": "Save to profile",
+      "saveLoginHint": "Sign in to save this calculation to your profile.",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "saveFailed": "Save failed; please try again.",
+      "recalculate": "Recalculate",
+      "failed": "Calculation failed; check your connection and try again.",
+      "pendingTitle": "Coming soon — pending scholarly approval",
+      "pendingBody": "This madhab's inheritance rules have not yet been reviewed and approved by a qualified scholar. No calculation is performed until approval."
+    },
+    "zakat": {
+      "metaTitle": "Zakat Calculator | Maturidi Academy",
+      "metaDescription": "Calculate zakat on your assets with the daily gold/silver nisab, under approved rules.",
+      "title": "Zakat Calculator",
+      "subtitle": "Enter your zakatable assets; the due amount is computed with today's nisab.",
+      "madhabLabel": "Madhab",
+      "assetsTitle": "Assets",
+      "assetLabels": {
+        "gold_grams": "Gold (grams)",
+        "silver_grams": "Silver (grams)",
+        "cash": "Cash",
+        "bank_deposits": "Bank deposits",
+        "trade_goods": "Trade goods",
+        "receivables": "Collectible receivables",
+        "investments": "Investments"
+      },
+      "assetHints": {
+        "gold_grams": "Weight of zakatable gold in grams.",
+        "silver_grams": "Weight of zakatable silver in grams.",
+        "cash": "",
+        "bank_deposits": "",
+        "trade_goods": "Market value of goods held for sale.",
+        "receivables": "Debts you expect to collect.",
+        "investments": "Market value of zakatable investments."
+      },
+      "debtsLabel": "Debts",
+      "debtsHint": "Due debts deductible from the assets.",
+      "calculate": "Calculate zakat",
+      "calculating": "Calculating…",
+      "invalidInput": "Please enter all values as valid numbers (zero or more).",
+      "failed": "Calculation failed; check your connection and try again.",
+      "pendingTitle": "Coming soon — pending scholarly approval",
+      "pendingBody": "The zakat rules have not yet been reviewed and approved by a qualified scholar. No calculation is performed until approval.",
+      "recalculate": "Recalculate",
+      "resultTitle": "Zakat result",
+      "zakatableTotalLabel": "Total zakatable assets",
+      "debtsDeductedLabel": "Debts deducted",
+      "nisabThresholdLabel": "Nisab threshold",
+      "zakatDueLabel": "Zakat due",
+      "ruleVersion": "Basis: version {version} of the approved rules",
+      "rateNote": "{note}",
+      "rateFresh": "Rate fresh",
+      "rateStale": "Rate stale",
+      "rateAsOf": "Last updated: {date}",
+      "ratePending": "Nisab rate pending scholarly approval",
+      "rateFailed": "Could not fetch the nisab rate",
+      "print": "Print"
+    }
+  },
+  "lms": {
+    "dashboardMetaTitle": "Learning Dashboard | Maturidi Academy",
+    "dashboardMetaDescription": "My courses, recommended lessons, study cohorts and certificates.",
+    "dashboardTitle": "Learning Dashboard",
+    "dashboardSubtitle": "Your study path at Maturidi Academy",
+    "courseMetaDescription": "Lesson outline, prerequisites and study cohorts for this course.",
+    "lessonMetaTitle": "Lesson | Maturidi Academy",
+    "lessonMetaDescription": "Lesson text, short quiz and study-progress tracking.",
+    "loginRequiredTitle": "Sign in to view your dashboard",
+    "loginRequiredBody": "Your learning dashboard, lesson progress and certificates appear after you sign in.",
+    "loginCta": "Sign in",
+    "loading": "Loading…",
+    "loadFailed": "Failed to load",
+    "retry": "Retry",
+    "continueTitle": "Continue learning",
+    "continueEmpty": "You are not enrolled in any course yet. Start from the course catalog.",
+    "continueCta": "Continue",
+    "progressLabel": "{percent}% complete",
+    "recommendationsTitle": "Recommended for you",
+    "recommendationsEmpty": "No recommendations yet.",
+    "openLesson": "Open lesson",
+    "cohortsTitle": "My study cohorts",
+    "cohortsEmpty": "You are not enrolled in any study cohort.",
+    "seatsLeftLabel": "{n} seats left",
+    "enrolledBadge": "Enrolled",
+    "certificatesTitle": "My certificates",
+    "certificatesEmpty": "No certificates issued yet. Complete a course to earn one.",
+    "verifyCta": "Verify certificate",
+    "downloadPdf": "Download PDF",
+    "reportTitle": "Study report",
+    "statLessons": "Lessons completed",
+    "statAvgScore": "Average score",
+    "statStreak": "Day streak",
+    "levelBeginner": "Beginner",
+    "levelIntermediate": "Intermediate",
+    "levelAdvanced": "Advanced",
+    "startsAt": "Starts",
+    "endsAt": "Ends",
+    "lessonsTitle": "Lesson outline",
+    "completedBadge": "Completed",
+    "quizBadge": "Has quiz",
+    "courseCohortsTitle": "Study cohorts for this course",
+    "courseCohortsEmpty": "No study cohorts announced for this course right now.",
+    "enroll": "Enroll in cohort",
+    "enrolling": "Enrolling…",
+    "enrolled": "Enrolled",
+    "enrollFailed": "Enrollment failed",
+    "loginToEnroll": "Sign in to enroll in a study cohort.",
+    "markComplete": "Mark as complete",
+    "markingComplete": "Saving…",
+    "saveFailed": "Failed to save progress",
+    "quizSectionTitle": "Lesson quiz",
+    "certificateTitle": "Congratulations! Course certificate issued",
+    "certificateBody": "You have successfully completed this course. The following certificate was issued with a unique code:",
+    "verifyCertificateCta": "Verify and view certificate",
+    "backToCourse": "Back to course",
+    "progressSaving": "Saving…",
+    "certificateMetaTitle": "Certificate verification | Maturidi Academy",
+    "certificateMetaDescription": "Verify the authenticity of a Maturidi Academy certificate with its unique code.",
+    "certificateTitle2": "Certificate verification",
+    "certificateSubtitle": "Enter the unique code on the certificate to verify its authenticity.",
+    "validTitle": "Certificate is valid",
+    "invalidTitle": "Certificate not found",
+    "invalidBody": "No certificate with this code is registered. Please check the code.",
+    "courseLabel": "Course",
+    "recipientLabel": "Student name",
+    "issuedAtLabel": "Issued at",
+    "codeLabel": "Certificate code",
+    "demoBadge": "Demo page — development only",
+    "demoTitle": "Learning dashboard preview (Phase 8)",
+    "demoNote": "All data below is fixture data (lib/demo-fixtures.ts), not real content.",
+    "statOverall": "Overall progress",
+    "courseQuizAvg": "Quiz avg",
+    "reasonNextIncomplete": "Continue your unfinished lesson",
+    "reasonNextLevel": "Your next step up",
+    "inProgressBadge": "In progress",
+    "notStartedBadge": "Not started",
+    "lessonsCountLabel": "{done} of {total} lessons",
+    "certificateEarned": "Certificate earned for this course",
+    "noCourseParam": "This lesson was opened without a course reference; please enter from the course page."
+  },
+  "library": {
+    "metaTitle": "Multimedia Library",
+    "metaDescription": "Maturidi Academy multimedia library: video, 360° video, PDF, audio and mind maps",
+    "itemMetaTitle": "{title}",
+    "title": "Multimedia Library",
+    "subtitle": "Scholars' lessons and works as video, audio, PDF, 360° views and mind maps",
+    "kinds": {
+      "all": "All",
+      "video": "Video",
+      "video_360": "360°",
+      "pdf": "PDF",
+      "audio": "Audio",
+      "mindmap": "Mind map"
+    },
+    "openItem": "Open",
+    "untitled": "Untitled",
+    "searchPlaceholder": "Search titles, tags and transcripts…",
+    "searchAria": "Search the library",
+    "tagFilterLabel": "Filter by tag",
+    "allTags": "All tags",
+    "noResults": "No items found.",
+    "noResultsHint": "Try a different phrase or clear the filters.",
+    "loadFailed": "Could not load the data.",
+    "loadFailedHint": "Check your connection and try again.",
+    "retry": "Retry",
+    "loading": "Loading…",
+    "loadMore": "Load more",
+    "relatedTitle": "Related items",
+    "breadcrumbAria": "Breadcrumb",
+    "chaptersTitle": "Table of contents",
+    "captionsNote": "Captions appear in this player when provided by the publisher.",
+    "seekToChapter": "Jump to section",
+    "player": {
+      "play": "Play",
+      "pause": "Pause",
+      "seekBack": "Back 10 seconds",
+      "seekForward": "Forward 10 seconds",
+      "speed": "Playback speed",
+      "loadingAudio": "Preparing audio…",
+      "audioFailed": "Audio playback failed.",
+      "coverAlt": "Work cover",
+      "loadingVideo": "Preparing video…",
+      "videoFailed": "Video playback failed.",
+      "nowPlaying": "Now playing",
+      "close": "Close player",
+      "expandAria": "Expand player",
+      "collapseAria": "Collapse player"
+    },
+    "transcript": {
+      "title": "Full transcript",
+      "expandAria": "Show full transcript",
+      "collapseAria": "Hide full transcript",
+      "searchPlaceholder": "Search the transcript…",
+      "searchAria": "Search the transcript",
+      "matchLabel": "{n} matches found",
+      "noTranscript": "No transcript recorded for this item.",
+      "noMatches": "No matches in the transcript."
+    },
+    "pdf": {
+      "previewAlt": "First-page preview",
+      "previewMissing": "No preview registered for this document.",
+      "download": "Download document",
+      "downloadPreparing": "Preparing download link…",
+      "downloadFailed": "Could not get the download link.",
+      "pageLabel": "Page {n} of {total}",
+      "prevPage": "Previous page",
+      "nextPage": "Next page",
+      "searchPlaceholder": "Search the document text…",
+      "searchAria": "Search the document text",
+      "noMatches": "No matches in the document.",
+      "matchJump": "Jump between matches"
+    },
+    "pano": {
+      "loading": "Loading 360° view…",
+      "failed": "Could not load the 360° view.",
+      "dragHint": "Drag to rotate; arrow keys work too. Zoom with the mouse wheel.",
+      "projectionLabel": "Projection type",
+      "deviceNote": "This view is built from a spherical (equirectangular) panorama and works on all devices.",
+      "videoNote": "This is a 360° video; the play button animates the view."
+    },
+    "mindmap": {
+      "empty": "No mind map registered for this item.",
+      "emptyHint": "The mind map is added by the editors after publication.",
+      "expandAria": "Open mind map",
+      "collapseAria": "Close mind map"
+    },
+    "gate": {
+      "checking": "Checking access…",
+      "loginRequiredTitle": "Login required",
+      "loginRequiredBody": "This content is for signed-in members. Please log in to view it.",
+      "loginCta": "Log in",
+      "notFoundTitle": "Not found",
+      "notFoundBody": "This item does not exist or is not published.",
+      "backToLibrary": "Back to library"
+    }
+  }
+}

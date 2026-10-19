@@ -1,1 +1,745 @@
-{"appName": "آکادمی ماتریدی", "brandSub": "مدرسة الإمام الماتریدی", "footer": {"columns": [{"heading": "پلتفرم", "links": [{"href": "/fatwa", "label": "فتوا"}, {"href": "/courses", "label": "دوره‌ها"}, {"href": "/library", "label": "کتابخانه"}, {"href": "/quran", "label": "قرآن"}]}, {"heading": "دانش", "links": [{"href": "/articles", "label": "مقالات"}, {"href": "/places", "label": "اماکن"}]}, {"heading": "نهاد", "links": [{"href": "/terms", "label": "قوانین"}, {"href": "/privacy", "label": "حریم خصوصی"}]}], "rights": "© {year} آکادمی ماتریدی — همهٔ حقوق محفوظ است.", "tagline": "مدرسة الإمام الماتریدی — پلتفرم جامع علوم اسلامی: پژوهش، آموزش، فتوا و کتابخانهٔ دیجیتال."}, "header": {"closeAria": "بستن", "langAria": "انتخاب زبان", "langNames": {"ar": "العربية", "en": "English", "fa": "فارسی"}, "menuAria": "منو", "mobileNavAria": "منوی ناوبری", "nav": [{"href": "", "label": "خانه"}, {"href": "/fatwa", "label": "فتوا"}, {"href": "/courses", "label": "دوره‌ها"}, {"href": "/library", "label": "کتابخانه"}, {"href": "/quran", "label": "قرآن"}, {"href": "/articles", "label": "مقالات"}, {"href": "/places", "label": "اماکن"}], "navAria": "ناوبری اصلی", "searchAria": "جست‌وجوی سراسری", "searchPlaceholder": "جست‌وجو…", "submenuAria": "زیرمنو", "submenuExpand": "باز کردن زیرمنوی {label}"}, "home": {"card": {"details": "جزئیات ←", "pause": "توقف", "play": "پخش", "seal": "مهر", "sliderNext": "بعدی", "sliderPrev": "قبلی", "verified": "تأیید مذهبی", "view": "مشاهده"}, "donateCtaLabel": "حمایت مالی", "emptyFallback": "در حال حاضر محتوایی برای نمایش وجود ندارد.", "errorDescription": "ارتباط با سرور برقرار نشد. لطفاً اتصال اینترنت خود را بررسی کنید و دوباره تلاش کنید.", "errorRetry": "تلاش مجدد", "errorTitle": "صفحه بارگذاری نشد", "headerLandmark": "سربرگ سایت", "hero": {"ctaPrimary": "شروع یادگیری", "ctaSecondary": "مشاهدهٔ کتابخانه"}, "mainLandmark": "محتوای اصلی صفحه", "mapNote": "نقشهٔ تعاملی اماکن نزدیک در فازهای آینده فعال می‌شود.", "metaDescription": "پلتفرم آموزشی اسلامی جامع — پژوهش، فتوا، قرآن و کتابخانهٔ دیجیتال", "metaTitle": "آکادمی ماتریدی — مدرسة الإمام الماتریدی", "quoteAria": "آیهٔ روز", "search": {"clear": "پاک‌کردن جست‌وجو", "label": "جست‌وجوی سراسری", "loading": "در حال جست‌وجو…", "noResults": "نتیجه‌ای یافت نشد.", "placeholder": "جست‌وجو در پلتفرم…", "resultsSummary": "{count} نتیجه", "searchButton": "جست‌وجو", "searchUnavailable": "جست‌وجو در حال حاضر در دسترس نیست.", "types": {"article": "مقاله", "book": "کتاب", "course": "دوره", "fatwa": "فتوا", "lesson": "درس", "page": "صفحه", "section": "بخش", "theme": "پوسته", "verse": "آیه"}}, "skipToContent": "پرش به محتوای اصلی", "status": {"aria": "تاریخ و اوقات شرعی", "gregorian": "تاریخ میلادی", "hijri": "تاریخ هجری قمری", "solar": "تاریخ شمسی"}, "viewAllLabel": "مشاهدهٔ همه"}, "searchPage": {"errorDescription": "ارتباط با سرور برقرار نشد. لطفاً دوباره تلاش کنید.", "errorTitle": "جست‌وجو در دسترس نیست", "hint": "برای جست‌وجو، عبارت موردنظر را در کادر بالای صفحه وارد کنید.", "metaTitle": "جست‌وجو", "noResults": "نتیجه‌ای یافت نشد. عبارت دیگری را امتحان کنید.", "resultsFor": "نتایج «{q}»", "title": "نتایج جست‌وجو"}, "tagline": "پلتفرم آموزشی اسلامی جامع", "content": {"announcements": {"dismiss": "بستن اعلان", "listAria": "اعلان‌های سراسری"}, "events": {"aria": "رویداد اسلامی جاری", "months": ["محرم", "صفر", "ربیع‌الاول", "ربیع‌الثانی", "جمادی‌الاول", "جمادی‌الثانی", "رجب", "شعبان", "رمضان", "شوال", "ذی‌القعده", "ذی‌الحجه"], "hijriDate": "{day} {month} هجری قمری"}, "quotes": {"heading": "سخنان بزرگان", "aria": "سخنان بزرگان و علمای امت"}, "page": {"home": "خانه", "updatedOn": "آخرین به‌روزرسانی:", "previewBadge": "پیش‌نمایش — این صفحه هنوز منتشر نشده است", "breadcrumbAria": "مسیر صفحه", "errorTitle": "صفحه یافت نشد"}}}
+{
+  "appName": "آکادمی ماتریدی",
+  "brandSub": "مدرسة الإمام الماتریدی",
+  "footer": {
+    "columns": [
+      {
+        "heading": "پلتفرم",
+        "links": [
+          {
+            "href": "/fatwa",
+            "label": "فتوا"
+          },
+          {
+            "href": "/courses",
+            "label": "دوره‌ها"
+          },
+          {
+            "href": "/library",
+            "label": "کتابخانه"
+          },
+          {
+            "href": "/quran",
+            "label": "قرآن"
+          }
+        ]
+      },
+      {
+        "heading": "دانش",
+        "links": [
+          {
+            "href": "/articles",
+            "label": "مقالات"
+          },
+          {
+            "href": "/places",
+            "label": "اماکن"
+          }
+        ]
+      },
+      {
+        "heading": "نهاد",
+        "links": [
+          {
+            "href": "/terms",
+            "label": "قوانین"
+          },
+          {
+            "href": "/privacy",
+            "label": "حریم خصوصی"
+          }
+        ]
+      }
+    ],
+    "rights": "© {year} آکادمی ماتریدی — همهٔ حقوق محفوظ است.",
+    "tagline": "مدرسة الإمام الماتریدی — پلتفرم جامع علوم اسلامی: پژوهش، آموزش، فتوا و کتابخانهٔ دیجیتال."
+  },
+  "header": {
+    "closeAria": "بستن",
+    "langAria": "انتخاب زبان",
+    "langNames": {
+      "ar": "العربية",
+      "en": "English",
+      "fa": "فارسی"
+    },
+    "menuAria": "منو",
+    "mobileNavAria": "منوی ناوبری",
+    "nav": [
+      {
+        "href": "",
+        "label": "خانه"
+      },
+      {
+        "href": "/fatwa",
+        "label": "فتوا"
+      },
+      {
+        "href": "/inheritance",
+        "label": "ارث"
+      },
+      {
+        "href": "/zakat",
+        "label": "زکات"
+      },
+      {
+        "href": "/courses",
+        "label": "دوره‌ها"
+      },
+      {
+        "href": "/library",
+        "label": "کتابخانه"
+      },
+      {
+        "href": "/quran",
+        "label": "قرآن"
+      },
+      {
+        "href": "/tasbih",
+        "label": "تسبیح"
+      },
+      {
+        "href": "/articles",
+        "label": "مقالات"
+      },
+      {
+        "href": "/places",
+        "label": "اماکن"
+      }
+    ],
+    "navAria": "ناوبری اصلی",
+    "searchAria": "جست‌وجوی سراسری",
+    "searchPlaceholder": "جست‌وجو…",
+    "submenuAria": "زیرمنو",
+    "submenuExpand": "باز کردن زیرمنوی {label}"
+  },
+  "home": {
+    "card": {
+      "details": "جزئیات ←",
+      "pause": "توقف",
+      "play": "پخش",
+      "seal": "مهر",
+      "sliderNext": "بعدی",
+      "sliderPrev": "قبلی",
+      "verified": "تأیید مذهبی",
+      "view": "مشاهده"
+    },
+    "donateCtaLabel": "حمایت مالی",
+    "emptyFallback": "در حال حاضر محتوایی برای نمایش وجود ندارد.",
+    "errorDescription": "ارتباط با سرور برقرار نشد. لطفاً اتصال اینترنت خود را بررسی کنید و دوباره تلاش کنید.",
+    "errorRetry": "تلاش مجدد",
+    "errorTitle": "صفحه بارگذاری نشد",
+    "headerLandmark": "سربرگ سایت",
+    "hero": {
+      "ctaPrimary": "شروع یادگیری",
+      "ctaSecondary": "مشاهدهٔ کتابخانه"
+    },
+    "mainLandmark": "محتوای اصلی صفحه",
+    "mapNote": "نقشهٔ تعاملی اماکن نزدیک در فازهای آینده فعال می‌شود.",
+    "metaDescription": "پلتفرم آموزشی اسلامی جامع — پژوهش، فتوا، قرآن و کتابخانهٔ دیجیتال",
+    "metaTitle": "آکادمی ماتریدی — مدرسة الإمام الماتریدی",
+    "quoteAria": "آیهٔ روز",
+    "search": {
+      "clear": "پاک‌کردن جست‌وجو",
+      "label": "جست‌وجوی سراسری",
+      "loading": "در حال جست‌وجو…",
+      "noResults": "نتیجه‌ای یافت نشد.",
+      "placeholder": "جست‌وجو در پلتفرم…",
+      "resultsSummary": "{count} نتیجه",
+      "searchButton": "جست‌وجو",
+      "searchUnavailable": "جست‌وجو در حال حاضر در دسترس نیست.",
+      "types": {
+        "article": "مقاله",
+        "book": "کتاب",
+        "course": "دوره",
+        "fatwa": "فتوا",
+        "lesson": "درس",
+        "page": "صفحه",
+        "section": "بخش",
+        "theme": "پوسته",
+        "verse": "آیه"
+      }
+    },
+    "skipToContent": "پرش به محتوای اصلی",
+    "status": {
+      "aria": "تاریخ و اوقات شرعی",
+      "gregorian": "تاریخ میلادی",
+      "hijri": "تاریخ هجری قمری",
+      "solar": "تاریخ شمسی"
+    },
+    "viewAllLabel": "مشاهدهٔ همه"
+  },
+  "searchPage": {
+    "errorDescription": "ارتباط با سرور برقرار نشد. لطفاً دوباره تلاش کنید.",
+    "errorTitle": "جست‌وجو در دسترس نیست",
+    "hint": "برای جست‌وجو، عبارت موردنظر را در کادر بالای صفحه وارد کنید.",
+    "metaTitle": "جست‌وجو",
+    "noResults": "نتیجه‌ای یافت نشد. عبارت دیگری را امتحان کنید.",
+    "resultsFor": "نتایج «{q}»",
+    "title": "نتایج جست‌وجو"
+  },
+  "tagline": "پلتفرم آموزشی اسلامی جامع",
+  "content": {
+    "announcements": {
+      "dismiss": "بستن اعلان",
+      "listAria": "اعلان‌های سراسری"
+    },
+    "events": {
+      "aria": "رویداد اسلامی جاری",
+      "months": [
+        "محرم",
+        "صفر",
+        "ربیع‌الاول",
+        "ربیع‌الثانی",
+        "جمادی‌الاول",
+        "جمادی‌الثانی",
+        "رجب",
+        "شعبان",
+        "رمضان",
+        "شوال",
+        "ذی‌القعده",
+        "ذی‌الحجه"
+      ],
+      "hijriDate": "{day} {month} هجری قمری"
+    },
+    "quotes": {
+      "heading": "سخنان بزرگان",
+      "aria": "سخنان بزرگان و علمای امت"
+    },
+    "page": {
+      "home": "خانه",
+      "updatedOn": "آخرین به‌روزرسانی:",
+      "previewBadge": "پیش‌نمایش — این صفحه هنوز منتشر نشده است",
+      "breadcrumbAria": "مسیر صفحه",
+      "errorTitle": "صفحه یافت نشد"
+    }
+  },
+  "quran": {
+    "metaTitle": "قرآن کریم",
+    "metaDescription": "تلاوت، ترجمه و تفسیر قرآن کریم با هایلایت هم‌زمان با صوت",
+    "title": "قرآن کریم",
+    "searchPlaceholder": "جست‌وجوی سوره… (نام یا شماره)",
+    "searchAria": "جست‌وجوی سوره",
+    "juzLabel": "جزء",
+    "allJuz": "همه",
+    "ayahsCount": "آیه",
+    "noResults": "سوره‌ای یافت نشد.",
+    "meccan": "مکی",
+    "medinan": "مدنی",
+    "loadFailed": "دریافت اطلاعات قرآن ممکن نشد. لطفاً اتصال را بررسی و دوباره تلاش کنید.",
+    "surahMetaTitle": "سوره {n}",
+    "surahOf": "سوره",
+    "reciterLabel": "قاری",
+    "playSurah": "پخش تلاوت",
+    "pause": "توقف موقت",
+    "resume": "ادامه",
+    "stop": "توقف",
+    "prevSurah": "سوره قبلی",
+    "nextSurah": "سوره بعدی",
+    "audioUnavailable": "صوتی برای این سوره در دسترس نیست.",
+    "audioFailed": "پخش صوت ممکن نشد.",
+    "ayahLink": "پیوند مستقیم به آیه",
+    "showTranslation": "نمایش ترجمه",
+    "showTafsir": "نمایش تفسیر",
+    "bismillah": "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
+    "playAyah": "پخش این آیه",
+    "playing": "در حال پخش",
+    "translationLabel": "ترجمه",
+    "tafsirLabel": "تفسیر",
+    "ayahNumber": "آیه",
+    "notesTitle": "یادداشت‌های آیه",
+    "addNote": "افزودن یادداشت",
+    "notePlaceholder": "یادداشت خصوصی خود را بنویسید…",
+    "saveNote": "ذخیره",
+    "cancel": "انصراف",
+    "editNote": "ویرایش",
+    "deleteNote": "حذف",
+    "deleteConfirm": "این یادداشت حذف شود؟",
+    "privateNote": "خصوصی",
+    "publicNote": "عمومی",
+    "signInPrompt": "برای ثبت یادداشت خصوصی وارد شوید.",
+    "signIn": "ورود",
+    "notesEmpty": "هنوز یادداشتی ثبت نشده است.",
+    "notesFailed": "دریافت یادداشت‌ها ممکن نشد.",
+    "noteSaved": "یادداشت ذخیره شد.",
+    "noteDeleted": "یادداشت حذف شد."
+  },
+  "tasbih": {
+    "metaTitle": "تسبیح دیجیتال",
+    "metaDescription": "ذکرشمار دیجیتال با امکان شمارش صوتی",
+    "title": "تسبیح دیجیتال",
+    "subtitle": "برای شمارش، دکمه بزرگ را لمس کنید یا کلید فاصله/اینتر را بزنید.",
+    "tapHint": "بزنید",
+    "targetLabel": "هدف",
+    "customTarget": "بدون هدف",
+    "finishSession": "پایان جلسه",
+    "reset": "صفر کردن",
+    "undo": "کم کردن",
+    "dailyTotals": "جمع روزانه",
+    "sessionsCount": "جلسه",
+    "totalCount": "ذکر",
+    "targetReached": "ماشاءالله! به هدف رسیدید.",
+    "voiceStart": "شروع شمارش صوتی",
+    "voiceStop": "توقف شمارش صوتی",
+    "voiceUnsupported": "مرورگر شما شمارش صوتی را پشتیبانی نمی‌کند.",
+    "voiceListening": "در حال شنیدن… هر ذکر گفته‌شده یک شمارش است.",
+    "signInToSync": "هنوز جلسه‌ای ثبت نشده است. با ورود به حساب، جلسات شما همگام می‌شود.",
+    "presets": [
+      {
+        "key": "subhanallah",
+        "text": "سُبْحَانَ ٱللَّٰهِ"
+      },
+      {
+        "key": "alhamdulillah",
+        "text": "ٱلْحَمْدُ لِلَّٰهِ"
+      },
+      {
+        "key": "allahuakbar",
+        "text": "ٱللَّٰهُ أَكْبَرُ"
+      },
+      {
+        "key": "lailahaillallah",
+        "text": "لَا إِلَٰهَ إِلَّا ٱللَّٰهُ"
+      },
+      {
+        "key": "astaghfirullah",
+        "text": "أَسْتَغْفِرُ ٱللَّٰهَ"
+      }
+    ],
+    "todaySynced": "همگام‌شده امروز"
+  },
+  "adhan": {
+    "metaTitle": "اوقات شرعی",
+    "metaDescription": "اوقات نماز و شمارش معکوس تا نماز بعدی",
+    "title": "اوقات شرعی",
+    "subtitle": "زمان‌های نماز بر اساس موقعیت شما محاسبه می‌شود.",
+    "nextPrayer": "نماز بعدی",
+    "prayers": {
+      "fajr": "اذان صبح",
+      "sunrise": "طلوع آفتاب",
+      "dhuhr": "اذان ظهر",
+      "asr": "نماز عصر",
+      "maghrib": "اذان مغرب",
+      "isha": "نماز عشاء",
+      "imsak": "امساک",
+      "midnight": "نیمه‌شب شرعی"
+    },
+    "useGps": "استفاده از موقعیت دستگاه (GPS)",
+    "manualTitle": "ورود دستی مختصات",
+    "latLabel": "عرض جغرافیایی",
+    "lngLabel": "طول جغرافیایی",
+    "cityLabel": "نام شهر (اختیاری)",
+    "applyLocation": "تأیید",
+    "changeLocation": "تغییر موقعیت",
+    "hijriLabel": "تاریخ قمری",
+    "methodLabel": "روش محاسبه",
+    "needsLocation": "برای نمایش اوقات شرعی، موقعیت خود را مشخص کنید.",
+    "timesFailed": "دریافت اوقات شرعی ممکن نشد.",
+    "timesInvalid": "زمان‌های دریافتی معتبر نیست.",
+    "gpsDenied": "دسترسی به موقعیت رد شد؛ مختصات را دستی وارد کنید.",
+    "gpsUnsupported": "مرورگر شما موقعیت‌یابی را پشتیبانی نمی‌کند.",
+    "invalidCoords": "مختصات معتبر نیست.",
+    "countdownAria": "شمارش معکوس تا نماز بعدی",
+    "stripPrefix": "تا",
+    "stripSetup": "اوقات شرعی"
+  },
+  "munajat": {
+    "toggleOn": "تم شبانه: روشن",
+    "toggleOff": "تم شبانه: خاموش",
+    "toggleAuto": "تم شبانه: خودکار",
+    "toggleAria": "تغییر تم مناجات شبانه",
+    "ambientPlay": "پخش صدای محیط",
+    "ambientPause": "توقف صدای محیط"
+  },
+  "auth": {
+    "signIn": "ورود",
+    "signInHint": "با ایمیل یا شماره تلفن و گذرواژه وارد شوید.",
+    "identifier": "ایمیل یا شماره تلفن",
+    "password": "گذرواژه",
+    "totp": "کد تأیید دوعاملی",
+    "loginFailed": "ورود ممکن نشد."
+  },
+  "fatwa": {
+    "metaTitle": "پرسش فتوا | آکادمی ماتریدی",
+    "metaDescription": "دستیار هوشمند فتوا بر پایهٔ منابع تأییدشده — نه جایگزین مفتی.",
+    "title": "دستیار فتوای هوشمند",
+    "subtitle": "سؤال فقهی خود را بپرسید؛ پاسخ از پایگاه دانش تأییدشده استخراج می‌شود.",
+    "noticeTitle": "دستیار هوشمند — نه مفتی",
+    "noticeBody": "این یک دستیار هوش مصنوعی است، نه مرجع فتوا. پاسخ‌ها فقط از محتوای تأییدشدهٔ پایگاه دانش استخراج می‌شوند و هر پاسخ منبعش را نشان می‌دهد. برای حکم قطعی به عالم واجد شرایط مراجعه کنید.",
+    "questionLabel": "پرسش شما",
+    "questionPlaceholder": "سؤال فقهی خود را اینجا بنویسید…",
+    "ask": "پرسیدن",
+    "cancel": "لغو",
+    "streamingLabel": "در حال دریافت پاسخ…",
+    "categoryAll": "همهٔ دسته‌ها",
+    "categoriesLoading": "در حال بارگذاری دسته‌ها…",
+    "categoriesFailed": "بارگذاری دسته‌ها ناموفق بود",
+    "historyTitle": "گفتگوهای پیشین",
+    "historyEmpty": "هنوز گفتگویی ذخیره نشده است.",
+    "clearHistory": "پاک‌سازی",
+    "newChat": "گفتگوی جدید",
+    "showHistory": "نمایش سوابق",
+    "hideHistory": "پنهان‌سازی سوابق",
+    "citationsTitle": "منابع پاسخ",
+    "idkTitle": "نمی‌دانم — خارج از پایگاه دانش",
+    "idkBody": "پاسخ این پرسش در منابع تأییدشده یافت نشد و از حدس‌زدن خودداری شد.",
+    "llmUnavailableTitle": "سرویس هوش مصنوعی موقتاً در دسترس نیست",
+    "llmUnavailableBody": "لطفاً کمی بعد دوباره تلاش کنید.",
+    "askFailed": "خطا در دریافت پاسخ",
+    "emptyHint": "سؤال خود را بپرسید؛ پاسخ به‌همراه استناد به منابع نمایش داده می‌شود.",
+    "youLabel": "شما",
+    "assistantLabel": "دستیار",
+    "usageLabel": "مصرف",
+    "compareTitle": "مقایسهٔ مذاهب",
+    "compareSubtitle": "موضع هر مذهب دربارهٔ یک موضوع فقهی، به‌همراه ادله.",
+    "evidenceLabel": "ادله و ارجاع‌ها",
+    "emptyCompare": "مقایسه‌ای برای این موضوع یافت نشد.",
+    "compareFailed": "خطا در بارگذاری مقایسه",
+    "madhabNames": {
+      "hanafi": "حنفی",
+      "maliki": "مالکی",
+      "shafi": "شافعی",
+      "hanbali": "حنبلی"
+    }
+  },
+  "quiz": {
+    "metaTitle": "آزمون شرعی | آکادمی ماتریدی",
+    "metaDescription": "آزمون دانش شرعی تولیدشده فقط از محتوای تأییدشده.",
+    "title": "آزمون شرعی",
+    "subtitle": "سؤالات فقط از محتوای تأییدشده تولید می‌شوند؛ پاسخ صحیح لو نمی‌رود.",
+    "startTitle": "آزمون جدید",
+    "startHint": "تعداد سؤال و دسته را انتخاب کنید.",
+    "countLabel": "تعداد سؤال",
+    "categoryLabel": "دسته",
+    "categoryAny": "همهٔ دسته‌ها",
+    "generate": "شروع آزمون",
+    "generating": "در حال تولید سؤالات…",
+    "questionOf": "سؤال {current} از {total}",
+    "next": "بعدی",
+    "prev": "قبلی",
+    "submit": "ثبت پاسخ‌ها",
+    "submitting": "در حال ثبت…",
+    "unansweredHint": "برای ثبت، به همهٔ سؤالات پاسخ دهید",
+    "scoreTitle": "نتیجهٔ آزمون",
+    "scoreOf": "{score} از {total}",
+    "reviewTitle": "بررسی پاسخ‌ها",
+    "correctLabel": "درست",
+    "wrongLabel": "نادرست",
+    "explanationLabel": "منبع",
+    "retake": "آزمون دوباره",
+    "generateFailed": "تولید آزمون ناموفق بود",
+    "submitFailed": "ثبت پاسخ‌ها ناموفق بود",
+    "emptyFailed": "سؤالی تولید نشد",
+    "categoriesLoading": "در حال بارگذاری دسته‌ها…"
+  },
+  "verify": {
+    "metaTitle": "راستی‌آزمایی محتوا | آکادمی ماتریدی",
+    "metaDescription": "متن پیست‌شده را با محتوای منتشرشدهٔ آکادمی بسنجید.",
+    "title": "راستی‌آزمایی محتوا",
+    "subtitle": "متن یا نقل‌قولی را پیست کنید تا با محتوای منتشرشدهٔ آکادمی سنجیده شود.",
+    "inputLabel": "متن برای بررسی",
+    "inputPlaceholder": "متن موردنظر را اینجا پیست کنید…",
+    "check": "بررسی",
+    "checking": "در حال بررسی…",
+    "cancel": "لغو",
+    "inputEmpty": "متنی وارد نشده است.",
+    "checkFailed": "خطا در بررسی",
+    "verdictVerifiedTitle": "تأییدشده",
+    "verdictVerifiedBody": "این متن با محتوای منتشرشدهٔ آکادمی مطابقت دارد.",
+    "verdictNotFoundTitle": "یافت نشد",
+    "verdictNotFoundBody": "این متن در محتوای منتشرشدهٔ آکادمی یافت نشد.",
+    "verdictConflictTitle": "تعارض",
+    "verdictConflictBody": "این متن با برخی منابع منتشرشده در تعارض است.",
+    "sourcesTitle": "منابع",
+    "nearestLabel": "نزدیک‌ترین مشابه"
+  },
+  "calculators": {
+    "madhabs": {
+      "hanafi": "حنفی",
+      "maliki": "مالکی",
+      "shafi": "شافعی",
+      "hanbali": "حنبلی"
+    },
+    "heirTypes": {
+      "husband": "شوهر",
+      "wife": "همسر (زن)",
+      "father": "پدر",
+      "mother": "مادر",
+      "son": "پسر",
+      "daughter": "دختر",
+      "sons_son": "پسرِ پسر",
+      "sons_daughter": "دخترِ پسر",
+      "paternal_grandfather": "پدربزرگ پدری",
+      "paternal_grandmother": "مادربزرگ پدری",
+      "maternal_grandmother": "مادربزرگ مادری",
+      "full_brother": "برادر تنی",
+      "full_sister": "خواهر تنی",
+      "paternal_brother": "برادر پدری",
+      "paternal_sister": "خواهر پدری",
+      "maternal_brother": "برادر مادری",
+      "maternal_sister": "خواهر مادری"
+    },
+    "inheritance": {
+      "metaTitle": "ماشین‌حساب ارث | آکادمی ماتریدی",
+      "metaDescription": "محاسبهٔ سهم الارث بر اساس قواعد تأییدشدهٔ هر چهار مذهب.",
+      "title": "ماشین‌حساب ارث",
+      "subtitle": "سهم هر وارث را بر اساس قواعد تأییدشدهٔ مذهب خود محاسبه کنید.",
+      "madhabLabel": "مذهب",
+      "estateLabel": "ارزش کل ترکه",
+      "estatePlaceholder": "مثلاً ۱٬۰۰۰٬۰۰۰٬۰۰۰",
+      "estateHint": "ارزش کل دارایی‌های متوفی به واحد پول رایج.",
+      "heirsTitle": "وراث",
+      "heirTypeLabel": "نوع وارث",
+      "heirCountLabel": "تعداد",
+      "addHeir": "افزودن وارث",
+      "removeHeir": "حذف این وارث",
+      "calculate": "محاسبهٔ سهم‌ها",
+      "calculating": "در حال محاسبه…",
+      "estateInvalid": "لطفاً ارزش ترکه را به‌صورت عددی معتبر وارد کنید.",
+      "needHeir": "دست‌کم یک وارث اضافه کنید.",
+      "countInvalid": "تعداد هر وارث باید عددی بین ۱ تا ۹۹ باشد.",
+      "resultTitle": "نتیجهٔ تقسیم ترکه",
+      "heirCol": "وارث",
+      "countCol": "تعداد",
+      "shareCol": "سهم",
+      "amountCol": "مبلغ",
+      "totalLabel": "جمع",
+      "ruleVersion": "مبنای محاسبه: نسخهٔ {version} از قواعد تأییدشده",
+      "notesTitle": "توضیحات",
+      "print": "چاپ",
+      "save": "ذخیره در پروفایل",
+      "saveLoginHint": "برای ذخیرهٔ این محاسبه در پروفایل خود، وارد شوید.",
+      "saving": "در حال ذخیره…",
+      "saved": "ذخیره شد",
+      "saveFailed": "ذخیره ناموفق بود؛ دوباره تلاش کنید.",
+      "recalculate": "محاسبهٔ دوباره",
+      "failed": "محاسبه ناموفق بود؛ اتصال را بررسی و دوباره تلاش کنید.",
+      "pendingTitle": "به‌زودی — در انتظار تأیید علمی",
+      "pendingBody": "قواعد ارث این مذهب هنوز توسط عالم واجد شرایط بازبینی و تأیید نشده است. تا زمان تأیید، محاسبه‌ای انجام نمی‌شود."
+    },
+    "zakat": {
+      "metaTitle": "ماشین‌حساب زکات | آکادمی ماتریدی",
+      "metaDescription": "محاسبهٔ زکات دارایی‌ها با نصاب به‌روز طلا و نقره، بر اساس قواعد تأییدشده.",
+      "title": "ماشین‌حساب زکات",
+      "subtitle": "دارایی‌های مشمول زکات را وارد کنید؛ مبلغ زکات با نصاب روز محاسبه می‌شود.",
+      "madhabLabel": "مذهب",
+      "assetsTitle": "دارایی‌ها",
+      "assetLabels": {
+        "gold_grams": "طلا (گرم)",
+        "silver_grams": "نقره (گرم)",
+        "cash": "وجه نقد",
+        "bank_deposits": "سپرده‌های بانکی",
+        "trade_goods": "کالاهای تجاری",
+        "receivables": "مطالبات وصول‌شدنی",
+        "investments": "سرمایه‌گذاری‌ها"
+      },
+      "assetHints": {
+        "gold_grams": "وزن طلای مشمول زکات به گرم.",
+        "silver_grams": "وزن نقرهٔ مشمول زکات به گرم.",
+        "cash": "",
+        "bank_deposits": "",
+        "trade_goods": "ارزش روز کالاهای آمادهٔ فروش.",
+        "receivables": "طلب‌هایی که انتظار وصولشان می‌رود.",
+        "investments": "ارزش روز سرمایه‌گذاری‌های مشمول."
+      },
+      "debtsLabel": "بدهی‌ها",
+      "debtsHint": "بدهی‌های سررسیدشده و قابل‌کسر از دارایی‌ها.",
+      "calculate": "محاسبهٔ زکات",
+      "calculating": "در حال محاسبه…",
+      "invalidInput": "لطفاً همهٔ مقادیر را به‌صورت عددی معتبر (صفر یا بیشتر) وارد کنید.",
+      "failed": "محاسبه ناموفق بود؛ اتصال را بررسی و دوباره تلاش کنید.",
+      "pendingTitle": "به‌زودی — در انتظار تأیید علمی",
+      "pendingBody": "قواعد زکات هنوز توسط عالم واجد شرایط بازبینی و تأیید نشده است. تا زمان تأیید، محاسبه‌ای انجام نمی‌شود.",
+      "recalculate": "محاسبهٔ دوباره",
+      "resultTitle": "نتیجهٔ زکات",
+      "zakatableTotalLabel": "جمع دارایی‌های مشمول",
+      "debtsDeductedLabel": "بدهی‌های کسرشده",
+      "nisabThresholdLabel": "حد نصاب",
+      "zakatDueLabel": "زکات واجب",
+      "ruleVersion": "مبنای محاسبه: نسخهٔ {version} از قواعد تأییدشده",
+      "rateNote": "{note}",
+      "rateFresh": "نرخ به‌روز",
+      "rateStale": "نرخ قدیمی",
+      "rateAsOf": "آخرین به‌روزرسانی: {date}",
+      "ratePending": "نرخ نصاب در انتظار تأیید علمی است",
+      "rateFailed": "دریافت نرخ نصاب ناموفق بود",
+      "print": "چاپ"
+    }
+  },
+  "lms": {
+    "dashboardMetaTitle": "پیشخوان یادگیری | آکادمی ماتریدی",
+    "dashboardMetaDescription": "دوره‌های من، دروس پیشنهادی، گروه‌های هم‌درسی و گواهی‌های تحصیلی.",
+    "dashboardTitle": "پیشخوان یادگیری",
+    "dashboardSubtitle": "مسیر تحصیلی شما در آکادمی ماتریدی",
+    "courseMetaDescription": "سرفصل دروس، پیش‌نیازها و گروه‌های هم‌درسی این دوره.",
+    "lessonMetaTitle": "درس | آکادمی ماتریدی",
+    "lessonMetaDescription": "متن درس، آزمون کوتاه و ثبت پیشرفت مطالعه.",
+    "loginRequiredTitle": "برای مشاهدهٔ پیشخوان وارد شوید",
+    "loginRequiredBody": "پیشخوان یادگیری، پیشرفت دروس و گواهی‌های شما پس از ورود به حساب نمایش داده می‌شود.",
+    "loginCta": "ورود به حساب",
+    "loading": "در حال بارگذاری…",
+    "loadFailed": "خطا در بارگذاری",
+    "retry": "تلاش دوباره",
+    "continueTitle": "ادامهٔ یادگیری",
+    "continueEmpty": "هنوز در دوره‌ای ثبت‌نام نکرده‌اید. از فهرست دوره‌ها شروع کنید.",
+    "continueCta": "ادامه بده",
+    "progressLabel": "{percent}٪ تکمیل شده",
+    "recommendationsTitle": "پیشنهاد برای شما",
+    "recommendationsEmpty": "هنوز پیشنهادی ثبت نشده است.",
+    "openLesson": "مشاهدهٔ درس",
+    "cohortsTitle": "گروه‌های هم‌درسی من",
+    "cohortsEmpty": "در گروه هم‌درسی‌ای ثبت‌نام نکرده‌اید.",
+    "seatsLeftLabel": "{n} ظرفیت باقی‌مانده",
+    "enrolledBadge": "ثبت‌نام شده",
+    "certificatesTitle": "گواهی‌های من",
+    "certificatesEmpty": "هنوز گواهی‌ای صادر نشده است. با تکمیل یک دوره، گواهی دریافت می‌کنید.",
+    "verifyCta": "استعلام گواهی",
+    "downloadPdf": "دریافت PDF",
+    "reportTitle": "گزارش مطالعه",
+    "statLessons": "درس‌های تکمیل‌شده",
+    "statAvgScore": "میانگین نمره",
+    "statStreak": "روزهای پیاپی",
+    "levelBeginner": "مقدماتی",
+    "levelIntermediate": "متوسط",
+    "levelAdvanced": "پیشرفته",
+    "startsAt": "شروع",
+    "endsAt": "پایان",
+    "lessonsTitle": "سرفصل دروس",
+    "completedBadge": "تکمیل شده",
+    "quizBadge": "آزمون دارد",
+    "courseCohortsTitle": "گروه‌های هم‌درسی این دوره",
+    "courseCohortsEmpty": "در حال حاضر گروه هم‌درسی فعالی برای این دوره اعلام نشده است.",
+    "enroll": "ثبت‌نام در گروه",
+    "enrolling": "در حال ثبت‌نام…",
+    "enrolled": "ثبت‌نام شدید",
+    "enrollFailed": "خطا در ثبت‌نام",
+    "loginToEnroll": "برای ثبت‌نام در گروه هم‌درسی وارد حساب خود شوید.",
+    "markComplete": "علامت‌گذاری به‌عنوان تکمیل‌شده",
+    "markingComplete": "در حال ثبت…",
+    "saveFailed": "خطا در ذخیرهٔ پیشرفت",
+    "quizSectionTitle": "آزمون کوتاه درس",
+    "certificateTitle": "تبریک! گواهی دوره صادر شد",
+    "certificateBody": "شما این دوره را با موفقیت به پایان رساندید. گواهی زیر با کد یکتا صادر شد:",
+    "verifyCertificateCta": "استعلام و مشاهدهٔ گواهی",
+    "backToCourse": "بازگشت به دوره",
+    "progressSaving": "در حال ذخیره…",
+    "certificateMetaTitle": "استعلام گواهی | آکادمی ماتریدی",
+    "certificateMetaDescription": "اصالت گواهی تحصیلی آکادمی ماتریدی را با کد یکتا بررسی کنید.",
+    "certificateTitle2": "استعلام گواهی",
+    "certificateSubtitle": "کد یکتای روی گواهی را وارد کنید تا اصالت آن بررسی شود.",
+    "validTitle": "گواهی معتبر است",
+    "invalidTitle": "گواهی یافت نشد",
+    "invalidBody": "گواهی‌ای با این کد در سامانه ثبت نشده است. از درستی کد اطمینان حاصل کنید.",
+    "courseLabel": "دوره",
+    "recipientLabel": "نام دانش‌پژوه",
+    "issuedAtLabel": "تاریخ صدور",
+    "codeLabel": "کد گواهی",
+    "demoBadge": "صفحهٔ نمایشی — فقط برای توسعه",
+    "demoTitle": "پیش‌نمایش پیشخوان یادگیری (فاز ۸)",
+    "demoNote": "تمام داده‌های زیر نمایشی‌اند (lib/demo-fixtures.ts) و هیچ‌یک محتوای واقعی نیست. مسیرهای واقعی هرگز این داده‌ها را نشان نمی‌دهند.",
+    "statOverall": "پیشرفت کلی",
+    "courseQuizAvg": "میانگین آزمون",
+    "reasonNextIncomplete": "ادامهٔ درس ناتمام سطح شما",
+    "reasonNextLevel": "گام بعدی سطح شما",
+    "inProgressBadge": "در حال مطالعه",
+    "notStartedBadge": "شروع نشده",
+    "lessonsCountLabel": "{done} از {total} درس",
+    "certificateEarned": "گواهی این دوره صادر شده است",
+    "noCourseParam": "درس بدون شناسهٔ دوره باز شده است؛ لطفاً از صفحهٔ دوره وارد شوید."
+  },
+  "library": {
+    "metaTitle": "کتابخانهٔ چندرسانه‌ای",
+    "metaDescription": "کتابخانهٔ چندرسانه‌ای آکادمی ماتریدی: ویدیو، ویدیوی ۳۶۰ درجه، پی‌دی‌اف، صوت و نقشهٔ ذهنی",
+    "itemMetaTitle": "{title}",
+    "title": "کتابخانهٔ چندرسانه‌ای",
+    "subtitle": "درس‌ها و آثار علما در قالب ویدیو، صوت، پی‌دی‌اف، نمای ۳۶۰ درجه و نقشهٔ ذهنی",
+    "kinds": {
+      "all": "همه",
+      "video": "ویدیو",
+      "video_360": "۳۶۰°",
+      "pdf": "پی‌دی‌اف",
+      "audio": "صوت",
+      "mindmap": "نقشهٔ ذهنی"
+    },
+    "openItem": "مشاهده",
+    "untitled": "بدون عنوان",
+    "searchPlaceholder": "جست‌وجو در عنوان، برچسب و متن…",
+    "searchAria": "جست‌وجو در کتابخانه",
+    "tagFilterLabel": "پالایش بر اساس برچسب",
+    "allTags": "همهٔ برچسب‌ها",
+    "noResults": "موردی یافت نشد.",
+    "noResultsHint": "عبارت دیگری را امتحان کنید یا پالایش‌ها را بردارید.",
+    "loadFailed": "دریافت اطلاعات ممکن نشد.",
+    "loadFailedHint": "اتصال را بررسی کنید و دوباره تلاش کنید.",
+    "retry": "تلاش دوباره",
+    "loading": "در حال بارگذاری…",
+    "loadMore": "موارد بیشتر",
+    "relatedTitle": "موارد مرتبط",
+    "breadcrumbAria": "مسیر صفحه",
+    "chaptersTitle": "فهرست مطالب",
+    "captionsNote": "زیرنویس در صورت ارائه از سوی ناشر، از همین پخش‌کننده نمایش داده می‌شود.",
+    "seekToChapter": "پرش به بخش",
+    "player": {
+      "play": "پخش",
+      "pause": "توقف موقت",
+      "seekBack": "۱۰ ثانیه به عقب",
+      "seekForward": "۱۰ ثانیه به جلو",
+      "speed": "سرعت پخش",
+      "loadingAudio": "در حال آماده‌سازی صوت…",
+      "audioFailed": "پخش صوت ممکن نشد.",
+      "coverAlt": "جلد اثر",
+      "loadingVideo": "در حال آماده‌سازی ویدیو…",
+      "videoFailed": "پخش ویدیو ممکن نشد.",
+      "nowPlaying": "در حال پخش",
+      "close": "بستن پخش‌کننده",
+      "expandAria": "باز کردن پخش‌کننده",
+      "collapseAria": "جمع کردن پخش‌کننده"
+    },
+    "transcript": {
+      "title": "متن کامل",
+      "expandAria": "نمایش متن کامل",
+      "collapseAria": "پنهان کردن متن کامل",
+      "searchPlaceholder": "جست‌وجو در متن…",
+      "searchAria": "جست‌وجو در متن",
+      "matchLabel": "{n} مورد یافت شد",
+      "noTranscript": "متنی برای این اثر ثبت نشده است.",
+      "noMatches": "موردی در متن یافت نشد."
+    },
+    "pdf": {
+      "previewAlt": "پیش‌نمایش صفحهٔ اول",
+      "previewMissing": "پیش‌نمایشی برای این سند ثبت نشده است.",
+      "download": "دانلود سند",
+      "downloadPreparing": "در حال آماده‌سازی پیوند دانلود…",
+      "downloadFailed": "دریافت پیوند دانلود ممکن نشد.",
+      "pageLabel": "صفحهٔ {n} از {total}",
+      "prevPage": "صفحهٔ قبلی",
+      "nextPage": "صفحهٔ بعدی",
+      "searchPlaceholder": "جست‌وجو در متن سند…",
+      "searchAria": "جست‌وجو در متن سند",
+      "noMatches": "موردی در سند یافت نشد.",
+      "matchJump": "پرش بین موارد یافت‌شده"
+    },
+    "pano": {
+      "loading": "در حال بارگذاری نمای ۳۶۰ درجه…",
+      "failed": "بارگذاری نمای ۳۶۰ درجه ممکن نشد.",
+      "dragHint": "برای چرخش، بکشید؛ با کلیدهای جهت‌دار هم می‌توانید بچرخید. با چرخ ماوس بزرگ‌نمایی کنید.",
+      "projectionLabel": "نوع پرژکشن",
+      "deviceNote": "این نما از تصویر پانورامای کروی (equirectangular) ساخته شده و روی همهٔ دستگاه‌ها کار می‌کند.",
+      "videoNote": "این یک ویدیوی ۳۶۰ درجه است؛ با دکمهٔ پخش، تصویر متحرک می‌شود."
+    },
+    "mindmap": {
+      "empty": "نقشهٔ ذهنی‌ای برای این اثر ثبت نشده است.",
+      "emptyHint": "نقشهٔ ذهنی پس از انتشار از سوی تحریریه اضافه می‌شود.",
+      "expandAria": "باز کردن نقشهٔ ذهنی",
+      "collapseAria": "بستن نقشهٔ ذهنی"
+    },
+    "gate": {
+      "checking": "در حال بررسی دسترسی…",
+      "loginRequiredTitle": "نیاز به ورود",
+      "loginRequiredBody": "این محتوا ویژهٔ اعضای واردشده است. برای مشاهده، وارد حساب کاربری خود شوید.",
+      "loginCta": "ورود به حساب",
+      "notFoundTitle": "موردی یافت نشد",
+      "notFoundBody": "این اثر وجود ندارد یا منتشر نشده است.",
+      "backToLibrary": "بازگشت به کتابخانه"
+    }
+  }
+}
