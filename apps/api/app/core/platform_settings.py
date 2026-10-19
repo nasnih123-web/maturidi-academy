@@ -85,6 +85,11 @@ SETTING_DEFS: dict[str, dict] = {
     "ai.embedding_endpoint": {"type": "json", "sensitive": False, "label": "endpoint سرویس embedding خارجی"},
     "ai.embedding_api_key": {"type": "secret", "sensitive": True, "label": "کلید سرویس embedding خارجی"},
     "ai.embedding_model": {"type": "json", "sensitive": False, "label": "نام مدل embedding خارجی"},
+    # --- فاز ۱۳ (Track 1): پوش — FCM برای موبایل، web_push جدا برای وب (ADR-0010) ---
+    # staged و خالی: فقط در رجیستری ثبت‌اند؛ هیچ مقداری seed/hardcode نمی‌شود (§۱۵.۳).
+    "push.fcm_server_key": {"type": "secret", "sensitive": True, "label": "کلید سرور FCM (پوش موبایل)"},
+    "push.vapid_public_key": {"type": "string", "sensitive": False, "label": "کلید عمومی VAPID (web push)"},
+    "push.vapid_private_key": {"type": "secret", "sensitive": True, "label": "کلید خصوصی VAPID (web push)"},
 }
 
 _MISS = object()

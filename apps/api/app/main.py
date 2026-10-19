@@ -68,6 +68,7 @@ from app.modules.voice.router import (
     admin_voice_router,
     voice_router,
 )
+from app.modules.sync.router import sync_router
 from app.modules.widgets.cors import WidgetCorsMiddleware
 from app.modules.home.router import router as home_router
 from app.modules.meta.router import router as meta_router
@@ -200,6 +201,7 @@ app.include_router(api_keys_router)
 app.include_router(widgets_router)
 app.include_router(voice_router)
 app.include_router(admin_voice_router)
+app.include_router(sync_router)
 
 # CORS wildcard فقط برای /api/v1/widgets/* (§۹.۵ — بدون credential/cookie).
 # این middleware فقط همان prefix را لمس می‌کند؛ هیچ endpoint

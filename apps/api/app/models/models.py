@@ -22,6 +22,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -170,7 +171,7 @@ class NotificationPreference(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), index=True)
-    channel: Mapped[str] = mapped_column(String(16))  # email | sms | push | in_app
+    channel: Mapped[str] = mapped_column(String(16))  # email | sms | push | web_push | in_app
     notif_type: Mapped[str] = mapped_column(String(64))  # security | product | marketing
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -479,6 +480,11 @@ class UserAyahNote(Base):
     note_text: Mapped[str] = mapped_column(Text)
     is_private: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    # فاز ۱۳ (ADR-0010): نسخهٔ خوش‌بینانه برای sync آفلاین
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=True
+    )
 
 
 class DhikrSession(Base):
@@ -507,6 +513,11 @@ class DhikrDailyCount(Base):
     date: Mapped[date] = mapped_column(Date, index=True)
     dhikr_text: Mapped[str] = mapped_column(String(255))
     total_count: Mapped[int] = mapped_column(Integer, default=0)
+    # فاز ۱۳ (ADR-0010): نسخهٔ خوش‌بینانه برای sync آفلاین
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=True
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -962,6 +973,8 @@ class UserProgress(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
+    # فاز ۱۳ (ADR-0010): نسخهٔ خوش‌بینانه برای sync آفلاین
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     __table_args__ = (
         UniqueConstraint("user_id", "lesson_id", name="uq_user_progress_user_lesson"),
@@ -1602,4 +1615,227 @@ class VoiceUsageLog(Base):
     tts_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# فاز ۱۳ — موتور همگام‌سازی آفلاین (Track 1 — بک‌اند، ADR-0010)
+#
+# قراردادها:
+# - موجودیت‌های syncable: user_ayah_notes | user_progress | dhikr_daily_counts
+#   (§۹.۵: جدول‌های sync موتور از همان فاز ساخته می‌شوند؛ ارجاع به جدول‌های
+#   فازهای قبل فقط روی کلیدهای پایدار خودشان است، بدون FK جدید به آن‌ها —
+#   entity_id رشته‌ای و مالکیت با user_id کنترل می‌شود).
+# - tombstone = حذف منطقیِ ماندگار؛ sync_operations با client_op_id یکتا
+#   (idempotency بازپخش)؛ ژورنال sync_changelog منبع pull است.
+# ---------------------------------------------------------------------------
+
+
+class DeviceCursor(Base):
+    """کرسر pull به‌ازای هر (کاربر، دستگاه) — یکتا روی (user_id, device_id)."""
+
+    __tablename__ = "device_cursors"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    device_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    cursor_seq: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "device_id", name="uq_device_cursors_user_device"
+        ),
+    )
+
+
+class SyncOperation(Base):
+    """عملیات push یک دستگاه — idempotency روی client_op_id.
+
+    نتیجهٔ هر op در `result` ذخیره می‌شود تا بازپخش همان batch دقیقاً همان
+    پاسخ را بدهد بدون اعمال دوباره (§۴ تفاوت idempotency درخواست و رویداد).
+    """
+
+    __tablename__ = "sync_operations"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    client_op_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    device_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    op_type: Mapped[str] = mapped_column(String(16), nullable=False)  # upsert | delete
+    payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    base_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), default="pending", nullable=False
+    )  # pending | applied | conflicted | rejected
+    result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    applied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        Index("ix_sync_operations_entity", "entity_type", "entity_id"),
+    )
+
+
+class SyncTombstone(Base):
+    """حذف منطقیِ ماندگار — بین دستگاه‌ها همگام می‌شود، هرگز زود پاک نمی‌شود.
+
+    یکتایی (user_id, entity_type, entity_id): چون entity_idهایی مثل lesson_id
+    بین کاربران یکتا نیستند (ADR-0010).
+    """
+
+    __tablename__ = "sync_tombstones"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    deleted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    version: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "entity_type", "entity_id",
+            name="uq_sync_tombstones_user_entity",
+        ),
+    )
+
+
+class ConflictRecord(Base):
+    """تعارض نسخه‌ای محتوای نوشته‌شدهٔ کاربر — سطح فیلد، هر دو نسخه نگه‌داری می‌شود.
+
+    قرارداد نام‌گذاری (ADR-0010): local = نسخهٔ دستگاهی که دیرتر push کرد و
+    بازنده شد؛ remote = نسخهٔ فعلی سرور که برنده شد و نگه داشته شد.
+    """
+
+    __tablename__ = "conflict_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    local_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    remote_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    local_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    remote_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    resolution: Mapped[str] = mapped_column(
+        String(16), default="pending", index=True, nullable=False
+    )  # pending | keep_local | keep_remote | merged
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+
+class SyncChangeLog(Base):
+    """ژورنال الحاقی تغییرات سرور — تنها منبع pull.
+
+    seq کلید اصلیِ خودافزاست (ترتیب سراسری به‌ازای کاربر)؛ pull ردیف‌های
+    seq > cursor_seq همان کاربر را برمی‌گرداند. حذف‌ها هم این‌جا با
+    op_type=delete ثبت می‌شوند (tombstone رکورد ماندگارِ حذف است).
+    """
+
+    __tablename__ = "sync_changelog"
+
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"))
+    device_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    op_type: Mapped[str] = mapped_column(String(16), nullable=False)  # upsert | delete
+    payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    __table_args__ = (
+        Index("ix_sync_changelog_user_seq", "user_id", "seq"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# فاز ۱۳ (تکمیلی هماهنگ‌کننده): دستگاه‌های کاربر و اشتراک‌های web push
+# ---------------------------------------------------------------------------
+
+
+class UserDevice(Base):
+    """دستگاه ثبت‌شدهٔ کاربر برای push (FCM) و sync.
+
+    توکن push قابل چرخش است؛ آخرین مقدار برنده است. خود توکن دادهٔ حساس
+    است و هرگز در audit log ذخیره نمی‌شود (فاز ۰ §۱۴).
+    """
+
+    __tablename__ = "user_devices"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    device_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    platform: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )  # android | ios | web | desktop
+    push_token: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    last_seen: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "device_id", name="uq_user_devices_user_device"
+        ),
+    )
+
+
+class WebPushSubscription(Base):
+    """اشتراک web push (VAPID) مرورگر کاربر — جدا از FCM (فاز ۱۳)."""
+
+    __tablename__ = "web_push_subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    endpoint: Mapped[str] = mapped_column(String(1024), nullable=False)
+    p256dh: Mapped[str] = mapped_column(String(256), nullable=False)
+    auth: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "endpoint", name="uq_web_push_user_endpoint"
+        ),
     )

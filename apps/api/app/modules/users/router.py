@@ -12,11 +12,17 @@ from app.modules.auth.dependencies import get_current_user, require_permission
 from app.modules.users import service
 from app.modules.users.schemas import (
     ConsentOut,
+    DeviceRegisterIn,
+    DeviceRegisterOut,
     MeUpdate,
     MessageOut,
     SessionOut,
     UserOut,
     UsersPage,
+    VapidKeyOut,
+    WebPushSubscribeIn,
+    WebPushSubscribeOut,
+    WebPushUnsubscribeIn,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["users"])
@@ -99,3 +105,52 @@ async def admin_list_users(
     """لیست کاربران با صفحه‌بندی cursor-based (فاز ۰ §۱) — فقط super_admin/دارندگان مجوز."""
     items, next_cursor = await service.admin_list_users(db, cursor, limit)
     return UsersPage(items=items, next_cursor=next_cursor)
+
+
+@router.post("/users/me/devices", response_model=DeviceRegisterOut)
+async def register_my_device(
+    body: DeviceRegisterIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """ثبت دستگاه + توکن FCM کاربر (upsert). کلاینت موبایل (فاز ۱۳) این‌جا می‌زند."""
+    result = await service.register_device(
+        db, user, body.device_id, body.platform, body.push_token,
+    )
+    return DeviceRegisterOut(**result)
+
+
+@router.get("/notifications/web-push/vapid-key", response_model=VapidKeyOut)
+async def get_vapid_key(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """کلید عمومی VAPID برای اشتراک web push — اگر تنظیم نشده، configured=false."""
+    from app.core.platform_settings import get_setting
+
+    key = await get_setting(db, "push.vapid_public_key")
+    return VapidKeyOut(vapid_public_key=key, configured=bool(key))
+
+
+@router.post("/users/me/web-push/subscriptions", response_model=WebPushSubscribeOut)
+async def subscribe_web_push(
+    body: WebPushSubscribeIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """اشتراک web push مرورگر (VAPID) — جدا از FCM."""
+    result = await service.subscribe_web_push(
+        db, user, body.endpoint, body.p256dh, body.auth,
+    )
+    return WebPushSubscribeOut(**result)
+
+
+@router.delete("/users/me/web-push/subscriptions", response_model=WebPushSubscribeOut)
+async def unsubscribe_web_push(
+    body: WebPushUnsubscribeIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """لغو اشتراک web push."""
+    result = await service.unsubscribe_web_push(db, user, body.endpoint)
+    return WebPushSubscribeOut(**result)

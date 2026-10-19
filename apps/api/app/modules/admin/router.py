@@ -102,3 +102,16 @@ async def delete_font(
     """حذف فونت سفارشی یک لوکیل — بازگشت به فونت داخلی (fonts.<locale> = null)."""
     ip, ua = _client(request)
     return await service.delete_font(db, user, locale, ip, ua)
+
+
+@router.get("/sync/devices")
+async def admin_list_sync_devices(
+    limit: int = Query(default=100, ge=1, le=200),
+    user: User = Depends(require_permission("sync.manage")),
+    db: AsyncSession = Depends(get_db),
+):
+    """همهٔ دستگاه‌ها با آخرین کرسر — داشبورد sync در CRM (فاز ۱۳)."""
+    from app.modules.sync import service as sync_service
+
+    rows = await sync_service.list_devices(db, None, limit=limit)
+    return {"devices": rows}

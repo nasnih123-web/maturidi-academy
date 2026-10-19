@@ -18,7 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import APIError
 from app.core.events import emit_event
 from app.core.platform_settings import get_typed_setting
-from app.models.models import DhikrDailyCount, DhikrSession, User, UserAyahNote
+from app.models.models import DhikrDailyCount, DhikrSession, SyncTombstone, User, UserAyahNote
+from app.modules.sync.service import record_entity_change
 
 from . import adhan as adhan_calc
 from . import providers as quran_providers
@@ -272,6 +273,16 @@ async def create_note(
         },
         source_client="api",
     )
+    # فاز ۱۳: ثبت در ژورنال sync تا pull دستگاه‌ها کامل بماند
+    await record_entity_change(
+        db, user_id=user.id, device_id="api",
+        entity_type="user_ayah_note", entity_id=str(note.id),
+        op_type="upsert",
+        payload={"id": str(note.id), "surah": surah, "ayah": ayah,
+                 "note_text": note.note_text, "is_private": is_private,
+                 "version": note.version or 1},
+        version=note.version or 1,
+    )
     await db.commit()
     await db.refresh(note)
     return _note_out(note)
@@ -324,6 +335,19 @@ async def update_note(
         note.note_text = note_text.strip()
     if is_private is not None:
         note.is_private = is_private
+    # فاز ۱۳: نسخهٔ خوش‌بینانه + ژورنال sync
+    note.version = (note.version or 1) + 1
+    note.updated_at = datetime.now(timezone.utc)
+    await db.flush()
+    await record_entity_change(
+        db, user_id=user.id, device_id="api",
+        entity_type="user_ayah_note", entity_id=str(note.id),
+        op_type="upsert",
+        payload={"id": str(note.id), "surah": note.surah, "ayah": note.ayah,
+                 "note_text": note.note_text, "is_private": note.is_private,
+                 "version": note.version},
+        version=note.version,
+    )
     await db.commit()
     await db.refresh(note)
     return _note_out(note)
@@ -331,7 +355,36 @@ async def update_note(
 
 async def delete_note(db: AsyncSession, user: User, note_id: uuid.UUID) -> None:
     note = await _get_owned_note(db, user, note_id)
+    note_id_s = str(note.id)
+    note_version = note.version or 1
     await db.delete(note)
+    await db.flush()
+    # فاز ۱۳: حذف مستقیم هم tombstone می‌خواهد تا بین دستگاه‌ها همگام شود
+    now = datetime.now(timezone.utc)
+    existing_ts = (
+        await db.execute(
+            select(SyncTombstone).where(
+                SyncTombstone.user_id == user.id,
+                SyncTombstone.entity_type == "user_ayah_note",
+                SyncTombstone.entity_id == note_id_s,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing_ts is None:
+        db.add(SyncTombstone(
+            user_id=user.id, entity_type="user_ayah_note", entity_id=note_id_s,
+            deleted_by=user.id, deleted_at=now, version=note_version,
+        ))
+    else:
+        existing_ts.version = max(existing_ts.version or 0, note_version)
+        existing_ts.deleted_at = now
+        existing_ts.deleted_by = user.id
+    await db.flush()
+    await record_entity_change(
+        db, user_id=user.id, device_id="api",
+        entity_type="user_ayah_note", entity_id=note_id_s,
+        op_type="delete", payload=None, version=note_version,
+    )
     await db.commit()
 
 
@@ -422,6 +475,19 @@ async def _bump_daily(
         db.add(row)
         await db.flush()
     row.total_count = (row.total_count or 0) + amount
+    # فاز ۱۳: نسخهٔ خوش‌بینانه + ژورنال sync
+    row.version = (row.version or 1) + 1
+    row.updated_at = datetime.now(timezone.utc)
+    await db.flush()
+    await record_entity_change(
+        db, user_id=user.id, device_id="api",
+        entity_type="dhikr_daily_count",
+        entity_id=f"{today.isoformat()}:{dhikr_text}",
+        op_type="upsert",
+        payload={"date": today.isoformat(), "dhikr_text": dhikr_text,
+                 "total_count": row.total_count, "version": row.version},
+        version=row.version,
+    )
 
 
 async def increment_session(

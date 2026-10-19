@@ -167,10 +167,12 @@ async def register(
             )
         )
 
-    # ترجیحات اعلان پیش‌فرض
-    for channel in ("email", "sms", "push", "in_app"):
+    # ترجیحات اعلان پیش‌فرض — فاز ۱۳: web_push کانال مجزا از push (FCM) است
+    for channel in ("email", "sms", "push", "web_push", "in_app"):
         for notif_type in ("security", "product", "marketing"):
-            enabled = not (channel in ("sms", "push") and notif_type == "marketing")
+            enabled = not (
+                channel in ("sms", "push", "web_push") and notif_type == "marketing"
+            )
             db.add(
                 NotificationPreference(
                     user_id=user.id, channel=channel, notif_type=notif_type, enabled=enabled

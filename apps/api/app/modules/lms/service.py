@@ -33,6 +33,7 @@ from app.models.models import (
 )
 from app.modules.fatwa import service as fatwa_service
 from app.modules.lms import certificates as cert_pdf
+from app.modules.sync.service import record_entity_change
 
 LEVEL_ORDER = ["beginner", "intermediate", "advanced"]
 _DEFAULT_LOCALE = "fa"
@@ -301,6 +302,9 @@ async def update_progress(
     if prog is None:
         prog = UserProgress(user_id=user.id, lesson_id=lesson_id)
         db.add(prog)
+    else:
+        # فاز ۱۳: نسخهٔ خوش‌بینانه برای sync آفلاین
+        prog.version = (prog.version or 1) + 1
     prog.status = status
     prog.position_seconds = max(0, position_seconds)
     prog.updated_at = now
@@ -309,6 +313,16 @@ async def update_progress(
     if status != "completed":
         prog.completed_at = None
     await db.flush()
+    # فاز ۱۳: ثبت در ژورنال sync تا pull دستگاه‌ها کامل بماند
+    await record_entity_change(
+        db, user_id=user.id, device_id="api",
+        entity_type="user_progress", entity_id=str(lesson_id),
+        op_type="upsert",
+        payload={"lesson_id": str(lesson_id), "status": prog.status,
+                 "position_seconds": prog.position_seconds,
+                 "version": prog.version or 1},
+        version=prog.version or 1,
+    )
 
     course_completed = False
     certificate_code: str | None = None

@@ -53,3 +53,34 @@ class UsersPage(BaseModel):
 
 class MessageOut(BaseModel):
     message: str
+
+
+class DeviceRegisterIn(BaseModel):
+    device_id: str = Field(min_length=1, max_length=64)
+    platform: str | None = Field(default=None, max_length=16)
+    push_token: str | None = Field(default=None, max_length=512)
+
+
+class DeviceRegisterOut(BaseModel):
+    device_id: str
+    platform: str | None = None
+    registered: bool
+
+
+class WebPushSubscribeIn(BaseModel):
+    endpoint: str = Field(min_length=10, max_length=1024)
+    p256dh: str = Field(min_length=10, max_length=256)
+    auth: str = Field(min_length=5, max_length=128)
+
+
+class WebPushSubscribeOut(BaseModel):
+    subscribed: bool
+
+
+class WebPushUnsubscribeIn(BaseModel):
+    endpoint: str = Field(min_length=10, max_length=1024)
+
+
+class VapidKeyOut(BaseModel):
+    vapid_public_key: str | None = None
+    configured: bool
