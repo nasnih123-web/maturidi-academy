@@ -63,11 +63,17 @@ ls -la /var/backups/maturidi/pg-*.sql.gz | tail -3
 
 # ۳. دیتابیس را restore کنید (به یک دیتابیس تازه یا همان)
 gunzip -c /var/backups/maturidi/pg-YYYY-MM-DD.sql.gz \
-  | docker compose exec -T postgres psql -U maturidi maturidi
+  | docker compose exec -T -e "PGPASSWORD=$POSTGRES_PASSWORD" postgres psql -U "$POSTGRES_USER" "$POSTGRES_DB"
 
-# ۴. فایل‌ها را از mirror برگردانید
-docker compose exec -T minio mc mirror --overwrite \
-  /var/backups/maturidi/minio-YYYY-MM-DD /data
+# ۴. فایل‌ها را از mirror برگردانید (کانتینر یک‌بارمصرف mc — ایمیج minio
+#    سرور دستور mc ندارد، پس exec روی سرویس minio کار نمی‌کند)
+docker compose run --rm \
+  -e "MC_MINIO_USER=$MINIO_ROOT_USER" \
+  -e "MC_MINIO_PASSWORD=$MINIO_ROOT_PASSWORD" \
+  -e "MC_BUCKET=$S3_BUCKET" \
+  -v /var/backups/maturidi/minio-YYYY-MM-DD:/restore \
+  --entrypoint sh "quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z" -c \
+  "mc alias set dst http://minio:9000 \"\$MC_MINIO_USER\" \"\$MC_MINIO_PASSWORD\" >/dev/null && mc mirror --overwrite /restore \"dst/\$MC_BUCKET\""
 
 # ۵. مایگریشن‌ها را اعمال کنید (در صورت نیاز)
 docker compose exec api alembic upgrade head

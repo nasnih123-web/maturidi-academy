@@ -15,7 +15,8 @@
 ### متغیرهای اجباری compose (با `:?` کنترل می‌شوند)
 
 `POSTGRES_USER` ،`POSTGRES_PASSWORD` ،`REDIS_PASSWORD` ،`MINIO_ROOT_USER` ،
-`MINIO_ROOT_PASSWORD` ،`GRAFANA_PASSWORD` ،`MB_APP_DB_PASS` ،`WEB_API_URL`
+`MINIO_ROOT_PASSWORD` ،`GRAFANA_PASSWORD` ،`MB_APP_DB_PASS` ،`WEB_API_URL` ،
+`CRM_API_URL` (آدرس عمومی API برای باندل SPA — §۱۳، بدون fallback)
 
 ## ۲. اولین استقرار (از صفر)
 
@@ -27,8 +28,13 @@ cp .env.example .env.prod && nano .env.prod   # همهٔ secretها را پر ک
 # ۲. اعتبارسنجی compose (بدون نیاز به بالا بودن سرویس‌ها)
 docker compose -f docker-compose.prod.yml --env-file .env.prod config > /dev/null && echo OK
 
-# ۳. بالا آوردن (build ایمیج‌های api/web/crm + اجرای migration در entrypoint سرویس api)
+# ۳. بالا آوردن (build ایمیج‌ها + migration یک‌باره + سرویس‌ها)
+# migration در سرویس یک‌بارهٔ `migrate` اجرا می‌شود (الگوی init-job — §۱۰):
+# دقیقاً یک replica، قبل از api و همهٔ workerها؛ با scale افقی api هیچ raceای
+# روی migration نیست. شکست migration → migrate با exit غیرصفر → api/workerها
+# بالا نمی‌آیند → deploy بلند فیل می‌کند (لاگ migrate را ببینید).
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+docker compose -f docker-compose.prod.yml --env-file .env.prod logs migrate | tail -20
 
 # ۴. صبر برای healthy شدن و seed اولیهٔ ادمین
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps
@@ -66,9 +72,10 @@ git pull --ff-only
 # ۳. اول staging (اجباری — docs/ops/staging.md §۳)
 
 # ۴. استقرار production — بدون قطعی برای تغییرات سازگار:
+# (سرویس `migrate` به‌صورت خودکار به‌عنوان dependency اجرا می‌شود)
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build api worker-critical worker-ai worker-media worker-telegram worker-notifications worker-analytics
-# migration در entrypoint سرویس api اجرا می‌شود (alembic upgrade head)؛ لاگ را چک کنید:
-docker compose -f docker-compose.prod.yml logs api | grep -i "alembic\|Running upgrade" | tail -5
+# migration در سرویس یک‌بارهٔ `migrate` اجرا می‌شود (نه در entrypoint سرویس api)؛ لاگ را چک کنید:
+docker compose -f docker-compose.prod.yml --env-file .env.prod logs migrate | grep -i "alembic\|Running upgrade" | tail -5
 
 # ۵. سپس web/crm (استاتیک‌اند و بدون downtime تعویض می‌شوند):
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build web crm
@@ -118,3 +125,34 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build api
 | اجرای shell در api | `docker compose -f docker-compose.prod.yml exec api sh` |
 | توقف کامل | `docker compose -f docker-compose.prod.yml down` (volumeها می‌مانند) |
 | پاک‌سازی کامل ⚠️ | `down -v` (دیتابیس هم پاک می‌شود — فقط staging/dev!) |
+
+## ۶. وضعیت شبکه و امنیت لبه (Track 2 / §۱۵)
+
+این compose **عمداً reverse proxy ندارد** — ترمینیشن TLS و لبهٔ عمومی بیرون
+است (بخش TLS در §۲: Caddy/NGINX/Traefik روی هاست). نقشهٔ exposure:
+
+| سرویس | publish به هاست | در دسترس از |
+|---|---|---|
+| postgres / redis / minio / metabase-db | ❌ (فقط `expose` داخلی) | فقط شبکهٔ `backend` |
+| api (`:8000`) | ❌ | شبکه‌های `backend`+`frontend`؛ reverse proxy خارجی |
+| web (`:3000`)، crm (`:80`) | ❌ | شبکهٔ `frontend`؛ reverse proxy خارجی |
+| prometheus/grafana/loki/metabase | ❌ | داخلی — برای دسترسی، از SSH tunnel یا VPN استفاده کنید، نه publish |
+
+در `docker-compose.yml` (dev) پورت‌ها به هاست بازند (5432/6379/9000/8000/…) —
+این فایل فقط برای توسعهٔ محلی است و هرگز روی هاست production اجرا نشود.
+
+نکات امنیتی لبه:
+
+- **Trusted proxy:** سرویس `api` با `--proxy-headers --forwarded-allow-ips='*'`
+  اجرا می‌شود تا `request.client.host` (لاگ‌های audit) IP واقعی کلاینت باشد نه
+  IP پروکسی. این فقط امن است چون `api:8000` از بیرون compose در دسترس نیست و
+  reverse proxy لبه باید هدرهای `X-Forwarded-*` جعلی را strip کند. اگر پروکسی
+  لبه این کار را نمی‌کند، فلگ‌ها را بردارید.
+- **HSTS:** در اپ تنظیم نشده (روی http توسعه دردسرساز است) — reverse proxy
+  لبه باید `Strict-Transport-Security` بدهد.
+- **CORS:** پیش‌فرض غیرفعال (`CORS_ALLOW_ORIGINS` خالی)؛ wildcard فقط برای
+  `/api/v1/widgets/*` و بدون credential (§۹.۵).
+- **سقف body:** میدل‌ویر سراسری `BodySizeLimitMiddleware` (پیش‌فرض ۱۰ مگابایت،
+  `MAX_REQUEST_BODY_BYTES`) + سقف جریانی per-upload در `read_capped_upload`.
+- **هدرهای امنیتی:** `SecurityHeadersMiddleware` روی همهٔ پاسخ‌های API
+  (nosniff, DENY, Referrer-Policy, COOP, Permissions-Policy).
