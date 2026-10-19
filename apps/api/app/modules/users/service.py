@@ -21,12 +21,99 @@ from app.models.models import (
     Session,
     User,
     UserConsent,
+    UserDevice,
+    WebPushSubscription,
 )
 from app.modules.users.schemas import MeUpdate
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+async def register_device(
+    db: AsyncSession, user: User, device_id: str,
+    platform: str | None, push_token: str | None,
+) -> dict:
+    """ثبت/به‌روزرسانی دستگاه کاربر + توکن FCM (upsert — آخرین مقدار برنده).
+
+    خود توکن در audit log ذخیره نمی‌شود (فاز ۰ §۱۴) — فقط «تغییر کرد».
+    """
+    if not device_id or len(device_id) > 64:
+        raise APIError(422, "validation_error", "شناسهٔ دستگاه نامعتبر است")
+    if platform and platform not in ("android", "ios", "web", "desktop"):
+        raise APIError(422, "validation_error", "پلتفرم نامعتبر است")
+    row = (
+        await db.execute(
+            select(UserDevice).where(
+                UserDevice.user_id == user.id,
+                UserDevice.device_id == device_id,
+            )
+        )
+    ).scalar_one_or_none()
+    now = _utcnow()
+    if row is None:
+        row = UserDevice(
+            user_id=user.id, device_id=device_id,
+            platform=platform, push_token=push_token, last_seen=now,
+        )
+        db.add(row)
+    else:
+        row.platform = platform or row.platform
+        if push_token is not None:
+            row.push_token = push_token
+        row.last_seen = now
+    await db.flush()
+    await log_audit(
+        db, actor_id=user.id, actor_type="user", action="device.register",
+        entity_type="user_device", entity_id=str(row.id),
+        old_values=None,
+        new_values={"device_id": device_id, "push_token": {"changed": push_token is not None}},
+        ip=None, user_agent=None,
+    )
+    await db.commit()
+    return {"device_id": device_id, "platform": row.platform, "registered": True}
+
+
+async def subscribe_web_push(
+    db: AsyncSession, user: User, endpoint: str, p256dh: str, auth: str,
+) -> dict:
+    """اشتراک web push مرورگر (VAPID) — upsert روی (user_id, endpoint)."""
+    if not endpoint.startswith("https://"):
+        raise APIError(422, "validation_error", "endpoint باید https باشد")
+    row = (
+        await db.execute(
+            select(WebPushSubscription).where(
+                WebPushSubscription.user_id == user.id,
+                WebPushSubscription.endpoint == endpoint,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = WebPushSubscription(
+            user_id=user.id, endpoint=endpoint, p256dh=p256dh, auth=auth,
+        )
+        db.add(row)
+    else:
+        row.p256dh = p256dh
+        row.auth = auth
+    await db.commit()
+    return {"subscribed": True}
+
+
+async def unsubscribe_web_push(db: AsyncSession, user: User, endpoint: str) -> dict:
+    row = (
+        await db.execute(
+            select(WebPushSubscription).where(
+                WebPushSubscription.user_id == user.id,
+                WebPushSubscription.endpoint == endpoint,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is not None:
+        await db.delete(row)
+        await db.commit()
+    return {"subscribed": False}
 
 
 async def update_me(

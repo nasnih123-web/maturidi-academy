@@ -21,6 +21,7 @@ import Quran from "./pages/Quran";
 import Telegram from "./pages/Telegram";
 import Places from "./pages/Places";
 import Voice from "./pages/Voice";
+import Sync from "./pages/Sync";
 import ApiKeys from "./pages/ApiKeys";
 import Settings from "./pages/Settings";
 
@@ -69,6 +70,7 @@ export default function App(): React.ReactElement {
             <Route path="telegram" element={<Telegram />} />
             <Route path="places" element={<Places />} />
             <Route path="voice" element={<Voice />} />
+            <Route path="sync" element={<Sync />} />
             <Route path="api-keys" element={<ApiKeys />} />
             <Route path="settings" element={<Settings />} />
             <Route path="appearance" element={<Appearance />} />

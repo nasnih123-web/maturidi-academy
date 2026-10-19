@@ -1,0 +1,1 @@
+{"description":"Maturidi Academy desktop shell (Tauri 2) — hosts the web frontend, OS notifications, system tray.","devDependencies":{"@tauri-apps/cli":"^2.2.0"},"name":"maturidi-academy-desktop","private":true,"scripts":{"build":"tauri build","dev":"tauri dev","tauri":"tauri"},"type":"module","version":"0.1.0"}

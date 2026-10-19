@@ -1682,3 +1682,78 @@ table.data td code {
     display: none;
   }
 }
+
+/* Phase 13 — Sync dashboard */
+.tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.tab {
+  padding: 0.55rem 1.2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  background: transparent;
+  color: var(--x-text2, #cfc9b8);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.tab.active {
+  background: rgba(212, 175, 55, 0.16);
+  border-color: rgba(212, 175, 55, 0.65);
+  color: var(--x-gold2, #e5c07b);
+  font-weight: 700;
+}
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 8, 7, 0.72);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 3rem 1rem;
+  z-index: 60;
+  overflow-y: auto;
+}
+.modal-card {
+  width: 100%;
+  max-width: 40rem;
+  background: #0c1512;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 1rem;
+  padding: 1.5rem;
+}
+.modal-card h3 { color: var(--x-gold2, #e5c07b); margin: 0 0 0.5rem; }
+.sync-resolve-card { max-width: 56rem; }
+.sync-sbs { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+@media (max-width: 760px) { .sync-sbs { grid-template-columns: 1fr; } }
+.sync-pane {
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  border-radius: 0.6rem;
+  padding: 0.75rem;
+  background: rgba(10, 15, 13, 0.5);
+  min-width: 0;
+}
+.sync-pane h4 { margin: 0 0 0.5rem; font-size: 0.85rem; color: var(--x-gold2, #e5c07b); }
+.sync-pane[data-tone="local"] { border-inline-start: 3px solid #4caf7d; }
+.sync-pane[data-tone="remote"] { border-inline-start: 3px solid #5c8de0; }
+.sync-pane pre {
+  margin: 0;
+  font-size: 0.75rem;
+  max-height: 22rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #d8d2c0;
+}
+.sync-choice { display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.9rem; }
+.sync-choice input { accent-color: #d4af37; }
+.sync-merged-editor {
+  width: 100%;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  background: rgba(10, 15, 13, 0.6);
+  color: #d8d2c0;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 0.5rem;
+  padding: 0.6rem;
+}
+.sync-pack-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+.sync-pack-list li { font-size: 0.88rem; }
