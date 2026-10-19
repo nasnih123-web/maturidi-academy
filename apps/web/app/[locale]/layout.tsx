@@ -6,6 +6,9 @@ import { AtmosphericEngine } from "@/components/AtmosphericEngine";
 import { SiteHeader, type HeaderLabels } from "@/components/SiteHeader";
 import { SiteFooter, type FooterColumn, type FooterLabels } from "@/components/SiteFooter";
 import { AdhanCountdown, type AdhanCountdownLabels } from "@/components/AdhanCountdown";
+import { OfflineIndicator, type OfflineIndicatorLabels } from "@/components/OfflineIndicator";
+import { SwRegister } from "@/components/SwRegister";
+import { TauriBridge } from "@/components/TauriBridge";
 import { MunajatGate, type MunajatGateLabels } from "@/components/MunajatGate";
 import { AuthProvider } from "@/lib/auth-context";
 import { AudioPlayerProvider, type MiniPlayerLabels } from "@/lib/audio-player-context";
@@ -45,6 +48,7 @@ export async function generateMetadata({
     title: { default: title, template: `%s — ${tRoot("appName")}` },
     description,
     icons: { icon: "/icon.png", apple: "/apple-icon.png", shortcut: "/icon.png" },
+    manifest: "/manifest.webmanifest",
     alternates: {
       canonical: `${base}/${locale}`,
       languages: { fa: `${base}/fa`, ar: `${base}/ar`, en: `${base}/en`, "x-default": `${base}/fa` },
@@ -101,6 +105,7 @@ export default async function LocaleLayout({
   const tHeader = await getTranslations({ locale, namespace: "header" });
   const tFooter = await getTranslations({ locale, namespace: "footer" });
   const tAdhan = await getTranslations({ locale, namespace: "adhan" });
+  const tOffline = await getTranslations({ locale, namespace: "offline" });
   const tMunajat = await getTranslations({ locale, namespace: "munajat" });
   const tLibrary = await getTranslations({ locale, namespace: "library" });
   // Phase 9: site-wide audio mini-player labels (provider is a thin client
@@ -164,6 +169,14 @@ export default async function LocaleLayout({
     countdownAria: tAdhan("countdownAria"),
   };
 
+  const offlineLabels: OfflineIndicatorLabels = {
+    online: tOffline("indicatorOnline"),
+    offline: tOffline("indicatorOffline"),
+    syncing: tOffline("indicatorSyncing"),
+    pendingOps: tOffline("pendingOps"),
+    aria: tOffline("indicatorAria"),
+  };
+
   const munajatLabels: MunajatGateLabels = {
     toggleOn: tMunajat("toggleOn"),
     toggleOff: tMunajat("toggleOff"),
@@ -192,9 +205,12 @@ export default async function LocaleLayout({
             <AtmosphericEngine config={siteConfig.particles} />
           </div>
           <AuthProvider>
+            <SwRegister />
+            <TauriBridge />
             <MunajatGate settings={siteConfig.munajat} labels={munajatLabels}>
               <div className="adhan-strip-bar">
                 <AdhanCountdown locale={locale} settings={siteConfig.adhan} labels={adhanStripLabels} />
+                <OfflineIndicator labels={offlineLabels} />
               </div>
               <SiteHeader locale={locale} labels={headerLabels(tHeader, tRoot, t)} nav={nav} />
               <AudioPlayerProvider labels={miniPlayerLabels}>

@@ -1,0 +1,48 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "jsx": "react-native",
+    "lib": [
+      "ES2022"
+    ],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "noUncheckedIndexedAccess": true,
+    "paths": {
+      "@maturidi/design-tokens": [
+        "../../packages/design-tokens/tokens.ts"
+      ],
+      "@maturidi/design-tokens/*": [
+        "../../packages/design-tokens/*"
+      ],
+      "@maturidi/ui-native": [
+        "../../packages/ui-native/src/index.ts"
+      ],
+      "react": [
+        "./node_modules/@types/react"
+      ],
+      "react-native": [
+        "./node_modules/react-native"
+      ],
+      "react-native-safe-area-context": [
+        "./node_modules/react-native-safe-area-context"
+      ]
+    },
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022"
+  },
+  "exclude": [
+    "node_modules"
+  ],
+  "include": [
+    "src/**/*",
+    "index.js",
+    "app.json"
+  ]
+}
