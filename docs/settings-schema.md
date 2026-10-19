@@ -65,7 +65,49 @@
 منطق dark-mode/theme-mode نداشت — چیزی برای حذف نبود. استایل imperial
 dark-obsidian تنها تم است و در `platform_settings` ثبت نشده بود.
 
-## ۵) مصرف وب (Track C — `apps/web`)
+## ۶) کلیدهای فاز ۵ — قرآن / مناجات (Track 1 — بک‌اند)
+
+> منبع حقیقت کد: `apps/api/app/core/platform_settings.py` (`SETTING_DEFS` +
+> اعتبارسنج‌های `_validate_*`) و `apps/api/app/seed.py`
+> (`seed_platform_settings_defaults`). همه نوع `json` (الگوی ADR-0003)؛
+> مصرف‌کنندهٔ همهٔ کلیدها وب/موبایل/دسکتاپ آینده‌اند (Track 2).
+
+| کلید | نوع | پیش‌فرض (seed) | اعتبارسنجی |
+|---|---|---|---|
+| `quran.provider` | json (string) | `"alquran_cloud"` | رشتهٔ غیرخالی از providerهای ثبت‌شده (`alquran_cloud`) |
+| `quran.translations` | json (array) | `["en.sahih", "fa.makarem"]` | آرایه‌ای از شناسه‌های edition غیرخالی و یکتا؛ ترتیب = ترتیب نمایش |
+| `quran.tafsirs` | json (array) | `["ar.muyassar"]` | مثل بالا |
+| `quran.reciters` | json (array) | `["ar.alafasy"]` | مثل بالا |
+| `quran.active_languages` | json (array) | `["fa", "ar", "en"]` | زیرمجموعهٔ غیرخالی `{fa, ar, en}` |
+| `quran.show_translation` | json (bool) | `true` | بولی |
+| `quran.show_tafsir` | json (bool) | `true` | بولی |
+| `quran.highlight_mode` | json (string) | `"ayah"` | یکی از `word`/`ayah`/`off` |
+| `quran.font_size` | json (number) | `20` | عدد ۱۲..۷۲ |
+| `quran.playback` | json (object) | `{autoplay: false, repeat: "off"}` | `{autoplay: bool, repeat: off\|ayah\|surah}`؛ فیلد ناشناخته → ۴۰۰ |
+| `munajat.enabled` | json (bool) | `true` | بولی |
+| `munajat.window` | json (object) | `{start: "02:00", end: "05:00"}` | `{start, end}` هر دو `HH:MM` (‏۰۰:۰۰–۲۳:۵۹) |
+| `adhan.defaults` | json (object) | `{calculation_method: "mwl", madhab: "shafi"}` | `calculation_method`: یکی از `isna`/`mwl`/`egypt`/`karachi`/`makkah`/`jafari`؛ `madhab`: ‏`shafi`/`hanafi` |
+| `ai.provider` | json (string) | `"none"` | یکی از `none`/`claude` — بدون provider، پاسخ‌ها graceful (`llm_unavailable`) برمی‌گردند |
+| `ai.claude_model` | json (string) | `"claude-sonnet-4-5"` | رشتهٔ غیرخالی — مدل Anthropic Messages API |
+| `ai.claude_api_key` | secret | (seed نمی‌شود) | کلید Anthropic — فقط از CRM (استیج) یا env؛ هرگز لاگ/آدیت نمی‌شود |
+| `ai.daily_quota_per_user` | json (number) | `20` | عدد صحیح ۱..۱۰۰۰۰ — سقف روزانهٔ endpointهای AI |
+| `ai.rate_per_minute` | json (number) | `5` | عدد صحیح ۱..۶۰۰ — سقف درخواست در دقیقه |
+| `ai.external_research_enabled` | json (bool) | `false` | بولی — تحقیق خارجی (§۹.۶)؛ پیش‌فرض خاموش |
+| `ai.stream_timeout_s` | json (number) | `60` | عدد صحیح ۵..۶۰۰ — timeout تولید/استریم |
+| `ai.embedding_provider` | json (string) | `"hash"` | یکی از `hash`/`external_api`/`local_model` — ‏`hash` قطعی و بدون وابستگی است |
+| `ai.embedding_endpoint` | json (string\|null) | `null` | endpoint سرویس embedding خارجی (برای `external_api`) |
+| `ai.embedding_api_key` | secret | (seed نمی‌شود) | کلید سرویس embedding خارجی |
+| `ai.embedding_model` | json (string\|null) | `null` | نام مدل embedding خارجی |
+
+نکته‌ها:
+- متن معیار قرآن فقط از provider می‌آید؛ این کلیدها فقط *انتخاب* و *نحوهٔ نمایش*
+  را کنترل می‌کنند — هیچ‌کدام متن را ویرایش نمی‌کند (ADR-0004).
+- `GET /api/v1/quran/providers` همین مقادیر را (با fallback پیش‌فرض‌های سرویس)
+  به کلاینت می‌دهد تا CRM نمایش/ترتیب را مدیریت کند.
+- پنجرهٔ مناجات به وقت محلی کاربر است؛ endpoint وضعیت (`GET /api/v1/quran/munajat/status`)
+  افست `tz` را از کلاینت می‌گیرد.
+
+## ۷) مصرف وب (Track C — `apps/web`)
 
 - **اندپوینت:** `GET /api/v1/settings/public` (ثابت `PUBLIC_SETTINGS_PATH` در
   `apps/web/lib/settings.ts`). پاسخ مورد انتظار: `{ settings: {<کلید>: <مقدار>}, version, updated_at }` —
