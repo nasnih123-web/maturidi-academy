@@ -119,6 +119,13 @@ pre {
   color: var(--x-text2);
 }
 
+.field-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--x-text2);
+  margin-bottom: 0.35rem;
+}
+
 .input {
   width: 100%;
   padding: 0.55rem 0.8rem;

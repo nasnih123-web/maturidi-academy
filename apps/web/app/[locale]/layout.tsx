@@ -5,6 +5,10 @@ import { getMessages, getTranslations, setRequestLocale } from "next-intl/server
 import { AtmosphericEngine } from "@/components/AtmosphericEngine";
 import { SiteHeader, type HeaderLabels } from "@/components/SiteHeader";
 import { SiteFooter, type FooterColumn, type FooterLabels } from "@/components/SiteFooter";
+import { AdhanCountdown, type AdhanCountdownLabels } from "@/components/AdhanCountdown";
+import { MunajatGate, type MunajatGateLabels } from "@/components/MunajatGate";
+import { AuthProvider } from "@/lib/auth-context";
+import { AudioPlayerProvider, type MiniPlayerLabels } from "@/lib/audio-player-context";
 import { getHomeSections } from "@/lib/api";
 import { getSiteConfig, uploadedFontCss, type Locale } from "@/lib/settings";
 import { getNavItems } from "@/lib/content";
@@ -96,6 +100,20 @@ export default async function LocaleLayout({
   const tRoot = await getTranslations({ locale });
   const tHeader = await getTranslations({ locale, namespace: "header" });
   const tFooter = await getTranslations({ locale, namespace: "footer" });
+  const tAdhan = await getTranslations({ locale, namespace: "adhan" });
+  const tMunajat = await getTranslations({ locale, namespace: "munajat" });
+  const tLibrary = await getTranslations({ locale, namespace: "library" });
+  // Phase 9: site-wide audio mini-player labels (provider is a thin client
+  // shell; the MiniPlayer UI chunk loads only once a track is active).
+  const miniPlayerLabels: MiniPlayerLabels = {
+    nowPlaying: tLibrary("player.nowPlaying"),
+    play: tLibrary("player.play"),
+    pause: tLibrary("player.pause"),
+    close: tLibrary("player.close"),
+    expandAria: tLibrary("player.expandAria"),
+    collapseAria: tLibrary("player.collapseAria"),
+    audioFailed: tLibrary("player.audioFailed"),
+  };
 
   // Primary nav: CMS-driven (`GET /api/v1/content/public/nav`) — nested
   // tree, visible, locale-filtered and schedule-resolved server-side.
@@ -130,6 +148,31 @@ export default async function LocaleLayout({
     navFallback: footerColumns,
   };
 
+  const adhanStripLabels: AdhanCountdownLabels = {
+    prefix: tAdhan("stripPrefix"),
+    prayerNames: {
+      imsak: tAdhan("prayers.imsak"),
+      fajr: tAdhan("prayers.fajr"),
+      sunrise: tAdhan("prayers.sunrise"),
+      dhuhr: tAdhan("prayers.dhuhr"),
+      asr: tAdhan("prayers.asr"),
+      maghrib: tAdhan("prayers.maghrib"),
+      isha: tAdhan("prayers.isha"),
+      midnight: tAdhan("prayers.midnight"),
+    },
+    setupLink: tAdhan("stripSetup"),
+    countdownAria: tAdhan("countdownAria"),
+  };
+
+  const munajatLabels: MunajatGateLabels = {
+    toggleOn: tMunajat("toggleOn"),
+    toggleOff: tMunajat("toggleOff"),
+    toggleAuto: tMunajat("toggleAuto"),
+    toggleAria: tMunajat("toggleAria"),
+    ambientPlay: tMunajat("ambientPlay"),
+    ambientPause: tMunajat("ambientPause"),
+  };
+
   // Platform settings (per request, no stale cache — issue #3): particles,
   // uploaded per-locale fonts, hero copy, homepage slots. Non-throwing;
   // missing settings → today's defaults.
@@ -148,11 +191,20 @@ export default async function LocaleLayout({
           <div className="site-atmosphere" aria-hidden>
             <AtmosphericEngine config={siteConfig.particles} />
           </div>
-          <SiteHeader locale={locale} labels={headerLabels(tHeader, tRoot, t)} nav={nav} />
-          <main id="main-content" aria-label={t("mainLandmark")}>
-            {children}
-          </main>
-          <SiteFooter locale={locale} labels={footerLabels} columns={apiColumns} />
+          <AuthProvider>
+            <MunajatGate settings={siteConfig.munajat} labels={munajatLabels}>
+              <div className="adhan-strip-bar">
+                <AdhanCountdown locale={locale} settings={siteConfig.adhan} labels={adhanStripLabels} />
+              </div>
+              <SiteHeader locale={locale} labels={headerLabels(tHeader, tRoot, t)} nav={nav} />
+              <AudioPlayerProvider labels={miniPlayerLabels}>
+                <main id="main-content" aria-label={t("mainLandmark")}>
+                  {children}
+                </main>
+              </AudioPlayerProvider>
+              <SiteFooter locale={locale} labels={footerLabels} columns={apiColumns} />
+            </MunajatGate>
+          </AuthProvider>
         </NextIntlClientProvider>
       </body>
     </html>
