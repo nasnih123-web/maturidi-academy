@@ -16,6 +16,8 @@ from app.modules.users.schemas import (
     DeviceRegisterOut,
     MeUpdate,
     MessageOut,
+    MyNotificationOut,
+    MyNotificationsPage,
     SessionOut,
     UserOut,
     UsersPage,
@@ -154,3 +156,31 @@ async def unsubscribe_web_push(
     """لغو اشتراک web push."""
     result = await service.unsubscribe_web_push(db, user, body.endpoint)
     return WebPushSubscribeOut(**result)
+
+
+@router.get("/users/me/notifications", response_model=MyNotificationsPage)
+async def list_my_notifications(
+    unread_only: bool = Query(default=False),
+    cursor: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=50),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    items, unread_count, next_cursor = await service.list_my_notifications(
+        db, user, unread_only, cursor, limit
+    )
+    return MyNotificationsPage(
+        items=[MyNotificationOut.model_validate(i) for i in items],
+        unread_count=unread_count,
+        next_cursor=next_cursor,
+    )
+
+
+@router.post("/users/me/notifications/{notification_id}/read", response_model=MyNotificationOut)
+async def mark_notification_read(
+    notification_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await service.mark_notification_read(db, user, notification_id)
+    return MyNotificationOut.model_validate(row)

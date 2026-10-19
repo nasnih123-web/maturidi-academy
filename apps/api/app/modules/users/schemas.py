@@ -84,3 +84,21 @@ class WebPushUnsubscribeIn(BaseModel):
 class VapidKeyOut(BaseModel):
     vapid_public_key: str | None = None
     configured: bool
+
+
+class MyNotificationOut(BaseModel):
+    id: uuid.UUID
+    notif_type: str
+    title: dict
+    body: str | None = None
+    data: dict | None = None
+    read_at: datetime | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MyNotificationsPage(BaseModel):
+    items: list[MyNotificationOut]
+    unread_count: int
+    next_cursor: str | None = None

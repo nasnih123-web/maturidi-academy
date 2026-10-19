@@ -78,6 +78,7 @@ from app.modules.finance.router import (
     admin_finance_router,
     finance_router,
 )
+from app.modules.projects import projects_router, staff_router
 from app.modules.sync.router import sync_router
 from app.modules.widgets.cors import WidgetCorsMiddleware
 from app.modules.home.router import router as home_router
@@ -219,6 +220,8 @@ app.include_router(voice_router)
 app.include_router(admin_voice_router)
 app.include_router(finance_router)
 app.include_router(admin_finance_router)
+app.include_router(projects_router)
+app.include_router(staff_router)
 app.include_router(sync_router)
 
 # CORS wildcard فقط برای /api/v1/widgets/* (§۹.۵ — بدون credential/cookie).

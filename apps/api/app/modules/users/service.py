@@ -7,7 +7,7 @@ import secrets as pysecrets
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import log_audit
@@ -16,6 +16,7 @@ from app.core.events import emit_event
 from app.core.security import hash_password
 from app.models.models import (
     AuditLog,
+    Notification,
     NotificationPreference,
     RefreshToken,
     Session,
@@ -354,3 +355,67 @@ async def admin_list_users(
         last = rows[-1]
         next_cursor = _encode_cursor(last.created_at, last.id)
     return rows, next_cursor
+
+
+# ---------- اعلان‌های دریافتی کاربر (فاز ۲ §۵ — وب/CRM از API می‌خوانند) ----------
+
+async def list_my_notifications(
+    db: AsyncSession,
+    user: User,
+    unread_only: bool,
+    cursor: str | None,
+    limit: int,
+) -> tuple[list[Notification], int, str | None]:
+    """اعلان‌های خودِ کاربر — جدیدترین اول، cursor-based (§۱)."""
+    limit = min(max(limit, 1), _CURSOR_LIMIT)
+    stmt = (
+        select(Notification)
+        .where(Notification.user_id == user.id)
+        .order_by(Notification.created_at.desc(), Notification.id.desc())
+    )
+    if unread_only:
+        stmt = stmt.where(Notification.read_at.is_(None))
+    if cursor:
+        ts, uid = _decode_cursor(cursor)
+        stmt = stmt.where(
+            (Notification.created_at < ts)
+            | ((Notification.created_at == ts) & (Notification.id < uid))
+        )
+    rows = list((await db.execute(stmt.limit(limit + 1))).scalars().all())
+    next_cursor = (
+        _encode_cursor(rows[limit].created_at, rows[limit].id)
+        if len(rows) > limit
+        else None
+    )
+    items = rows[:limit]
+    unread_count = (
+        await db.execute(
+            select(func.count())
+            .select_from(Notification)
+            .where(
+                Notification.user_id == user.id,
+                Notification.read_at.is_(None),
+            )
+        )
+    ).scalar_one()
+    return items, unread_count, next_cursor
+
+
+async def mark_notification_read(
+    db: AsyncSession, user: User, notification_id: uuid.UUID
+) -> Notification:
+    """خوانده‌شدن اعلان — فقط مال خودِ کاربر (idempotent)."""
+    row = (
+        await db.execute(
+            select(Notification).where(
+                Notification.id == notification_id,
+                Notification.user_id == user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise APIError(404, "not_found", "اعلان یافت نشد")
+    if row.read_at is None:
+        row.read_at = _utcnow()
+        await db.commit()
+    return row

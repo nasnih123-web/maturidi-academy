@@ -2210,3 +2210,101 @@ class RecurringDonation(Base):
     next_charge_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# فاز ۱۶ — مدیریت پروژه و نیروی انسانی داخلی (PMS)
+# (قراردادها: docs/adr/0014-phase16-pms-backend.md)
+#
+# - ابزار تیم داخلی، نه کاربر نهایی؛ متن‌های قابل‌مشاهده LocalizedText (§۱۵.۴).
+# - tasks.related_entity_*: مرجع رشته‌ای + UUID بدون FK فیزیکی (§۹.۵
+#   no future-FK coupling — آیتم کتابخانه از فاز ۹ است ولی مرجع نرم کافی است).
+# - payroll/leave/contracts عمداً ساخته نمی‌شود (اسپک فاز ۱۶).
+# ---------------------------------------------------------------------------
+
+
+class Project(Base):
+    """پروژهٔ داخلی تیم — فاز ۱۶.
+
+    status ∈ active | on_hold | completed | archived (پرچم ساده؛ پروژه محتوای
+    قابل‌انتشار §۹ نیست، پس از موتور گردش‌کار مشترک استفاده نمی‌کند).
+    """
+
+    __tablename__ = "projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    title: Mapped[dict] = mapped_column(JSONB, nullable=False)  # LocalizedText
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="active", index=True
+    )  # active | on_hold | completed | archived
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Task(Base):
+    """تسک داخلی تیم — فاز ۱۶.
+
+    status ∈ backlog | todo | in_progress | review | done — گذارها در
+    service._TASK_TRANSITIONS اعتبارسنجی می‌شوند.
+    priority ∈ low | medium | high | urgent.
+    related_entity_type/id: اتصال نرم به موجودیت دیگر فازها
+    (مثلاً library_item) — lookup معکوس از /projects/tasks/by-entity.
+    """
+
+    __tablename__ = "tasks"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    title: Mapped[dict] = mapped_column(JSONB, nullable=False)  # LocalizedText
+    description: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # LocalizedText
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="backlog", index=True
+    )  # backlog | todo | in_progress | review | done
+    due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    priority: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="medium", index=True
+    )  # low | medium | high | urgent
+    related_entity_type: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    related_entity_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True, index=True)
+    due_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # آخرین اعلان سررسید (کرون due_soon — ضد اسپم)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_tasks_related_entity", "related_entity_type", "related_entity_id"),
+    )
+
+
+class StaffMember(Base):
+    """عضو تیم داخلی — فاز ۱۶.
+
+    نه حقوق/دستمزد، نه مرخصی، نه قرارداد رسمی (عمداً خارج از اسپک).
+    """
+
+    __tablename__ = "staff_members"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=False, unique=True, index=True
+    )
+    title: Mapped[dict] = mapped_column(JSONB, nullable=False)  # LocalizedText
+    department: Mapped[dict] = mapped_column(JSONB, nullable=False)  # LocalizedText
+    joined_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

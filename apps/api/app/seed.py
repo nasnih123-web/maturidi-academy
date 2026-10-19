@@ -30,6 +30,7 @@ from app.models.models import (
     HomeSection,
     Permission,
     PlatformSetting,
+    Project,
     Role,
     RolePermission,
     Theme,
@@ -62,6 +63,12 @@ BASE_PERMISSIONS = [
     ("api_keys.manage", "مدیریت کلیدهای API ویجت‌ها (فاز ۱۱)"),
     ("voice.manage", "مدیریت دستیار صوتی — تنظیمات STT/TTS و لاگ مصرف (فاز ۱۲)"),
     ("sync.manage", "مدیریت همگام‌سازی آفلاین — دستگاه‌ها و تعارض‌ها (فاز ۱۳)"),
+    ("content.bulk", "عملیات گروهی محتوا — صندوق واحد (فاز ۱۴)"),
+    ("connections.test", "مشاهده و تست اتصالات بیرونی (فاز ۱۴)"),
+    ("builds.manage", "مدیریت مرکز بیلدها — نسخه‌ها و بازسازی (فاز ۱۴)"),
+    ("notifications.broadcast", "پخش اعلان چندکاناله (فاز ۱۴)"),
+    ("users.view360", "نمای ۳۶۰° کاربر (فاز ۱۴)"),
+    ("projects.manage", "مدیریت پروژه و نیروی انسانی داخلی — PMS (فاز ۱۶)"),
 ]
 
 BASE_ROLES = [
@@ -361,6 +368,32 @@ async def _get_or_create_permission(db: AsyncSession, key: str, description: str
     return perm
 
 
+async def seed_pms_demo(db: AsyncSession, admin: User) -> str:
+    """پروژهٔ نمونهٔ PMS — فاز ۱۶ (idempotent).
+
+    فقط یک پروژهٔ خالی با برچسب واضح «دمو» تا بورد کانبان در اولین اجرا
+    خالی نباشد؛ بدون تسک (وضعیت صادقانهٔ خالی). بدون این ردیف هم سیستم
+    کاملاً کار می‌کند.
+    """
+    marker = "پروژه نمونه (دمو — قابل حذف)"
+    rows = (await db.execute(select(Project))).scalars().all()
+    if any((r.title or {}).get("fa") == marker for r in rows):
+        return "موجود بود"
+    db.add(
+        Project(
+            title={
+                "fa": marker,
+                "ar": "مشروع تجريبي (عرض توضيحي — قابل للحذف)",
+                "en": "Sample project (demo — safe to delete)",
+            },
+            status="active",
+            created_by=admin.id,
+        )
+    )
+    await db.flush()
+    return "ساخته شد"
+
+
 async def main() -> None:
     email = os.environ.get("ADMIN_EMAIL", "").strip() or None
     phone = os.environ.get("ADMIN_PHONE", "").strip() or None
@@ -397,6 +430,24 @@ async def main() -> None:
                 db.add(
                     RolePermission(
                         role_id=roles["super_admin"].id, permission_id=perm.id
+                    )
+                )
+
+        # نقش admin هم مجوز PMS را دارد (فاز ۱۶) — بقیهٔ مجوزها فقط super_admin
+        pms_perm = perms.get("projects.manage")
+        if pms_perm is not None:
+            exists = (
+                await db.execute(
+                    select(RolePermission).where(
+                        RolePermission.role_id == roles["admin"].id,
+                        RolePermission.permission_id == pms_perm.id,
+                    )
+                )
+            ).first()
+            if not exists:
+                db.add(
+                    RolePermission(
+                        role_id=roles["admin"].id, permission_id=pms_perm.id
                     )
                 )
 
@@ -492,6 +543,10 @@ async def main() -> None:
 
         social_seed = await seed_social(db, admin)
         print(f"seed شبکهٔ اجتماعی: {social_seed}")
+
+        # پروژهٔ نمونهٔ PMS — فاز ۱۶ (idempotent؛ فقط برچسب دمو، بدون تسک)
+        pms_seed = await seed_pms_demo(db, admin)
+        print(f"seed پروژه (PMS): {pms_seed}")
 
         await db.commit()
     print("seed انجام شد.")
