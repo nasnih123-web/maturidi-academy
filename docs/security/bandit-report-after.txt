@@ -1,0 +1,235 @@
+Run started:2026-10-19 11:33:49.982676+00:00
+
+Test results:
+>> Issue: [B613:trojansource] A Python source file contains bidirectional control characters ('\u200f').
+   Severity: High   Confidence: Medium
+   CWE: CWE-838 (https://cwe.mitre.org/data/definitions/838.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b613_trojansource.html
+   Location: apps/api/app/core/platform_settings.py:90:96
+89	    "ai.stream_timeout_s": {"type": "json", "sensitive": False, "label": "timeout استریم/تولید AI (ثانیه)"},
+90	    "ai.embedding_provider": {"type": "json", "sensitive": False, "label": "provider embedding ‏(hash|external_api|local_model)"},
+91	    "ai.embedding_endpoint": {"type": "json", "sensitive": False, "label": "endpoint سرویس embedding خارجی"},
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: apps/api/app/core/realtime.py:283:20
+282	                        await websocket.close(code=_CLOSE_HEARTBEAT_TIMEOUT, reason="heartbeat timeout")
+283	                    except Exception:
+284	                        pass
+285	                    break
+
+--------------------------------------------------
+>> Issue: [B613:trojansource] A Python source file contains bidirectional control characters ('\u200f').
+   Severity: High   Confidence: Medium
+   CWE: CWE-838 (https://cwe.mitre.org/data/definitions/838.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b613_trojansource.html
+   Location: apps/api/app/models/models.py:1129:12
+1128	        # WHERE workflow_status + visibility + ORDER BY created_at,id
+1129	        # (‏app/modules/library/service.py::list_public‏)
+1130	        Index("ix_library_items_pub_list", "workflow_status", "visibility", "created_at", "id"),
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: apps/api/app/modules/admin/content_center_service.py:268:4
+267	                break
+268	    except Exception:  # noqa: BLE001 — مرتبط‌ها اختیاری‌اند
+269	        pass
+270	
+
+--------------------------------------------------
+>> Issue: [B112:try_except_continue] Try, Except, Continue detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b112_try_except_continue.html
+   Location: apps/api/app/modules/admin/content_center_service.py:876:8
+875	            )
+876	        except Exception:  # noqa: BLE001
+877	            continue
+878	        for it in rows:
+
+--------------------------------------------------
+>> Issue: [B112:try_except_continue] Try, Except, Continue detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b112_try_except_continue.html
+   Location: apps/api/app/modules/admin/content_center_service.py:1100:8
+1099	            items = await adapter.list_fn(db, ListFilters(limit=50))
+1100	        except Exception:  # noqa: BLE001 — یک دامنهٔ خراب، مرکز را خراب نکند
+1101	            continue
+1102	        if not isinstance(items, list):
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: apps/api/app/modules/calculators/prices.py:151:8
+150	            return _to_out(row, stale=False, status="ok", source=source_url)
+151	        except Exception:  # noqa: BLE001 — شبکه/شکل پاسخ: fallback به کش
+152	            pass
+153	
+
+--------------------------------------------------
+>> Issue: [B613:trojansource] A Python source file contains bidirectional control characters ('\u200f').
+   Severity: High   Confidence: Medium
+   CWE: CWE-838 (https://cwe.mitre.org/data/definitions/838.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b613_trojansource.html
+   Location: apps/api/app/modules/fatwa/embeddings.py:239:5
+238	
+239	    ‏ai.embedding_provider از نوع json ذخیره می‌شود، پس get_setting رشتهٔ
+240	    «"hash"» (با گیومه) برمی‌گرداند نه «hash». هر دو شکل پذیرفته می‌شوند؛
+
+--------------------------------------------------
+>> Issue: [B613:trojansource] A Python source file contains bidirectional control characters ('\u200f').
+   Severity: High   Confidence: Medium
+   CWE: CWE-838 (https://cwe.mitre.org/data/definitions/838.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b613_trojansource.html
+   Location: apps/api/app/modules/fatwa/providers.py:7:32
+6	- هیچ کلیدی در این محیط وجود ندارد → service از `resolve_provider` مقدار
+7	  None می‌گیرد و مسیر graceful ‏`llm_unavailable` را می‌رود (هرگز متن
+8	  ساخته‌شده).
+
+--------------------------------------------------
+>> Issue: [B613:trojansource] A Python source file contains bidirectional control characters ('\u200f').
+   Severity: High   Confidence: Medium
+   CWE: CWE-838 (https://cwe.mitre.org/data/definitions/838.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b613_trojansource.html
+   Location: apps/api/app/modules/fatwa/router.py:133:61
+132	
+133	    در پایان استریم توکن‌ها، یک رویداد پایانی با کل payload ‏AskOut
+134	    (citations/status/ai_label) ارسال می‌شود تا کلاینت وب کارت‌های استناد
+
+--------------------------------------------------
+>> Issue: [B404:blacklist] Consider possible security implications associated with the subprocess module.
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_imports.html#b404-import-subprocess
+   Location: apps/api/app/modules/library/seed_library.py:18:0
+17	import os
+18	import subprocess
+19	import tempfile
+
+--------------------------------------------------
+>> Issue: [B607:start_process_with_partial_path] Starting a process with a partial executable path
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b607_start_process_with_partial_path.html
+   Location: apps/api/app/modules/library/seed_library.py:75:8
+74	    try:
+75	        subprocess.run(
+76	            [
+77	                "ffmpeg", "-y", "-v", "error",
+78	                "-f", "lavfi", "-i",
+79	                f"color=c=0x1d3a2a:s={width}x{height}:d={seconds}:r=10",
+80	                "-pix_fmt", "yuv420p", "-c:v", "libx264", out,
+81	            ],
+82	            check=True, timeout=60,
+83	        )
+84	        with open(out, "rb") as fh:
+
+--------------------------------------------------
+>> Issue: [B603:subprocess_without_shell_equals_true] subprocess call - check for execution of untrusted input.
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b603_subprocess_without_shell_equals_true.html
+   Location: apps/api/app/modules/library/seed_library.py:75:8
+74	    try:
+75	        subprocess.run(
+76	            [
+77	                "ffmpeg", "-y", "-v", "error",
+78	                "-f", "lavfi", "-i",
+79	                f"color=c=0x1d3a2a:s={width}x{height}:d={seconds}:r=10",
+80	                "-pix_fmt", "yuv420p", "-c:v", "libx264", out,
+81	            ],
+82	            check=True, timeout=60,
+83	        )
+84	        with open(out, "rb") as fh:
+
+--------------------------------------------------
+>> Issue: [B613:trojansource] A Python source file contains bidirectional control characters ('\u200f').
+   Severity: High   Confidence: Medium
+   CWE: CWE-838 (https://cwe.mitre.org/data/definitions/838.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b613_trojansource.html
+   Location: apps/api/app/modules/sync/service.py:6:19
+5	قرارداد entity_idها (پایدار و آفلاین‌سازگار):
+6	- user_ayah_note: ‏str(note.id) — کلاینت هنگام ساخت آفلاین UUID خودش می‌سازد
+7	- user_progress: ‏str(lesson_id) — کلید طبیعی، بدون نیاز به id ردیف
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: apps/api/app/modules/telegram/connect_service.py:106:8
+105	            await client.disconnect()
+106	        except Exception:  # noqa: BLE001
+107	            pass
+108	
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: apps/api/app/modules/telegram/connect_service.py:187:8
+186	            await client.disconnect()
+187	        except Exception:  # noqa: BLE001
+188	            pass
+189	
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: apps/api/app/modules/telegram/import_service.py:168:12
+167	                await client.disconnect()
+168	            except Exception:  # noqa: BLE001
+169	                pass
+170	
+
+--------------------------------------------------
+>> Issue: [B613:trojansource] A Python source file contains bidirectional control characters ('\u200f').
+   Severity: High   Confidence: Medium
+   CWE: CWE-838 (https://cwe.mitre.org/data/definitions/838.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b613_trojansource.html
+   Location: apps/api/app/seed.py:242:23
+241	    - particles: پیش‌فرض ذرات مشترک وب/CRM
+242	    - fonts.<locale>: ‏null = فونت داخلی (Vazirmatn/Cairo/Inter)
+243	    - home.sections: اسلات‌های زیرِ هیرو به ترتیب فعلی seed بخش‌ها
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b101_assert_used.html
+   Location: apps/api/app/seed_fatwa.py:85:4
+84	    block = _BLOCKS[block_set][index]
+85	    assert block["type"] == "paragraph", "seed نمایشی: اندیس پاراگراف جابه‌جا شده"
+86	    return block["text"][lang]
+
+--------------------------------------------------
+
+Code scanned:
+	Total lines of code: 29654
+	Total lines skipped (#nosec): 0
+	Total potential issues skipped due to specifically being disabled (e.g., #nosec BXXX): 1
+
+Run metrics:
+	Total issues (by severity):
+		Undefined: 0
+		Low: 12
+		Medium: 0
+		High: 7
+	Total issues (by confidence):
+		Undefined: 0
+		Low: 0
+		Medium: 7
+		High: 12
+Files skipped (0):
