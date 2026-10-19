@@ -14,6 +14,9 @@ import Fatwa from "./pages/Fatwa";
 import LMS from "./pages/LMS";
 import Login from "./pages/Login";
 import MediaManager from "./pages/MediaManager";
+import Moderation from "./pages/Moderation";
+import FatwaSubmissions from "./pages/FatwaSubmissions";
+import Clusters from "./pages/Clusters";
 import Quran from "./pages/Quran";
 import Settings from "./pages/Settings";
 
@@ -52,6 +55,9 @@ export default function App(): React.ReactElement {
             <Route path="events" element={<Events />} />
             <Route path="content" element={<Content />} />
             <Route path="fatwa" element={<Fatwa />} />
+            <Route path="moderation" element={<Moderation />} />
+            <Route path="fatwa-submissions" element={<FatwaSubmissions />} />
+            <Route path="clusters" element={<Clusters />} />
             <Route path="calculators" element={<Calculators />} />
             <Route path="lms" element={<LMS />} />
             <Route path="media" element={<MediaManager />} />

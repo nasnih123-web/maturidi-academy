@@ -525,7 +525,7 @@ async def _make_approved_question(tc, admin_headers):
 
 
 async def test_lesson_quiz_goes_through_phase6_engine(tc):
-    from app.models.models import QuizAttempt
+    from app.models.models import QuizAttempt, QuizQuestion
     from app.modules.fatwa.service import reset_ai_limits
 
     reset_ai_limits()
@@ -558,11 +558,15 @@ async def test_lesson_quiz_goes_through_phase6_engine(tc):
         assert attempt is not None
         assert str(attempt.lesson_id) == lesson_id
 
-    # submit از موتور فاز ۶
+    # submit از موتور فاز ۶ — پاسخ صحیح واقعی سؤال انتخاب‌شده (دیتابیس تست
+    # بین فایل‌ها مشترک است و سؤال تصادفی ممکن است مال تست دیگری باشد)
     qid = gen.json()["questions"][0]["id"]
+    async with tc["maker"]() as db:
+        picked = await db.get(QuizQuestion, uuid.UUID(qid))
+        correct = picked.correct_option
     sub = await client.post(
         "/api/v1/lms/quiz/submit",
-        json={"attempt_id": attempt_id, "answers": {qid: 1}},
+        json={"attempt_id": attempt_id, "answers": {qid: correct}},
         headers=uh,
     )
     assert sub.status_code == 200, sub.text
