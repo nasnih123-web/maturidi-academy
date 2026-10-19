@@ -1,7 +1,10 @@
 /**
  * API client for the CRM scaffold.
  *
- * - Base URL from VITE_API_URL (fallback http://localhost:8000).
+ * - Base URL from VITE_API_URL. In dev it falls back to http://localhost:8000;
+ *   in production builds the fallback is FORBIDDEN — vite.config.ts fails the
+ *   build without an explicit VITE_API_URL, and this module throws at import
+ *   time as a second line of defense (Track 2 / §۱۳).
  * - Attaches `Authorization: Bearer <access_token>` to every request.
  * - On 401 it calls POST /api/v1/auth/refresh once (refresh-token rotation,
  *   contract §2) and retries the original request a single time.
@@ -9,9 +12,25 @@
  *   {"error": {"code","message","details"}, "request_id"}
  */
 
-const API_URL =
-  (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ||
-  "http://localhost:8000";
+function resolveApiUrl(): string {
+  const fromEnv = (import.meta.env.VITE_API_URL as string | undefined)?.replace(
+    /\/$/,
+    ""
+  );
+  if (fromEnv) return fromEnv;
+  if (import.meta.env.PROD) {
+    // نباید هیچ‌وقت اتفاق بیفتد (vite.config.ts بیلد را فیل می‌کند) —
+    // ولی اگر باندلی با PROD و بدون VITE_API_URL ساخته شد، به‌جای حملهٔ
+    // خاموش به localhost کاربر، بلند خطا بده.
+    throw new Error(
+      "[crm] VITE_API_URL is not set in this production bundle — " +
+        "refusing to fall back to http://localhost:8000."
+    );
+  }
+  return "http://localhost:8000";
+}
+
+const API_URL = resolveApiUrl();
 
 export class ApiError extends Error {
   constructor(

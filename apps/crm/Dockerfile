@@ -1,10 +1,18 @@
 # فاز ۱۷ — Dockerfile production برای CRM (Vite SPA → nginx)
-# بیلد از ریشهٔ ریپو (context: .).
+# بیلد از ریشهٔ ریپو (context: .) چون به packages/ui-web نیاز دارد.
 FROM node:20-alpine AS builder
 WORKDIR /app/crm
+# Track 2 / §۱۴ — وابستگی file: به @maturidi/ui-web: باید *قبل* از npm ci
+# در ایمیج باشد، وگرنه npm ci روی file:../../packages/ui-web فیل می‌کند.
+# (ui-web فقط peerDep به react/react-dom دارد که از همین‌جا تأمین می‌شود؛
+#  design-tokens را لازم ندارد — توکن‌ها به‌صورت tokens.css محلی‌اند.)
+COPY packages/ui-web ../packages/ui-web
 COPY apps/crm/package.json apps/crm/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY apps/crm/ ./
+# Track 2 / §۱۳ — VITE_API_URL عمداً default ندارد: بیلد production بدون مقدار
+# صریح در vite.config.ts با خطای واضح فیل می‌کند (نه fallback خاموش به localhost).
+ARG VITE_API_URL
 RUN npm run build
 
 FROM nginx:1.27-alpine AS runner
