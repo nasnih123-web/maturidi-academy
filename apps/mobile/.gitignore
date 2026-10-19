@@ -1,0 +1,9 @@
+node_modules/
+.expo/
+dist/
+.env
+.env.local
+google-services.json
+GoogleService-Info.plist
+*.log
+.DS_Store

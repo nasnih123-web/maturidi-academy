@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:* https://localhost:*; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+    },
+    "trayIcon": {
+      "icon": "icons/icon.png",
+      "title": "Maturidi Academy",
+      "tooltip": "Maturidi Academy"
+    },
+    "windows": [
+      {
+        "decorations": true,
+        "height": 800,
+        "label": "main",
+        "minHeight": 600,
+        "minWidth": 960,
+        "resizable": true,
+        "title": "Maturidi Academy",
+        "width": 1280
+      }
+    ]
+  },
+  "build": {
+    "beforeBuildCommand": "",
+    "beforeDevCommand": "",
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "../web/out"
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/icon.png"
+    ],
+    "macOS": {
+      "signingIdentity": null
+    },
+    "targets": "all",
+    "windows": {
+      "certificateThumbprint": "",
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    }
+  },
+  "identifier": "academy.maturidi.desktop",
+  "plugins": {
+    "notification": {}
+  },
+  "productName": "Maturidi Academy",
+  "version": "0.1.0",
+  "updater": {
+    "active": true,
+    "dialog": true,
+    "endpoints": [
+      "https://releases.example.com/desktop/{{target}}/{{arch}}/{{current_version}}"
+    ],
+    "pubkey": ""
+  }
+}
