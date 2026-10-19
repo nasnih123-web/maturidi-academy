@@ -1,0 +1,251 @@
+# =============================================================================
+# docker-compose.prod.yml — استقرار production آکادمی ماتریدی (فاز ۱۷)
+# =============================================================================
+#
+# استفاده:
+#   ۱) فایل محیطی production را بسازید (هرگز commit نکنید):
+#        cp .env.prod.example .env.prod   # سپس مقادیر واقعی/secretها را پر کنید
+#   ۲) اعتبارسنجی (بدون نیاز به docker daemon):
+#        docker compose -f docker-compose.prod.yml config
+#   ۳) استقرار اول:
+#        docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#   جزئیات کامل: docs/ops/deployment.md
+#
+# اصول:
+# - هیچ secretای در این فایل نیست — همه از .env.prod / secrets manager می‌آیند.
+# - پورت‌های دیتابیس/کش به بیرون باز نیستند (فقط شبکهٔ داخلی backend).
+# - هر سرویس stateless است (به‌جز postgres/minio که volume دارند) و می‌توان
+#   replicaهای api را افقی زیاد کرد — جزئیات: docs/ops/scaling-to-100k.md
+# =============================================================================
+
+name: maturidi-prod
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  promdata:
+  grafanadata:
+  metabase-pgdata:
+
+services:
+  # ---------------------------------------------------------------- Postgres
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:?set POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB:-maturidi}"
+      # production: WAL archiving برای RPO کمتر از ۲۴ ساعت — docs/ops/disaster-recovery.md
+      # POSTGRES_INITDB_ARGS / archive_command را در صورت نیاز override کنید.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?set POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  # -------------------------------------------------------------------- Redis
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?set REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  # -------------------------------------------------------------------- MinIO
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  # ----------------------------------------------------------------------- API
+  api:
+    build: ./apps/api
+    restart: unless-stopped
+    # production: چند worker برای بهره‌گیری از CPU (پیش‌فرض ۴؛ با vCPU تنظیم شود)
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000
+             --workers $${UVICORN_WORKERS:-4}"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    env_file:
+      - .env.prod
+    environment:
+      APP_ENV: production
+    expose:
+      - "8000"
+    networks:
+      - backend
+      - frontend
+
+  # ------------------------------------------------- ARQ workers (صف‌های §۵)
+  # هر صف worker جدا با concurrency/retry خودش (قرارداد §۵).
+  # الگو: برای scale یک صف، replica اضافه کنید:
+  #   docker compose -f docker-compose.prod.yml up -d --scale worker-ai=3
+  x-worker: &worker
+    build: ./apps/api
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    env_file:
+      - .env.prod
+    environment:
+      APP_ENV: production
+    networks:
+      - backend
+
+  worker-critical:
+    <<: *worker
+    command: ["python", "-m", "app.worker", "critical"]
+  worker-ai:
+    <<: *worker
+    command: ["python", "-m", "app.worker", "ai"]
+  worker-media:
+    <<: *worker
+    command: ["python", "-m", "app.worker", "media"]
+  worker-telegram:
+    <<: *worker
+    command: ["python", "-m", "app.worker", "telegram"]
+  worker-notifications:
+    <<: *worker
+    command: ["python", "-m", "app.worker", "notifications"]
+  worker-analytics:
+    <<: *worker
+    command: ["python", "-m", "app.worker", "analytics"]
+
+  # ----------------------------------------------------------------------- Web
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "${WEB_API_URL:?set WEB_API_URL (e.g. https://api.example.com)}"
+    restart: unless-stopped
+    depends_on:
+      - api
+    expose:
+      - "3000"
+    networks:
+      - frontend
+
+  # ----------------------------------------------------------------------- CRM
+  crm:
+    build:
+      context: .
+      dockerfile: ./apps/crm/Dockerfile
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - frontend
+
+  # ------------------------------------------------------------- Metabase BI
+  metabase-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${MB_APP_DB_USER:-metabase}"
+      POSTGRES_PASSWORD: "${MB_APP_DB_PASS:?set MB_APP_DB_PASS}"
+      POSTGRES_DB: "${MB_APP_DBNAME:-metabaseapp}"
+    volumes:
+      - metabase-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MB_APP_DB_USER:-metabase}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  metabase:
+    image: metabase/metabase:v0.52
+    restart: unless-stopped
+    depends_on:
+      metabase-db: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: "${MB_APP_DBNAME:-metabaseapp}"
+      MB_DB_PORT: 5432
+      MB_DB_USER: "${MB_APP_DB_USER:-metabase}"
+      MB_DB_PASS: "${MB_APP_DB_PASS:?set MB_APP_DB_PASS}"
+      MB_DB_HOST: metabase-db
+      MB_SITE_URL: "${MB_SITE_URL:-http://localhost:3001}"
+      MB_SITE_NAME: "Maturidi Academy BI"
+      # در production ترجیحاً read-replica را به‌عنوان دیتابیس محصول معرفی کنید:
+      # (اتصال دستی در UI متابیس به هاست رپلیکا — docs/ops/scaling-to-100k.md)
+    expose:
+      - "3000"
+    networks:
+      - backend
+      - frontend
+
+  # --------------------------------------- Monitoring (فاز ۲ → production)
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    restart: unless-stopped
+    volumes:
+      - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    expose:
+      - "9090"
+    networks:
+      - backend
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_PASSWORD:?set GRAFANA_PASSWORD}"
+    volumes:
+      - grafanadata:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+    expose:
+      - "3000"
+    networks:
+      - backend
+      - frontend
+
+  loki:
+    image: grafana/loki:3.0.0
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    expose:
+      - "3100"
+    networks:
+      - backend
