@@ -10,7 +10,7 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   return (
     <div className="empty-state" role="status">
       <span className="es-icon" aria-hidden dangerouslySetInnerHTML={{ __html: icon }} />
-      <h3>{title}</h3>
+      <h2>{title}</h2>
       {hint ? <p>{hint}</p> : null}
     </div>
   );

@@ -388,7 +388,7 @@ img, svg { max-inline-size: 100%; }
 
 .empty-state { border: 1px dashed rgba(212, 175, 55, 0.3); border-radius: var(--radius-lg); padding: 2.4rem 1.5rem; text-align: center; background: rgba(7, 35, 28, 0.55); backdrop-filter: blur(12px); }
 .empty-state .es-icon { color: rgba(212, 175, 55, 0.6); margin-bottom: 0.6rem; display: inline-block; }
-.empty-state h3 { margin: 0 0 0.3rem; font-size: 1rem; color: hsl(var(--text-primary)); }
+.empty-state h2, .empty-state h3 { margin: 0 0 0.3rem; font-size: 1rem; color: hsl(var(--text-primary)); }
 .empty-state p { margin: 0 auto; max-width: 30rem; color: hsl(var(--text-muted)); font-size: 0.88rem; }
 
 .donation-banner { border: 1px solid rgba(212, 175, 55, 0.35); border-radius: var(--radius-lg); background: rgba(7, 35, 28, 0.55); backdrop-filter: blur(16px); padding: 2.4rem 1.6rem; text-align: center; box-shadow: 0 0 24px rgba(212, 175, 55, 0.08); }

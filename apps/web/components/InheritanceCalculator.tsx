@@ -162,7 +162,7 @@ export function InheritanceCalculator({
         <span className="es-icon" aria-hidden="true">
           ⏳
         </span>
-        <h3>{labels.pendingTitle}</h3>
+        <h2>{labels.pendingTitle}</h2>
         <p>{labels.pendingBody}</p>
         <button type="button" className="calc-btn calc-btn-ghost" onClick={() => setPhase('form')}>
           {labels.recalculate}

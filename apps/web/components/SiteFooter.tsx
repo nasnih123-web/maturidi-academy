@@ -41,12 +41,12 @@ export function SiteFooter({
             height={40}
             style={{ borderRadius: 10, boxShadow: "0 0 14px rgba(212,175,55,.3)", marginBottom: "0.6rem" }}
           />
-          <h3 style={{ margin: "0 0 0.5rem", fontWeight: 800 }}>{labels.brandName}</h3>
+          <h2 style={{ margin: "0 0 0.5rem", fontWeight: 800 }}>{labels.brandName}</h2>
           <p style={{ fontSize: "0.85rem", color: "hsl(var(--text-muted))", maxWidth: "24rem" }}>{labels.tagline}</p>
         </div>
         {cols.map((c) => (
           <nav key={c.heading} aria-label={c.heading}>
-            <h4>{c.heading}</h4>
+            <h3>{c.heading}</h3>
             {c.links.map((l) => (
               <Link key={l.href} href={l.href.startsWith("/") ? `/${locale}${l.href}` : l.href}>
                 {l.label}

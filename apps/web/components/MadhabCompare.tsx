@@ -34,7 +34,7 @@ export function MadhabCompare({
   if (positions.length === 0) {
     return (
       <div className="empty-state" role="status">
-        <h3>{labels.emptyLabel}</h3>
+        <h2>{labels.emptyLabel}</h2>
       </div>
     );
   }

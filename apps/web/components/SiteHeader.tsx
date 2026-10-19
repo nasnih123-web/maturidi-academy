@@ -158,10 +158,10 @@ export function SiteHeader({
 
   return (
     <>
-      <a href="#main-content" className="skip-link">
-        {labels.skip}
-      </a>
       <header className="site-header">
+        <a href="#main-content" className="skip-link">
+          {labels.skip}
+        </a>
         <div className="header-inner">
           <Link href={`/${locale}`} className="brand" aria-label={labels.brandName}>
             {/* eslint-disable-next-line @next/next/no-img-element */}

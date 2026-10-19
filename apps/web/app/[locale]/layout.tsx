@@ -208,7 +208,7 @@ export default async function LocaleLayout({
             <SwRegister />
             <TauriBridge />
             <MunajatGate settings={siteConfig.munajat} labels={munajatLabels}>
-              <div className="adhan-strip-bar">
+              <div className="adhan-strip-bar" role="region" aria-label={adhanStripLabels.countdownAria}>
                 <AdhanCountdown locale={locale} settings={siteConfig.adhan} labels={adhanStripLabels} />
                 <OfflineIndicator labels={offlineLabels} />
               </div>
