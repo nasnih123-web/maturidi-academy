@@ -10,6 +10,9 @@
  */
 import Constants from "expo-constants";
 
+// __DEV__ گلوبال React Native است (در type definitions پروژه declare نشده).
+declare const __DEV__: boolean;
+
 function extra(): Record<string, unknown> {
   const cfg = Constants.expoConfig?.extra;
   return cfg && typeof cfg === "object" ? (cfg as Record<string, unknown>) : {};
@@ -22,7 +25,16 @@ export function apiBaseUrl(): string {
   const raw =
     (typeof fromEnv === "string" && fromEnv) ||
     (typeof fromExtra === "string" && fromExtra) ||
-    "http://localhost:8000";
+    "";
+  if (!raw) {
+    // Track 2 / §۱۶ — بیلد production موبایل هرگز نباید بی‌صدا به
+    // localhost:8000 fallback کند (در گوشی واقعی بی‌معنی است). فقط dev.
+    if (__DEV__) return "http://localhost:8000";
+    throw new Error(
+      "[config] EXPO_PUBLIC_API_URL (or expo.extra.apiUrl) is required in " +
+        "production builds — refusing to silently fall back to http://localhost:8000."
+    );
+  }
   return raw.replace(/\/+$/, "");
 }
 

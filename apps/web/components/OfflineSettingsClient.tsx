@@ -29,8 +29,9 @@ import {
   type PushState,
 } from '@/lib/web-push';
 
-const API_BASE =
-  (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) || 'http://localhost:8000';
+import { apiBaseUrl } from '@/lib/api-base';
+
+const API_BASE = apiBaseUrl();
 const ACCESS_KEY = 'ma.access_token';
 
 export interface OfflineSettingsLabels {

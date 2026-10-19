@@ -3,9 +3,26 @@ import type { HomeSectionsResponse, SearchResponse } from './types';
 /**
  * Server-side API client (RSC only — never imported from client components).
  * Per ADR-0002 all data access goes through this layer; components render.
+ *
+ * آدرس از متغیر سروری API_URL می‌آید (رانتایم، نه build — برخلاف
+ * NEXT_PUBLIC_API_URL که عمومی/مرورگر است؛ Track 2 / §۱۳).
+ * در production بدون API_URL صریح، بلند خطا می‌دهد (نه fallback خاموش به
+ * localhost) — مقدار درست در compose: http://api:8000 (نام سرویس داخلی).
  */
+function resolveApiBaseUrl(): string {
+  const base = process.env.API_URL;
+  if (base) return base;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      '[web] API_URL is not set for this production server — refusing to ' +
+        'silently fall back to http://localhost:8000. Set API_URL ' +
+        '(e.g. http://api:8000 inside docker-compose.prod.yml).'
+    );
+  }
+  return 'http://localhost:8000';
+}
 
-export const API_BASE_URL = process.env.API_URL ?? 'http://localhost:8000';
+export const API_BASE_URL = resolveApiBaseUrl();
 
 export class ApiError extends Error {
   readonly status: number;

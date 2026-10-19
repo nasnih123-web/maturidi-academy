@@ -12,8 +12,11 @@ WORKDIR /app/web
 COPY --from=deps /app/web/node_modules ./node_modules
 COPY --from=deps /app/packages /app/packages
 COPY apps/web/ ./
-# API عمومی وب در زمان build تزریق می‌شود (fallback به مقدار compose)
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+# API عمومی وب در زمان build تزریق می‌شود — عمداً default ندارد: بیلد بدون
+# مقدار صریح، در next.config.mjs با خطای واضح فیل می‌کند (Track 2 / §۱۳ —
+# نه fallback خاموش به localhost:8000). مقدار از compose می‌آید:
+# docker-compose.prod.yml → build.args.NEXT_PUBLIC_API_URL (WEB_API_URL اجباری).
+ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 

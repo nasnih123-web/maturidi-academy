@@ -21,12 +21,10 @@ export interface TokenPair {
   must_enroll_2fa?: boolean;
 }
 
+import { apiBaseUrl } from './api-base';
+
 function apiBase(): string {
-  const base =
-    typeof process !== 'undefined'
-      ? process.env.NEXT_PUBLIC_API_URL
-      : undefined;
-  return (base ?? 'http://localhost:8000').replace(/\/+$/, '');
+  return apiBaseUrl();
 }
 
 function isBrowser(): boolean {
