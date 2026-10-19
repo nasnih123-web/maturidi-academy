@@ -28,6 +28,7 @@ providerهای embedding (صریح، مستند، بدون اختراع):
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
 from abc import ABC, abstractmethod
@@ -232,13 +233,33 @@ class EmbeddingProviderError(Exception):
     """خطای صریح provider — هرگز با دادهٔ ساختگی جایگزین نمی‌شود."""
 
 
+def _decode_provider_name(raw: str) -> str:
+    """تحمل مقدار JSON-codeشدهٔ setting.
+
+    ‏ai.embedding_provider از نوع json ذخیره می‌شود، پس get_setting رشتهٔ
+    «"hash"» (با گیومه) برمی‌گرداند نه «hash». هر دو شکل پذیرفته می‌شوند؛
+    در صورت نامعتبر بودن، همان رشتهٔ خام برگردانده می‌شود تا خطای
+    «provider ناشناخته» با مقدار واقعی گزارش شود.
+    """
+    text = raw.strip()
+    if len(text) >= 2 and text.startswith('"') and text.endswith('"'):
+        try:
+            decoded = json.loads(text)
+            if isinstance(decoded, str):
+                return decoded
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return text
+
+
 async def get_embedding_provider(
     db: AsyncSession, name: str | None = None
 ) -> EmbeddingProvider:
     """انتخاب provider از setting ‏ai.embedding_provider (پیش‌فرض: hash)."""
     from app.core.platform_settings import get_setting
 
-    selected = name or (await get_setting(db, "ai.embedding_provider")) or "hash"
+    raw = name or (await get_setting(db, "ai.embedding_provider")) or "hash"
+    selected = _decode_provider_name(raw)
     if selected == "hash":
         return HashEmbeddingProvider()
     if selected == "external_api":

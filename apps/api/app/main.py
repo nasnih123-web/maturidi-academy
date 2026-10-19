@@ -57,6 +57,14 @@ from app.modules.social.router import (
     moderation_router,
     social_router,
 )
+from app.modules.places.router import (
+    admin_places_router,
+    places_router,
+)
+from app.modules.telegram.router import telegram_router
+from app.modules.api_keys.router import api_keys_router
+from app.modules.widgets.router import widgets_router
+from app.modules.widgets.cors import WidgetCorsMiddleware
 from app.modules.home.router import router as home_router
 from app.modules.meta.router import router as meta_router
 from app.modules.quran.router import (
@@ -181,6 +189,16 @@ app.include_router(admin_social_router)
 app.include_router(moderation_router)
 app.include_router(submissions_router)
 app.include_router(clusters_router)
+app.include_router(places_router)
+app.include_router(admin_places_router)
+app.include_router(telegram_router)
+app.include_router(api_keys_router)
+app.include_router(widgets_router)
+
+# CORS wildcard فقط برای /api/v1/widgets/* (§۹.۵ — بدون credential/cookie).
+# این middleware فقط همان prefix را لمس می‌کند؛ هیچ endpoint
+# احرازهویت‌شدهٔ دیگری هدر wildcard نمی‌گیرد.
+app.add_middleware(WidgetCorsMiddleware)
 
 # دروازهٔ بلادرنگ — دکوراتور @app.websocket (نه add_websocket_route استارلت)
 # چون فقط مسیر APIWebSocketRoute وابستگی‌ها (Depends/get_db) را حل می‌کند.

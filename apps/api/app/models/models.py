@@ -1190,11 +1190,33 @@ class SocialPost(Base):
         String(16), default="published", index=True
     )  # published | removed
     comment_count: Mapped[int] = mapped_column(Integer, default=0)
+    likes_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, index=True
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class PostLike(Base):
+    """لایک پست — یکتا به‌ازای (post_id, user_id)؛ idempotent."""
+
+    __tablename__ = "post_likes"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    post_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("social_posts.id"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint("post_id", "user_id", name="uq_post_likes_pair"),
     )
 
 
@@ -1379,4 +1401,168 @@ class Notification(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# فاز ۱۱ — اماکن مذهبی، تلگرام (بات/اتصال/درون‌ریزی/توزیع)، کلیدهای API ویجت
+# (قراردادها: docs/adr/0008-phase11-telegram-widgets-backend.md)
+#
+# - ReligiousPlace: جدول typed جدا (§۹.۵)؛ video_360_id با FK واقعی به
+#   library_items.id (فاز ۹ ساخته شده — «no future-FK coupling» نقض نمی‌شود)؛
+#   religious_place_ref رشته‌ای فاز ۹ دست‌نخورده می‌ماند.
+# - session تلگرام در platform_settings (رمزنگاری §۳) است، نه جدول جدا.
+# - TelegramCallback: nonce یک‌بارمصرف دکمه‌های inline تأیید/رد فتوا.
+# ---------------------------------------------------------------------------
+
+
+class ReligiousPlace(Base):
+    """مکان مذهبی — فاز ۱۱.
+
+    workflow_status طبق ماشین مشترک §۹ (app/core/workflow.py).
+    type ∈ mosque | shrine | holy_site | museum | other.
+    """
+
+    __tablename__ = "religious_places"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    description: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # LocalizedText
+    lat: Mapped[float] = mapped_column(Float, nullable=False, index=True)
+    lng: Mapped[float] = mapped_column(Float, nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String(32), default="mosque", index=True)
+    video_360_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("library_items.id"), nullable=True
+    )
+    submitted_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    workflow_status: Mapped[str] = mapped_column(
+        String(16), default="draft", index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class TelegramDistributionPolicy(Base):
+    """سیاست توزیع تلگرام به‌ازای نوع محتوا — §۹.۵.
+
+    policy ∈ never | manual_approval | auto_publish | scheduled.
+    پیش‌فرض غایب = never (در سرویس با get-or-create اعمال می‌شود).
+    """
+
+    __tablename__ = "telegram_distribution_policies"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    content_type: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    policy: Mapped[str] = mapped_column(String(16), default="never", index=True)
+    message_template: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    target_channels: Mapped[list] = mapped_column(JSONB, default=list)
+    spacing_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    require_approval: Mapped[bool] = mapped_column(Boolean, default=True)
+    schedule_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class TelegramPublished(Base):
+    """لاگ انتشارهای تلگرام — idempotency با کلید یکتا.
+
+    ترکیب (source_content_type, source_content_id, distribution_target)
+    در idempotency_key کد می‌شود تا ارسال دوباره رکورد تکراری نسازد.
+    """
+
+    __tablename__ = "telegram_published"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_telegram_published_idem"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    source_content_type: Mapped[str] = mapped_column(String(64), index=True)
+    source_content_id: Mapped[str] = mapped_column(String(64), index=True)
+    distribution_target: Mapped[str] = mapped_column(String(128), index=True)
+    published_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), default="pending", index=True
+    )  # pending | sent | failed | notified | deleted
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class TelegramCallback(Base):
+    """nonce یک‌بارمصرف دکمه‌های inline (تأیید/رد فتوا و ...).
+
+    بایند: (content, op, actor) — ‏actor همان کاربری است که اعلان برایش
+    ارسال شده تا گذار از مسیر مجوزدار واقعی اجرا شود.
+    """
+
+    __tablename__ = "telegram_callbacks"
+
+    nonce: Mapped[str] = mapped_column(String(32), primary_key=True)
+    source_content_type: Mapped[str] = mapped_column(String(64), index=True)
+    source_content_id: Mapped[str] = mapped_column(String(64), index=True)
+    op: Mapped[str] = mapped_column(String(32))  # approve | reject
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    signature: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+
+class ApiKey(Base):
+    """کلید API برای ویجت‌های جاسازی‌شونده — فاز ۱۱.
+
+    فقط هش SHA-256 کلید ذخیره می‌شود؛ خودِ کلید فقط لحظهٔ ساخت دیده می‌شود.
+    """
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    key_prefix: Mapped[str] = mapped_column(String(8))  # ۸ کاراکتر اول برای نمایش
+    name: Mapped[str] = mapped_column(String(128))
+    scopes: Mapped[list] = mapped_column(JSONB, default=list)
+    rate_limit_per_min: Mapped[int] = mapped_column(Integer, default=60)
+    quota_monthly: Mapped[int] = mapped_column(Integer, default=10000)
+    used_this_month: Mapped[int] = mapped_column(Integer, default=0)
+    quota_period: Mapped[str] = mapped_column(String(7), default="")  # YYYY-MM
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    abuse_flag: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
