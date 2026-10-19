@@ -15,8 +15,9 @@
  * this client does not invent retry semantics for them.
  */
 
-const API_BASE =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) || "http://localhost:8000";
+import { apiBaseUrl } from "./api-base";
+
+const API_BASE = apiBaseUrl();
 
 const ACCESS_KEY = "ma.access_token";
 

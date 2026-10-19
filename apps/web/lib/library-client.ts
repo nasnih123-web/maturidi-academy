@@ -16,6 +16,7 @@ import {
   authFetch,
   type TokenPair,
 } from './auth-client';
+import { apiBaseUrl } from './api-base';
 import type {
   LibraryItemDetail,
   LibraryItemSummary,
@@ -25,9 +26,7 @@ import type {
 } from './library';
 
 function apiBase(): string {
-  const base =
-    typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_API_URL : undefined;
-  return (base ?? 'http://localhost:8000').replace(/\/+$/, '');
+  return apiBaseUrl();
 }
 
 export function libraryStreamEndpoint(id: string): string {
