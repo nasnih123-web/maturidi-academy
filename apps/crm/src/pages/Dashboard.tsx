@@ -69,6 +69,7 @@ const NAV_GROUPS: NavGroupDef[] = [
       { to: "/places", labelKey: "nav.places", icon: "M12 21s-7-5.5-7-11a7 7 0 0114 0c0 5.5-7 11-7 11zM12 12a2.5 2.5 0 100-5 2.5 2.5 0 000 5z", superAdmin: true },
       { to: "/voice", labelKey: "nav.voice", icon: "M12 1a3 3 0 013 3v8a3 3 0 01-6 0V4a3 3 0 013-3zM19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8", superAdmin: true },
       { to: "/api-keys", labelKey: "nav.apiKeys", icon: "M4 7h16M4 12h16M4 17h10M17 17l2 2 4-4", superAdmin: true },
+      { to: "/finance", labelKey: "nav.finance", icon: "M3 7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2zM3 7v5a2 2 0 002 2h14M16 15h2", superAdmin: true },
     ],
   },
   {
@@ -79,8 +80,12 @@ const NAV_GROUPS: NavGroupDef[] = [
       { to: "/settings", labelKey: "nav.settings", icon: "M12 8a4 4 0 100 8 4 4 0 000-8zM3 12h3M18 12h3M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1", superAdmin: true },
       { to: "/appearance", labelKey: "nav.appearance", icon: "M4 8h10M18 8h2M4 16h2M10 16h10M14 4v4M6 12v4", superAdmin: true },
       { to: "/branding", labelKey: "nav.branding", icon: "M12 3a9 9 0 100 18c1.4 0 2-.8 2-1.8 0-1.4-1.2-1.8-1.2-3 0-1.2 1-2.2 2.4-2.2H17a4.5 4.5 0 004.5-4.5C21.5 5.6 17.2 3 12 3zM7.5 12.5a1.3 1.3 0 100-2.6 1.3 1.3 0 000 2.6z", superAdmin: true },
-      // FUTURE: the /builds build center (product vision) slots in here:
-      // { to: "/builds", labelKey: "nav.builds", icon: "...", superAdmin: true },
+      { to: "/users", labelKey: "nav.users", icon: "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75", superAdmin: true },
+      { to: "/notifications", labelKey: "nav.notifications", icon: "M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0", superAdmin: true },
+      { to: "/roles", labelKey: "nav.roles", icon: "M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6zM9 12l2 2 4-4", superAdmin: true },
+      { to: "/connections", labelKey: "nav.connections", icon: "M9 15l6-6M7.5 10.5l-3 3a4.24 4.24 0 006 6l3-3M16.5 13.5l3-3a4.24 4.24 0 00-6-6l-3 3", superAdmin: true },
+      { to: "/builds", labelKey: "nav.builds", icon: "M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8", superAdmin: true },
+      { to: "/analytics", labelKey: "nav.analytics", icon: "M3 21h18M6 17v-6M11 17V7M16 17v-9M21 17V4", superAdmin: true },
     ],
   },
 ];

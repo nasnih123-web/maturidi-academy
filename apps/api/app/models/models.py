@@ -1839,3 +1839,374 @@ class WebPushSubscription(Base):
             "user_id", "endpoint", name="uq_web_push_user_endpoint"
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# فاز ۱۴ — کنترل مرکزی ادمین (Track 1 — بک‌اند، ADR-0011)
+#
+# قراردادها:
+# - §۹.۵ اصل ضد-جدول-غول‌پیکر: هیچ جدول generic content ساخته نمی‌شود.
+#   content_placements و content_distributions فقط «ارجاع چندریختی»
+#   (domain, content_type, content_id) بدون FK فیزیکی نگه می‌دارند؛
+#   دادهٔ typed همچنان در جدول‌های خودِ دامنه‌هاست.
+# - زمان‌ها UTC؛ schedule_tz فقط متادیتای ورودی است (مقادیر به UTC نرمال می‌شوند).
+# ---------------------------------------------------------------------------
+
+
+class ContentPlacement(Base):
+    """اتصال یک محتوا به surface/slot — §۹.۵ Placement.
+
+    surfaces: homepage.section | page.section | banner_area | scholar_profile |
+    library_collection | quran_context | dashboard | widget | telegram | ...
+    """
+
+    __tablename__ = "content_placements"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    domain: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    content_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    content_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    surface: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    slot: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    audience: Mapped[dict] = mapped_column(JSONB, default=dict)
+    starts_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    locale: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "surface", "slot", "domain", "content_type", "content_id",
+            name="uq_content_placements_slot_content",
+        ),
+        Index("ix_content_placements_content", "domain", "content_type", "content_id"),
+    )
+
+
+class ContentDistribution(Base):
+    """تاگل توزیع به‌ازای هر کانال — §۹.۵ Distribution Policy.
+
+    channels: web | mobile | desktop | telegram | ai_knowledge | search | embed.
+    ترتیب اولویت در is_channel_allowed (content_center_service):
+    ردیف صریح این جدول → distribution بومی دامنه → پیش‌فرض ADR-002 (فقط web).
+    """
+
+    __tablename__ = "content_distributions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    domain: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    content_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    content_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    scheduled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # انتشار زمان‌بندی‌شده از این لحظه (UTC)
+    schedule_tz: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    until_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # غیرفعال‌سازی خودکار از این لحظه (UTC)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "domain", "content_type", "content_id", "channel",
+            name="uq_content_distributions_content_channel",
+        ),
+    )
+
+
+class NotificationBroadcast(Base):
+    """پخش اعلان گروهی چندکاناله — سرجمع عملیات."""
+
+    __tablename__ = "notification_broadcasts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    cohort: Mapped[dict] = mapped_column(JSONB, default=dict)
+    channels_requested: Mapped[list] = mapped_column(JSONB, default=list)
+    status: Mapped[str] = mapped_column(
+        String(16), default="queued", index=True
+    )  # queued | sending | done | failed
+    total_recipients: Mapped[int] = mapped_column(Integer, default=0)
+    total_sent: Mapped[int] = mapped_column(Integer, default=0)
+    total_skipped: Mapped[int] = mapped_column(Integer, default=0)
+    total_failed: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class NotificationDelivery(Base):
+    """لاگ تحویل به‌ازای هر (پخش، کاربر، کانال) — audit تحویل."""
+
+    __tablename__ = "notification_deliveries"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    broadcast_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("notification_broadcasts.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=False, index=True
+    )
+    channel: Mapped[str] = mapped_column(
+        String(16), nullable=False, index=True
+    )  # email | sms | push | in_app
+    status: Mapped[str] = mapped_column(
+        String(16), default="pending", index=True
+    )  # pending | sent | skipped | failed
+    skip_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "broadcast_id", "user_id", "channel",
+            name="uq_notification_deliveries_triplet",
+        ),
+    )
+
+
+class BuildRelease(Base):
+    """نسخهٔ منتشرشدهٔ اپ — هرگز ادعای امضای دروغین (signed صادقانه)."""
+
+    __tablename__ = "build_releases"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    platform: Mapped[str] = mapped_column(
+        String(16), nullable=False, index=True
+    )  # android | ios | desktop
+    version: Mapped[str] = mapped_column(String(32), nullable=False)
+    build_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    download_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    download_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    signed: Mapped[bool] = mapped_column(Boolean, default=False)
+    build_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
+    released_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "platform", "version", "build_number",
+            name="uq_build_releases_platform_version",
+        ),
+    )
+
+
+class BuildRequest(Base):
+    """درخواست بازسازی اپ — در dev/sandbox فقط ثبت می‌شود؛ امضای واقعی با CI."""
+
+    __tablename__ = "build_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    platform: Mapped[str] = mapped_column(
+        String(16), nullable=False, index=True
+    )  # android | ios | desktop
+    version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ref: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )  # branch/commit درخواستی
+    status: Mapped[str] = mapped_column(
+        String(16), default="queued", index=True
+    )  # queued | running | done | failed
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+# ===========================================================================
+# فاز ۱۵ — مالی، اهدا و درگاه پرداخت (ADR-0013)
+# ===========================================================================
+
+
+class DonationCampaign(Base):
+    """کمپین اهدا — title/description همیشه LocalizedText (§۱۵.۴).
+
+    وضعیت با پرچم ساده (active | draft | archived) — دادهٔ کمپین محتوای
+    قابل‌انتشار §۹ نیست، پس از موتور گردش‌کار مشترک استفاده نمی‌کند.
+    """
+
+    __tablename__ = "donation_campaigns"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText {"fa","ar","en"}
+    description: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    goal_amount: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)  # ریال
+    raised_amount: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)  # ریال
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active", index=True)
+    cover: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PaymentIntent(Base):
+    """نیت پرداخت — نقطهٔ idempotency درخواست (§۱، §۴، ADR-0013).
+
+    هدر Idempotency-Key هر درخواست /donate به دقیقاً یک ردیف اینجا نگاشت
+    می‌شود؛ کلید تکراری → همان ردیف موجود برمی‌گردد (بدون تراکنش جدید).
+    """
+
+    __tablename__ = "payment_intents"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    amount: Mapped[int] = mapped_column(BigInteger, nullable=False)  # ریال (IRR)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="IRR")
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("donation_campaigns.id"), nullable=True
+    )
+    donor_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    donor_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", index=True
+    )  # pending | succeeded | failed | cancelled
+    gateway: Mapped[str] = mapped_column(String(32), nullable=False, default="zarinpal")
+    authority: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_payment_intents_idempotency_key"),
+    )
+
+
+class Donation(Base):
+    """اهدای ثبت‌شده — یک donation به‌ازای هر intent موفق.
+
+    gateway_reference یکتا: تکرار وبهوک/کال‌بک هرگز ردیف دوم نمی‌سازد.
+    """
+
+    __tablename__ = "donations"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    donor_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    payment_intent_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("payment_intents.id"), nullable=False
+    )
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("donation_campaigns.id"), nullable=True
+    )
+    gateway: Mapped[str] = mapped_column(String(32), nullable=False)
+    gateway_reference: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="succeeded", index=True
+    )  # succeeded | refunded | failed
+    amount: Mapped[int] = mapped_column(BigInteger, nullable=False)  # ریال
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="IRR")
+    donor_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("gateway_reference", name="uq_donations_gateway_reference"),
+        UniqueConstraint("payment_intent_id", name="uq_donations_payment_intent_id"),
+    )
+
+
+class LedgerEntry(Base):
+    """دفتر مالی سبک — هر ورود/خروج پول یک ردیف علامت‌دار."""
+
+    __tablename__ = "ledger_entries"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    entry_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, index=True
+    )  # donation_in | refund | fee
+    amount: Mapped[int] = mapped_column(BigInteger, nullable=False)  # علامت‌دار، ریال
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="IRR")
+    reference: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
+    donation_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("donations.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+
+class PaymentWebhookLog(Base):
+    """لاگ وبهوک — payload_hash یکتا یعنی هر payload فقط یک‌بار پردازش می‌شود."""
+
+    __tablename__ = "payment_webhook_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    gateway: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="processed"
+    )  # processed | duplicate | rejected
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("payload_hash", name="uq_payment_webhook_log_payload_hash"),
+    )
+
+
+class RecurringDonation(Base):
+    """اهدای مکرر — فقط ثبت/مدیریت؛ اجرای شارژ دوره‌ای با فاز ۱۶ (صف ARQ)."""
+
+    __tablename__ = "recurring_donations"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    donor_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False, index=True)
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("donation_campaigns.id"), nullable=True
+    )
+    amount: Mapped[int] = mapped_column(BigInteger, nullable=False)  # ریال
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="IRR")
+    interval: Mapped[str] = mapped_column(String(16), nullable=False, default="monthly")
+    # weekly | monthly | yearly
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="active", index=True
+    )  # active | paused | cancelled
+    next_charge_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

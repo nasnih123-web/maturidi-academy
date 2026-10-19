@@ -7,10 +7,14 @@ import { useUploadedFonts } from "./lib/appearance";
 import Appearance from "./pages/Appearance";
 import Branding from "./pages/Branding";
 import Calculators from "./pages/Calculators";
-import Content from "./pages/Content";
+import ContentControl from "./pages/ContentControl";
+import User360 from "./pages/User360";
+import Notifications from "./pages/Notifications";
+import Roles from "./pages/Roles";
 import { DashboardHome, DashboardLayout } from "./pages/Dashboard";
 import Events from "./pages/Events";
 import Fatwa from "./pages/Fatwa";
+import Finance from "./pages/Finance";
 import LMS from "./pages/LMS";
 import Login from "./pages/Login";
 import MediaManager from "./pages/MediaManager";
@@ -23,6 +27,9 @@ import Places from "./pages/Places";
 import Voice from "./pages/Voice";
 import Sync from "./pages/Sync";
 import ApiKeys from "./pages/ApiKeys";
+import Connections from "./pages/Connections";
+import Builds from "./pages/Builds";
+import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
 
 function ProtectedRoute(): React.ReactElement {
@@ -58,9 +65,13 @@ export default function App(): React.ReactElement {
           <Route path="/" element={<DashboardLayout />}>
             <Route index element={<DashboardHome />} />
             <Route path="events" element={<Events />} />
-            <Route path="content" element={<Content />} />
+            <Route path="content" element={<ContentControl />} />
             <Route path="fatwa" element={<Fatwa />} />
+            <Route path="finance" element={<Finance />} />
             <Route path="moderation" element={<Moderation />} />
+            <Route path="users" element={<User360 />} />
+            <Route path="notifications" element={<Notifications />} />
+            <Route path="roles" element={<Roles />} />
             <Route path="fatwa-submissions" element={<FatwaSubmissions />} />
             <Route path="clusters" element={<Clusters />} />
             <Route path="calculators" element={<Calculators />} />
@@ -72,6 +83,9 @@ export default function App(): React.ReactElement {
             <Route path="voice" element={<Voice />} />
             <Route path="sync" element={<Sync />} />
             <Route path="api-keys" element={<ApiKeys />} />
+            <Route path="connections" element={<Connections />} />
+            <Route path="builds" element={<Builds />} />
+            <Route path="analytics" element={<Analytics />} />
             <Route path="settings" element={<Settings />} />
             <Route path="appearance" element={<Appearance />} />
             <Route path="branding" element={<Branding />} />

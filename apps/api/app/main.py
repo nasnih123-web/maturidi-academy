@@ -29,6 +29,12 @@ from app.core.middleware import (
 )
 from app.core.realtime import websocket_endpoint
 from app.modules.admin.router import router as admin_router
+from app.modules.admin.content_center_router import router as admin_content_router
+from app.modules.admin.connections_router import router as admin_connections_router
+from app.modules.admin.builds_router import router as admin_builds_router
+from app.modules.admin.notifications_router import router as admin_notifications_router
+from app.modules.admin.users_admin_router import router as admin_users_router
+from app.modules.admin.roles_router import router as admin_roles_router
 from app.modules.auth.router import router as auth_router
 from app.modules.lms.router import (
     admin_lms_router,
@@ -67,6 +73,10 @@ from app.modules.widgets.router import widgets_router
 from app.modules.voice.router import (
     admin_voice_router,
     voice_router,
+)
+from app.modules.finance.router import (
+    admin_finance_router,
+    finance_router,
 )
 from app.modules.sync.router import sync_router
 from app.modules.widgets.cors import WidgetCorsMiddleware
@@ -173,6 +183,12 @@ app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(meta_router)
 app.include_router(admin_router)
+app.include_router(admin_content_router)
+app.include_router(admin_connections_router)
+app.include_router(admin_builds_router)
+app.include_router(admin_notifications_router)
+app.include_router(admin_users_router)
+app.include_router(admin_roles_router)
 app.include_router(content_router)
 app.include_router(cms_router)
 app.include_router(home_router)
@@ -201,6 +217,8 @@ app.include_router(api_keys_router)
 app.include_router(widgets_router)
 app.include_router(voice_router)
 app.include_router(admin_voice_router)
+app.include_router(finance_router)
+app.include_router(admin_finance_router)
 app.include_router(sync_router)
 
 # CORS wildcard فقط برای /api/v1/widgets/* (§۹.۵ — بدون credential/cookie).

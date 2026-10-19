@@ -44,9 +44,15 @@ SETTING_DEFS: dict[str, dict] = {
     "telegram.pending_expires_at": {"type": "string", "sensitive": False, "label": "انقضای کد ورود (ISO8601 — داخلی)"},
     "payment.zarinpal_key": {"type": "secret", "sensitive": True, "label": "کلید زرین‌پال"},
     "payment.idpay_key": {"type": "secret", "sensitive": True, "label": "کلید آیدی‌پی"},
+    # --- فاز ۱۵: مالی و درگاه پرداخت (ADR-0013) ---
+    "payment.zarinpal_sandbox": {"type": "json", "sensitive": False, "label": "حالت سندباکس زرین‌پال (پیش‌فرض: روشن)"},
+    "payment.webhook_secret": {"type": "secret", "sensitive": True, "label": "رمز امضای وبهوک درگاه (HMAC)"},
+    "payment.callback_url": {"type": "string", "sensitive": False, "label": "آدرس بازگشت پیش‌فرض درگاه (callback)"},
     "map.key": {"type": "secret", "sensitive": True, "label": "کلید نقشه"},
     "email.smtp_password": {"type": "secret", "sensitive": True, "label": "رمز SMTP ایمیل"},
     "sms.api_key": {"type": "secret", "sensitive": True, "label": "کلید API پیامک"},
+    # --- فاز ۱۴: هوش تجاری ---
+    "bi.metabase_url": {"type": "string", "sensitive": False, "label": "آدرس Metabase (داشبوردهای BI)"},
     "branding.app_display_name": {"type": "localized", "sensitive": False, "label": "نام نمایشی اپ"},
     "branding.app_icon_media_id": {"type": "uuid", "sensitive": False, "label": "آیکون اپ"},
     "branding.app_splash_media_id": {"type": "uuid", "sensitive": False, "label": "اسپلش اپ"},
