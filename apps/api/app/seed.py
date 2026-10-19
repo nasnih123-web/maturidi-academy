@@ -48,6 +48,11 @@ BASE_PERMISSIONS = [
     ("realtime.admin", "اشتراک کانال‌های مدیریتی بلادرنگ (فاز ۲)"),
     ("media.manage", "مدیریت رسانه"),
     ("finance.manage", "مدیریت مالی"),
+    ("knowledge.manage", "مدیریت پایگاه دانش فتوا (فاز ۶)"),
+    ("calculators.manage", "مدیریت پیکربندی ماشین‌حساب‌های ارث/زکات (فاز ۷)"),
+    ("calculators.approve", "تأیید پیکربندی ماشین‌حساب‌ها — عالم (فاز ۷)"),
+    ("lms.manage", "مدیریت LMS — دوره‌ها، درس‌ها، هم‌گروهی‌ها (فاز ۸)"),
+    ("library.manage", "مدیریت کتابخانهٔ چندرسانه‌ای — آپلود، نسخه، گردش‌کار، ایندکس AI (فاز ۹)"),
 ]
 
 BASE_ROLES = [
@@ -220,6 +225,9 @@ async def seed_platform_settings_defaults(db: AsyncSession) -> list[str]:
     - fonts.<locale>: ‏null = فونت داخلی (Vazirmatn/Cairo/Inter)
     - home.sections: اسلات‌های زیرِ هیرو به ترتیب فعلی seed بخش‌ها
     - hero.<locale>: کپی فعلی هیروی وب (از apps/web/messages + seed بخش hero)
+    - quran.*: provider فعال، ترجمه‌ها/تفسیرها/قاری‌ها، زبان‌های فعال،
+      نمایش ترجمه/تفسیر، حالت هایلایت، اندازهٔ فونت، رفتار پخش (فاز ۵)
+    - munajat.*: فعال‌بودن مناجات شبانه و پنجرهٔ زمانی آن (فاز ۵)
     """
     defaults: dict[str, Any] = {
         "particles": {
@@ -264,6 +272,34 @@ async def seed_platform_settings_defaults(db: AsyncSession) -> list[str]:
             "primary_cta": {"label": "Start learning", "href": "/en/courses"},
             "secondary_cta": {"label": "Browse library", "href": "/en/library"},
         },
+        # --- فاز ۵ (Track 1): قرآن / مناجات ---
+        "quran.provider": "alquran_cloud",
+        "quran.translations": ["en.sahih", "fa.makarem"],
+        "quran.tafsirs": ["ar.muyassar"],
+        "quran.reciters": ["ar.alafasy"],
+        "quran.active_languages": ["fa", "ar", "en"],
+        "quran.show_translation": True,
+        "quran.show_tafsir": True,
+        "quran.highlight_mode": "ayah",
+        "quran.font_size": 20,
+        "quran.playback": {"autoplay": False, "repeat": "off"},
+        "munajat.enabled": True,
+        "munajat.window": {"start": "02:00", "end": "05:00"},
+        "adhan.defaults": {"calculation_method": "mwl", "madhab": "shafi"},
+        # --- فاز ۶: موتور فتوای هوشمند ---
+        "ai.provider": "none",
+        "ai.claude_model": "claude-sonnet-4-5",
+        "ai.claude_model": "claude-sonnet-4-5",
+        "ai.daily_quota_per_user": 20,
+        "ai.rate_per_minute": 5,
+        "ai.external_research_enabled": False,
+        "ai.stream_timeout_s": 60,
+        "ai.embedding_provider": "hash",
+        "ai.embedding_endpoint": None,
+        "ai.embedding_model": None,
+        # --- فاز ۹: کتابخانهٔ چندرسانه‌ای ---
+        "media.auto_pipeline": True,  # صف خودکار transcribe/OCR پس از آپلود
+        "media.ocr_langs": "fas+ara+eng",
     }
     seeded: list[str] = []
     for key, value in defaults.items():
@@ -416,6 +452,30 @@ async def main() -> None:
 
         # پیش‌فرض‌های تنظیمات polish — میل‌استون polish (idempotent)
         await seed_platform_settings_defaults(db)
+
+        # چانک‌های نمایشی فتوا — فاز ۶ (idempotent؛ فقط نقل‌قول verbatim)
+        from app.seed_fatwa import seed_fatwa_demo
+
+        fatwa_seed = await seed_fatwa_demo(db)
+        print(f"seed فتوا: {fatwa_seed}")
+
+        # پیکربندی‌های draft ماشین‌حساب‌ها — فاز ۷ (idempotent؛ بدون هیچ عدد فقهی)
+        from app.seed_calculators import seed_calculator_rules
+
+        calc_seed = await seed_calculator_rules(db)
+        print(f"seed ماشین‌حساب‌ها: {calc_seed}")
+
+        # برنامهٔ درسی نمایشی LMS — فاز ۸ (idempotent؛ فقط ارجاع به محتوای واقعی)
+        from app.modules.lms.seed_lms import seed_lms_demo
+
+        lms_seed = await seed_lms_demo(db)
+        print(f"seed LMS: {lms_seed}")
+
+        # آیتم‌های نمایشی کتابخانه — فاز ۹ (idempotent؛ فایل‌های واقعی تولیدشده در کد)
+        from app.modules.library.seed_library import seed_library_demo
+
+        lib_seed = await seed_library_demo(db)
+        print(f"seed کتابخانه: {lib_seed}")
 
         await db.commit()
     print("seed انجام شد.")

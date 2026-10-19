@@ -1,0 +1,141 @@
+"""فهرست مرجع ۱۱۴ سوره — فاز ۵.
+
+دادهٔ ثابت: شماره، نام عربی، نام انگلیسی (استاندارد AlQuranCloud) و تعداد آیات.
+برای متن/ترجمه/تفسیر/صوت، همیشه provider (providers.py) منبع حقیقت است.
+"""
+from __future__ import annotations
+
+from typing import NamedTuple
+
+
+class SurahMeta(NamedTuple):
+    number: int
+    name_ar: str
+    name_en: str
+    ayahs: int
+    revelation: str  # Meccan | Medinan
+
+
+SURAHS: tuple[SurahMeta, ...] = (
+    SurahMeta(1, "الفاتحة", "Al-Fatihah", 7, "Meccan"),
+    SurahMeta(2, "البقرة", "Al-Baqarah", 286, "Medinan"),
+    SurahMeta(3, "آل عمران", "Aal-e-Imran", 200, "Medinan"),
+    SurahMeta(4, "النساء", "An-Nisa", 176, "Medinan"),
+    SurahMeta(5, "المائدة", "Al-Ma'idah", 120, "Medinan"),
+    SurahMeta(6, "الأنعام", "Al-An'am", 165, "Meccan"),
+    SurahMeta(7, "الأعراف", "Al-A'raf", 206, "Meccan"),
+    SurahMeta(8, "الأنفال", "Al-Anfal", 75, "Medinan"),
+    SurahMeta(9, "التوبة", "At-Tawbah", 129, "Medinan"),
+    SurahMeta(10, "يونس", "Yunus", 109, "Meccan"),
+    SurahMeta(11, "هود", "Hud", 123, "Meccan"),
+    SurahMeta(12, "يوسف", "Yusuf", 111, "Meccan"),
+    SurahMeta(13, "الرعد", "Ar-Ra'd", 43, "Medinan"),
+    SurahMeta(14, "إبراهيم", "Ibrahim", 52, "Meccan"),
+    SurahMeta(15, "الحجر", "Al-Hijr", 99, "Meccan"),
+    SurahMeta(16, "النحل", "An-Nahl", 128, "Meccan"),
+    SurahMeta(17, "الإسراء", "Al-Isra", 111, "Meccan"),
+    SurahMeta(18, "الكهف", "Al-Kahf", 110, "Meccan"),
+    SurahMeta(19, "مريم", "Maryam", 98, "Meccan"),
+    SurahMeta(20, "طه", "Taha", 135, "Meccan"),
+    SurahMeta(21, "الأنبياء", "Al-Anbiya", 112, "Meccan"),
+    SurahMeta(22, "الحج", "Al-Hajj", 78, "Medinan"),
+    SurahMeta(23, "المؤمنون", "Al-Mu'minun", 118, "Meccan"),
+    SurahMeta(24, "النور", "An-Nur", 64, "Medinan"),
+    SurahMeta(25, "الفرقان", "Al-Furqan", 77, "Meccan"),
+    SurahMeta(26, "الشعراء", "Ash-Shu'ara", 227, "Meccan"),
+    SurahMeta(27, "النمل", "An-Naml", 93, "Meccan"),
+    SurahMeta(28, "القصص", "Al-Qasas", 88, "Meccan"),
+    SurahMeta(29, "العنكبوت", "Al-Ankabut", 69, "Meccan"),
+    SurahMeta(30, "الروم", "Ar-Rum", 60, "Meccan"),
+    SurahMeta(31, "لقمان", "Luqman", 34, "Meccan"),
+    SurahMeta(32, "السجدة", "As-Sajdah", 30, "Meccan"),
+    SurahMeta(33, "الأحزاب", "Al-Ahzab", 73, "Medinan"),
+    SurahMeta(34, "سبأ", "Saba", 54, "Meccan"),
+    SurahMeta(35, "فاطر", "Fatir", 45, "Meccan"),
+    SurahMeta(36, "يس", "Ya-Sin", 83, "Meccan"),
+    SurahMeta(37, "الصافات", "As-Saffat", 182, "Meccan"),
+    SurahMeta(38, "ص", "Sad", 88, "Meccan"),
+    SurahMeta(39, "الزمر", "Az-Zumar", 75, "Meccan"),
+    SurahMeta(40, "غافر", "Ghafir", 85, "Meccan"),
+    SurahMeta(41, "فصلت", "Fussilat", 54, "Meccan"),
+    SurahMeta(42, "الشورى", "Ash-Shura", 53, "Meccan"),
+    SurahMeta(43, "الزخرف", "Az-Zukhruf", 89, "Meccan"),
+    SurahMeta(44, "الدخان", "Ad-Dukhan", 59, "Meccan"),
+    SurahMeta(45, "الجاثية", "Al-Jathiyah", 37, "Meccan"),
+    SurahMeta(46, "الأحقاف", "Al-Ahqaf", 35, "Meccan"),
+    SurahMeta(47, "محمد", "Muhammad", 38, "Medinan"),
+    SurahMeta(48, "الفتح", "Al-Fath", 29, "Medinan"),
+    SurahMeta(49, "الحجرات", "Al-Hujurat", 18, "Medinan"),
+    SurahMeta(50, "ق", "Qaf", 45, "Meccan"),
+    SurahMeta(51, "الذاريات", "Adh-Dhariyat", 60, "Meccan"),
+    SurahMeta(52, "الطور", "At-Tur", 49, "Meccan"),
+    SurahMeta(53, "النجم", "An-Najm", 62, "Meccan"),
+    SurahMeta(54, "القمر", "Al-Qamar", 55, "Meccan"),
+    SurahMeta(55, "الرحمن", "Ar-Rahman", 78, "Medinan"),
+    SurahMeta(56, "الواقعة", "Al-Waqi'ah", 96, "Meccan"),
+    SurahMeta(57, "الحديد", "Al-Hadid", 29, "Medinan"),
+    SurahMeta(58, "المجادلة", "Al-Mujadila", 22, "Medinan"),
+    SurahMeta(59, "الحشر", "Al-Hashr", 24, "Medinan"),
+    SurahMeta(60, "الممتحنة", "Al-Mumtahanah", 13, "Medinan"),
+    SurahMeta(61, "الصف", "As-Saff", 14, "Medinan"),
+    SurahMeta(62, "الجمعة", "Al-Jumu'ah", 11, "Medinan"),
+    SurahMeta(63, "المنافقون", "Al-Munafiqun", 11, "Medinan"),
+    SurahMeta(64, "التغابن", "At-Taghabun", 18, "Medinan"),
+    SurahMeta(65, "الطلاق", "At-Talaq", 12, "Medinan"),
+    SurahMeta(66, "التحريم", "At-Tahrim", 12, "Medinan"),
+    SurahMeta(67, "الملك", "Al-Mulk", 30, "Meccan"),
+    SurahMeta(68, "القلم", "Al-Qalam", 52, "Meccan"),
+    SurahMeta(69, "الحاقة", "Al-Haqqah", 52, "Meccan"),
+    SurahMeta(70, "المعارج", "Al-Ma'arij", 44, "Meccan"),
+    SurahMeta(71, "نوح", "Nuh", 28, "Meccan"),
+    SurahMeta(72, "الجن", "Al-Jinn", 28, "Meccan"),
+    SurahMeta(73, "المزمل", "Al-Muzzammil", 20, "Meccan"),
+    SurahMeta(74, "المدثر", "Al-Muddaththir", 56, "Meccan"),
+    SurahMeta(75, "القيامة", "Al-Qiyamah", 40, "Meccan"),
+    SurahMeta(76, "الإنسان", "Al-Insan", 31, "Medinan"),
+    SurahMeta(77, "المرسلات", "Al-Mursalat", 50, "Meccan"),
+    SurahMeta(78, "النبأ", "An-Naba", 40, "Meccan"),
+    SurahMeta(79, "النازعات", "An-Nazi'at", 46, "Meccan"),
+    SurahMeta(80, "عبس", "Abasa", 42, "Meccan"),
+    SurahMeta(81, "التكوير", "At-Takwir", 29, "Meccan"),
+    SurahMeta(82, "الانفطار", "Al-Infitar", 19, "Meccan"),
+    SurahMeta(83, "المطففين", "Al-Mutaffifin", 36, "Meccan"),
+    SurahMeta(84, "الانشقاق", "Al-Inshiqaq", 25, "Meccan"),
+    SurahMeta(85, "البروج", "Al-Buruj", 22, "Meccan"),
+    SurahMeta(86, "الطارق", "At-Tariq", 17, "Meccan"),
+    SurahMeta(87, "الأعلى", "Al-A'la", 19, "Meccan"),
+    SurahMeta(88, "الغاشية", "Al-Ghashiyah", 26, "Meccan"),
+    SurahMeta(89, "الفجر", "Al-Fajr", 30, "Meccan"),
+    SurahMeta(90, "البلد", "Al-Balad", 20, "Meccan"),
+    SurahMeta(91, "الشمس", "Ash-Shams", 15, "Meccan"),
+    SurahMeta(92, "الليل", "Al-Layl", 21, "Meccan"),
+    SurahMeta(93, "الضحى", "Ad-Duhaa", 11, "Meccan"),
+    SurahMeta(94, "الشرح", "Ash-Sharh", 8, "Meccan"),
+    SurahMeta(95, "التين", "At-Tin", 8, "Meccan"),
+    SurahMeta(96, "العلق", "Al-Alaq", 19, "Meccan"),
+    SurahMeta(97, "القدر", "Al-Qadr", 5, "Meccan"),
+    SurahMeta(98, "البينة", "Al-Bayyinah", 8, "Medinan"),
+    SurahMeta(99, "الزلزلة", "Az-Zalzalah", 8, "Medinan"),
+    SurahMeta(100, "العاديات", "Al-Adiyat", 11, "Meccan"),
+    SurahMeta(101, "القارعة", "Al-Qari'ah", 11, "Meccan"),
+    SurahMeta(102, "التكاثر", "At-Takathur", 8, "Meccan"),
+    SurahMeta(103, "العصر", "Al-Asr", 3, "Meccan"),
+    SurahMeta(104, "الهمزة", "Al-Humazah", 9, "Meccan"),
+    SurahMeta(105, "الفيل", "Al-Fil", 5, "Meccan"),
+    SurahMeta(106, "قريش", "Quraysh", 4, "Meccan"),
+    SurahMeta(107, "الماعون", "Al-Ma'un", 7, "Meccan"),
+    SurahMeta(108, "الكوثر", "Al-Kawthar", 3, "Meccan"),
+    SurahMeta(109, "الكافرون", "Al-Kafirun", 6, "Meccan"),
+    SurahMeta(110, "النصر", "An-Nasr", 3, "Medinan"),
+    SurahMeta(111, "المسد", "Al-Masad", 5, "Meccan"),
+    SurahMeta(112, "الإخلاص", "Al-Ikhlas", 4, "Meccan"),
+    SurahMeta(113, "الفلق", "Al-Falaq", 5, "Meccan"),
+    SurahMeta(114, "الناس", "An-Nas", 6, "Meccan"),
+)
+
+
+def get_surah(number: int) -> SurahMeta:
+    """متای سوره — ValueError برای شمارهٔ نامعتبر (سرویس به ۴۰۴ تبدیل می‌کند)."""
+    if not 1 <= number <= 114:
+        raise ValueError(f"invalid surah number: {number}")
+    return SURAHS[number - 1]
