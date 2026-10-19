@@ -182,6 +182,7 @@ async def download_by_ref(
 async def admin_list_items(
     kind: str | None = Query(default=None, pattern="^(video|video_360|pdf|audio|mindmap)$"),
     status: str | None = Query(default=None, pattern="^(draft|in_review|approved|published|rejected|archived)$"),
+    source_type: str | None = Query(default=None, description="فیلتر منبع: manual/telegram_import/..."),
     q: str | None = None,
     after: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
@@ -190,9 +191,9 @@ async def admin_list_items(
 ):
     """فهرست مدیریتی CRM — همهٔ وضعیت‌ها (پیش‌نویس‌ها هم دیده می‌شوند)."""
     items, next_cursor = await service.admin_list_items(
-        db, kind=kind, status=status, q=q, cursor=after, limit=limit
+        db, kind=kind, status=status, source_type=source_type, q=q, cursor=after, limit=limit
     )
-    return CursorPage(items=[_out(d) for d in items], next_cursor=next_cursor)
+    return CursorPage(items=[_admin_out(d) for d in items], next_cursor=next_cursor)
 
 
 @admin_library_router.get("/items/{item_id}", response_model=LibraryItemAdminOut)

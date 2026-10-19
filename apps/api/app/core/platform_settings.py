@@ -32,6 +32,16 @@ SETTING_DEFS: dict[str, dict] = {
     "ai.fallback_model": {"type": "string", "sensitive": False, "label": "مدل جایگزین"},
     "telegram.bot_token": {"type": "secret", "sensitive": True, "label": "توکن بات تلگرام"},
     "telegram.channel": {"type": "string", "sensitive": False, "label": "کانال تلگرام"},
+    # --- فاز ۱۱ (Track 1): تلگرام دوطرفه + ویجت‌ها (ADR-0008) ---
+    "telegram.enabled": {"type": "json", "sensitive": False, "label": "فعال‌بودن بات تلگرام"},
+    "telegram.webhook_secret": {"type": "secret", "sensitive": True, "label": "رمز وبهوک تلگرام (هدر X-Telegram-Bot-Api-Secret-Token)"},
+    "telegram.api_id": {"type": "secret", "sensitive": True, "label": "api_id تلگرام (Telethon — اتصال حساب از CRM)"},
+    "telegram.api_hash": {"type": "secret", "sensitive": True, "label": "api_hash تلگرام (Telethon — اتصال حساب از CRM)"},
+    "telegram.session": {"type": "secret", "sensitive": True, "label": "session رمزنگاری‌شدهٔ Telethon (§۳ — هرگز لاگ نمی‌شود)"},
+    "telegram.phone_masked": {"type": "string", "sensitive": False, "label": "شمارهٔ ماسک‌شدهٔ حساب تلگرام"},
+    "telegram.pending_phone": {"type": "secret", "sensitive": True, "label": "شمارهٔ در انتظار تأیید کد (داخلی)"},
+    "telegram.pending_phone_code_hash": {"type": "secret", "sensitive": True, "label": "هش کد ورود تلگرام (داخلی)"},
+    "telegram.pending_expires_at": {"type": "string", "sensitive": False, "label": "انقضای کد ورود (ISO8601 — داخلی)"},
     "payment.zarinpal_key": {"type": "secret", "sensitive": True, "label": "کلید زرین‌پال"},
     "payment.idpay_key": {"type": "secret", "sensitive": True, "label": "کلید آیدی‌پی"},
     "map.key": {"type": "secret", "sensitive": True, "label": "کلید نقشه"},
@@ -447,6 +457,9 @@ def _validate_json_setting(key: str, value: Any) -> Any:
             raise ValueError(f"{key} must be between {bounds[0]} and {bounds[1]}")
         return int(value)
     if key == "ai.external_research_enabled":
+        return _validate_flag(key, value)
+    # --- فاز ۱۱: تلگرام ---
+    if key == "telegram.enabled":
         return _validate_flag(key, value)
     if key == "ai.embedding_provider":
         if value not in ("hash", "external_api", "local_model"):

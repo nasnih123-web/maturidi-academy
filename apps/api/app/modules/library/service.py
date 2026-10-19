@@ -131,6 +131,15 @@ def _check_magic(content: bytes, ext: str) -> bool:
     return False
 
 
+def validate_upload_content(
+    kind: str, filename: str | None, content: bytes
+) -> tuple[str, str]:
+    """نسخهٔ عمومی اعتبارسنج آپلود (§۷) برای مصرف ماژول‌های دیگر
+    (مثل درون‌ریزی تلگرام فاز ۱۱): پسوند + magic-byte + سقف حجم.
+    برمی‌گرداند: (ext, mime). خطا: APIError."""
+    return _validate_upload(kind, filename, content)
+
+
 def _validate_upload(kind: str, filename: str | None, content: bytes) -> tuple[str, str]:
     """اعتبارسنجی پسوند + magic-byte + سقف حجم. برمی‌گرداند: (ext, mime)."""
     ext = Path(filename or "").suffix.lower()
@@ -357,6 +366,10 @@ async def create_item(
     cover_filename: str | None = None,
     ip: str | None = None,
     user_agent: str | None = None,
+    # --- فاز ۱۱: درون‌ریزی تلگرام — مقادیر صریح، پیش‌فرض‌ها بدون تغییر ---
+    initial_status: str = workflow.DRAFT,
+    source_type: str = "upload",
+    source_ref: dict | None = None,
 ) -> dict:
     kind = meta["kind"]
     ext, mime = _validate_upload(kind, filename, content)
@@ -382,7 +395,7 @@ async def create_item(
         related_lesson_id=meta.get("related_lesson_id"),
         religious_place_ref=meta.get("religious_place_ref"),
         visibility=meta.get("visibility", "registered"),
-        workflow_status=workflow.DRAFT,
+        workflow_status=initial_status,
         version=1,
         ai_scopes=list(meta.get("ai_scopes") or []),
         include_in_fatwa_rag=bool(meta.get("include_in_fatwa_rag", False)),
@@ -390,7 +403,8 @@ async def create_item(
         duration_seconds=meta.get("duration_seconds"),
         file_size_bytes=len(content),
         mime_type=mime,
-        source_type="upload",
+        source_type=source_type,
+        source_ref=source_ref,
         created_by=actor.id,
     )
     db.add(item)
@@ -403,7 +417,7 @@ async def create_item(
         aggregate_type="library_item",
         aggregate_id=str(item.id),
         event_type="library.item.created",
-        payload={"kind": kind, "visibility": item.visibility, "source_type": "upload",
+        payload={"kind": kind, "visibility": item.visibility, "source_type": source_type,
                  "file_size_bytes": len(content)},
     )
     await log_audit(
@@ -570,6 +584,7 @@ async def admin_list_items(
     *,
     kind: str | None = None,
     status: str | None = None,
+    source_type: str | None = None,
     q: str | None = None,
     cursor: str | None = None,
     limit: int = 20,
@@ -580,6 +595,8 @@ async def admin_list_items(
         stmt = stmt.where(LibraryItem.kind == kind)
     if status:
         stmt = stmt.where(LibraryItem.workflow_status == status)
+    if source_type:
+        stmt = stmt.where(LibraryItem.source_type == source_type)
     if q:
         like = f"%{q.lower()}%"
         stmt = stmt.where(
