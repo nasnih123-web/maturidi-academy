@@ -24,15 +24,20 @@ LAYER_BEGIN = "\n<layer name=\"{name}\">\n"
 LAYER_END = "\n</layer>\n"
 
 _USER_SANITIZE_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+# یافتهٔ امنیتی فاز ۱۷ (SEC-17-06): ورودی کاربر می‌توانست دنبالهٔ
+# </layer><layer name="system"> را عیناً حمل کند و مرز بصری لایه‌ها را در
+# prompt بشکند. نشانگرهای لایه در ورودی کاربر خنثی می‌شوند.
+_LAYER_TAG_RE = re.compile(r"<(/?)layer\b", re.IGNORECASE)
 
 
 def sanitize_user_input(text_value: str, max_chars: int = 4000) -> str:
-    """پاک‌سازی ورودی کاربر: حذف کاراکترهای کنترلی + سقف طول.
+    """پاک‌سازی ورودی کاربر: حذف کاراکترهای کنترلی + خنثی‌سازی نشانگر لایه + سقف طول.
 
     متن تزریقی (مثل «دستورات قبلی را نادیده بگیر») حذف نمی‌شود — بلکه در
     لایهٔ user محبوس می‌ماند؛ مرز لایه‌هاست که از نفوذ جلوگیری می‌کند.
     """
     cleaned = _USER_SANITIZE_RE.sub("", text_value or "")
+    cleaned = _LAYER_TAG_RE.sub(r"[\1layer", cleaned)
     return cleaned.strip()[:max_chars]
 
 

@@ -289,10 +289,16 @@ async def answer_text(
             if ayah["translation"]:
                 parts.append(ayah["translation"])
             answer = "\n".join(parts)
-        # assert ساختاری نامتغیر NEVER-TTS-Quran
-        assert audio_base64 is None and tts_provider_name is None, (
-            "quran intent must never synthesize audio"
-        )
+        # ⛔ قاعدهٔ سخت فاز ۱۲: صوت آیه هرگز سنتز نمی‌شود — فقط URL
+        # تلاوت واقعی؛ هیچ مسیری در این شاخه به tts.py نمی‌رسد.
+        # یافتهٔ فاز ۱۷ (SEC-17-07): assert در مسیر عملیاتی با python -O
+        # حذف می‌شود؛ نامتغیر با خطای واقعی اعمال می‌شود.
+        if audio_base64 is not None or tts_provider_name is not None:
+            raise APIError(
+                500,
+                "voice_invariant_violated",
+                "نقض نامتغیر داخلی: قصد قرآن هرگز صوت سنتزشده برنمی‌گرداند",
+            )
     elif intent == intents.FATWA:
         result = await fatwa_service.ask(
             db,

@@ -311,6 +311,10 @@ async def _pgvector_search(
     ستون embedding_vec lazily ساخته و از JSON پر می‌شود تا migration واحد
     برای SQLite و Postgres کار کند.
     """
+    # یافتهٔ فاز ۱۷ (SEC-17-02): فقط کلیدهای شناخته‌شدهٔ فیلتر اعمال می‌شوند؛
+    # کلید ناشناس هرگز نمی‌تواند وارد ساختار SQL شود (دفاع در عمق).
+    _SAFE_FILTER_KEYS = frozenset({"ai_scope", "topic_category", "madhab_scope"})
+    filters = {k: v for k, v in (filters or {}).items() if k in _SAFE_FILTER_KEYS}
     try:
         await db.execute(
             text(
@@ -347,8 +351,12 @@ async def _pgvector_search(
             params["madhab"] = filters["madhab_scope"]
         rows = (
             await db.execute(
-                text(
-                    "SELECT id, embedding_vec <=> (:qvec)::vector(:dim) AS dist "
+                # بررسی‌شدهٔ فاز ۱۷ (SEC-17-02): قطعه‌های WHERE همگی رشته‌های
+                # ثابت‌اند و همهٔ مقادیر پویا (scope/topic/madhab/qvec/topk)
+                # از طریق پارامترهای bound یا float() رد می‌شوند؛ تزریق SQL
+                # ممکن نیست. سرکوب اسکنر آگاهانه و مستند است.
+                text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+                    "SELECT id, embedding_vec <=> (:qvec)::vector(:dim) AS dist "  # nosec B608 -- reviewed SEC-17-02
                     "FROM fiqh_knowledge_chunks WHERE "
                     + " AND ".join(where)
                     + " ORDER BY dist ASC LIMIT :topk"

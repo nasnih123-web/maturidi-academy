@@ -10,11 +10,13 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import secrets
 import threading
 import time
 import uuid
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -266,12 +268,31 @@ _WIDGET_TITLES = {
 }
 
 
+def _safe_base_url(base_url: str) -> str:
+    """اعتبارسنجی + escape پایهٔ URL برای کد embed.
+
+    یافتهٔ امنیتی فاز ۱۷ (SEC-17-04): base_url ورودیِ کاربر بود و بدون هیچ
+    اعتبارسنجی/escape داخل صفت src قرار می‌گرفت (attribute-breakout → XSS
+    در کدی که قرار است در سایت‌های ثالث الصاق شود). حالا فقط http(s) یا
+    خالی پذیرفته است و خروجی escape می‌شود.
+    """
+    base = (base_url or "").strip().rstrip("/")
+    if not base:
+        return ""
+    parsed = urlparse(base)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise APIError(
+            422, "invalid_base_url", "base_url باید یک نشانی معتبر http(s) باشد"
+        )
+    return html.escape(base, quote=True)
+
+
 def build_embed_snippet(widget: str, raw_key: str, *, base_url: str = "") -> str:
     """کد HTML جاسازی ویجت — iframe بدون نیاز به JS (ساده و امن)."""
     if widget not in WIDGET_SCOPES:
         raise APIError(422, "unknown_widget", f"ویجت ناشناخته: {widget}")
     title = _WIDGET_TITLES[widget]
-    base = base_url.rstrip("/") if base_url else ""
+    base = _safe_base_url(base_url)
     if widget == "prayer-times":
         # مختصات را صاحب سایت در src می‌گذارد
         src = (

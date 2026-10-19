@@ -14,7 +14,9 @@
 from __future__ import annotations
 
 import io
+import os
 import subprocess
+import tempfile
 import wave
 from datetime import datetime, timezone
 
@@ -62,19 +64,30 @@ def _demo_wav(seconds: int = 3, rate: int = 8000) -> bytes:
 
 
 def _demo_mp4(width: int, height: int, seconds: int = 1) -> bytes:
-    """mp4 واقعی با ffmpeg (رنگ ثابت)."""
-    out = f"/tmp/libdemo_{width}x{height}.mp4"
-    subprocess.run(
-        [
-            "ffmpeg", "-y", "-v", "error",
-            "-f", "lavfi", "-i",
-            f"color=c=0x1d3a2a:s={width}x{height}:d={seconds}:r=10",
-            "-pix_fmt", "yuv420p", "-c:v", "libx264", out,
-        ],
-        check=True, timeout=60,
-    )
-    with open(out, "rb") as fh:
-        return fh.read()
+    """mp4 واقعی با ffmpeg (رنگ ثابت).
+
+    یافتهٔ فاز ۱۷ (SEC-17-08): به‌جای مسیر ثابت در /tmp از tempfile امن
+    استفاده می‌شود (جلوگیری از پیش‌بینی/ربودن مسیر).
+    """
+    fd, out = tempfile.mkstemp(prefix="libdemo_", suffix=".mp4")
+    os.close(fd)
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-v", "error",
+                "-f", "lavfi", "-i",
+                f"color=c=0x1d3a2a:s={width}x{height}:d={seconds}:r=10",
+                "-pix_fmt", "yuv420p", "-c:v", "libx264", out,
+            ],
+            check=True, timeout=60,
+        )
+        with open(out, "rb") as fh:
+            return fh.read()
+    finally:
+        try:
+            os.unlink(out)
+        except OSError:
+            pass
 
 
 def _demo_mindmap() -> bytes:

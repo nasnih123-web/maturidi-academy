@@ -43,3 +43,6 @@ uploads/
 # Runtime static files (custom fonts uploaded via CRM — polish milestone)
 apps/api/static/
 *.tsbuildinfo
+
+# a11y scan artifacts (Chrome profiles, mirrored pages)
+.chrome-profile/

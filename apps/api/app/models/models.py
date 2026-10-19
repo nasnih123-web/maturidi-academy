@@ -1123,6 +1123,13 @@ class LibraryItem(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    __table_args__ = (
+        # فاز ۱۷: ایندکس ترکیبی مسیر داغ فهرست عمومی —
+        # WHERE workflow_status + visibility + ORDER BY created_at,id
+        # (‏app/modules/library/service.py::list_public‏)
+        Index("ix_library_items_pub_list", "workflow_status", "visibility", "created_at", "id"),
+    )
+
 
 class LibraryItemVersion(Base):
     """نسخهٔ بایگانی‌شدهٔ آیتم کتابخانه — ویرایش نسخهٔ قبلی را بایگانی می‌کند، نه حذف."""
@@ -1209,6 +1216,13 @@ class SocialPost(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        # فاز ۱۷: ایندکس ترکیبی مسیر داغ فید —
+        # WHERE status + ORDER BY created_at DESC, id DESC
+        # (‏app/modules/social/service.py::list_feed‏)
+        Index("ix_social_posts_feed", "status", "created_at", "id"),
     )
 
 
@@ -1508,7 +1522,7 @@ class TelegramPublished(Base):
     source_content_id: Mapped[str] = mapped_column(String(64), index=True)
     distribution_target: Mapped[str] = mapped_column(String(128), index=True)
     published_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)  # فاز ۱۷: هم‌راستا با uq_telegram_published_idem در migration فاز ۱۱
     status: Mapped[str] = mapped_column(
         String(16), default="pending", index=True
     )  # pending | sent | failed | notified | deleted
@@ -2091,7 +2105,7 @@ class PaymentIntent(Base):
     __tablename__ = "payment_intents"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)  # فاز ۱۷: هم‌راستا با uq_payment_intents_idempotency_key در migration فاز ۱۵
     amount: Mapped[int] = mapped_column(BigInteger, nullable=False)  # ریال (IRR)
     currency: Mapped[str] = mapped_column(String(8), nullable=False, default="IRR")
     campaign_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -2179,7 +2193,7 @@ class PaymentWebhookLog(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     gateway: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)  # فاز ۱۷: هم‌راستا با uq_payment_webhook_log_payload_hash در migration فاز ۱۵
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="processed"
     )  # processed | duplicate | rejected

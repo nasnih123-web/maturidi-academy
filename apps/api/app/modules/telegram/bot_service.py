@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+import html
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import logger
@@ -147,7 +149,14 @@ async def send_fatwa_review_request(
     template: dict | None = None,
     locale: str = "fa",
 ) -> int | None:
-    """اعلان بازبینی فتوا با دکمه‌های تأیید/رد — برمی‌گرداند: message_id."""
+    """اعلان بازبینی فتوا با دکمه‌های تأیید/رد — برمی‌گرداند: message_id.
+
+    یافتهٔ امنیتی فاز ۱۷ (SEC-17-05): title/excerpt ورودیِ کاربرند و پیام با
+    parse_mode=HTML ارسال می‌شود؛ بدون escape، تگ‌های <a>/<b>/… تزریق
+    می‌شدند (فیشینگ/به‌هم‌ریختگی قالب). حالا escape می‌شوند.
+    """
+    title = html.escape(title or "", quote=False)
+    excerpt = html.escape(excerpt or "", quote=False)
     tpl = (template or {}).get(locale) or (template or {}).get("fa")
     if tpl:
         text = tpl.format(title=title, excerpt=excerpt)

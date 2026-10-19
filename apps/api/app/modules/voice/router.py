@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.errors import APIError
-from app.models.models import User
+from app.models.models import AIUsageLog, User
 from app.modules.auth.dependencies import get_current_user, require_permission
+from app.modules.fatwa.service import check_quota
 
 from . import schemas, service
 
@@ -50,13 +51,29 @@ async def transcribe_audio(
     request: Request,
     file: UploadFile = File(...),
     lang: str | None = Form(default=None),
+    user: User | None = Depends(_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """رونویسی فایل صوتی (webm/mp4/m4a/wav/ogg). بدون STT → ۵۰۳ صادقانه."""
+    """رونویسی فایل صوتی (webm/mp4/m4a/wav/ogg). بدون STT → ۵۰۳ صادقانه.
+
+    سهمیهٔ AI (دقیقه‌ای + روزانه) پیش از هر پردازش هزینه‌بر اعمال می‌شود —
+    یافتهٔ امنیتی فاز ۱۷ (SEC-17-03): این مسیر عمومی بود و بدون هیچ سقفی
+    STT مصرف می‌کرد.
+    """
+    await check_quota(db, user, _client_ip(request), "voice.transcribe")
     content = await file.read()
-    return await service.transcribe(
+    out = await service.transcribe(
         db, content=content, filename=file.filename, lang=lang
     )
+    db.add(
+        AIUsageLog(
+            user_id=user.id if user else None,
+            endpoint="voice.transcribe",
+            model="stt",
+        )
+    )
+    await db.commit()
+    return out
 
 
 @voice_router.post("/ask", response_model=schemas.AskOut)
@@ -71,9 +88,12 @@ async def ask_voice(
 
     قصد قرآن → فقط URL تلاوت واقعی (`audio_kind="recitation"`)؛ آیه هرگز TTS
     نمی‌شود. بدون TTS پیکربندی‌شده → متن با `audio_kind="none"` و اعلان صادقانه.
+
+    سهمیهٔ AI پیش از پردازش اعمال می‌شود (یافتهٔ امنیتی فاز ۱۷ SEC-17-03).
     """
+    await check_quota(db, user, _client_ip(request), "voice.ask")
     content = await file.read()
-    return await service.ask_audio(
+    out = await service.ask_audio(
         db,
         content=content,
         filename=file.filename,
@@ -81,6 +101,15 @@ async def ask_voice(
         user=user,
         client_ip=_client_ip(request),
     )
+    db.add(
+        AIUsageLog(
+            user_id=user.id if user else None,
+            endpoint="voice.ask",
+            model="voice",
+        )
+    )
+    await db.commit()
+    return out
 
 
 # ---------------------------------------------------------------------------
