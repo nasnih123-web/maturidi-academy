@@ -24,7 +24,10 @@ class SmsProvider(ABC):
 
 class LogSmsProvider(SmsProvider):
     async def send(self, phone: str, message: str) -> bool:
-        logger.info("[DEV-SMS] to=%s message=%s", phone, message)
+        # §۸: کد تأیید در لاگ نمی‌آید — حتی در dev
+        from app.core.email import redact_secrets
+
+        logger.info("[DEV-SMS] to=%s message=%s", phone, redact_secrets(message))
         return True
 
 
@@ -43,6 +46,17 @@ class KavenegarProvider(SmsProvider):
                 data={"receptor": phone, "sender": self.sender, "message": message},
             )
             resp.raise_for_status()
+            # §۸: Kavenegar گاهی HTTP 200 با خطا در بدنه برمی‌گرداند —
+            # «موفقیت جعلی» ممنوع؛ وضعیت واقعی تحویل از return.status خوانده می‌شود.
+            try:
+                status = resp.json().get("return", {}).get("status")
+            except Exception:
+                status = None
+            if status != 200:
+                raise RuntimeError(
+                    f"kavenegar delivery failed: http={resp.status_code} "
+                    f"api_status={status}"
+                )
             return True
 
 

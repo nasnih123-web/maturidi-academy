@@ -22,8 +22,10 @@ from app.core.dispatcher import start_realtime, stop_realtime
 from app.core.errors import register_error_handlers
 from app.core.logging import logger, setup_logging
 from app.core.metrics import METRICS
+from app.core.storage import ensure_storage_ready
 from app.core.middleware import (
     AccessLogMiddleware,
+    BodySizeLimitMiddleware,
     RequestIdMiddleware,
     SecurityHeadersMiddleware,
 )
@@ -138,6 +140,10 @@ def _init_otel() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     assert_production_secrets_ok(settings)
+    # Track 1 (final) / یافته‌های ۲ و ۴: اعتبارسنجی storage + ساخت bucket در
+    # startup؛ در production با config بد یا MinIOِ در دسترس‌نبودن، بوت با
+    # خطای صریح فیل می‌شود (نه fallback خاموش).
+    await ensure_storage_ready(settings)
     _init_sentry()
     _init_otel()
     await start_realtime(app)
@@ -153,10 +159,11 @@ app = FastAPI(
 )
 
 
-# ترتیب اجرا: RequestId (بیرونی‌ترین — اول) → AccessLog → SecurityHeaders.
+# ترتیب اجرا: RequestId (بیرونی‌ترین — اول) → BodySizeLimit → AccessLog → SecurityHeaders.
 # add_middleware در ابتدای صف می‌نشاند، پس آخرین فراخوانی بیرونی‌ترین است.
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AccessLogMiddleware)
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
 app.add_middleware(RequestIdMiddleware)
 
 # CORS فقط وقتی CORS_ALLOW_ORIGINS تنظیم شده باشد (پیش‌فرض: غیرفعال).
