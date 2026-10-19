@@ -1566,3 +1566,40 @@ class ApiKey(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class VoiceSession(Base):
+    """نشست دستیار صوتی — فاز ۱۲.
+
+    هر فراخوانی /voice/ask یک نشست می‌سازد؛ user_id nullable چون ask ناشناس
+    هم پذیرفته می‌شود (مثل fatwa.ask).
+    """
+
+    __tablename__ = "voice_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True, index=True
+    )
+    lang: Mapped[str] = mapped_column(String(8), default="fa", index=True)  # fa | ar
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+
+class VoiceUsageLog(Base):
+    """لاگ مصرف دستیار صوتی — فاز ۱۲ (پایش/سهمیه در CRM)."""
+
+    __tablename__ = "voice_usage_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("voice_sessions.id"), nullable=False, index=True
+    )
+    intent: Mapped[str] = mapped_column(String(16), index=True)  # quran | fatwa | general
+    lang: Mapped[str] = mapped_column(String(8), index=True)
+    stt_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tts_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
