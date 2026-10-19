@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 import uuid
@@ -48,6 +49,32 @@ SETTING_DEFS: dict[str, dict] = {
     "hero.fa": {"type": "json", "sensitive": False, "label": "متن هیروی فارسی"},
     "hero.ar": {"type": "json", "sensitive": False, "label": "متن هیروی عربی"},
     "hero.en": {"type": "json", "sensitive": False, "label": "متن هیروی انگلیسی"},
+    # --- فاز ۵ (Track 1): قرآن / مناجات ---
+    "quran.provider": {"type": "json", "sensitive": False, "label": "provider فعال متن قرآن"},
+    "quran.translations": {"type": "json", "sensitive": False, "label": "ترجمه‌های فعال (ترتیب نمایش)"},
+    "quran.tafsirs": {"type": "json", "sensitive": False, "label": "تفسیرهای فعال (ترتیب نمایش)"},
+    "quran.reciters": {"type": "json", "sensitive": False, "label": "قاری‌های فعال"},
+    "quran.active_languages": {"type": "json", "sensitive": False, "label": "زبان‌های فعال قرآن"},
+    "quran.show_translation": {"type": "json", "sensitive": False, "label": "نمایش ترجمه"},
+    "quran.show_tafsir": {"type": "json", "sensitive": False, "label": "نمایش تفسیر"},
+    "quran.highlight_mode": {"type": "json", "sensitive": False, "label": "حالت هایلایت (word|ayah|off)"},
+    "quran.font_size": {"type": "json", "sensitive": False, "label": "اندازهٔ پایهٔ فونت قرآن"},
+    "quran.playback": {"type": "json", "sensitive": False, "label": "رفتار پخش صوت"},
+    "munajat.enabled": {"type": "json", "sensitive": False, "label": "فعال‌بودن مناجات شبانه"},
+    "munajat.window": {"type": "json", "sensitive": False, "label": "پنجرهٔ زمانی مناجات"},
+    "adhan.defaults": {"type": "json", "sensitive": False, "label": "پیش‌فرض محاسبهٔ اذان (روش + مذهب)"},
+    # --- فاز ۶: موتور فتوای هوشمند ---
+    "ai.provider": {"type": "json", "sensitive": False, "label": "provider فعال LLM (none|claude)"},
+    "ai.claude_model": {"type": "json", "sensitive": False, "label": "مدل Claude"},
+    "ai.claude_api_key": {"type": "secret", "sensitive": True, "label": "کلید API کلاد (هرگز لاگ نمی‌شود)"},
+    "ai.daily_quota_per_user": {"type": "json", "sensitive": False, "label": "سقف روزانهٔ AI به‌ازای کاربر"},
+    "ai.rate_per_minute": {"type": "json", "sensitive": False, "label": "سقف درخواست AI در دقیقه"},
+    "ai.external_research_enabled": {"type": "json", "sensitive": False, "label": "تحقیق خارجی (§۹.۶ — پیش‌فرض خاموش)"},
+    "ai.stream_timeout_s": {"type": "json", "sensitive": False, "label": "timeout استریم/تولید AI (ثانیه)"},
+    "ai.embedding_provider": {"type": "json", "sensitive": False, "label": "provider embedding ‏(hash|external_api|local_model)"},
+    "ai.embedding_endpoint": {"type": "json", "sensitive": False, "label": "endpoint سرویس embedding خارجی"},
+    "ai.embedding_api_key": {"type": "secret", "sensitive": True, "label": "کلید سرویس embedding خارجی"},
+    "ai.embedding_model": {"type": "json", "sensitive": False, "label": "نام مدل embedding خارجی"},
 }
 
 _MISS = object()
@@ -257,6 +284,118 @@ def _validate_hero(value: Any) -> dict:
     }
 
 
+# --- فاز ۵ (Track 1): اعتبارسنج‌های کلیدهای قرآن / مناجات ---
+
+_QURAN_PROVIDERS = ("alquran_cloud",)
+
+
+def _validate_quran_provider(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("quran.provider must be a non-empty string")
+    pid = value.strip()
+    if pid not in _QURAN_PROVIDERS:
+        raise ValueError(f"quran.provider: unknown provider '{pid}'")
+    return pid
+
+
+def _validate_edition_list(key: str, value: Any) -> list:
+    if not isinstance(value, list):
+        raise ValueError(f"{key} must be an array")
+    out = []
+    for i, item in enumerate(value):
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"{key}[{i}] must be a non-empty string")
+        if item.strip() in out:
+            raise ValueError(f"{key}: duplicate '{item.strip()}'")
+        out.append(item.strip())
+    return out
+
+
+def _validate_active_languages(value: Any) -> list:
+    langs = _validate_edition_list("quran.active_languages", value)
+    allowed = {"fa", "ar", "en"}
+    for lang in langs:
+        if lang not in allowed:
+            raise ValueError(f"quran.active_languages: unsupported language '{lang}'")
+    if not langs:
+        raise ValueError("quran.active_languages must not be empty")
+    return langs
+
+
+def _validate_flag(key: str, value: Any) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{key} must be a boolean")
+    return value
+
+
+def _validate_highlight_mode(value: Any) -> str:
+    if value not in ("word", "ayah", "off"):
+        raise ValueError("quran.highlight_mode must be one of word|ayah|off")
+    return value
+
+
+def _validate_font_size(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("quran.font_size must be a number")
+    if not 12 <= value <= 72:
+        raise ValueError("quran.font_size must be between 12 and 72")
+    return float(value)
+
+
+def _validate_playback(value: Any) -> dict:
+    if not isinstance(value, dict):
+        raise ValueError("quran.playback must be an object")
+    unknown = set(value) - {"autoplay", "repeat"}
+    if unknown:
+        raise ValueError(f"quran.playback: unknown fields {sorted(unknown)}")
+    autoplay = value.get("autoplay", False)
+    repeat = value.get("repeat", "off")
+    if not isinstance(autoplay, bool):
+        raise ValueError("quran.playback.autoplay must be a boolean")
+    if repeat not in ("off", "ayah", "surah"):
+        raise ValueError("quran.playback.repeat must be one of off|ayah|surah")
+    return {"autoplay": autoplay, "repeat": repeat}
+
+
+_HHMM = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+
+
+def _validate_munajat_window(value: Any) -> dict:
+    if not isinstance(value, dict):
+        raise ValueError("munajat.window must be an object")
+    unknown = set(value) - {"start", "end"}
+    if unknown:
+        raise ValueError(f"munajat.window: unknown fields {sorted(unknown)}")
+    out = {}
+    for side in ("start", "end"):
+        v = value.get(side)
+        if not isinstance(v, str) or not _HHMM.match(v):
+            raise ValueError(f"munajat.window.{side} must be HH:MM (00:00–23:59)")
+        out[side] = v
+    return out
+
+
+_ADHAN_METHODS = ("isna", "mwl", "egypt", "karachi", "makkah", "jafari")
+_ADHAN_MADHABS = ("shafi", "hanafi")
+
+
+def _validate_adhan_defaults(value: Any) -> dict:
+    if not isinstance(value, dict):
+        raise ValueError("adhan.defaults must be an object")
+    unknown = set(value) - {"calculation_method", "madhab"}
+    if unknown:
+        raise ValueError(f"adhan.defaults: unknown fields {sorted(unknown)}")
+    method = value.get("calculation_method", "mwl")
+    madhab = value.get("madhab", "shafi")
+    if method not in _ADHAN_METHODS:
+        raise ValueError(
+            f"adhan.defaults.calculation_method must be one of {'|'.join(_ADHAN_METHODS)}"
+        )
+    if madhab not in _ADHAN_MADHABS:
+        raise ValueError("adhan.defaults.madhab must be one of shafi|hanafi")
+    return {"calculation_method": method, "madhab": madhab}
+
+
 def _validate_json_setting(key: str, value: Any) -> Any:
     """اعتبارسنج اختصاصی هر کلید json — خروجی canonical."""
     if key == "particles":
@@ -267,6 +406,58 @@ def _validate_json_setting(key: str, value: Any) -> Any:
         return _validate_home_sections(value)
     if key in ("hero.fa", "hero.ar", "hero.en"):
         return _validate_hero(value)
+    # --- فاز ۵: قرآن / مناجات ---
+    if key == "quran.provider":
+        return _validate_quran_provider(value)
+    if key in ("quran.translations", "quran.tafsirs", "quran.reciters"):
+        return _validate_edition_list(key, value)
+    if key == "quran.active_languages":
+        return _validate_active_languages(value)
+    if key in ("quran.show_translation", "quran.show_tafsir", "munajat.enabled"):
+        return _validate_flag(key, value)
+    if key == "quran.highlight_mode":
+        return _validate_highlight_mode(value)
+    if key == "quran.font_size":
+        return _validate_font_size(value)
+    if key == "quran.playback":
+        return _validate_playback(value)
+    if key == "munajat.window":
+        return _validate_munajat_window(value)
+    if key == "adhan.defaults":
+        return _validate_adhan_defaults(value)
+    # --- فاز ۶: تنظیمات AI ---
+    if key == "ai.provider":
+        if value not in ("none", "claude"):
+            raise ValueError("ai.provider must be one of none|claude")
+        return value
+    if key == "ai.claude_model":
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("ai.claude_model must be a non-empty string")
+        return value.strip()
+    if key in ("ai.daily_quota_per_user", "ai.rate_per_minute",
+               "ai.stream_timeout_s"):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{key} must be a number")
+        bounds = {
+            "ai.daily_quota_per_user": (1, 10000),
+            "ai.rate_per_minute": (1, 600),
+            "ai.stream_timeout_s": (5, 600),
+        }[key]
+        if not bounds[0] <= value <= bounds[1]:
+            raise ValueError(f"{key} must be between {bounds[0]} and {bounds[1]}")
+        return int(value)
+    if key == "ai.external_research_enabled":
+        return _validate_flag(key, value)
+    if key == "ai.embedding_provider":
+        if value not in ("hash", "external_api", "local_model"):
+            raise ValueError(
+                "ai.embedding_provider must be one of hash|external_api|local_model"
+            )
+        return value
+    if key in ("ai.embedding_endpoint", "ai.embedding_model"):
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"{key} must be a string or null")
+        return value
     # کلید json آینده بدون اعتبارسنج اختصاصی: فقط JSON-serializable بودن
     json.dumps(value)
     return value
@@ -277,8 +468,16 @@ def encode_setting_value(setting_type: str, value: Any, key: str | None = None) 
 
     برای نوع json، اعتبارسنج‌های اختصاصی هر کلید (میل‌استون polish) اعمال
     می‌شود؛ خروجی همیشه canonical JSON است.
+    رشته‌های JSON نیز پذیرفته می‌شوند (برای سازگاری با کلاینت‌هایی که
+    مقدار را stringify می‌کنند) — در صورت نامعتبر بودن، رشتهٔ خام به
+    اعتبارسنج اختصاصی سپرده می‌شود.
     """
     if setting_type == "json":
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (json.JSONDecodeError, ValueError):
+                pass  # رشتهٔ خام؛ اعتبارسنج اختصاصی تصمیم می‌گیرد
         canonical = _validate_json_setting(key or "", value)
         return json.dumps(canonical, ensure_ascii=False)
     if setting_type == "localized":

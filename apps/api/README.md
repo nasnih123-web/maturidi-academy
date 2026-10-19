@@ -1,4 +1,4 @@
-# Maturidi Academy API — راهنمای توسعه‌دهنده (فاز ۲)
+# Maturidi Academy API — راهنمای توسعه‌دهنده (فاز ۵)
 
 ## شروع سریع (بدون Docker)
 
@@ -65,6 +65,46 @@ dead-letter برای ادمین: `GET /api/v1/admin/events/dead-letter` و
 `GET /api/v1/content/policies/{type}/{id}`.
 ماژول‌های آینده با `register_adapter()` از `app/modules/content/service.py`
 ثبت می‌شوند؛ رجیستری فعلاً خالی است و endpointها لیست خالی برمی‌گردانند.
+
+## قرآن / تسبیح / اذان (فاز ۵)
+
+- `GET /api/v1/quran/surahs` — فهرست ۱۱۴ سوره (مرجع ثابت)؛
+  `GET /api/v1/quran/surah/{n}` و `GET /api/v1/quran/ayah/{s}/{a}` — متن عثمانی +
+  ترجمه + تفسیر + صوت از provider (پیش‌فرض AlQuranCloud؛ خرابی → ۵۰۳ graceful).
+- `GET /api/v1/quran/providers` — providerها و editions فعال (driven by settings)؛
+  `GET /api/v1/quran/munajat/status?tz=` — وضعیت پنجرهٔ مناجات شبانه.
+- یادداشت آیه (auth): `POST/GET/PUT/DELETE /api/v1/quran/notes` — فقط مالک؛
+  صفحه‌بندی cursor-based؛ رویداد `quran.note_created`.
+- تسبیح (auth): `POST /api/v1/tasbih/sessions`،
+  `POST /api/v1/tasbih/sessions/{id}/count` (با `idempotency_key` اختیاری)،
+  `GET /api/v1/tasbih/today`؛ رویدادهای `tasbih.session_started/completed`.
+- `GET /api/v1/adhan/times?lat=&lng=&method=&madhab=&day=&tz=` — اوقات نماز
+  (PrayTimes: ‏isna/mwl/egypt/karachi/makkah/jafari؛ عصر shafi/hanafi).
+- تنظیمات: `quran.*` و `munajat.*` در `docs/settings-schema.md` §۶؛ جزئیات
+  معماری در `docs/adr/0004-phase5-quran-backend.md`.
+
+## فتوای هوشمند / RAG (فاز ۶)
+
+- `POST /api/v1/fatwa/ask` (+ `?stream=true` برای SSE؛ رویداد پایانی `final`
+  کل payload شامل citations/status/ai_label را دارد) — grounded روی chunkهای
+  approved/published با scope=fatwa؛ بدون کلید LLM، وضعیت `llm_unavailable`
+  با منابع برمی‌گردد (هرگز متن ساخته‌شده). سهمیه: `ai.daily_quota_per_user`
+  و `ai.rate_per_minute`؛ تخطی → ۴۲۹.
+- `GET /api/v1/fatwa/categories`، `GET /api/v1/fatwa/compare/{topic_id}`،
+  `POST /api/v1/fatwa/quiz/generate|submit` (فقط سؤال‌های ریشه‌دار در chunk
+  تأییدشده)، `POST /api/v1/verify/check` (‏verified/not_found/conflicting).
+- ادمین (`/api/v1/admin/fatwa/...`): chunks (ساخت/تأیید با `fatwa.approve`)،
+  `POST /ingest` (جاب ARQ روی صف `ai`؛ worker: ‏`python -m app.worker ai`)،
+  topics/positions (مسیر تخت `POST /positions` با `topic_id` در body برای CRM)،
+  quiz/questions، trusted-sources (فقط `platform.settings` — ‏§۹.۶)، audit.
+- embedding: پیش‌فرض `hash` قطعی (بدون وابستگی)؛ `external_api` از
+  `ai.embedding_endpoint` (+ fallback به `AI_EMBEDDING_*` در env)؛
+  pgvector فقط روی Postgres و با نصب پکیج (Backend A) وگرنه JSON+cosine
+  در پایتون (Backend B). امتیاز هیبریدی `lexical + semantic`.
+- seed نمایشی (`app/seed_fatwa.py`): ~۱۲ chunk verbatim از متن‌های حقوقی
+  واقعی ریپو (`source_type=demo_seed`) + ۲ موضوع draft؛ هیچ حکم فقهی ساخته
+  نمی‌شود (§۱۵.۵). تنظیمات: `ai.*` در `docs/settings-schema.md` §۶؛
+  جزئیات معماری در `docs/adr/0005-phase6-fatwa-rag-backend.md`.
 
 ## رصدپذیری (فاز ۰ §۱۱)
 

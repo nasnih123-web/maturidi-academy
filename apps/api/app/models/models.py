@@ -20,8 +20,10 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -455,3 +457,673 @@ class Announcement(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
+
+
+# ---------------------------------------------------------------------------
+# فاز ۵ — قرآن / تسبیح دیجیتال (Track 1 — بک‌اند)
+# ---------------------------------------------------------------------------
+
+
+class UserAyahNote(Base):
+    """یادداشت کاربر روی یک آیه — حریم خصوصی با owner-scoped کوئری در سرویس.
+
+    هیچ workflow_status ندارد: یادداشت دادهٔ کاربر است، نه محتوای قابل‌انتشار (§۹).
+    """
+
+    __tablename__ = "user_ayah_notes"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), index=True)
+    surah: Mapped[int] = mapped_column(Integer, index=True)
+    ayah: Mapped[int] = mapped_column(Integer, index=True)
+    note_text: Mapped[str] = mapped_column(Text)
+    is_private: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class DhikrSession(Base):
+    """نشست تسبیح دیجیتال — شمارش ذکر در یک بازهٔ زمانی."""
+
+    __tablename__ = "dhikr_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), index=True)
+    dhikr_text: Mapped[str] = mapped_column(String(255))
+    target_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    count: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class DhikrDailyCount(Base):
+    """تجمیع روزانهٔ ذکر به‌ازای کاربر/تاریخ/متن ذکر — سه‌تایی یکتا."""
+
+    __tablename__ = "dhikr_daily_counts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    dhikr_text: Mapped[str] = mapped_column(String(255))
+    total_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "date", "dhikr_text",
+            name="uq_dhikr_daily_counts_user_date_dhikr",
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# فاز ۶ — موتور فتوای هوشمند (RAG)، مقایسهٔ مذاهب، آزمون، راستی‌آزمایی.
+#
+# قراردادها:
+# - §۹: workflow_status ماشین مشترک؛ RAG فقط approved/published را می‌خواند.
+# - §۹.۵: هیچ FK فیزیکی به جدول فازهای آینده — اتصال به library_items
+#   فقط با source_ref/source_library_item_ref (رشته) تا migration فاز ۹.
+# - §۹.۶/§۱۵.۵: هیچ قاعدهٔ فقهی در کد/seed ساخته نمی‌شود؛ seed فقط
+#   نقل‌قول‌های verbatim موجود در ریپو را با استناد واقعی کپی می‌کند.
+# ---------------------------------------------------------------------------
+
+
+class FiqhKnowledgeChunk(Base):
+    """واحد دانش فقهیِ chunkشده — ورودی RAG.
+
+    embedding: بردار به‌صورت JSON (SQLite/پیش‌فرض). روی Postgres وقتی
+    pgvector نصب باشد، embeddings.py می‌تواند ستون embedding_vec را
+    lazily بسازد — قرارداد ADR-0005.
+    """
+
+    __tablename__ = "fiqh_knowledge_chunks"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    source_type: Mapped[str] = mapped_column(String(32), default="manual", index=True)
+    source_ref: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True
+    )  # {type, id, version} — ردیابی provenance، بدون FK (§۹.۵)
+    source_library_item_ref: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )  # رزرو فاز ۹ — فعلاً همیشه null
+    source_citation: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True
+    )  # LocalizedText: نام کتاب/اثر برای نمایش به کاربر
+    topic_category: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    madhab_scope: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    workflow_status: Mapped[str] = mapped_column(String(16), default="draft", index=True)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    ai_scopes: Mapped[list] = mapped_column(
+        JSONB, default=list
+    )  # زیرمجموعهٔ fatwa|assistant|quiz|verification|semantic_search
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class FiqhTopic(Base):
+    """موضوع فقهی برای مقایسهٔ مذاهب."""
+
+    __tablename__ = "fiqh_topics"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    description: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # LocalizedText
+    workflow_status: Mapped[str] = mapped_column(String(16), default="draft", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class MadhabPosition(Base):
+    """موضع یک مذهب دربارهٔ یک موضوع — متن فقط از منابع واقعی."""
+
+    __tablename__ = "madhab_positions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    topic_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("fiqh_topics.id", ondelete="CASCADE"), index=True
+    )
+    madhab: Mapped[str] = mapped_column(
+        String(16), index=True
+    )  # hanafi|maliki|shafii|hanbali
+    position_text: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    evidence_refs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    workflow_status: Mapped[str] = mapped_column(String(16), default="draft", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class FatwaSession(Base):
+    """نشست گفتگوی فتوا — user_id خالی یعنی ask عمومی ناشناس."""
+
+    __tablename__ = "fatwa_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True, index=True
+    )
+    locale: Mapped[str] = mapped_column(String(8), default="fa")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class FatwaMessage(Base):
+    """پیام‌های یک نشست — نقش: user | assistant | system_note."""
+
+    __tablename__ = "fatwa_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("fatwa_sessions.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(16))
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    citations: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class QuizQuestion(Base):
+    """سؤال آزمون شرعی — فقط ریشه‌دار در chunk تأییدشده (ADR-0005)."""
+
+    __tablename__ = "quiz_questions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    question_text: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    options: Mapped[list] = mapped_column(JSONB)  # لیست LocalizedText
+    correct_option: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_chunk_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("fiqh_knowledge_chunks.id", ondelete="CASCADE"), index=True
+    )
+    difficulty: Mapped[str] = mapped_column(String(16), default="medium")
+    workflow_status: Mapped[str] = mapped_column(String(16), default="draft", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class QuizAttempt(Base):
+    """تلاش کاربر در آزمون."""
+
+    __tablename__ = "quiz_attempts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True, index=True
+    )
+    # فاز ۸: پیوند به درس LMS (nullable — تلاش‌های قدیمی فتوا lesson_id ندارند).
+    lesson_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("lessons.id"), nullable=True, index=True
+    )
+    question_ids: Mapped[list] = mapped_column(JSONB)
+    answers: Mapped[dict] = mapped_column(JSONB)
+    score: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class VerificationCheck(Base):
+    """راستی‌آزمایی محتوای پیست‌شده علیه دانش منتشرشده."""
+
+    __tablename__ = "verification_checks"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    input_hash: Mapped[str] = mapped_column(String(64), index=True)
+    input_excerpt: Mapped[str] = mapped_column(String(512))
+    verdict: Mapped[str] = mapped_column(String(16), index=True)
+    matched_chunk_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class TrustedExternalSource(Base):
+    """منابع خارجی مورداعتماد — فقط super_admin (§۹.۶)."""
+
+    __tablename__ = "trusted_external_sources"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    base_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    allowed_paths: Mapped[list] = mapped_column(JSONB, default=list)
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    citation_required: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class AIProviderConfig(Base):
+    """پیکربندی providerهای AI — مدل/نسخه/fallback."""
+
+    __tablename__ = "ai_provider_configs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_fallback: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("provider", "model", name="uq_ai_provider_configs_provider_model"),
+    )
+
+
+class AIUsageLog(Base):
+    """لاگ مصرف token/هزینه به‌ازای کاربر (§۱۰)."""
+
+    __tablename__ = "ai_usage_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True, index=True
+    )
+    endpoint: Mapped[str] = mapped_column(String(64), index=True)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    tokens_in: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, default=0)
+    cost_estimate: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+
+class IngestionRun(Base):
+    """اجرای pipeline درون‌ریزی دانش."""
+
+    __tablename__ = "ingestion_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    source_type: Mapped[str] = mapped_column(String(32), index=True)
+    status: Mapped[str] = mapped_column(
+        String(16), default="queued", index=True
+    )  # queued|running|done|failed
+    stats: Mapped[dict] = mapped_column(JSONB, default=dict)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+# ---------------------------------------------------------------------------
+# فاز ۷ — ماشین‌حساب ارث و زکات.
+#
+# قانون سخت (§۱۵.۵ و هشدار فاز ۷ در spec): جدول‌های فرائض/ارث و نصاب/نرخ
+# زکات هر مذهب هرگز از دانش عمومی ایجنت هاردکد نمی‌شوند. همهٔ اعداد فقط
+# از طریق rule_configs نسخه‌بندی‌شده و تأییدشدهٔ عالم وارد سیستم می‌شوند.
+# تا زمانی که هیچ config تأییدشده‌ای وجود ندارد، محاسبهٔ عمومی با خطای
+# rules_not_approved برمی‌گردد (نه حدس، نه جدول پیش‌فرض).
+# ---------------------------------------------------------------------------
+
+
+class _RuleConfigMixin:
+    """فیلدهای مشترک نسخه‌بندی/تأیید rule_configs (§۹.۵ قرارداد محتوا)."""
+
+    source: Mapped[str] = mapped_column(String(256))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    effective_to: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    change_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # draft | pending_review | approved | rejected  (گردش‌کار §۹)
+    status: Mapped[str] = mapped_column(String(16), default="draft", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class InheritanceRuleConfig(Base, _RuleConfigMixin):
+    """پیکربندی قواعد ارث (فرائض) — به‌ازای هر مذهب، نسخه‌بندی‌شده.
+
+    rule_data ساختار قراردادی دارد که موتور engine.py اجرایش می‌کند؛
+    کلیدها و اعدادش فقط توسط عالم مجاز وارد می‌شود (§۱۵.۵).
+    """
+
+    __tablename__ = "inheritance_rule_configs"
+    __table_args__ = (
+        UniqueConstraint("madhab", "version", name="uq_inh_rule_madhab_version"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    madhab: Mapped[str] = mapped_column(String(16), index=True)
+    rule_data: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+
+class InheritanceCase(Base):
+    """یک محاسبهٔ ارث انجام‌شده (تاریخچهٔ کاربر/عمومی)."""
+
+    __tablename__ = "inheritance_cases"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    estate_value: Mapped[float] = mapped_column(Numeric(20, 4))
+    madhab: Mapped[str] = mapped_column(String(16), index=True)
+    heirs: Mapped[list] = mapped_column(JSONB, default=list)
+    result: Mapped[dict] = mapped_column(JSONB, default=dict)
+    rule_config_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("inheritance_rule_configs.id"), nullable=True
+    )
+    # قرارداد §۱: هدر Idempotency-Key برای نوشتن‌های مالی — تکرار کلید
+    # همان case را برمی‌گرداند، نه case تازه.
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+
+class ZakatRuleConfig(Base, _RuleConfigMixin):
+    """پیکربندی قواعد زکات — نسخه‌بندی‌شده (مشترک همهٔ مذاهب، مگر در
+    rule_data تفکیک شده باشد). asset_categories دسته‌های دارایی و
+    نرخ‌ها را مشخص می‌کند — بدون هیچ عدد پیش‌فرض هاردکد."""
+
+    __tablename__ = "zakat_rule_configs"
+    __table_args__ = (
+        UniqueConstraint("version", name="uq_zakat_rule_version"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    madhab: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    rule_data: Mapped[dict] = mapped_column(JSONB, default=dict)
+    asset_categories: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+
+class ZakatCalculation(Base):
+    """یک محاسبهٔ زکات انجام‌شده — به‌همراه snapshot نرخ نصاب لحظهٔ محاسبه."""
+
+    __tablename__ = "zakat_calculations"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    inputs: Mapped[dict] = mapped_column(JSONB, default=dict)
+    result: Mapped[dict] = mapped_column(JSONB, default=dict)
+    nisab_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
+    rule_config_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("zakat_rule_configs.id"), nullable=True
+    )
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+
+class NisabPriceCache(Base):
+    """کش نرخ‌های نصاب (طلا/نقره) — هر رکورد یک منبع قیمتی.
+
+    fetched_at لحظهٔ آخرین fetch موفق است؛ استال‌بودن در سرویس (نه در DB)
+    از روی TTL محاسبه می‌شود و در پاسخ API با پرچم stale افشا می‌گردد.
+    """
+
+    __tablename__ = "nisab_price_cache"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    source: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    gold_per_gram: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    silver_per_gram: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# فاز ۸ — LMS (پیشخوان یادگیری طلاب) — قراردادها در ADR-0006
+# ---------------------------------------------------------------------------
+
+
+class Curriculum(Base):
+    """برنامهٔ درسی — دستهٔ سطح‌بالای دوره‌ها (LocalizedText)."""
+
+    __tablename__ = "curricula"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText {"fa","ar","en"}
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class Course(Base):
+    """دورهٔ آموزشی — سطح beginner/intermediate/advanced."""
+
+    __tablename__ = "courses"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    curriculum_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("curricula.id"), nullable=True, index=True
+    )
+    title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    description: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # LocalizedText
+    level: Mapped[str] = mapped_column(String(16), default="beginner", index=True)
+    visibility: Mapped[str] = mapped_column(String(16), default="public")  # public|private
+    thumbnail_media_ref: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class Lesson(Base):
+    """درس — body لیست بلاک‌های محتوایی (ارجاع به محتوای تأییدشده، نه کپی)."""
+
+    __tablename__ = "lessons"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("courses.id"), index=True
+    )
+    title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    body: Mapped[list] = mapped_column(JSONB, default=list)  # content blocks
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_free_preview: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class UserProgress(Base):
+    """پیشرفت کاربر روی هر درس — یکتا به‌ازای (user_id, lesson_id)."""
+
+    __tablename__ = "user_progress"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    lesson_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("lessons.id"), index=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), default="not_started"
+    )  # not_started|in_progress|completed
+    position_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "lesson_id", name="uq_user_progress_user_lesson"),
+    )
+
+
+class Certificate(Base):
+    """گواهی پایان دوره — کد یکتا برای استعلام عمومی."""
+
+    __tablename__ = "certificates"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("courses.id"), index=True
+    )
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    pdf_storage_ref: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    locale: Mapped[str] = mapped_column(String(8), default="fa")
+
+
+class CourseCohort(Base):
+    """دورهٔ هم‌گروهی (کلاس زنده) — پنجرهٔ ثبت‌نام با ظرفیت."""
+
+    __tablename__ = "course_cohorts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("courses.id"), index=True
+    )
+    title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    max_seats: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_open: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class CohortEnrollment(Base):
+    """ثبت‌نام کاربر در هم‌گروهی — یکتا به‌ازای (cohort_id, user_id)."""
+
+    __tablename__ = "cohort_enrollments"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    cohort_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("course_cohorts.id"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    enrolled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    status: Mapped[str] = mapped_column(String(16), default="active")  # active|cancelled
+
+    __table_args__ = (
+        UniqueConstraint("cohort_id", "user_id", name="uq_cohort_enrollment_cohort_user"),
+    )
+
+
+class CoursePrerequisite(Base):
+    """پیش‌نیاز دوره‌ها — بدون خودارجاع و بدون چرخه (اعتبارسنجی در service)."""
+
+    __tablename__ = "course_prerequisites"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("courses.id"), index=True
+    )
+    requires_course_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("courses.id"), index=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "course_id", "requires_course_id", name="uq_course_prereq_pair"
+        ),
+    )
+
+
+class LibraryItem(Base):
+    """آیتم کتابخانهٔ چندرسانه‌ای — فاز ۹ (DMS).
+
+    - media_key/cover_media_key کلیدهای storage هستند، هرگز URL عمومی.
+    - دسترسی سطح‌بندی‌شده: visibility ∈ public/registered/scholars_only.
+    - گردش‌کار: ماشین مشترک §۹ (workflow_status).
+    - related_lesson_id بدون FK فیزیکی (§۹.۵)؛ religious_place_ref رشتهٔ
+      رزروشده برای فاز ۱۱.
+    - AI indexing جدا از publication: ai_indexed فقط با اقدام صریح index-ai
+      و فقط روی آیتم approved/published فعال می‌شود.
+    """
+
+    __tablename__ = "library_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    # video | video_360 | pdf | audio | mindmap
+    title: Mapped[dict] = mapped_column(JSONB, nullable=False)  # LocalizedText
+    description: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # LocalizedText
+    cover_media_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    media_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    scholar_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True, index=True
+    )
+    topic_tags: Mapped[list] = mapped_column(JSONB, default=list)
+    related_lesson_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    religious_place_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    visibility: Mapped[str] = mapped_column(
+        String(16), default="registered", index=True
+    )  # public | registered | scholars_only
+    workflow_status: Mapped[str] = mapped_column(
+        String(16), default="draft", index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    ai_scopes: Mapped[list] = mapped_column(JSONB, default=list)
+    include_in_fatwa_rag: Mapped[bool] = mapped_column(Boolean, default=False)
+    ai_indexed: Mapped[bool] = mapped_column(Boolean, default=False)
+    download_policy: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transcript_status: Mapped[str] = mapped_column(
+        String(16), default="pending"
+    )  # pending | processing | done | failed
+    ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ocr_status: Mapped[str] = mapped_column(
+        String(16), default="pending"
+    )  # pending | processing | done | failed | skipped
+    processing_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    file_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source_type: Mapped[str] = mapped_column(
+        String(16), default="upload"
+    )  # upload | telegram_import
+    source_ref: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class LibraryItemVersion(Base):
+    """نسخهٔ بایگانی‌شدهٔ آیتم کتابخانه — ویرایش نسخهٔ قبلی را بایگانی می‌کند، نه حذف."""
+
+    __tablename__ = "library_item_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("library_items.id"), nullable=False, index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -30,10 +30,33 @@ from app.core.middleware import (
 from app.core.realtime import websocket_endpoint
 from app.modules.admin.router import router as admin_router
 from app.modules.auth.router import router as auth_router
+from app.modules.lms.router import (
+    admin_lms_router,
+    lms_router,
+    public_cert_router,
+)
+from app.modules.library.router import (
+    admin_library_router,
+    library_router,
+)
+from app.modules.calculators.router import (
+    admin_calc_router,
+    calc_router,
+)
 from app.modules.content.cms_router import router as cms_router
 from app.modules.content.router import router as content_router
+from app.modules.fatwa.router import (
+    admin_fatwa_router,
+    fatwa_router,
+    verify_router,
+)
 from app.modules.home.router import router as home_router
 from app.modules.meta.router import router as meta_router
+from app.modules.quran.router import (
+    adhan_router,
+    quran_router,
+    tasbih_router,
+)
 from app.modules.users.router import router as users_router
 
 setup_logging()
@@ -133,6 +156,19 @@ app.include_router(admin_router)
 app.include_router(content_router)
 app.include_router(cms_router)
 app.include_router(home_router)
+app.include_router(quran_router)
+app.include_router(tasbih_router)
+app.include_router(adhan_router)
+app.include_router(fatwa_router)
+app.include_router(verify_router)
+app.include_router(admin_fatwa_router)
+app.include_router(calc_router)
+app.include_router(admin_calc_router)
+app.include_router(lms_router)
+app.include_router(public_cert_router)
+app.include_router(admin_lms_router)
+app.include_router(library_router)
+app.include_router(admin_library_router)
 
 # دروازهٔ بلادرنگ — دکوراتور @app.websocket (نه add_websocket_route استارلت)
 # چون فقط مسیر APIWebSocketRoute وابستگی‌ها (Depends/get_db) را حل می‌کند.

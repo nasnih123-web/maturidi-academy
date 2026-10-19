@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     s3_secret_key: str = "minioadmin"
     s3_bucket: str = "maturidi-media"
     s3_region: str = "us-east-1"
+    # فاز ۸ — پیاده‌سازی محلی پیش‌فرض StorageProvider (§۶)
+    storage_local_dir: str = "./storage"
+    app_base_url: str = "http://localhost:8000"
 
     # ایمیل تراکنشی — فاز ۱ (خالی = حالت dev با لاگ)
     smtp_host: str = ""

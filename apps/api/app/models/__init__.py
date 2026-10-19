@@ -4,8 +4,12 @@
 """
 from app.models.models import (  # noqa: F401
     AuditLog,
+    DhikrDailyCount,
+    DhikrSession,
     DomainEvent,
     HomeSection,
+    LibraryItem,
+    LibraryItemVersion,
     MediaAsset,
     NotificationPreference,
     PasswordResetToken,
@@ -19,6 +23,7 @@ from app.models.models import (  # noqa: F401
     Session,
     Theme,
     User,
+    UserAyahNote,
     UserConsent,
     UserRole,
 )
