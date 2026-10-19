@@ -52,7 +52,19 @@ async def _login(client, identifier: str, password: str = "TestPass123") -> dict
 
 
 async def test_refresh_reuse_revokes_whole_session(tc):
-    """الگوی turbo: استفادهٔ مجدد از رفرش‌توکن چرخش‌خورده → کل نشست می‌میرد."""
+    """الگوی turbo + پنجرهٔ اغماض ADR-0020.
+
+    استفادهٔ مجددِ فوری از رفرش‌توکن چرخش‌خورده = race هم‌زمان مشروع
+    (دو تب) → در ۶۰ ثانیهٔ اول نشست باطل نمی‌شود؛ ولی reuse واقعی
+    (پس از پنجرهٔ اغماض) کل نشست را می‌کشد.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import update
+
+    from app.models.models import RefreshToken
+    from app.modules.auth import service as auth_service
+
     client = tc["client"]
     await _register(client, "reuse@example.com")
     tokens = await _login(client, "reuse@example.com")
@@ -63,7 +75,20 @@ async def test_refresh_reuse_revokes_whole_session(tc):
     assert r.status_code == 200
     fresh = r.json()
 
-    # replay توکن قدیمی — کد همان invalid_token می‌ماند (قرارداد نشکسته)
+    # replay فوری توکن قدیمی — در پنجرهٔ اغماض: 200، نشست زنده
+    r = await client.post(
+        f"{BASE}/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert r.status_code == 200, r.text
+
+    # شبیه‌سازی گذر زمان → حالا همان replay یعنی سرقت واقعی
+    async with tc["maker"]() as db:
+        past = datetime.now(timezone.utc) - timedelta(
+            seconds=auth_service.REUSE_DETECTION_GRACE_SECONDS + 60
+        )
+        await db.execute(update(RefreshToken).values(created_at=past))
+        await db.commit()
+
     r = await client.post(
         f"{BASE}/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
     )
@@ -240,14 +265,14 @@ def test_production_secret_guard():
     # dev: سکوت
     assert_production_secrets_ok(Settings(app_env="dev"))
 
-    # staging با placeholder → خطا
-    with pytest.raises(RuntimeError, match="placeholder secret"):
+    # staging با placeholder → خطا (متن جدید نگهبان: insecure setting)
+    with pytest.raises(RuntimeError, match="insecure setting"):
         assert_production_secrets_ok(
             Settings(
                 app_env="staging", jwt_secret="CHANGE_ME", encryption_key="real-key"
             )
         )
-    with pytest.raises(RuntimeError, match="placeholder secret"):
+    with pytest.raises(RuntimeError, match="insecure setting"):
         assert_production_secrets_ok(
             Settings(
                 app_env="production",
@@ -256,12 +281,26 @@ def test_production_secret_guard():
             )
         )
 
-    # staging با secret واقعی → سبز
+    # staging با secret واقعی → سبز (کلیدهای ≥۳۲ کاراکتری و base_url عمومی)
     assert_production_secrets_ok(
         Settings(
-            app_env="production", jwt_secret="real-jwt", encryption_key="real-key"
+            app_env="production",
+            jwt_secret="s" * 64,
+            encryption_key="k" * 64,
+            app_base_url="https://api.example.org",
         )
     )
+
+    # remediation-pass-2 Track 1 (§۶): کلید کوتاه در production هم رد می‌شود
+    with pytest.raises(RuntimeError, match="too short"):
+        assert_production_secrets_ok(
+            Settings(
+                app_env="production",
+                jwt_secret="s" * 64,
+                encryption_key="short",
+                app_base_url="https://api.example.org",
+            )
+        )
 
 
 async def test_access_log_middleware(tc, caplog):

@@ -52,6 +52,39 @@ def _token(user) -> str:
     return create_access_token(str(user.id))
 
 
+async def _bound_token(maker, user) -> str:
+    """توکن دسترسیِ گره‌خورده به نشست — شکل واقعی production.
+
+    پس از سخت‌گیری final remediation (Track 2)، مسیر `POST /ws-ticket`
+    توکنِ بدون `sid` را با 401 رد می‌کند.
+    """
+    from app.core.security import create_access_token
+    from app.models.models import Session
+
+    async with maker() as db:
+        session = Session(user_id=user.id, device_info="ws-test", ip="127.0.0.1")
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+        return create_access_token(str(user.id), extra={"sid": str(session.id)})
+
+
+async def _ticket(ws_url: str, maker, user) -> str:
+    """گرفتن بلیط WS از همان سرور تست با توکنِ نشست‌دار (مسیر پشتیبانی‌شده
+    پس از حذف ?token= و سخت‌گیری گره‌خوردگی به نشست)."""
+    import httpx
+
+    token = await _bound_token(maker, user)
+    http_base = ws_url.replace("ws://", "http://").rsplit("/ws/events", 1)[0]
+    async with httpx.AsyncClient(trust_env=False, timeout=10.0) as client:
+        r = await client.post(
+            f"{http_base}/api/v1/auth/ws-ticket",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert r.status_code == 200, r.text
+    return r.json()["ticket"]
+
+
 async def _emit(maker, event_type: str, payload: dict | None = None):
     from app.core.events import emit_event
 
@@ -150,7 +183,8 @@ async def ws_env(tc):
 async def test_ws_subscribe_and_receive(ws_env):
     maker = ws_env["maker"]
     user = await _make_user(maker, "ws-a@test.local")
-    url = f"{ws_env['ws_url']}?token={_token(user)}&channels=test.alpha"
+    t = await _ticket(ws_env["ws_url"], maker, user)
+    url = f"{ws_env['ws_url']}?ticket={t}&channels=test.alpha"
     async with websockets.connect(url) as ws:
         ack = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
         assert ack["type"] == "subscribed" and ack["channel"] == "test.alpha"
@@ -168,7 +202,19 @@ async def test_ws_subscribe_and_receive(ws_env):
 
 async def test_ws_invalid_token_rejected(ws_env):
     with pytest.raises(websockets.exceptions.InvalidStatus):
-        async with websockets.connect(f"{ws_env['ws_url']}?token=invalid-token"):
+        async with websockets.connect(f"{ws_env['ws_url']}?ticket=invalid-ticket-value"):
+            pass  # pragma: no cover
+
+
+async def test_ws_jwt_in_query_string_rejected(ws_env):
+    """remediation-pass-2 Track 1: `?token=<JWT>` دیگر پذیرفته نیست —
+    JWT معتبر هم در query string رد می‌شود (فقط هدر Authorization یا بلیط)."""
+    maker = ws_env["maker"]
+    user = await _make_user(maker, "ws-q@test.local")
+    with pytest.raises(websockets.exceptions.InvalidStatus):
+        async with websockets.connect(
+            f"{ws_env['ws_url']}?token={_token(user)}"
+        ):
             pass  # pragma: no cover
 
 
@@ -185,7 +231,8 @@ async def test_ws_replay_missed_events_in_order(ws_env):
     maker = ws_env["maker"]
     user = await _make_user(maker, "ws-c@test.local")
     token = _token(user)
-    base = f"{ws_env['ws_url']}?token={token}&channels=test.replay"
+    t = await _ticket(ws_env["ws_url"], maker, user)
+    base = f"{ws_env['ws_url']}?ticket={t}&channels=test.replay"
 
     async with websockets.connect(base) as ws:
         await asyncio.wait_for(ws.recv(), timeout=10)  # subscribed ack
@@ -201,7 +248,9 @@ async def test_ws_replay_missed_events_in_order(ws_env):
     await _wait_processed(maker, eid1)
     await _wait_processed(maker, eid2)
 
-    async with websockets.connect(f"{base}&last_event_id={last_id}") as ws:
+    t2 = await _ticket(ws_env["ws_url"], maker, user)
+    base2 = f"{ws_env['ws_url']}?ticket={t2}&channels=test.replay"
+    async with websockets.connect(f"{base2}&last_event_id={last_id}") as ws:
         m1 = await _recv_event(ws)
         m2 = await _recv_event(ws)
         assert [m1["event_id"], m2["event_id"]] == [eid1, eid2]
@@ -215,7 +264,8 @@ async def test_ws_admin_channel_requires_permission(ws_env):
     """اشتراک admin.* بدون مجوز realtime.admin رد می‌شود."""
     maker = ws_env["maker"]
     user = await _make_user(maker, "ws-admin@test.local")
-    url = f"{ws_env['ws_url']}?token={_token(user)}"
+    t = await _ticket(ws_env["ws_url"], maker, user)
+    url = f"{ws_env['ws_url']}?ticket={t}"
     async with websockets.connect(url) as ws:
         await ws.send(json.dumps({"type": "subscribe", "channel": "admin.secret"}))
         resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))

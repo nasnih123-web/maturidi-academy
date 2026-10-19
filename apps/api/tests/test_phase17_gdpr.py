@@ -3,8 +3,8 @@
 نه فقط 200 OK: محتوای export و اثر حذف مستقیم در DB راستی‌آزمایی می‌شود.
 
 - export: پروفایل/نشست‌ها/رضایت‌ها/ترجیحات اعلان کامل و بدون password_hash؛
-  برای ماژول‌هایی که export پوشش نمی‌دهد، تست xfail با دلیل دقیق ثبت شده
-  (شکاف مستند برای Track 1) — نه پنهان، نه سبزِ جعلی.
+  به‌علاوهٔ fatwa_sessions/messages، quran_notes و donations با اسکوپ مالک
+  (رفع شکاف‌های GAP-P17-GDPR-1/2/3 در Track 3 — remediation pass 2)؛
 - delete: ناشناس‌سازی واقعی — email/phone به NULL، نام جایگزین، توکن‌ها و
   نشست‌ها revoke؛ audit و رویداد دامنه (بدون دادهٔ شخصی) می‌مانند — تصمیم
   طراحی مستند در service.delete_account.
@@ -14,21 +14,27 @@ from __future__ import annotations
 import json
 import uuid
 
-import pytest
 from sqlalchemy import func, select
 
 BASE = "/api/v1"
 
 
-def _reset_limits() -> None:
+async def _reset_limits() -> None:
+    # Track 3 (pass 2): احراز هویت از rate_limiter قدیمی (app.core.security)
+    # به DistributedRateLimiter (app.core.rate_limit — فایل Track 1، §۷) منتقل
+    # شده؛ هر دو ریست می‌شوند تا تست‌ها زیر سقف ۱۰ ثبت/ساعت نمانند.
+    from app.core.rate_limit import get_rate_limiter
     from app.core.security import rate_limiter
 
     rate_limiter.reset("register:127.0.0.1")
     rate_limiter.reset("login:127.0.0.1")
+    rl = get_rate_limiter()
+    await rl.reset("register:127.0.0.1")
+    await rl.reset("login:127.0.0.1")
 
 
 async def _register(client, email: str, full_name: str = "کاربر حریم خصوصی") -> dict:
-    _reset_limits()
+    await _reset_limits()
     r = await client.post(
         f"{BASE}/auth/register",
         json={
@@ -44,7 +50,7 @@ async def _register(client, email: str, full_name: str = "کاربر حریم خ
 
 
 async def _login(client, email: str) -> str:
-    _reset_limits()
+    await _reset_limits()
     r = await client.post(
         f"{BASE}/auth/login", json={"identifier": email, "password": "TestPass123"}
     )
@@ -143,16 +149,11 @@ async def test_export_event_and_audit_logged(tc):
         assert log is not None
 
 
-# --- شکاف‌های مستند export (xfail صریح — برای Track 1) ---------------------------
-# export فعلی فقط profile/sessions/consents/notification_preferences را
-# برمی‌گرداند. این تست‌ها دقیقاً مشخص می‌کنند کدام ماژول جا مانده است.
+# --- پوشش export سه ماژول (رفع شکاف‌های GAP-P17-GDPR-1/2/3 — Track 3، pass 2) ---
+# export اکنون fatwa_sessions/quran_notes/donations را با اسکوپ مالک برمی‌گرداند
+# (پیاده‌سازی در users.service.export_data). این تست‌ها دیگر xfail نیستند.
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="GAP-P17-GDPR-1: export شامل fatwa_sessions/messages کاربر نیست — "
-    "نیاز به الحاق ماژول فتوا در users.service.export_data (Track 1)",
-)
 async def test_export_includes_fatwa_history(tc):
     me, token, headers = await _make_user_with_data(tc)
     r = await tc["client"].post(f"{BASE}/users/me/export", headers=headers)
@@ -160,11 +161,6 @@ async def test_export_includes_fatwa_history(tc):
     assert "fatwa_sessions" in data and len(data["fatwa_sessions"]) >= 1
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="GAP-P17-GDPR-2: export شامل یادداشت‌های قرآن کاربر نیست — "
-    "نیاز به الحاق ماژول quran در users.service.export_data (Track 1)",
-)
 async def test_export_includes_quran_notes(tc):
     me, token, headers = await _make_user_with_data(tc)
     r = await tc["client"].post(f"{BASE}/users/me/export", headers=headers)
@@ -174,11 +170,6 @@ async def test_export_includes_quran_notes(tc):
     )
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="GAP-P17-GDPR-3: export شامل اهداها/رسیدهای کاربر نیست — "
-    "نیاز به الحاق ماژول finance در users.service.export_data (Track 1)",
-)
 async def test_export_includes_donations(tc):
     me, token, headers = await _make_user_with_data(tc)
     r = await tc["client"].post(f"{BASE}/users/me/export", headers=headers)
