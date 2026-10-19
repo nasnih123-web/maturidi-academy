@@ -776,6 +776,36 @@
       "backToLibrary": "Back to library"
     }
   },
+  "places": {
+    "metaTitle": "Religious Places Map",
+    "metaDescription": "Live map of religious places at Maturidi Academy: verified mosques, shrines and sanctuaries",
+    "title": "Religious Places Map",
+    "subtitle": "Browse verified mosques, shrines and sanctuaries on the map and open each place's details",
+    "types": {
+      "all": "All",
+      "mosque": "Mosque",
+      "shrine": "Shrine",
+      "madrasa": "Madrasa",
+      "tomb": "Tomb",
+      "other": "Other"
+    },
+    "filterLabel": "Filter by place type",
+    "mapAria": "Religious places map",
+    "openDetail": "View details",
+    "loading": "Loading map…",
+    "loadFailed": "Could not load the map",
+    "loadFailedHint": "Could not reach the server; please try again later.",
+    "noPlaces": "No places registered yet",
+    "noPlacesHint": "Verified places will appear on the map soon.",
+    "resultsCount": "{n} places",
+    "retry": "Retry",
+    "backToMap": "Back to map",
+    "detailMetaTitle": "{name}",
+    "typeLabel": "Place type",
+    "coordinatesLabel": "Coordinates",
+    "view360": "360° virtual tour",
+    "view360Hint": "Watch this place's virtual tour in the library"
+  },
   "social": {
     "metaTitle": "Community",
     "metaDescription": "Topic groups and discussions for students and scholars",
