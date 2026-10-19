@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.storage import read_capped_upload
 from app.models.models import User
 from app.modules.auth.dependencies import require_permission
 from app.modules.admin import service
@@ -88,7 +89,12 @@ async def upload_font(
     موفق: fonts.<locale> = {family, url} و فایل زیر /static/fonts/<locale>/ سرو می‌شود.
     """
     ip, ua = _client(request)
-    content = await file.read()
+    content = await read_capped_upload(
+        file,
+        service.FONT_MAX_BYTES,
+        too_large_code="font_too_large",
+        too_large_message="حجم فونت نباید بیش از ۵ مگابایت باشد",
+    )
     return await service.upload_font(db, user, locale, family, content, file.filename, ip, ua)
 
 

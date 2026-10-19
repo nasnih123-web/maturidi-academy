@@ -100,3 +100,10 @@ class UserSummary(BaseModel):
 
 class MessageOut(BaseModel):
     message: str
+
+
+class WsTicketOut(BaseModel):
+    """بلیط یک‌بارمصرف وب‌سوکت — جایگزین JWT در query string."""
+
+    ticket: str
+    expires_in: int

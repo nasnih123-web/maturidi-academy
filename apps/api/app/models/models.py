@@ -64,6 +64,10 @@ class User(Base):
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     # سکرت TOTP — رمزنگاری‌شده (envelope فاز ۰ §۳) به‌صورت رشتهٔ JSON، نه plaintext
     totp_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # آخرین گام زمانی TOTP مصرف‌شده (شمارندهٔ ۳۰ ثانیه‌ای) — ضد replay:
+    # کدی که برای همین گام (یا قدیمی‌تر) قبلاً پذیرفته شده دوباره قبول نیست.
+    # remediation-pass-2 Track 1 (§۵)
+    totp_last_step: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
@@ -162,6 +166,31 @@ class RecoveryCode(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), index=True)
     code_hash: Mapped[str] = mapped_column(String(128))
     used: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class WsTicket(Base):
+    """بلیط یک‌بارمصرف اتصال WebSocket — hardening/audit-pass-1.
+
+    جایگزین امن ارسال JWT بلندمدت در query string (که در لاگ‌ها/تاریخچهٔ
+    مرورگر لو می‌رود): کلاینت با access token معتبر یک بلیط ۶۰ ثانیه‌ای
+    می‌گیرد و فقط همان را در `?ticket=` می‌فرستد. مصرف اتمیک:
+    UPDATE ... WHERE used_at IS NULL — استفادهٔ مجدد رد می‌شود.
+    فقط هش بلیط ذخیره می‌شود، هرگز خودِ بلیط.
+    """
+
+    __tablename__ = "ws_tickets"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), index=True)
+    # گره‌خوردن به نشست صادرکننده (nullable برای سازگاری عقب‌رو): اگر نشست
+    # باطل شده باشد، بلیطِ هنوزمصرف‌نشده هم مرده است. remediation-pass-2 Track 1
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("sessions.id"), nullable=True
+    )
+    ticket_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 

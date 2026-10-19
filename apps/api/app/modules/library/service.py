@@ -98,6 +98,21 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# قرارداد §۷ — «بررسی امنیتی PDF (بدون اجرای JavaScript جاسازی‌شده)».
+#
+# محدودهٔ صادقانهٔ این کنترل (عمداً یک «اسکن امنیتی کامل» نیست و هیچ‌جا
+# چنین ادعایی نمی‌شود):
+# - فقط اکشن‌های جاوااسکریپت (/JavaScript و مخفف /JS) را در بایت‌های خام
+#   شناسایی و با 422 رد می‌کند؛ سرور PDF را parse نمی‌کند.
+# - پوشش نمی‌دهد: /OpenAction و /AA بدون JS، فایل‌های جاسازی‌شده
+#   (/EmbeddedFiles)، XFA، و بدافزار عمومی — این‌ها نیازمند اسکنر واقعی‌اند.
+# - اسکن ویروس کامل (ClamAV) جداگانه در ADR-0007 به فاز استقرار موکول شده
+#   است؛ تا آن زمان هیچ ادعای «اسکن شد» در کد/UI وجود ندارد.
+# عمداً محدود به JavaScript است (نه /OpenAction یا /AA که در PDFهای سالم
+# هم رایج‌اند) تا false-positive ندهد.
+_PDF_JS_ACTION_RE = re.compile(rb"/(JavaScript|JS)(?![A-Za-z0-9_])")
+
+
 def _check_magic(content: bytes, ext: str) -> bool:
     """magic-byte در برابر پسوند — پسوند به‌تنهایی قابل جعل است (§۷)."""
     head = content[:16]
@@ -140,6 +155,31 @@ def validate_upload_content(
     return _validate_upload(kind, filename, content)
 
 
+def upload_limit_for_kind(kind: str) -> int:
+    """سقف حجم آپلود به‌ازای نوع — برای خواندن جریانیِ محدود در روتر."""
+    limit = MAX_BYTES.get(kind)
+    if limit is None:
+        raise APIError(422, "invalid_kind", "نوع فایل نامعتبر است")
+    return limit
+
+
+async def read_upload_capped(upload, max_bytes: int) -> bytes:
+    """خواندن جریانیِ UploadFile با سقف حجم — §۷.
+
+    (پیاده‌سازی مشترک در app.core.storage.read_capped_upload؛ این wrapper
+    برای سازگاری فراخوان‌های موجود نگه داشته شده.)
+    """
+    from app.core.storage import read_capped_upload
+
+    return await read_capped_upload(upload, max_bytes)
+
+
+async def get_item_kind(db: AsyncSession, item_id: uuid.UUID) -> str:
+    """نوع آیتم — برای تعیین سقف حجم پیش از خواندن فایل جایگزین."""
+    item = await _get_admin_item(db, item_id)
+    return item.kind
+
+
 def _validate_upload(kind: str, filename: str | None, content: bytes) -> tuple[str, str]:
     """اعتبارسنجی پسوند + magic-byte + سقف حجم. برمی‌گرداند: (ext, mime)."""
     ext = Path(filename or "").suffix.lower()
@@ -162,6 +202,13 @@ def _validate_upload(kind: str, filename: str | None, content: bytes) -> tuple[s
             422,
             "file_content_mismatch",
             "محتوای فایل با پسوند اعلام‌شده سازگار نیست (magic-byte نامعتبر)",
+            {"extension": ext},
+        )
+    if ext == ".pdf" and _PDF_JS_ACTION_RE.search(content):
+        raise APIError(
+            422,
+            "pdf_active_content",
+            "فایل PDF حاوی کد جاوااسکریپت جاسازی‌شده است و پذیرفته نمی‌شود",
             {"extension": ext},
         )
     return ext, EXT_MIME[ext]

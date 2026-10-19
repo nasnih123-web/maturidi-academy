@@ -16,11 +16,15 @@ from app.core.events import emit_event
 from app.core.security import hash_password
 from app.models.models import (
     AuditLog,
+    Donation,
+    FatwaMessage,
+    FatwaSession,
     Notification,
     NotificationPreference,
     RefreshToken,
     Session,
     User,
+    UserAyahNote,
     UserConsent,
     UserDevice,
     WebPushSubscription,
@@ -205,8 +209,115 @@ async def list_consents(db: AsyncSession, user: User) -> list[UserConsent]:
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def _export_fatwa_sessions(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
+    """نشست‌های فتوا + پیام‌ها — فقط مالک (GAP-P17-GDPR-1). دو کوئری دسته‌ای، بدون N+1."""
+    sessions = list(
+        (
+            await db.execute(
+                select(FatwaSession)
+                .where(FatwaSession.user_id == user_id)
+                .order_by(FatwaSession.created_at.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_session: dict[uuid.UUID, list[dict]] = {s.id: [] for s in sessions}
+    if sessions:
+        messages = (
+            await db.execute(
+                select(FatwaMessage)
+                .where(FatwaMessage.session_id.in_([s.id for s in sessions]))
+                .order_by(FatwaMessage.created_at.asc())
+            )
+        ).scalars().all()
+        for m in messages:
+            by_session[m.session_id].append(
+                {
+                    "id": str(m.id),
+                    "role": m.role,
+                    "content": m.content,
+                    "citations": m.citations,
+                    "status": m.status,
+                    "created_at": m.created_at.isoformat(),
+                }
+            )
+    return [
+        {
+            "id": str(s.id),
+            "locale": s.locale,
+            "created_at": s.created_at.isoformat(),
+            "messages": by_session[s.id],
+        }
+        for s in sessions
+    ]
+
+
+async def _export_quran_notes(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
+    """یادداشت‌های آیهٔ کاربر — فقط مالک (GAP-P17-GDPR-2)."""
+    notes = (
+        await db.execute(
+            select(UserAyahNote)
+            .where(UserAyahNote.user_id == user_id)
+            .order_by(UserAyahNote.created_at.asc())
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": str(n.id),
+            "surah": n.surah,
+            "ayah": n.ayah,
+            "note_text": n.note_text,
+            "is_private": n.is_private,
+            "version": n.version,
+            "created_at": n.created_at.isoformat(),
+            "updated_at": n.updated_at.isoformat() if n.updated_at else None,
+        }
+        for n in notes
+    ]
+
+
+async def _export_donations(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
+    """اهداهای ثبت‌شدهٔ کاربر — فقط مالک (GAP-P17-GDPR-3).
+
+    رسید PDF دادهٔ ذخیره‌شدهٔ جداگانه ندارد؛ از همین ردیف رندر می‌شود،
+    پس همین بخش، پوشش رسید را هم کامل می‌کند.
+    """
+    donations = (
+        await db.execute(
+            select(Donation)
+            .where(Donation.donor_id == user_id)
+            .order_by(Donation.created_at.asc())
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": str(d.id),
+            "amount": d.amount,
+            "currency": d.currency,
+            "gateway": d.gateway,
+            "gateway_reference": d.gateway_reference,
+            "status": d.status,
+            "donor_name": d.donor_name,
+            "campaign_id": str(d.campaign_id) if d.campaign_id else None,
+            "created_at": d.created_at.isoformat(),
+        }
+        for d in donations
+    ]
+
+
 async def export_data(db: AsyncSession, user: User) -> dict:
-    """خروجی JSON دادهٔ شخصی — GDPR از روز اول (فاز ۱). بدون password_hash."""
+    """خروجی JSON دادهٔ شخصی — GDPR از روز اول (فاز ۱). بدون password_hash.
+
+    شامل دادهٔ ماژول‌های کاربرمحور با اسکوپ مالک (Track 3 — remediation
+    pass 2، رفع شکاف‌های GAP-P17-GDPR-1/2/3):
+    - fatwa_sessions: نشست‌های گفتگوی فتوا + پیام‌هایشان (فقط user_id=self؛
+      پرسش‌های ناشناس عمومی user_id ندارند و دادهٔ شخصی نیستند)
+    - quran_notes: یادداشت‌های آیهٔ کاربر
+    - donations: اهداهای ثبت‌شدهٔ کاربر. رسید PDF دادهٔ ذخیره‌شدهٔ جداگانه‌ای
+      ندارد — به‌صورت قطعی از همین ردیف اهدا رندر می‌شود (get_receipt_pdf)،
+      پس درج اهداها پوشش رسید را هم کامل می‌کند.
+    """
     sessions = await list_sessions(db, user)
     consents = await list_consents(db, user)
     prefs = list(
@@ -220,6 +331,9 @@ async def export_data(db: AsyncSession, user: User) -> dict:
         .scalars()
         .all()
     )
+    fatwa_sessions = await _export_fatwa_sessions(db, user.id)
+    quran_notes = await _export_quran_notes(db, user.id)
+    donations = await _export_donations(db, user.id)
     data = {
         "profile": {
             "id": str(user.id),
@@ -252,6 +366,9 @@ async def export_data(db: AsyncSession, user: User) -> dict:
             {"channel": p.channel, "notif_type": p.notif_type, "enabled": p.enabled}
             for p in prefs
         ],
+        "fatwa_sessions": fatwa_sessions,
+        "quran_notes": quran_notes,
+        "donations": donations,
     }
     await emit_event(
         db,

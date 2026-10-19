@@ -5,9 +5,11 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.errors import APIError
+from app.core.rate_limit import get_client_ip, trusted_proxy_set
 from app.models.models import User
 from app.modules.auth import service
-from app.modules.auth.dependencies import get_current_user
+from app.modules.auth.dependencies import get_current_user, require_full_scope
 from app.modules.auth.schemas import (
     LoginIn,
     LogoutIn,
@@ -25,13 +27,18 @@ from app.modules.auth.schemas import (
     TwoFASetupOut,
     UserSummary,
     VerifyEmailIn,
+    WsTicketOut,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 def _client(request: Request) -> tuple[str | None, str | None]:
-    ip = request.client.host if request.client else None
+    # §۷: X-Forwarded-For فقط از پروکسی‌های مورداعتماد پذیرفته می‌شود
+    from app.core.config import get_settings
+
+    proxies = trusted_proxy_set(get_settings().trusted_proxies)
+    ip = get_client_ip(request, proxies)
     return ip, request.headers.get("user-agent")
 
 
@@ -108,9 +115,12 @@ async def verify_phone(
 
 @router.post("/password-reset/request", response_model=MessageOut)
 async def password_reset_request(
-    data: PasswordResetRequestIn, db: AsyncSession = Depends(get_db)
+    data: PasswordResetRequestIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
 ):
-    await service.request_password_reset(db, data.email)
+    ip, _ = _client(request)
+    await service.request_password_reset(db, data.email, ip)
     return MessageOut(message="اگر این ایمیل ثبت شده باشد، لینک بازیابی ارسال شد")
 
 
@@ -149,3 +159,31 @@ async def twofa_recover(
     ip, _ = _client(request)
     await service.recover_2fa(db, data, ip)
     return MessageOut(message="احراز دوعاملی غیرفعال شد؛ لطفاً دوباره فعال کنید")
+
+
+@router.post("/ws-ticket", response_model=WsTicketOut)
+async def ws_ticket(
+    request: Request,
+    user: User = Depends(require_full_scope()),
+    db: AsyncSession = Depends(get_db),
+):
+    """بلیط یک‌بارمصرف وب‌سوکت (۶۰ ثانیه) — جایگزین امن JWT در query string.
+
+    فقط با احراز هویت کامل (scope=full) صادر می‌شود؛ توکن عامل-اول
+    (2fa_setup) رد می‌شود. بلیط به نشستِ صادرکننده گره می‌خورد تا ابطال
+    نشست، بلیطِ هنوزمصرف‌نشده را هم بی‌اعتبار کند.
+
+    final remediation — Track 2: اگر توکنِ فراخواننده `sid` نداشته باشد
+    (نشست گره‌خورده‌ای در کار نیست)، بلیطِ «بدون گره» صادر نمی‌کنیم —
+    صدور با 401 رد می‌شود. بلیطِ بدون گره، تضمینِ گره‌خوردگیِ پاس ۲ را
+    بی‌صدا دور می‌زد (توکن‌های فعلیِ login/refresh همیشه sid دارند).
+    """
+    session_id = getattr(request.state, "session_id", None)
+    if session_id is None:
+        raise APIError(
+            401,
+            "session_required",
+            "صدور بلیط وب‌سوکت نیازمند نشست معتبر است",
+        )
+    ticket, expires_in = await service.issue_ws_ticket(db, user, session_id)
+    return WsTicketOut(ticket=ticket, expires_in=expires_in)
