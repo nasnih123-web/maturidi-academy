@@ -107,6 +107,19 @@ dark-obsidian تنها تم است و در `platform_settings` ثبت نشده �
 - پنجرهٔ مناجات به وقت محلی کاربر است؛ endpoint وضعیت (`GET /api/v1/quran/munajat/status`)
   افست `tz` را از کلاینت می‌گیرد.
 
+## ۸) کلیدهای تلگرام — فاز ۱۱ (ADR-0008)
+
+| کلید | نوع | مصرف‌کننده | نکته |
+|---|---|---|---|
+| `telegram.enabled` | json (bool) | بات تلگرام | `false`/غایب → همهٔ فراخوانی‌ها graceful غیرفعال |
+| `telegram.bot_token` | secret | بات تلگرام | هرگز لاگ/نمایش داده نمی‌شود |
+| `telegram.webhook_secret` | secret | وبهوک بات | هدر `X-Telegram-Bot-Api-Secret-Token` |
+| `telegram.channel` | string | توزیع/اعلان‌ها | کانال پیش‌فرض (مثل `@madrasto_al_emamo_al_matoridi`) |
+| `telegram.api_id` / `telegram.api_hash` | secret | اتصال Telethon از CRM | دستی از CRM وارد می‌شود |
+| `telegram.session` | secret | درون‌ریزی Telethon | StringSession رمزنگاری‌شده (§۳)؛ در audit فقط `{"field": "telegram_session", "changed": true}` |
+| `telegram.phone_masked` | string | نمایش وضعیت CRM | فقط ۴ رقم آخر |
+| `telegram.pending_*` | secret/string | جریان دومرحله‌ای اتصال | داخلی؛ TTL ده دقیقه، یک‌بارمصرف |
+
 ## ۷) مصرف وب (Track C — `apps/web`)
 
 - **اندپوینت:** `GET /api/v1/settings/public` (ثابت `PUBLIC_SETTINGS_PATH` در

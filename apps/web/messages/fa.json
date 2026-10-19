@@ -104,6 +104,10 @@
       {
         "href": "/places",
         "label": "اماکن"
+      },
+      {
+        "href": "/voice",
+        "label": "دستیار صوتی"
       }
     ],
     "navAria": "ناوبری اصلی",
@@ -785,8 +789,8 @@
       "all": "همه",
       "mosque": "مسجد",
       "shrine": "حرم و زیارتگاه",
-      "madrasa": "مدرسه",
-      "tomb": "آرامگاه",
+      "holy_site": "مکان مقدس",
+      "museum": "موزه",
       "other": "سایر"
     },
     "filterLabel": "پالایش بر اساس نوع مکان",
@@ -864,5 +868,45 @@
     "reportSuccess": "گزارش شما ثبت شد و در صف نظارت بررسی می‌شود.",
     "reportError": "ثبت گزارش ناموفق بود.",
     "close": "بستن"
+  },
+  "voice": {
+    "metaTitle": "دستیار صوتی",
+    "metaDescription": "دستیار صوتی هوشمند دوزبانهٔ آکادمی ماتریدی — فارسی و عربی. دکمه را نگه دارید و بپرسید.",
+    "title": "دستیار صوتی",
+    "subtitle": "دکمهٔ میکروفون را نگه دارید و سؤالتان را به فارسی یا عربی بپرسید؛ پاسخ را به‌صورت متنی و صوتی دریافت کنید.",
+    "holdHint": "دکمه را نگه دارید و صحبت کنید",
+    "tapHint": "یا یک‌بار بزنید تا ضبط شروع شود، و دوباره بزنید تا ارسال شود",
+    "micAria": "ضبط پیام صوتی",
+    "micUnsupportedHint": "مرورگر شما ضبط صدا را پشتیبانی نمی‌کند.",
+    "phaseIdle": "آماده",
+    "phaseRecording": "در حال ضبط…",
+    "phaseTranscribing": "در حال تبدیل گفتار به متن…",
+    "phaseAnswering": "در حال آماده‌سازی پاسخ…",
+    "phasePlaying": "در حال پخش پاسخ",
+    "cancelRecording": "لغو ضبط",
+    "cancelRequest": "لغو درخواست",
+    "you": "شما",
+    "assistant": "دستیار",
+    "voiceMessageCaption": "پیام صوتی",
+    "recitationLabel": "تلاوت واقعی",
+    "ttsLabel": "پاسخ صوتی",
+    "noAudioNote": "پاسخ صوتی در دسترس نیست.",
+    "playAria": "پخش پاسخ صوتی",
+    "pauseAria": "توقف پخش",
+    "citationsTitle": "منابع",
+    "clearConversation": "پاک کردن گفت‌وگو",
+    "emptyHint": "هنوز گفت‌وگویی آغاز نشده است. دکمهٔ میکروفون را نگه دارید و نخستین سؤالتان را بپرسید.",
+    "dismissAria": "بستن پیام خطا",
+    "errors": {
+      "mic_unsupported": "مرورگر شما ضبط صدا را پشتیبانی نمی‌کند.",
+      "mic_denied": "دسترسی به میکروفون رد شد. لطفاً در تنظیمات مرورگر اجازه دهید.",
+      "mic_error": "خطایی در ضبط صدا رخ داد. دوباره تلاش کنید.",
+      "upload_failed": "ارسال صدا ناموفق بود؛ اتصال اینترنت را بررسی کنید.",
+      "api_error": "سرویس دستیار صوتی پاسخ نداد. لطفاً دوباره تلاش کنید."
+    },
+    "enNoticeTitle": "Voice Assistant",
+    "enNoticeBody": "The voice assistant currently supports Persian and Arabic only.",
+    "enNoticeFaLink": "نسخهٔ فارسی",
+    "enNoticeArLink": "نسخهٔ عربی"
   }
 }

@@ -1401,3 +1401,113 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
   .places-spinner, .place-dot::after { animation: none; }
   .places-chip { transition: none; }
 }
+
+/* ------------------------------------------------------------------ */
+/* Phase 12 — voice assistant (vox-*). Imperial dark-obsidian, RTL-first, */
+/* logical properties only.                                             */
+/* ------------------------------------------------------------------ */
+.vox-wrap { display: flex; flex-direction: column; gap: 1.25rem; max-width: 52rem; margin-inline: auto; }
+.vox-status { display: flex; align-items: center; gap: 0.9rem; min-block-size: 2.5rem; }
+.vox-phase {
+  display: inline-block; border: 1px solid rgba(229,192,123,0.5); border-radius: 999px;
+  padding: 0.3rem 1.1rem; font-size: 0.88rem; font-weight: 700; color: #e5c07b;
+  background: rgba(229,192,123,0.07); white-space: nowrap;
+}
+.vox-phase-recording { color: #ff9d8a; border-color: rgba(255,157,138,0.55); background: rgba(255,157,138,0.08); }
+.vox-phase-transcribing, .vox-phase-answering { color: #a9c6ff; border-color: rgba(169,198,255,0.5); background: rgba(169,198,255,0.07); }
+.vox-phase-playing { color: #9fe8b8; border-color: rgba(159,232,184,0.5); background: rgba(159,232,184,0.07); }
+.vox-timer { font-variant-numeric: tabular-nums; font-weight: 800; color: hsl(var(--text-primary)); font-size: 1.05rem; }
+.vox-wave { display: inline-flex; align-items: center; gap: 3px; block-size: 2rem; }
+.vox-bar {
+  inline-size: 4px; block-size: 30%; border-radius: 2px; background: #e5c07b; opacity: 0.85;
+  animation: vox-wave 0.9s ease-in-out infinite;
+}
+@keyframes vox-wave { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1.6); } }
+
+.vox-mic-zone { display: flex; flex-direction: column; align-items: center; gap: 0.7rem; padding-block: 0.6rem; }
+.vox-mic {
+  inline-size: 6.5rem; block-size: 6.5rem; border-radius: 50%; cursor: pointer;
+  border: 2px solid rgba(229,192,123,0.65); color: #e5c07b;
+  background: radial-gradient(circle at 50% 35%, rgba(229,192,123,0.22), rgba(20,16,10,0.9) 70%);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.vox-mic:hover:not(:disabled) { transform: scale(1.04); box-shadow: 0 0 2.2rem rgba(229,192,123,0.25); }
+.vox-mic:active:not(:disabled) { transform: scale(0.96); }
+.vox-mic:disabled { cursor: not-allowed; opacity: 0.45; }
+.vox-mic-icon { inline-size: 2.6rem; block-size: 2.6rem; }
+.vox-mic-recording { color: #ff9d8a; border-color: rgba(255,157,138,0.8); animation: vox-pulse 1.4s ease-in-out infinite; }
+@keyframes vox-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,157,138,0.45); }
+  50% { box-shadow: 0 0 0 1.1rem rgba(255,157,138,0); }
+}
+.vox-hint { margin: 0; color: hsl(var(--text-secondary)); font-size: 0.92rem; text-align: center; }
+.vox-hint-dim { font-size: 0.82rem; opacity: 0.8; }
+
+.vox-actions { display: flex; justify-content: center; gap: 0.8rem; min-block-size: 2.6rem; }
+.vox-btn {
+  border: 1px solid rgba(229,192,123,0.5); border-radius: 999px; background: transparent;
+  color: #e5c07b; padding: 0.5rem 1.4rem; font-weight: 700; cursor: pointer; font-size: 0.9rem;
+}
+.vox-btn:hover { background: rgba(229,192,123,0.12); }
+.vox-btn-danger { color: #ff9d8a; border-color: rgba(255,157,138,0.55); }
+.vox-btn-danger:hover { background: rgba(255,157,138,0.12); }
+.vox-btn-ghost { opacity: 0.75; }
+
+.vox-error {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  border: 1px solid rgba(255,157,138,0.55); border-radius: var(--radius-lg);
+  background: rgba(255,157,138,0.08); color: #ffc9bd; padding: 0.7rem 1.1rem; font-size: 0.92rem;
+}
+
+.vox-empty { color: hsl(var(--text-secondary)); text-align: center; padding: 2rem 1rem; }
+.vox-turns { display: flex; flex-direction: column; gap: 1.1rem; }
+.vox-turn { display: flex; flex-direction: column; gap: 0.35rem; max-inline-size: 44rem; }
+.vox-user { align-self: flex-end; align-items: flex-end; }
+.vox-assistant { align-self: flex-start; align-items: flex-start; }
+.vox-role { font-size: 0.78rem; color: hsl(var(--text-secondary)); font-weight: 700; }
+.vox-bubble {
+  border-radius: var(--radius-lg); padding: 0.9rem 1.2rem; line-height: 2;
+  border: 1px solid rgba(229,192,123,0.3); background: rgba(229,192,123,0.06);
+}
+.vox-user .vox-bubble { background: rgba(229,192,123,0.14); border-color: rgba(229,192,123,0.45); }
+.vox-answer { margin: 0 0 0.7rem; color: hsl(var(--text-primary)); }
+.vox-pending-caption { color: hsl(var(--text-secondary)); }
+
+.vox-player { display: flex; align-items: center; gap: 0.8rem; margin-block-start: 0.4rem; }
+.vox-play {
+  inline-size: 2.6rem; block-size: 2.6rem; border-radius: 50%; flex: none; cursor: pointer;
+  border: 1px solid rgba(229,192,123,0.6); color: #e5c07b; background: rgba(229,192,123,0.1);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.vox-play:hover { background: rgba(229,192,123,0.2); }
+.vox-play-icon { inline-size: 1.3rem; block-size: 1.3rem; }
+.vox-progress { flex: 1; block-size: 6px; border-radius: 3px; background: rgba(255,255,255,0.12); overflow: hidden; }
+.vox-progress-fill { block-size: 100%; background: #e5c07b; border-radius: 3px; transition: width 0.2s linear; }
+.vox-kind {
+  flex: none; font-size: 0.75rem; font-weight: 800; border-radius: 999px; padding: 0.2rem 0.8rem;
+  border: 1px solid; white-space: nowrap;
+}
+.vox-kind-recitation { color: #9fe8b8; border-color: rgba(159,232,184,0.55); background: rgba(159,232,184,0.08); }
+.vox-kind-tts { color: #a9c6ff; border-color: rgba(169,198,255,0.5); background: rgba(169,198,255,0.07); }
+.vox-noaudio { color: hsl(var(--text-secondary)); font-size: 0.85rem; margin: 0.4rem 0 0; }
+
+.vox-citations { margin-block-start: 0.7rem; border-block-start: 1px dashed rgba(229,192,123,0.3); padding-block-start: 0.6rem; }
+.vox-citations-title { margin: 0 0 0.3rem; font-size: 0.8rem; font-weight: 800; color: #e5c07b; }
+.vox-citations ul { margin: 0; padding-inline-start: 1.2rem; font-size: 0.82rem; color: hsl(var(--text-secondary)); }
+.vox-cite-source { font-weight: 700; color: hsl(var(--text-primary)); }
+
+.vox-notice {
+  border: 1px solid rgba(229,192,123,0.45); border-radius: var(--radius-lg);
+  background: rgba(229,192,123,0.06); padding: 1.6rem; max-inline-size: 44rem;
+}
+.vox-notice-title { color: #e5c07b; margin: 0 0 0.6rem; font-size: 1.25rem; }
+.vox-notice-body { color: hsl(var(--text-primary)); line-height: 2; margin: 0 0 1.2rem; }
+.vox-notice-links { display: flex; gap: 0.8rem; flex-wrap: wrap; }
+.vox-notice-links .vox-btn { text-decoration: none; display: inline-block; }
+
+@media (prefers-reduced-motion: reduce) {
+  .vox-bar, .vox-mic-recording { animation: none; }
+  .vox-mic, .vox-progress-fill { transition: none; }
+}

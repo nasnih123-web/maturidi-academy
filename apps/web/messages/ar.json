@@ -104,6 +104,10 @@
       {
         "href": "/places",
         "label": "الأماكن"
+      },
+      {
+        "href": "/voice",
+        "label": "المساعد الصوتي"
       }
     ],
     "navAria": "التنقل الرئيسي",
@@ -785,8 +789,8 @@
       "all": "الكل",
       "mosque": "مسجد",
       "shrine": "ضريح ومزار",
-      "madrasa": "مدرسة",
-      "tomb": "مرقد",
+      "holy_site": "موقع مقدس",
+      "museum": "متحف",
       "other": "أخرى"
     },
     "filterLabel": "تصفية حسب نوع المكان",
@@ -864,5 +868,45 @@
     "reportSuccess": "تم تسجيل بلاغك وسيُراجع في قائمة الإشراف.",
     "reportError": "فشل تسجيل البلاغ.",
     "close": "إغلاق"
+  },
+  "voice": {
+    "metaTitle": "المساعد الصوتي",
+    "metaDescription": "المساعد الصوتي الذكي ثنائي اللغة في أكاديمية الماتريدي — بالفارسية والعربية. اضغط باستمرار واسأل.",
+    "title": "المساعد الصوتي",
+    "subtitle": "اضغط باستمرار على زر الميكروفون واسأل سؤالك بالفارسية أو العربية؛ ستصلك الإجابة نصًا وصوتًا.",
+    "holdHint": "اضغط باستمرار على الزر وتحدث",
+    "tapHint": "أو اضغط مرة واحدة لبدء التسجيل، واضغط مجددًا للإرسال",
+    "micAria": "تسجيل رسالة صوتية",
+    "micUnsupportedHint": "متصفحك لا يدعم تسجيل الصوت.",
+    "phaseIdle": "جاهز",
+    "phaseRecording": "جارٍ التسجيل…",
+    "phaseTranscribing": "جارٍ تحويل الكلام إلى نص…",
+    "phaseAnswering": "جارٍ تجهيز الإجابة…",
+    "phasePlaying": "جارٍ تشغيل الإجابة",
+    "cancelRecording": "إلغاء التسجيل",
+    "cancelRequest": "إلغاء الطلب",
+    "you": "أنت",
+    "assistant": "المساعد",
+    "voiceMessageCaption": "رسالة صوتية",
+    "recitationLabel": "تلاوة حقيقية",
+    "ttsLabel": "إجابة صوتية",
+    "noAudioNote": "الإجابة الصوتية غير متوفرة.",
+    "playAria": "تشغيل الإجابة الصوتية",
+    "pauseAria": "إيقاف التشغيل",
+    "citationsTitle": "المصادر",
+    "clearConversation": "مسح المحادثة",
+    "emptyHint": "لم تبدأ أي محادثة بعد. اضغط باستمرار على زر الميكروفون واطرح سؤالك الأول.",
+    "dismissAria": "إغلاق رسالة الخطأ",
+    "errors": {
+      "mic_unsupported": "متصفحك لا يدعم تسجيل الصوت.",
+      "mic_denied": "تم رفض الوصول إلى الميكروفون. يرجى السماح به من إعدادات المتصفح.",
+      "mic_error": "حدث خطأ أثناء تسجيل الصوت. حاول مجددًا.",
+      "upload_failed": "فشل إرسال الصوت؛ تحقق من اتصال الإنترنت.",
+      "api_error": "لم يستجب خدمة المساعد الصوتي. يرجى المحاولة مجددًا."
+    },
+    "enNoticeTitle": "Voice Assistant",
+    "enNoticeBody": "The voice assistant currently supports Persian and Arabic only.",
+    "enNoticeFaLink": "النسخة الفارسية",
+    "enNoticeArLink": "النسخة العربية"
   }
 }

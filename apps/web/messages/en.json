@@ -104,6 +104,10 @@
       {
         "href": "/places",
         "label": "Places"
+      },
+      {
+        "href": "/voice",
+        "label": "Voice Assistant"
       }
     ],
     "navAria": "Primary navigation",
@@ -785,8 +789,8 @@
       "all": "All",
       "mosque": "Mosque",
       "shrine": "Shrine",
-      "madrasa": "Madrasa",
-      "tomb": "Tomb",
+      "holy_site": "Holy site",
+      "museum": "Museum",
       "other": "Other"
     },
     "filterLabel": "Filter by place type",
@@ -864,5 +868,45 @@
     "reportSuccess": "Your report was recorded and will be reviewed in the moderation queue.",
     "reportError": "Failed to record the report.",
     "close": "Close"
+  },
+  "voice": {
+    "metaTitle": "Voice Assistant",
+    "metaDescription": "The Maturidi Academy bilingual voice assistant — Persian and Arabic only.",
+    "title": "Voice Assistant",
+    "subtitle": "Voice questions are answered in Persian and Arabic.",
+    "holdHint": "Hold the button and speak",
+    "tapHint": "Or tap once to start recording, tap again to send",
+    "micAria": "Record a voice message",
+    "micUnsupportedHint": "Your browser does not support audio recording.",
+    "phaseIdle": "Ready",
+    "phaseRecording": "Recording…",
+    "phaseTranscribing": "Transcribing speech…",
+    "phaseAnswering": "Preparing the answer…",
+    "phasePlaying": "Playing the answer",
+    "cancelRecording": "Cancel recording",
+    "cancelRequest": "Cancel request",
+    "you": "You",
+    "assistant": "Assistant",
+    "voiceMessageCaption": "Voice message",
+    "recitationLabel": "Real recitation",
+    "ttsLabel": "Voice answer",
+    "noAudioNote": "Voice answer is not available.",
+    "playAria": "Play voice answer",
+    "pauseAria": "Pause playback",
+    "citationsTitle": "Sources",
+    "clearConversation": "Clear conversation",
+    "emptyHint": "No conversation yet.",
+    "dismissAria": "Dismiss error",
+    "errors": {
+      "mic_unsupported": "Your browser does not support audio recording.",
+      "mic_denied": "Microphone access was denied.",
+      "mic_error": "An error occurred while recording.",
+      "upload_failed": "Failed to upload audio.",
+      "api_error": "The voice service did not respond."
+    },
+    "enNoticeTitle": "Voice Assistant — Persian & Arabic only",
+    "enNoticeBody": "The voice assistant currently supports Persian and Arabic only. Speech recognition, answers and audio playback are available in these two languages — English voice support is not offered, so this page shows no recording interface in English.",
+    "enNoticeFaLink": "فارسی — نسخهٔ فارسی",
+    "enNoticeArLink": "العربية — النسخة العربية"
   }
 }

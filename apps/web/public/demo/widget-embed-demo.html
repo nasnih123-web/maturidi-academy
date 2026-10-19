@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<!--
+  ═══════════════════════════════════════════════════════════════════════════
+  Maturidi Academy — widget embed acceptance demo (Phase 11)
+
+  This page lives OUTSIDE the Next.js app (it is a static file under
+  apps/web/public/demo/ so it can be copied verbatim onto any external site).
+  It embeds the prayer-times and ayah-of-day widgets through the PUBLIC
+  widget endpoints exactly as a third-party site would:
+
+    GET {API_BASE}/api/v1/widgets/prayer-times?api_key=KEY&lat=..&lng=..
+    GET {API_BASE}/api/v1/widgets/ayah-of-day?api_key=KEY
+
+  Each widget is one <div class="ma-widget" …> plus the loader <script>
+  below — the same shape the CRM "embed code generator" emits. The public
+  /api/v1/widgets/* endpoints carry open CORS (no credentials/cookies),
+  guarded by per-key scopes + rate limits (see ADR-0008).
+
+  Real JSON contracts (Track 1 backend — ADR-0008):
+    prayer-times → { date, lat, lng, method, madhab, tz,
+                     times: { fajr, sunrise, dhuhr, asr, maghrib, isha } }
+                   (lat+lng are REQUIRED query params)
+    ayah-of-day  → { date, surah, ayah,
+                     bundle: { editions: [{ edition, text, ... }] } }
+                   (edition "quran-uthmani" = Arabic text; the first other
+                   edition is used as translation)
+
+  To point the demo at a real API, either edit data-api-base below or open
+  the page with ?api_base=https://api.example.com
+  ═══════════════════════════════════════════════════════════════════════════
+-->
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>نمایش ویجت‌های آکادمی ماتریدی — صفحهٔ آزمایشی خارج از پروژه</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "Vazirmatn", "Segoe UI", Tahoma, sans-serif;
+    background: #0b0e13; color: #f2e8d5; line-height: 1.9;
+  }
+  .demo-wrap { max-width: 60rem; margin-inline: auto; padding: 2.5rem 1.25rem 4rem; }
+  .demo-note {
+    border: 1px dashed rgba(229,192,123,0.55); border-radius: 12px;
+    padding: 1rem 1.25rem; margin-block-end: 2rem; font-size: 0.85rem;
+    color: #d8c79a; background: rgba(229,192,123,0.05);
+  }
+  .demo-note code { direction: ltr; unicode-bidi: embed; color: #ffe9bd; }
+  h1 { color: #e5c07b; font-size: 1.5rem; margin: 0 0 0.4rem; }
+  .demo-sub { color: #9aa3ad; margin: 0 0 2rem; }
+  .widget-section { margin-block-end: 2.5rem; }
+  .widget-section > h2 { color: #e5c07b; font-size: 1.1rem; margin: 0 0 0.8rem; }
+  /* ---- widget card (this is what the embed snippet renders) ---- */
+  .ma-widget {
+    border: 1px solid rgba(229,192,123,0.45); border-radius: 14px;
+    background: #12161d; padding: 1.25rem 1.4rem; min-block-size: 8rem;
+  }
+  .ma-w-title { color: #e5c07b; font-weight: 800; margin: 0 0 0.2rem; font-size: 1rem; }
+  .ma-w-sub { color: #9aa3ad; font-size: 0.8rem; margin: 0 0 0.9rem; }
+  .ma-w-times { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: 0.6rem; }
+  .ma-w-time {
+    border: 1px solid rgba(229,192,123,0.25); border-radius: 10px;
+    padding: 0.5rem 0.7rem; text-align: center; background: rgba(229,192,123,0.04);
+  }
+  .ma-w-time .k { display: block; font-size: 0.75rem; color: #9aa3ad; }
+  .ma-w-time .v { display: block; font-size: 1.05rem; font-weight: 700; color: #ffe9bd; direction: ltr; }
+  .ma-w-time.next { border-color: #e5c07b; background: rgba(229,192,123,0.14); }
+  .ma-w-time.next .k { color: #e5c07b; font-weight: 700; }
+  .ma-w-ayah { font-size: 1.25rem; line-height: 2.4; color: #ffe9bd; margin: 0 0 0.8rem; }
+  .ma-w-trans { font-size: 0.9rem; color: #c9c2b2; margin: 0 0 0.6rem; }
+  .ma-w-ref { font-size: 0.8rem; color: #9aa3ad; margin: 0; }
+  .ma-w-loading, .ma-w-error { color: #9aa3ad; font-size: 0.9rem; margin: 0; padding-block: 2rem; text-align: center; }
+  .ma-w-error { color: #e08a8a; }
+  .ma-w-foot { margin-block-start: 1rem; font-size: 0.72rem; color: #6b7280; }
+</style>
+</head>
+<body>
+<div class="demo-wrap">
+  <h1>ویجت‌های قابل‌جاسازی آکادمی ماتریدی</h1>
+  <p class="demo-sub">این صفحه خارج از پروژه است و ویجت‌ها را دقیقاً مثل یک سایت خارجی، از روی endpointهای عمومی <code dir="ltr">/api/v1/widgets/*</code> بارگذاری می‌کند.</p>
+
+  <div class="demo-note">
+    نکتهٔ فنی: هر ویجت فقط یک <code>&lt;div class="ma-widget" …&gt;</code> به‌علاوهٔ اسکریپت بارگذار زیر است —
+    همان قالبی که مولد کد embed در CRM تولید می‌کند. مبنای API را می‌توان با
+    <code>data-api-base</code> یا پارامتر <code>?api_base=</code> عوض کرد.
+  </div>
+
+  <section class="widget-section" aria-label="ویجت اوقات شرعی">
+    <h2>۱) ویجت اوقات شرعی</h2>
+    <!-- ===== EMBED SNIPPET : prayer-times (as emitted by the CRM generator) ===== -->
+    <div class="ma-widget" data-widget="prayer-times"
+         data-api-base="http://localhost:8000"
+         data-api-key="DEMO_KEY"
+         data-lat="36.288" data-lng="59.6157"
+         data-place="مشهد"></div>
+    <!-- ===== /EMBED SNIPPET ===== -->
+  </section>
+
+  <section class="widget-section" aria-label="ویجت آیه روز">
+    <h2>۲) ویجت آیهٔ روز</h2>
+    <!-- ===== EMBED SNIPPET : ayah-of-day (as emitted by the CRM generator) ===== -->
+    <div class="ma-widget" data-widget="ayah-of-day"
+         data-api-base="http://localhost:8000"
+         data-api-key="DEMO_KEY"></div>
+    <!-- ===== /EMBED SNIPPET ===== -->
+  </section>
+</div>
+
+<script>
+/* Maturidi Academy widget loader — the <script> half of the embed snippet.
+ * Finds every .ma-widget on the page, calls the public widget endpoint
+ * (open CORS, no credentials) and renders the card. External sites paste
+ * the <div> + this <script> and change data-api-base / data-api-key. */
+(function () {
+  'use strict';
+
+  var qsBase = null;
+  try {
+    qsBase = new URLSearchParams(window.location.search).get('api_base');
+  } catch (e) { /* ignore */ }
+
+  function apiBase(el) {
+    var b = qsBase || el.getAttribute('data-api-base') || 'http://localhost:8000';
+    return b.replace(/\/+$/, '');
+  }
+
+  function setHtml(el, html) { el.innerHTML = html; }
+
+  function loading(el, text) {
+    setHtml(el, '<p class="ma-w-loading">' + text + '</p>');
+  }
+
+  function failed(el, detail) {
+    setHtml(el, '<p class="ma-w-error">خطا در بارگذاری ویجت' +
+      (detail ? ': ' + detail : '') + '</p>');
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  var PRAYER_LABELS = {
+    fajr: 'اذان صبح', sunrise: 'طلوع آفتاب', dhuhr: 'اذان ظهر',
+    asr: 'اذان عصر', maghrib: 'اذان مغرب', isha: 'اذان عشاء'
+  };
+  var PRAYER_ORDER = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
+
+  function toMinutes(hhmm) {
+    var m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm || ''));
+    if (!m) return null;
+    return (+m[1]) * 60 + (+m[2]);
+  }
+
+  function renderPrayerTimes(el, data) {
+    var times = (data && data.times) || {};
+    var place = el.getAttribute('data-place') || '';
+    var date = data.date || '';
+    var meta = [];
+    if (data.method) meta.push(data.method);
+    if (data.madhab) meta.push(data.madhab);
+    var nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    var nextKey = null, best = Infinity;
+    PRAYER_ORDER.forEach(function (k) {
+      var t = toMinutes(times[k]);
+      if (t == null) return;
+      var d = t - nowMin;
+      if (d >= 0 && d < best) { best = d; nextKey = k; }
+    });
+    if (!nextKey) nextKey = 'fajr'; // after isha, next is fajr
+
+    var cells = PRAYER_ORDER.map(function (k) {
+      var label = PRAYER_LABELS[k] || k;
+      return '<div class="ma-w-time' + (k === nextKey ? ' next' : '') + '">' +
+        '<span class="k">' + esc(label) + '</span>' +
+        '<span class="v">' + esc(times[k] || '—') + '</span></div>';
+    }).join('');
+
+    setHtml(el,
+      '<p class="ma-w-title">اوقات شرعی' + (place ? ' — ' + esc(place) : '') + '</p>' +
+      '<p class="ma-w-sub">' + esc([date, meta.join('، ')].filter(Boolean).join(' — ')) + '</p>' +
+      '<div class="ma-w-times">' + cells + '</div>' +
+      '<p class="ma-w-foot">آکادمی ماتریدی — ویجت اوقات شرعی</p>');
+  }
+
+  function renderAyah(el, data) {
+    // Real shape (ADR-0008): { date, surah, ayah, bundle: { editions: [...] } }
+    var bundle = (data && data.bundle) || {};
+    var editions = Array.isArray(bundle.editions) ? bundle.editions : [];
+    var arabic = null, translation = null;
+    editions.forEach(function (e) {
+      if (!e || typeof e.text !== 'string' || !e.text) return;
+      if (/uthmani/i.test(e.edition || '') && !arabic) arabic = e.text;
+      else if (!translation) translation = e.text;
+    });
+    if (!arabic && editions.length) arabic = editions[0].text;
+    var surah = data.surah || bundle.surah || '';
+    var ayah = data.ayah || bundle.ayah || '';
+    var ref = (surah ? 'سورهٔ ' + surah : '') + (surah && ayah ? '، ' : '') +
+      (ayah ? 'آیهٔ ' + ayah : '');
+    setHtml(el,
+      '<p class="ma-w-title">آیهٔ روز</p>' +
+      '<p class="ma-w-ayah" dir="rtl" lang="ar">' + esc(arabic || '') + '</p>' +
+      (translation ? '<p class="ma-w-trans">' + esc(translation) + '</p>' : '') +
+      (ref ? '<p class="ma-w-ref">' + esc(ref) + '</p>' : '') +
+      '<p class="ma-w-foot">آکادمی ماتریدی — ویجت آیهٔ روز</p>');
+  }
+
+  function load(el) {
+    var widget = el.getAttribute('data-widget');
+    var key = el.getAttribute('data-api-key') || '';
+    var url = apiBase(el) + '/api/v1/widgets/' + encodeURIComponent(widget) +
+      '?api_key=' + encodeURIComponent(key);
+    if (widget === 'prayer-times') {
+      // lat+lng are REQUIRED by the real endpoint (ADR-0008).
+      var lat = el.getAttribute('data-lat'), lng = el.getAttribute('data-lng');
+      if (lat) url += '&lat=' + encodeURIComponent(lat);
+      if (lng) url += '&lng=' + encodeURIComponent(lng);
+      var method = el.getAttribute('data-method');
+      if (method) url += '&method=' + encodeURIComponent(method);
+    }
+    loading(el, 'در حال بارگذاری…');
+    fetch(url, { mode: 'cors', credentials: 'omit', headers: { Accept: 'application/json' } })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        if (widget === 'prayer-times') renderPrayerTimes(el, data || {});
+        else if (widget === 'ayah-of-day') renderAyah(el, data || {});
+        else failed(el, 'unknown widget');
+      })
+      .catch(function (err) { failed(el, err && err.message); });
+  }
+
+  function init() {
+    var widgets = document.querySelectorAll('.ma-widget');
+    for (var i = 0; i < widgets.length; i++) load(widgets[i]);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+</body>
+</html>
