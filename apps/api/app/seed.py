@@ -53,12 +53,17 @@ BASE_PERMISSIONS = [
     ("calculators.approve", "تأیید پیکربندی ماشین‌حساب‌ها — عالم (فاز ۷)"),
     ("lms.manage", "مدیریت LMS — دوره‌ها، درس‌ها، هم‌گروهی‌ها (فاز ۸)"),
     ("library.manage", "مدیریت کتابخانهٔ چندرسانه‌ای — آپلود، نسخه، گردش‌کار، ایندکس AI (فاز ۹)"),
+    ("social.moderate", "نظارت بر شبکهٔ اجتماعی — صف گزارش‌ها (فاز ۱۰)"),
+    ("moderation.words", "مدیریت کلمات ممنوعه (فاز ۱۰)"),
+    ("fatwa.submit", "ثبت فتوای رسمی — پنل مؤلفین (فاز ۱۰)"),
+    ("fatwa.answer_cluster", "پاسخ به خوشه‌های سوال — مفتی (فاز ۱۰)"),
 ]
 
 BASE_ROLES = [
     ("super_admin", "مدیر ارشد — همهٔ مجوزها"),
     ("admin", "مدیر — بدون مدیریت نقش‌ها"),
     ("scholar", "عالم/مفتی — فتوا و محتوا"),
+    ("scholar_author", "مؤلف فتوا — ثبت فتوای رسمی (فاز ۱۰)"),
     ("user", "کاربر عادی"),
 ]
 
@@ -476,6 +481,12 @@ async def main() -> None:
 
         lib_seed = await seed_library_demo(db)
         print(f"seed کتابخانه: {lib_seed}")
+
+        # نقش/مجوزها، تنظیمات، گروه‌ها و صفحهٔ قوانین انجمن — فاز ۱۰ (idempotent)
+        from app.seed_social import seed_social
+
+        social_seed = await seed_social(db, admin)
+        print(f"seed شبکهٔ اجتماعی: {social_seed}")
 
         await db.commit()
     print("seed انجام شد.")

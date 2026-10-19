@@ -18,6 +18,9 @@ from app.core.queues import QUEUES, worker_settings_for
 # ثبت کرون‌جاب‌ها (side-effect آگاهانه در entrypoint ورکر — نه در مسیر سرویس API)
 from app.modules.content import calendar_tasks as _calendar_tasks  # noqa: F401
 
+# ثبت جاب‌های صف media فاز ۹ (transcribe/OCR)
+from app.modules.library import tasks as _library_tasks  # noqa: F401
+
 
 def _make_settings_class(queue_name: str) -> type:
     cfg = worker_settings_for(queue_name)

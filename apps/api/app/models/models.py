@@ -1127,3 +1127,256 @@ class LibraryItemVersion(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# فاز ۱۰ — شبکهٔ اجتماعی، نظارت، پنل مؤلفین فتوا، تجمیع سوالات
+# ---------------------------------------------------------------------------
+
+
+class SocialGroup(Base):
+    """گروه موضوعی شبکهٔ اجتماعی طلاب و علما."""
+
+    __tablename__ = "social_groups"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    name: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    description: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # LocalizedText
+    slug: Mapped[str] = mapped_column(String(128), unique=True)
+    cover_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("media_assets.id"), nullable=True
+    )
+    is_public: Mapped[bool] = mapped_column(Boolean, default=True)
+    member_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+
+class GroupMembership(Base):
+    """عضویت کاربر در گروه — نقش member | moderator."""
+
+    __tablename__ = "group_memberships"
+    __table_args__ = (UniqueConstraint("group_id", "user_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("social_groups.id"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(16), default="member")  # member | moderator
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class SocialPost(Base):
+    """پست شبکهٔ اجتماعی — فیلتر کلمات ممنوعه در لایهٔ service پیش از insert."""
+
+    __tablename__ = "social_posts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("social_groups.id"), nullable=True, index=True
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(
+        String(16), default="published", index=True
+    )  # published | removed
+    comment_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class SocialComment(Base):
+    """کامنت زیر پست — مشمول همان فیلتر کلمات ممنوعه."""
+
+    __tablename__ = "social_comments"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    post_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("social_posts.id"), index=True
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(
+        String(16), default="published"
+    )  # published | removed
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+
+class SocialFollow(Base):
+    """دنبال‌کردن کاربر توسط کاربر."""
+
+    __tablename__ = "social_follows"
+    __table_args__ = (UniqueConstraint("follower_id", "followed_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    follower_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    followed_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class SocialReport(Base):
+    """گزارش تخلف — صف نظارت با SLA.
+
+    target_type: post | comment | user — شناسهٔ هدف polymorphic است و FK
+    ندارد (§۹.۵ «no future-FK coupling» برای ارجاع‌های چندریختی).
+    """
+
+    __tablename__ = "social_reports"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    target_type: Mapped[str] = mapped_column(String(16))  # post | comment | user
+    target_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    reason: Mapped[str] = mapped_column(Text)
+    reported_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(
+        String(16), default="new", index=True
+    )  # new | triaged | actioned | dismissed
+    reported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+    triaged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    actioned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    sla_due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    action: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )  # triage | dismiss | remove_content | warn_user
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actioned_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+
+
+class ModerationBannedWord(Base):
+    """واژه/عبارت ممنوعهٔ فیلتر خودکار — تطبیق در لایهٔ service."""
+
+    __tablename__ = "moderation_banned_words"
+    __table_args__ = (UniqueConstraint("word"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    word: Mapped[str] = mapped_column(String(128))
+    added_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class FatwaSubmission(Base):
+    """ثبت فتوای رسمی توسط scholar_author.
+
+    workflow_status طبق ماشین مشترک §۹ (app/core/workflow.py):
+    draft → in_review → approved → published ↘ rejected / archived.
+    """
+
+    __tablename__ = "fatwa_submissions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    body: Mapped[str] = mapped_column(Text)
+    madhab: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    author_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    workflow_status: Mapped[str] = mapped_column(
+        String(16), default="draft", index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class QuestionCluster(Base):
+    """خوشهٔ سوالات تکراری — نماینده + پاسخ یک‌بارهٔ مفتی."""
+
+    __tablename__ = "question_clusters"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    representative_question: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), default="open", index=True
+    )  # open | answered | archived
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    answered_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    answered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+
+class ClusterMember(Base):
+    """عضو خوشه — یک سوال از یک کاربر (منبع: chat | direct)."""
+
+    __tablename__ = "cluster_members"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    cluster_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("question_clusters.id"), index=True
+    )
+    question_text: Mapped[str] = mapped_column(Text)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    source: Mapped[str] = mapped_column(
+        String(16), default="direct"
+    )  # chat | direct
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class Notification(Base):
+    """اعلان ذخیره‌شده — وب/CRM آن را از API می‌خوانند (فاز ۲ §۵)."""
+
+    __tablename__ = "notifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    notif_type: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    read_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )

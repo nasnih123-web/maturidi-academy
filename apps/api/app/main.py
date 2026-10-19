@@ -50,6 +50,13 @@ from app.modules.fatwa.router import (
     fatwa_router,
     verify_router,
 )
+from app.modules.fatwa.clusters_router import clusters_router
+from app.modules.fatwa.submissions_router import submissions_router
+from app.modules.social.router import (
+    admin_social_router,
+    moderation_router,
+    social_router,
+)
 from app.modules.home.router import router as home_router
 from app.modules.meta.router import router as meta_router
 from app.modules.quran.router import (
@@ -169,6 +176,11 @@ app.include_router(public_cert_router)
 app.include_router(admin_lms_router)
 app.include_router(library_router)
 app.include_router(admin_library_router)
+app.include_router(social_router)
+app.include_router(admin_social_router)
+app.include_router(moderation_router)
+app.include_router(submissions_router)
+app.include_router(clusters_router)
 
 # دروازهٔ بلادرنگ — دکوراتور @app.websocket (نه add_websocket_route استارلت)
 # چون فقط مسیر APIWebSocketRoute وابستگی‌ها (Depends/get_db) را حل می‌کند.
