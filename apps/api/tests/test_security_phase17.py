@@ -841,7 +841,35 @@ async def test_api_key_scope_enforced(tc):
     assert r.json()["error"]["code"] == "api_key_scope_denied"
 
 
-async def test_api_key_correct_scope_ok(tc):
+def _stub_quran_provider(monkeypatch):
+    """هرماتیک‌کردن provider خارجی قرآن برای تست‌های API key.
+
+    تست‌های scope فقط رفتار احراز هویت/مجوز API key را می‌سنجند؛ متن آیه
+    از سرویس زندهٔ api.alquran.cloud نباید نتیجه را تعیین کند (در CI یا
+    محیط بدون شبکه، provider به‌درستی 503 می‌دهد و تستِ مجوز بی‌گناه
+    قرمز می‌شد). الگو همان _patch_provider_get در test_quran_phase5.py
+    است — _get در سطح provider ماک می‌شود، بقیهٔ مسیر (سرویس قرآن،
+    ویجت، احراز API key) کاملاً واقعی اجرا می‌شود.
+    """
+    from app.modules.quran import providers as prov
+
+    async def _fake_get(self, path: str):
+        return [
+            {
+                "edition": {"identifier": "quran-uthmani"},
+                "text": "نَصُّ آيَةٍ لِلِاخْتِبَار",
+                "audio": None,
+                "juz": 1,
+                "page": 1,
+            }
+        ]
+
+    monkeypatch.setattr(prov.AlQuranCloudProvider, "_get", _fake_get)
+    prov.clear_quran_cache()
+
+
+async def test_api_key_correct_scope_ok(tc, monkeypatch):
+    _stub_quran_provider(monkeypatch)
     client = tc["client"]
     raw = await _make_api_key(tc, ["ayah-of-day"])
     r = await client.get(f"{BASE}/widgets/ayah-of-day", headers={"X-API-Key": raw})
@@ -862,8 +890,9 @@ async def test_api_key_missing_rejected(tc):
     assert r.status_code == 401, r.text
 
 
-async def test_api_key_wildcard_scope(tc):
+async def test_api_key_wildcard_scope(tc, monkeypatch):
     """scope ستاره‌ای همهٔ ویجت‌ها را باز می‌کند."""
+    _stub_quran_provider(monkeypatch)
     client = tc["client"]
     raw = await _make_api_key(tc, ["*"])
     r = await client.get(f"{BASE}/widgets/ayah-of-day", headers={"X-API-Key": raw})
