@@ -1,21 +1,17 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { ApiError, getCourseServer } from '@/lib/lms';
 import { pickText } from '@/lib/localize';
 import { CourseStatic, type CourseStaticLabels } from '@/components/CourseStatic';
 import type { CourseViewLabels } from '@/components/CourseView';
-
-const CourseView = dynamic(() => import('@/components/CourseView').then((m) => m.CourseView), {
-  ssr: false,
-  loading: () => <p className="lms-state">…</p>,
-});
+import { CourseView } from '@/components/CourseViewLazy';
 
 export async function generateMetadata({
-  params: { locale, id },
+  params,
 }: {
-  params: { locale: string; id: string };
+  params: Promise<{ locale: string; id: string }>;
 }): Promise<Metadata> {
+  const { locale, id } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'lms' });
   try {
@@ -38,10 +34,11 @@ export async function generateMetadata({
  * First Load JS budget. API unreachable → graceful error state, never mock.
  */
 export default async function CoursePage({
-  params: { locale, id },
+  params,
 }: {
-  params: { locale: string; id: string };
+  params: Promise<{ locale: string; id: string }>;
 }) {
+  const { locale, id } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'lms' });
 

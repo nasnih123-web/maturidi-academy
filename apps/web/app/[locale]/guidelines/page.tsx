@@ -24,10 +24,11 @@ async function loadGuidelines() {
 }
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'social' });
   const page = await loadGuidelines();
@@ -54,7 +55,8 @@ export async function generateMetadata({
  * rendered with the same renderer as the Phase-4 CMS slug pages —
  * no duplicated rendering logic (ADR-001).
  */
-export default async function GuidelinesPage({ params: { locale } }: { params: { locale: string } }) {
+export default async function GuidelinesPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'social' });
   const tContent = await getTranslations({ locale, namespace: 'content' });

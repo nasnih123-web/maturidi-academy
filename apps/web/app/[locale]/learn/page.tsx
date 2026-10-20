@@ -1,18 +1,14 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import type { LearnDashboardLabels } from '@/components/LearnDashboard';
-
-const LearnDashboard = dynamic(
-  () => import('@/components/LearnDashboard').then((m) => m.LearnDashboard),
-  { ssr: false, loading: () => <p className="lms-state">…</p> },
-);
+import { LearnDashboard } from '@/components/LearnDashboardLazy';
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'lms' });
   return { title: t('dashboardMetaTitle'), description: t('dashboardMetaDescription') };
@@ -24,7 +20,8 @@ export async function generateMetadata({
  * Thin RSC shell: metadata + code-split interactive dashboard (ssr: false)
  * for the First Load JS budget. All data logic in lib/hooks/useLearnDashboard.
  */
-export default async function LearnPage({ params: { locale } }: { params: { locale: string } }) {
+export default async function LearnPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'lms' });
   const labels: LearnDashboardLabels = {

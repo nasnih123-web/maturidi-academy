@@ -11,20 +11,22 @@ import { CertificateVerdict, type CertificateVerdictLabels } from '@/components/
  * Unknown code → invalid verdict (never a crash).
  */
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'lms' });
   return { title: t('certificateMetaTitle'), description: t('certificateMetaDescription') };
 }
 
 export default async function CertificateVerifyPage({
-  params: { locale, code },
+  params,
 }: {
-  params: { locale: string; code: string };
+  params: Promise<{ locale: string; code: string }>;
 }) {
+  const { locale, code } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'lms' });
   const decoded = decodeURIComponent(code);

@@ -1,17 +1,13 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
-
-const FatwaChat = dynamic(() => import('@/components/FatwaChat').then((m) => m.FatwaChat), {
-  ssr: false,
-  loading: () => <p className="auth-loading">…</p>,
-});
+import { FatwaChat } from '@/components/FatwaChatLazy';
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'fatwa' });
   return { title: t('metaTitle'), description: t('metaDescription') };
@@ -26,10 +22,11 @@ export async function generateMetadata({
  * as props — the client chunk carries no i18n runtime.
  */
 export default async function FatwaPage({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'fatwa' });
   return (

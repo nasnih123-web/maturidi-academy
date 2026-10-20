@@ -1,18 +1,14 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import type { FatwaQuestionLabels } from '@/components/social/labels';
-
-const QuestionView = dynamic(
-  () => import('@/components/fatwa/QuestionView').then((m) => m.QuestionView),
-  { ssr: false, loading: () => <p className="auth-loading">…</p> },
-);
+import { QuestionView } from '@/components/fatwa/QuestionViewLazy';
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'fatwa' });
   return { title: t('question.metaTitle'), description: t('question.metaDescription') };
@@ -27,12 +23,14 @@ export async function generateMetadata({
  * user interaction). Code-split per the First Load JS budget.
  */
 export default async function FatwaQuestionPage({
-  params: { locale },
-  searchParams,
+  params,
+  searchParams: searchParamsPromise,
 }: {
-  params: { locale: string };
-  searchParams: Record<string, string | undefined>;
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
+  const { locale } = await params;
+  const searchParams = await searchParamsPromise;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'fatwa' });
   const labels: FatwaQuestionLabels = {
