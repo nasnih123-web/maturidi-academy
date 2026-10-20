@@ -1,17 +1,13 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
-
-const QuizRunner = dynamic(() => import('@/components/QuizRunner').then((m) => m.QuizRunner), {
-  ssr: false,
-  loading: () => <p className="auth-loading">…</p>,
-});
+import { QuizRunner } from '@/components/QuizRunnerLazy';
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'quiz' });
   return { title: t('metaTitle'), description: t('metaDescription') };
@@ -25,10 +21,11 @@ export async function generateMetadata({
  * this route only wires it to the fatwa quiz backend.
  */
 export default async function QuizPage({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'quiz' });
   return (

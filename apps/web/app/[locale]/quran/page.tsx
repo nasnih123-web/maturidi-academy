@@ -4,10 +4,11 @@ import { getSurahs } from '@/lib/quran';
 import { SurahIndex } from '@/components/SurahIndex';
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'quran' });
   return { title: t('metaTitle'), description: t('metaDescription') };
@@ -18,10 +19,11 @@ export async function generateMetadata({
  * Quran text is never hardcoded; on API failure an error state renders.
  */
 export default async function QuranIndexPage({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'quran' });
 

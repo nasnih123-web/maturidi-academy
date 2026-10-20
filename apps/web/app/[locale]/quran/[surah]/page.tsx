@@ -6,10 +6,11 @@ import { getSiteConfig, type QuranSettings } from '@/lib/settings';
 import { QuranReader } from '@/components/QuranReader';
 
 export async function generateMetadata({
-  params: { locale, surah },
+  params,
 }: {
-  params: { locale: string; surah: string };
+  params: Promise<{ locale: string; surah: string }>;
 }): Promise<Metadata> {
+  const { locale, surah } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'quran' });
   const n = Number(surah);
@@ -29,12 +30,14 @@ export async function generateMetadata({
  * Invalid surah numbers 404.
  */
 export default async function SurahPage({
-  params: { locale, surah },
-  searchParams,
+  params,
+  searchParams: searchParamsPromise,
 }: {
-  params: { locale: string; surah: string };
-  searchParams: { translation?: string; tafsir?: string; reciter?: string; ayah?: string };
+  params: Promise<{ locale: string; surah: string }>;
+  searchParams: Promise<{ translation?: string; tafsir?: string; reciter?: string; ayah?: string }>;
 }) {
+  const { locale, surah } = await params;
+  const searchParams = await searchParamsPromise;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'quran' });
   const n = Number(surah);

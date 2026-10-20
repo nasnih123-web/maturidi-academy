@@ -9,10 +9,11 @@ import { pickText } from '@/lib/localize';
 import { EmptyState } from '@/components/EmptyState';
 
 export async function generateMetadata({
-  params: { locale, id },
+  params,
 }: {
-  params: { locale: string; id: string };
+  params: Promise<{ locale: string; id: string }>;
 }): Promise<Metadata> {
+  const { locale, id } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'places' });
   try {
@@ -34,10 +35,11 @@ export async function generateMetadata({
  * render an honest error state.
  */
 export default async function PlaceDetailPage({
-  params: { locale, id },
+  params,
 }: {
-  params: { locale: string; id: string };
+  params: Promise<{ locale: string; id: string }>;
 }) {
+  const { locale, id } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'places' });
 

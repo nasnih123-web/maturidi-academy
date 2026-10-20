@@ -1,21 +1,17 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getAllPlaces } from '@/lib/places';
 import { PLACE_TYPES, toPlaceView, type PlaceView } from '@/lib/places-view';
 import { EmptyState } from '@/components/EmptyState';
 import type { PlacesMapLabels } from '@/components/PlacesMap';
-
-const PlacesMap = dynamic(() => import('@/components/PlacesMap').then((m) => m.PlacesMap), {
-  ssr: false,
-  loading: () => <p className="places-status">…</p>,
-});
+import { PlacesMap } from '@/components/PlacesMapLazy';
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'places' });
   return { title: t('metaTitle'), description: t('metaDescription') };
@@ -29,7 +25,8 @@ export async function generateMetadata({
  * map. Leaflet (~150KB) never enters the homepage bundle. API failure or an
  * empty catalogue renders an honest state instead of a fake map.
  */
-export default async function PlacesPage({ params: { locale } }: { params: { locale: string } }) {
+export default async function PlacesPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'places' });
 

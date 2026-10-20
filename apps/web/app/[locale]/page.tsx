@@ -67,7 +67,8 @@ function hijriDateLabel(
  * dismissal, atmospheric canvas (all progressive enhancement —
  * content is server-rendered).
  */
-export default async function HomePage({ params: { locale } }: { params: { locale: string } }) {
+export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: "home" });
   const tContent = await getTranslations({ locale, namespace: "content" });
