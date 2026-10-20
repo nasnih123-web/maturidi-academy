@@ -199,7 +199,7 @@ async def test_webhook_retry_storm_exactly_once(tc, db_session, zfake):
     await _stage_pay_settings(db_session)
 
     # کمپین فعال — مستقیم در DB تا به مجوز ادمین نیاز نباشد
-    from app.models.models import DonationCampaign, PaymentIntent
+    from app.models.models import DonationCampaign
 
     async with tc["maker"]() as db:
         camp = DonationCampaign(

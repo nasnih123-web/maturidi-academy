@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC
 
 import pytest
 
@@ -58,7 +59,7 @@ async def test_refresh_reuse_revokes_whole_session(tc):
     (دو تب) → در ۶۰ ثانیهٔ اول نشست باطل نمی‌شود؛ ولی reuse واقعی
     (پس از پنجرهٔ اغماض) کل نشست را می‌کشد.
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from sqlalchemy import update
 
@@ -83,7 +84,7 @@ async def test_refresh_reuse_revokes_whole_session(tc):
 
     # شبیه‌سازی گذر زمان → حالا همان replay یعنی سرقت واقعی
     async with tc["maker"]() as db:
-        past = datetime.now(timezone.utc) - timedelta(
+        past = datetime.now(UTC) - timedelta(
             seconds=auth_service.REUSE_DETECTION_GRACE_SECONDS + 60
         )
         await db.execute(update(RefreshToken).values(created_at=past))

@@ -19,7 +19,7 @@ import ast
 import hashlib
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -73,8 +73,8 @@ GOLDEN_ZAKAT_RULE = {
 }
 
 GOLDEN_RATES = {
-    "gold_per_gram": Decimal("20"),
-    "silver_per_gram": Decimal("2"),
+    "gold_per_gram": Decimal(20),
+    "silver_per_gram": Decimal(2),
     "currency": "TST",
     "stale": False,
     "fetched_at": None,
@@ -97,7 +97,7 @@ def _digest(obj: dict) -> str:
 
 def test_golden_inheritance_exact_amounts():
     out = engine.compute_inheritance(
-        GOLDEN_INHERIT_HEIRS, Decimal("1200"), GOLDEN_INHERIT_RULE,
+        GOLDEN_INHERIT_HEIRS, Decimal(1200), GOLDEN_INHERIT_RULE,
         rule_version=100,
     )
     by_type = {s["heir_type"]: s for s in out["shares"]}
@@ -113,7 +113,7 @@ def test_golden_inheritance_exact_amounts():
 
 def test_golden_inheritance_digest_pinned():
     out = engine.compute_inheritance(
-        GOLDEN_INHERIT_HEIRS, Decimal("1200"), GOLDEN_INHERIT_RULE,
+        GOLDEN_INHERIT_HEIRS, Decimal(1200), GOLDEN_INHERIT_RULE,
         rule_version=100,
     )
     assert _digest(out) == GOLDEN_INHERIT_DIGEST
@@ -125,7 +125,7 @@ def test_engine_deterministic_across_runs_and_numeric_types():
     for _ in range(10):
         results.append(
             engine.compute_inheritance(
-                GOLDEN_INHERIT_HEIRS, Decimal("1200"), GOLDEN_INHERIT_RULE,
+                GOLDEN_INHERIT_HEIRS, Decimal(1200), GOLDEN_INHERIT_RULE,
                 rule_version=100,
             )
         )
@@ -146,7 +146,7 @@ def test_engine_normalizes_fractions():
     """«2/4» در خروجی به «1/2» نرمال می‌شود (canonical)."""
     rule = {"shares": {"a_t": {"share": "2/4"}}}
     out = engine.compute_inheritance(
-        [{"type": "a_t", "count": 1}], Decimal("1000"), rule, rule_version=1
+        [{"type": "a_t", "count": 1}], Decimal(1000), rule, rule_version=1
     )
     assert out["shares"][0]["share_fraction"] == "1/2"
     assert out["shares"][0]["amount"] == "500.0000"
@@ -181,8 +181,8 @@ def test_engine_pure_no_app_or_io_imports():
 def test_golden_zakat_exact_nisab_boundary():
     """خالص دقیقاً برابر نصاب → مشمول (net >= nisab)."""
     out = engine.compute_zakat(
-        {"cash": Decimal("700"), "gold_grams": Decimal("20")},
-        Decimal("100"),
+        {"cash": Decimal(700), "gold_grams": Decimal(20)},
+        Decimal(100),
         GOLDEN_ZAKAT_RULE,
         GOLDEN_RATES,
         rule_version=7,
@@ -197,8 +197,8 @@ def test_golden_zakat_exact_nisab_boundary():
 
 def test_golden_zakat_just_below_nisab():
     out = engine.compute_zakat(
-        {"cash": Decimal("699.99"), "gold_grams": Decimal("20")},
-        Decimal("100"),
+        {"cash": Decimal("699.99"), "gold_grams": Decimal(20)},
+        Decimal(100),
         GOLDEN_ZAKAT_RULE,
         GOLDEN_RATES,
         rule_version=7,
@@ -209,8 +209,8 @@ def test_golden_zakat_just_below_nisab():
 
 def test_golden_zakat_digest_pinned():
     out = engine.compute_zakat(
-        {"cash": Decimal("700"), "gold_grams": Decimal("20")},
-        Decimal("100"),
+        {"cash": Decimal(700), "gold_grams": Decimal(20)},
+        Decimal(100),
         GOLDEN_ZAKAT_RULE,
         GOLDEN_RATES,
         rule_version=7,
@@ -221,8 +221,8 @@ def test_golden_zakat_digest_pinned():
 def test_engine_zakat_deterministic():
     outs = [
         engine.compute_zakat(
-            {"cash": Decimal("700"), "gold_grams": Decimal("20")},
-            Decimal("100"), GOLDEN_ZAKAT_RULE, GOLDEN_RATES, rule_version=7,
+            {"cash": Decimal(700), "gold_grams": Decimal(20)},
+            Decimal(100), GOLDEN_ZAKAT_RULE, GOLDEN_RATES, rule_version=7,
         )
         for _ in range(5)
     ]
@@ -276,7 +276,7 @@ async def _create_rule(client, headers, version, rule_data):
         "madhab": "hanafi",
         "source": "SYNTHETIC TEST FIXTURE — not fiqh",
         "version": version,
-        "effective_from": datetime.now(timezone.utc).isoformat(),
+        "effective_from": datetime.now(UTC).isoformat(),
         "effective_to": None,
         "change_reason": "p17 golden test",
         "rule_data": rule_data,
@@ -332,7 +332,7 @@ async def test_api_applies_active_approved_version_and_matches_engine_golden(tc)
     assert result["applied_rule_version"] == 100
     # نتیجهٔ API همان golden موتور است (بدون هیچ تبدیلی)
     engine_out = engine.compute_inheritance(
-        GOLDEN_INHERIT_HEIRS, Decimal("1200"), GOLDEN_INHERIT_RULE,
+        GOLDEN_INHERIT_HEIRS, Decimal(1200), GOLDEN_INHERIT_RULE,
         rule_version=100,
     )
     assert json.dumps(result, sort_keys=True) == json.dumps(

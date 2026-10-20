@@ -15,12 +15,12 @@ import json
 import socket
 import threading
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
 import websockets
-from sqlalchemy import select, update
+from sqlalchemy import update
 
 
 def _uid() -> str:
@@ -121,7 +121,7 @@ async def _recv_none(ws, timeout: float = 2.5) -> None:
             return
         try:
             msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=remaining))
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             return  # در پنجرهٔ انتظار هیچ پیامی نیامد — موفق
         assert msg.get("type") != "event", f"leaked event: {msg}"
 
@@ -223,7 +223,7 @@ async def test_ws_expired_ticket_rejected(ws_env):
         await db.execute(
             update(WsTicket)
             .where(WsTicket.ticket_hash == hash_token(t))
-            .values(expires_at=datetime.now(timezone.utc) - timedelta(seconds=1))
+            .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
         )
         await db.commit()
 
@@ -323,7 +323,7 @@ async def test_ws_replay_cursor_same_timestamp_no_gap_no_dup(ws_env):
     eid1 = await _emit(maker, "test.cursor", payload={"seq": 1})
     eid2 = await _emit(maker, "test.cursor", payload={"seq": 2})
     # هر سه را هم‌زمان کن — بدترین حالت برای کرسر تک‌مؤلفه‌ای
-    fixed = datetime.now(timezone.utc)
+    fixed = datetime.now(UTC)
     async with maker() as db:
         await db.execute(update(DomainEvent).values(created_at=fixed))
         await db.commit()

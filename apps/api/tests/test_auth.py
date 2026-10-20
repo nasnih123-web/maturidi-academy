@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pyotp
 
@@ -109,7 +109,7 @@ async def test_full_lifecycle(tc):
     from app.modules.auth import service as _auth_service
 
     async with tc["maker"]() as _db:
-        _past = datetime.now(timezone.utc) - timedelta(
+        _past = datetime.now(UTC) - timedelta(
             seconds=_auth_service.REUSE_DETECTION_GRACE_SECONDS + 60
         )
         await _db.execute(
@@ -262,7 +262,7 @@ async def test_totp_2fa(tc):
 
 
 async def test_admin_users_rbac(tc, db_session):
-    from app.models.models import Permission, Role, RolePermission, User, UserRole
+    from app.models.models import Permission, Role, RolePermission, UserRole
 
     client = tc["client"]
 
@@ -292,7 +292,7 @@ async def test_admin_users_rbac(tc, db_session):
     r = await client.get(f"{BASE}/admin/users", headers=_auth(ptokens["access_token"]))
     assert r.status_code == 403
     assert r.json()["error"]["code"] == "forbidden"
-    _ = plain  # noqa
+    _ = plain
 
 
 async def test_meta_endpoints(tc):

@@ -86,6 +86,7 @@ async def test_health_endpoints(tc):
 async def test_redis_down_falls_back_to_inmemory_bus(monkeypatch):
     """وقتی Redis در دسترس نیست، bus حافظه‌ای جایگزین می‌شود و کار می‌کند."""
     import redis.asyncio as aioredis
+
     from app.core.dispatcher import InMemoryBus, create_event_bus
 
     def _boom(*args, **kwargs):
@@ -143,15 +144,16 @@ def _canonical_snapshot(db_path: Path) -> tuple[str, dict[str, int]]:
 
 async def _seed_drill_data(url: str) -> None:
     """دادهٔ نمونهٔ واقعی با همان لایه‌های production (argon2، رمزنگاری Fernet)."""
-    import app.models  # noqa: F401 — ثبت جدول‌ها
-    from app.core.platform_settings import stage_setting
-    from app.core.security import hash_password
-    from app.models.models import DomainEvent, User
     from sqlalchemy.ext.asyncio import (
         AsyncSession,
         async_sessionmaker,
         create_async_engine,
     )
+
+    import app.models  # noqa: F401 — ثبت جدول‌ها
+    from app.core.platform_settings import stage_setting
+    from app.core.security import hash_password
+    from app.models.models import DomainEvent, User
 
     engine = create_async_engine(url)
     try:
@@ -188,8 +190,9 @@ async def _seed_drill_data(url: str) -> None:
 def test_backup_restore_drill(monkeypatch, tmp_path):
     """تمرین واقعی بازیابی (قرارداد §۱۷.۳): migrate از صفر → داده → بکاپ →
     restore به scratch → راستی‌آزمایی شمارش + SHA-256. بدون docker/postgres."""
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
     from app.core.config import get_settings
 
     monkeypatch.chdir(APPS_API)

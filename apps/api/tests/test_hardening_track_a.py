@@ -11,9 +11,8 @@
 """
 from __future__ import annotations
 
-import asyncio
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
@@ -104,8 +103,8 @@ async def _make_privileged_user(tc, email_suffix: str, with_totp: bool = False):
 
     import pyotp
 
-    from app.core.security import hash_password
     from app.core.secrets import encrypt_value
+    from app.core.security import hash_password
     from app.models.models import User, UserRole
 
     suffix = _uid()
@@ -291,8 +290,8 @@ async def test_concurrent_refresh_does_not_log_user_out(tc):
 
 async def test_real_reuse_detection_still_revokes_session(tc):
     """استفادهٔ مجدد واقعی (پس از پنجرهٔ grace) → نشست باطل می‌شود."""
-    from app.modules.auth import service as auth_service
     from app.models.models import RefreshToken
+    from app.modules.auth import service as auth_service
 
     client = tc["client"]
     email = f"reuse-{_uid()}@example.com"
@@ -304,7 +303,7 @@ async def test_real_reuse_detection_still_revokes_session(tc):
 
     # شبیه‌سازی گذر زمان: همهٔ توکن‌ها را قدیمی می‌کنیم تا از پنجرهٔ grace بیرون بروند
     async with tc["maker"]() as db:
-        past = datetime.now(timezone.utc) - timedelta(
+        past = datetime.now(UTC) - timedelta(
             seconds=auth_service.REUSE_DETECTION_GRACE_SECONDS + 60
         )
         await db.execute(update(RefreshToken).values(created_at=past))

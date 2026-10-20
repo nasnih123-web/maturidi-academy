@@ -281,7 +281,7 @@ async def test_fatwa_scope_index_citation(tc):
         assert "fatwa" in (ch.ai_scopes or [])
 
     # سطح retrieval فاز ۶: chunk پیدا و قابل استناد است
-    from app.modules.fatwa.embeddings import get_embedding_provider, ChunkIndex
+    from app.modules.fatwa.embeddings import ChunkIndex, get_embedding_provider
 
     async with tc["maker"]() as db:
         provider = await get_embedding_provider(db, "hash")
