@@ -12,7 +12,7 @@ import asyncio
 import shutil
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.core.queues import register_task
@@ -23,7 +23,7 @@ PDFTOPPM_BIN = "pdftoppm"
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 async def _load_item(db, item_id: str):
@@ -92,7 +92,7 @@ async def transcribe_media(ctx: dict, item_id: str) -> dict:
             )
             try:
                 _, stderr = await asyncio.wait_for(proc.communicate(), timeout=1500)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 proc.kill()
                 reason = "whisper_timeout: رونویسی بیش از حد طول کشید"
                 item.transcript_status = "failed"
@@ -189,7 +189,7 @@ async def ocr_pdf(ctx: dict, item_id: str) -> dict:
                 )
                 try:
                     out, _ = await asyncio.wait_for(proc.communicate(), timeout=300)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     proc.kill()
                     continue
                 if proc.returncode == 0 and out:

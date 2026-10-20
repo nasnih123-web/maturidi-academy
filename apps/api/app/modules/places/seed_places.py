@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -73,7 +73,7 @@ async def seed_places() -> int:
         existing = (await db.execute(select(func.count()).select_from(ReligiousPlace))).scalar_one()
         if existing:
             return 0
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for p in PLACES:
             db.add(
                 ReligiousPlace(

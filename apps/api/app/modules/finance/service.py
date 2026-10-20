@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 import httpx
@@ -48,7 +48,7 @@ _TEST_HTTP_CLIENT: httpx.AsyncClient | None = None
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ def _utcnow() -> datetime:
 
 
 def _encode_cursor(ts: datetime, lid: UUID) -> str:
-    raw = f"{ts.astimezone(timezone.utc).isoformat()}|{lid}"
+    raw = f"{ts.astimezone(UTC).isoformat()}|{lid}"
     return base64.urlsafe_b64encode(raw.encode()).decode()
 
 
@@ -617,7 +617,7 @@ async def get_receipt_pdf(
         gateway_reference=donation.gateway_reference,
         intent_id=str(donation.payment_intent_id),
         receipt_id=str(donation.id),
-        paid_at_iso=donation.created_at.astimezone(timezone.utc).isoformat(),
+        paid_at_iso=donation.created_at.astimezone(UTC).isoformat(),
     )
     filename = f"receipt-{donation.id}.pdf"
     return pdf, filename
@@ -846,7 +846,7 @@ async def reconcile(
     report_by_ref = {e.ref_id: e for e in report}
 
     mismatches: list[schemas.ReconcileMismatch] = []
-    lt = lambda fa, ar, en: schemas.LocalizedText(fa=fa, ar=ar, en=en)  # noqa: E731
+    lt = lambda fa, ar, en: schemas.LocalizedText(fa=fa, ar=ar, en=en)
 
     for intent in intents:
         donation = next(

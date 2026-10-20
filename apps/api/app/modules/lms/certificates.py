@@ -14,7 +14,6 @@ from functools import lru_cache
 import arabic_reshaper
 from bidi.algorithm import get_display
 
-
 _AR_FONT_CANDIDATES = [
     # Noto Sans Arabic اول: برخلاف Naskh، علائم لاتین (خط تیره، دونقطه) را هم دارد
     "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",

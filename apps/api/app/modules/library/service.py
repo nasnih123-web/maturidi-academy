@@ -16,7 +16,7 @@ import base64
 import json
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import Text, cast, func, or_, select
@@ -95,7 +95,7 @@ _PRIVILEGED_ROLES = frozenset({"scholar", "admin", "super_admin"})
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # قرارداد §۷ — «بررسی امنیتی PDF (بدون اجرای JavaScript جاسازی‌شده)».

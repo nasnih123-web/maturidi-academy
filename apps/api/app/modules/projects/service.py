@@ -11,8 +11,7 @@ notification_preferences؛ تحویل در جدول notifications ثبت می‌
 from __future__ import annotations
 
 import base64
-import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
@@ -34,7 +33,7 @@ from . import schemas
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +42,7 @@ def _utcnow() -> datetime:
 
 
 def _encode_cursor(ts: datetime, lid: UUID) -> str:
-    raw = f"{ts.astimezone(timezone.utc).isoformat()}|{lid}"
+    raw = f"{ts.astimezone(UTC).isoformat()}|{lid}"
     return base64.urlsafe_b64encode(raw.encode()).decode()
 
 

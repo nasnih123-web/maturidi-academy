@@ -10,7 +10,7 @@ import base64
 import json
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -40,7 +40,7 @@ _DEFAULT_LOCALE = "fa"
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _L(texts: dict | None, locale: str = _DEFAULT_LOCALE) -> str:

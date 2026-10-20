@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -169,7 +169,6 @@ async def delete_note(
 ):
     """حذف یادداشت خودِ کاربر."""
     await service.delete_note(db, user, note_id)
-    return None
 
 
 # --- تسبیح (auth) ---
@@ -228,9 +227,9 @@ async def adhan_times(
                       description="افست ساعت محلی از UTC (مثل ‎+3.5)؛ DST دستی"),
 ):
     """اوقات نماز — محاسبهٔ pure-Python (الگوریتم PrayTimes)؛ زمان‌ها HH:MM محلی."""
-    from datetime import datetime, timezone as _tz
+    from datetime import datetime
 
-    target = day or datetime.now(_tz.utc).date()
+    target = day or datetime.now(UTC).date()
     data = service.get_adhan_times(
         day=target, lat=lat, lng=lng, tz=tz, method=method, madhab=madhab
     )

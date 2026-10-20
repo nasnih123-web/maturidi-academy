@@ -39,10 +39,10 @@ from app.modules.lms.schemas import (
     CourseDetailOut,
     CourseOut,
     CourseUpdateIn,
-    CursorPage,
     CurriculumCreateIn,
     CurriculumOut,
     CurriculumUpdateIn,
+    CursorPage,
     EnrollmentOut,
     LessonCreateIn,
     LessonOut,
@@ -50,10 +50,10 @@ from app.modules.lms.schemas import (
     PrerequisiteCreateIn,
     PrerequisiteOut,
     ProgressIn,
-    UserProgressAdminOut,
     ProgressOut,
     RecommendationOut,
     StudyReportOut,
+    UserProgressAdminOut,
 )
 
 lms_router = APIRouter(prefix="/api/v1/lms", tags=["lms"])
@@ -535,7 +535,6 @@ async def admin_remove_prerequisite(
     user: User = Depends(_can_lms),
 ):
     await service.admin_remove_prerequisite(db, course_id, requires_course_id)
-    return None
 
 
 # ---------- admin reads & deletes (CRM پیشخوان یادگیری) ----------
@@ -619,7 +618,6 @@ async def admin_delete_curriculum(
     user: User = Depends(_can_lms),
 ):
     await service.admin_delete_curriculum(db, mid)
-    return None
 
 
 @admin_lms_router.delete("/courses/{mid}", status_code=204)
@@ -629,7 +627,6 @@ async def admin_delete_course(
     user: User = Depends(_can_lms),
 ):
     await service.admin_delete_course(db, mid)
-    return None
 
 
 @admin_lms_router.delete("/lessons/{mid}", status_code=204)
@@ -639,7 +636,6 @@ async def admin_delete_lesson(
     user: User = Depends(_can_lms),
 ):
     await service.admin_delete_lesson(db, mid)
-    return None
 
 
 @admin_lms_router.delete("/cohorts/{mid}", status_code=204)
@@ -649,4 +645,3 @@ async def admin_delete_cohort(
     user: User = Depends(_can_lms),
 ):
     await service.admin_delete_cohort(db, mid)
-    return None
