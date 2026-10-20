@@ -58,8 +58,8 @@ async def patch_user_roles(
     db: AsyncSession = Depends(get_db),
 ):
     """جایگزینی نقش‌های کاربر — نمای ۳۶۰° (تب نقش‌ها). محافظت از super_admin خود."""
-    from app.models.models import RefreshToken, Role, Session, UserRole  # noqa: PLC0415
-    from app.core.audit import log_audit  # noqa: PLC0415
+    from app.core.audit import log_audit
+    from app.models.models import RefreshToken, Role, Session, UserRole
 
     target = await db.get(User, user_id)
     if target is None:
@@ -118,8 +118,8 @@ async def post_revoke_sessions(
     db: AsyncSession = Depends(get_db),
 ):
     """ابطال همهٔ نشست‌های کاربر — «خروج از همهٔ دستگاه‌ها» (§۲)."""
-    from app.models.models import RefreshToken, Session  # noqa: PLC0415
-    from app.core.audit import log_audit  # noqa: PLC0415
+    from app.core.audit import log_audit
+    from app.models.models import RefreshToken, Session
 
     target = await db.get(User, user_id)
     if target is None:

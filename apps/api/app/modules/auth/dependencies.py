@@ -7,7 +7,7 @@ access token به نشست (sid) گره خورده است: اگر نشست با�
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -75,7 +75,7 @@ async def get_current_user(
             request.state.session_id = session_id
         # لمس throttled آخرین فعالیت — بدون commit صریح در dependency
         # (برخلاف turbo که در dep کامیت می‌کند؛ نوشتن با تراکنش درخواست می‌ماند).
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if (now - ensure_aware(session.last_active_at)).total_seconds() > _LAST_ACTIVE_TOUCH_SECONDS:
             session.last_active_at = now
 

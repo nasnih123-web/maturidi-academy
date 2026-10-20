@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.storage import read_capped_upload
 from app.models.models import User
-from app.modules.auth.dependencies import require_permission
 from app.modules.admin import service
 from app.modules.admin.schemas import (
     DeadLetterPage,
@@ -22,6 +21,7 @@ from app.modules.admin.schemas import (
     SettingsUpdate,
     SettingsUpdateOut,
 )
+from app.modules.auth.dependencies import require_permission
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 

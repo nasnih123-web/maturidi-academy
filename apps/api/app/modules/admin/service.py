@@ -26,8 +26,8 @@ from app.core.platform_settings import (
     bump_settings_version,
     decode_setting_value,
     encode_setting_value,
-    get_settings_version,
     get_setting,
+    get_settings_version,
     is_sensitive,
     stage_setting,
 )
