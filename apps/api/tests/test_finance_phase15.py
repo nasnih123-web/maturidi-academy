@@ -651,3 +651,65 @@ async def test_receipt_schema_guard():
 
     with pytest.raises(pydantic.ValidationError):
         schemas.DonateIn(amount=100, gateway="nope")
+
+
+# ---------------------------------------------------------------------------
+# Track A (§۵.۱۳) — منفی‌های تکمیلی کال‌بک: authority ناشناس / OK بعد از لغو
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_callback_unknown_authority_404(tc, db_session, zfake):
+    """کال‌بک با authority ساختگی → ۴۰۴، بدون هیچ فراخوان verify به درگاه."""
+    client = tc["client"]
+    await _stage_pay_settings(db_session)
+    r = await client.get(
+        f"{BASE}/finance/callback",
+        params={"Authority": "AUTH-DOES-NOT-EXIST", "Status": "OK"},
+    )
+    assert r.status_code == 404, r.text
+    assert r.json()["error"]["code"] == "intent_not_found"
+    assert zfake.box["calls"]["verify"] == 0
+
+
+@pytest.mark.asyncio
+async def test_callback_ok_after_cancel_409(tc, db_session, zfake):
+    """بعد از لغو (Status=NOK → failed)، کال‌بک OK نباید نیت را زنده کند:
+    ۴۰۹ intent_closed، verify صدا نمی‌شود، هیچ donationای ساخته نمی‌شود."""
+    from sqlalchemy import func, select
+
+    from app.models.models import Donation, PaymentIntent
+
+    client = tc["client"]
+    await _stage_pay_settings(db_session)
+    zfake.box["authority"] = "AUTH-CANCEL-THEN-OK"
+    r = await client.post(
+        f"{BASE}/finance/donate",
+        headers={"Idempotency-Key": f"key-{uuid.uuid4()}"},
+        json={"amount": 100_000, "callback_url": "http://test/finance/callback"},
+    )
+    assert r.status_code == 201, r.text
+
+    cb = await client.get(
+        f"{BASE}/finance/callback",
+        params={"Authority": "AUTH-CANCEL-THEN-OK", "Status": "NOK"},
+    )
+    assert cb.status_code == 200 and cb.json()["status"] == "failed"
+
+    cb2 = await client.get(
+        f"{BASE}/finance/callback",
+        params={"Authority": "AUTH-CANCEL-THEN-OK", "Status": "OK"},
+    )
+    assert cb2.status_code == 409, cb2.text
+    assert cb2.json()["error"]["code"] == "intent_closed"
+    assert zfake.box["calls"]["verify"] == 0
+
+    count = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(Donation)
+            .join(PaymentIntent, Donation.payment_intent_id == PaymentIntent.id)
+            .where(PaymentIntent.authority == "AUTH-CANCEL-THEN-OK")
+        )
+    ).scalar()
+    assert count == 0

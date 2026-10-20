@@ -62,7 +62,7 @@ export default async function InheritancePage({
           shareCol: t('inheritance.shareCol'),
           amountCol: t('inheritance.amountCol'),
           totalLabel: t('inheritance.totalLabel'),
-          ruleVersion: t('inheritance.ruleVersion'),
+          ruleVersion: t.raw('inheritance.ruleVersion') as string,
           notesTitle: t('inheritance.notesTitle'),
           print: t('inheritance.print'),
           save: t('inheritance.save'),

@@ -23,7 +23,7 @@ REPO = Path(__file__).resolve().parents[3]
 
 GOOD_JWT = "x7K9mQ2vT5pL8nR4sW6uY3zA1bC0dEf2"
 GOOD_ENC = "k4M8nB2vC6xZ1aS5dF9gH3jK7lP0oQwE"
-GOOD_S3_SECRET = "m9N3vB7xZ1qW5eR8tY2uI4oP6aS0dF3g"
+GOOD_S3_SECRET = "unit-test-only-fake-secret-00000"
 
 
 @pytest.fixture()

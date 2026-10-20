@@ -10,7 +10,7 @@
   (برآورد دقیق‌تر: `docs/ops/scaling-to-100k.md`)
 - Docker Engine 24+ و `docker compose` v2
 - DNS: رکوردهای `example.com` ،`api.example.com` ،`crm.example.com` به IP هاست
-- فایل `.env.prod` کامل (الگو: `.env.example` — همهٔ `CHANGE_ME`ها پر شده، `APP_ENV=production`)
+- فایل `.env.prod` کامل (الگو: `.env.prod.example` — همهٔ `CHANGE_ME`ها پر شده، `APP_ENV=production`)
 
 ### متغیرهای اجباری compose (با `:?` کنترل می‌شوند)
 
@@ -23,7 +23,7 @@
 ```bash
 # ۱. آماده‌سازی
 git clone <repo> /opt/maturidi && cd /opt/maturidi
-cp .env.example .env.prod && nano .env.prod   # همهٔ secretها را پر کنید
+cp .env.prod.example .env.prod && nano .env.prod   # همهٔ secretها را پر کنید (`.env.example` الگوی dev است، نه production)
 
 # ۲. اعتبارسنجی compose (بدون نیاز به بالا بودن سرویس‌ها)
 docker compose -f docker-compose.prod.yml --env-file .env.prod config > /dev/null && echo OK

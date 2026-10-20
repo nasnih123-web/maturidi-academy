@@ -1,0 +1,38 @@
+# .gitleaksignore — Track A final scan (2026-10-20)
+#
+# هر ورودی یک fingerprint واقعی از اسکن است: یافتهٔ مستندشدهٔ fixture/مثبتِ
+# کاذب، بدون هیچ credential زنده. الگوهای secret واقعی هرگز ignore نمی‌شوند.
+#
+# پوشش build artifactها: گیت‌لیکس در .gitleaksignore از glob مسیر پشتیبانی
+# نمی‌کند (فقط fingerprint) و در حالت --no-git هم .gitignore را رعایت
+# نمی‌کند. دایرکتوری‌های .next/ ، node_modules/ ، dist/ ، __pycache__/ ،
+# *.pyc و .venv/ خروجی build لوکالِ untracked و gitignored هستند (در
+# git tracked نیستند) و در اسکن git-mode اصلاً ظاهر نمی‌شوند؛ یافته‌های
+# حالت --no-git در آن‌ها فقط کپیِ کامپایل‌شدهٔ همین فایل‌های سورسِ زیر
+# هستند (رجوع: 05-SECURITY/gitleaks-final-report.md).
+
+# --- git-mode fingerprints (اسکن تاریخچهٔ ۳۹ کامیت) ---
+# GOOD_S3_SECRET — fixture تست با قالب secret واقعی؛ در working tree با
+# مقدار جعلیِ واضح جایگزین شد (test_remediation2_track1_storage.py:26).
+# در هیچ config/compose/.envای ارجاع ندارد — credential زنده نیست.
+1afc8ad608d1663b6ae05742ec79b89c9c6188e3:apps/api/tests/test_remediation2_track1_storage.py:generic-api-key:26
+# توکن‌های ساختگی داخل رشتهٔ تستِ redact_secrets (باید mask شوند).
+578ca46a8aadb21044763e557aa29bfb2d88d7f3:apps/api/tests/test_remediation2_track1_recovery.py:generic-api-key:97
+578ca46a8aadb21044763e557aa29bfb2d88d7f3:apps/api/tests/test_remediation2_track1_recovery.py:generic-api-key:98
+# mk_invalid_key_123 — کلید نامعتبرِ تست منفی (انتظار 401)؛ مثبتِ کاذب.
+7d73f4cc6e74c14ac7b9c2391cb45e7f62e2aa47:apps/api/tests/test_security_phase17.py:generic-api-key:856
+# queryKeyهای React Query — هیچ مادهٔ secreتی ندارند؛ مثبتِ کاذب.
+073d28a78e5097cbd9532b4615042e992cc58bbe:apps/crm/src/lib/projects16.ts:generic-api-key:488
+073d28a78e5097cbd9532b4615042e992cc58bbe:apps/crm/src/lib/projects16.ts:generic-api-key:507
+073d28a78e5097cbd9532b4615042e992cc58bbe:apps/crm/src/lib/projects16.ts:generic-api-key:515
+# ثابت نامِ کلید sessionStorage در finance-client — مثبتِ کاذب.
+e80bd3b020ad35f7ee69384beb3ad3bbb5b29ad5:apps/web/lib/finance-client.ts:generic-api-key:192
+
+# --- no-git fingerprints (اسکن فایل‌سیستم working tree) ---
+apps/api/tests/test_remediation2_track1_recovery.py:generic-api-key:97
+apps/api/tests/test_remediation2_track1_recovery.py:generic-api-key:98
+apps/api/tests/test_security_phase17.py:generic-api-key:856
+apps/crm/src/lib/projects16.ts:generic-api-key:488
+apps/crm/src/lib/projects16.ts:generic-api-key:507
+apps/crm/src/lib/projects16.ts:generic-api-key:515
+apps/web/lib/finance-client.ts:generic-api-key:191

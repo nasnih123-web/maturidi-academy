@@ -42,6 +42,7 @@ from app.models.models import (
 BASE_PERMISSIONS = [
     ("users.manage", "مدیریت کاربران"),
     ("roles.manage", "مدیریت نقش‌ها و مجوزها"),
+    ("content.create", "ساخت و ویرایش محتوا (CMS)"),
     ("content.publish", "انتشار محتوا"),
     ("fatwa.approve", "تأیید فتوا"),
     ("settings.manage", "مدیریت تنظیمات پلتفرم"),

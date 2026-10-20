@@ -39,10 +39,13 @@ npm run dev
 
 ## Production web bundle
 
-`frontendDist` points at `../web/out`, i.e. a **static export** of the web
-app. Before `tauri build`, produce it with the export profile
-(`next.config.mjs`: `output: "export"` for this target — kept as a separate
-build profile so the default SSR build is untouched).
+> **وضعیت واقعی (2026-10-20):** `frontendDist` در `tauri.conf.json` به `../web/out`
+> اشاره می‌کند، اما پروفایل static-export وب (`output: "export"` در
+> `next.config.mjs`) **هنوز ساخته نشده** و وب فعلی (SSR + API routes + middleware)
+> بدون بازطراحی export نمی‌شود. تا آن زمان: `tauri dev` به `http://localhost:3000`
+> پروکسی می‌کند و بیلد production دسکتاپ **مسدود** است. مسیر پیشنهادی: پروفایل
+> export جدا در `next.config.mjs` (بدون دست‌زدن به بیلد SSR پیش‌فرض) + اسکریپت
+> `web:export` — پس از تصمیم کاربر.
 
 ## Signed builds — CI path (`.github/workflows/desktop.yml`)
 
