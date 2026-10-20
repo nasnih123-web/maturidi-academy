@@ -14,6 +14,11 @@ jobs:
           python-version: "3.12"
       - name: Install
         run: pip install -r apps/api/requirements.txt
+      - name: System fonts for PDF
+        # همان فونت‌های ایمیج production (apps/api/Dockerfile): تولید PDF
+        # گواهی/رسید به Noto Sans Arabic + DejaVu Sans سیستمی نیاز دارد؛
+        # نبودشان روی رانر تمیز ۸ تست را قرمز کرد (Run 83).
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-core fonts-dejavu-core
       - name: Lint (ruff baseline)
         # ruff در requirements.txt پین شده (0.17.1) — شمارش خطاها به نسخه
         # حساس است و نصبِ بدون پین هر بار عدد متفاوتی می‌داد (ریشهٔ اختلاف
