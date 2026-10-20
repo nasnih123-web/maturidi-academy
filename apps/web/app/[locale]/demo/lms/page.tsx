@@ -27,12 +27,14 @@ export function generateStaticParams() {
   return [{ locale: 'fa' }, { locale: 'ar' }, { locale: 'en' }];
 }
 
-export async function generateMetadata({ params: { locale } }: { params: { locale: string } }) {
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   return { title: 'نمایشی — پیشخوان یادگیری', robots: { index: false, follow: false } };
 }
 
-export default async function DemoLmsPage({ params: { locale } }: { params: { locale: string } }) {
+export default async function DemoLmsPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   if (process.env.NODE_ENV === 'production') notFound();
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'lms' });

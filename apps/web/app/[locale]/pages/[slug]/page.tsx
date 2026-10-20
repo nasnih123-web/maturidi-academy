@@ -23,12 +23,14 @@ async function loadPage(locale: string, slug: string, searchParams: Record<strin
 }
 
 export async function generateMetadata({
-  params: { locale, slug },
-  searchParams,
+  params,
+  searchParams: searchParamsPromise,
 }: {
-  params: { locale: string; slug: string };
-  searchParams: Record<string, string | undefined>;
+  params: Promise<{ locale: string; slug: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }): Promise<Metadata> {
+  const { locale, slug } = await params;
+  const searchParams = await searchParamsPromise;
   setRequestLocale(locale);
   const { page, preview } = await loadPage(locale, slug, searchParams);
   const lang = cmsLang(locale);
@@ -55,12 +57,14 @@ export async function generateMetadata({
 }
 
 export default async function CmsSlugPage({
-  params: { locale, slug },
-  searchParams,
+  params,
+  searchParams: searchParamsPromise,
 }: {
-  params: { locale: string; slug: string };
-  searchParams: Record<string, string | undefined>;
+  params: Promise<{ locale: string; slug: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
+  const { locale, slug } = await params;
+  const searchParams = await searchParamsPromise;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: "content" });
   const tHome = await getTranslations({ locale, namespace: "home" });

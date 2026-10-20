@@ -33,7 +33,7 @@ AYAH_ROTATION: list[tuple[int, int]] = [
 
 
 async def _default_ayah_bundle(db: AsyncSession, surah: int, ayah: int) -> dict:
-    from app.modules.quran import service as quran_service  # noqa: PLC0415
+    from app.modules.quran import service as quran_service
 
     return await quran_service.get_ayah_bundle(db, surah, ayah)
 
@@ -46,7 +46,7 @@ async def prayer_times_widget(
     madhab: str = "shafi",
     tz: float = 3.5,
 ) -> dict:
-    from app.modules.quran import adhan  # noqa: PLC0415
+    from app.modules.quran import adhan
 
     if not -90 <= lat <= 90 or not -180 <= lng <= 180:
         raise APIError(422, "bad_coordinates", "مختصات نامعتبر است")
@@ -76,7 +76,7 @@ async def ayah_of_day(db: AsyncSession, *, bundle_fn=None) -> dict:
         bundle = await fn(db, surah, ayah)
     except APIError:
         raise
-    except Exception as exc:  # noqa: BLE001 — خطای provider
+    except Exception as exc:
         raise APIError(502, "quran_provider_error", "دریافت آیه ناموفق بود") from exc
     return {
         "date": date.today().isoformat(),
@@ -107,7 +107,7 @@ async def latest_fatwa(db: AsyncSession) -> dict:
 
 async def zakat_mini(db: AsyncSession, *, amount: str) -> dict:
     """ماشین‌حساب سادهٔ زکات — موتور واقعی فاز ۷؛ بدون rule: ۵۰۳ صادقانه."""
-    from app.modules.calculators import service as calc_service  # noqa: PLC0415
+    from app.modules.calculators import service as calc_service
 
     try:
         amt = Decimal(str(amount))
@@ -117,7 +117,7 @@ async def zakat_mini(db: AsyncSession, *, amount: str) -> dict:
         raise APIError(422, "bad_amount", "مبلغ نمی‌تواند منفی باشد")
     try:
         result = await calc_service.calculate_zakat(
-            db, assets={"cash": amt}, debts=Decimal("0")
+            db, assets={"cash": amt}, debts=Decimal(0)
         )
     except APIError as exc:
         if exc.code == "rules_not_approved":

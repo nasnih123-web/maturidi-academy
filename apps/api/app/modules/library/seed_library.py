@@ -18,7 +18,7 @@ import os
 import subprocess
 import tempfile
 import wave
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +34,7 @@ def _L(fa: str, ar: str, en: str) -> dict:
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _demo_pdf() -> bytes:
@@ -92,14 +92,14 @@ def _demo_mp4(width: int, height: int, seconds: int = 1) -> bytes:
 
 def _demo_mindmap() -> bytes:
     return (
-        '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<map version="1.0.1">\n'
-        '  <node TEXT="Maturidi Academy (demo)">\n'
-        '    <node TEXT="Library"/>\n'
-        '    <node TEXT="Phases 0-18"/>\n'
-        '  </node>\n'
-        '</map>\n'
-    ).encode("utf-8")
+        b'<?xml version="1.0" encoding="UTF-8"?>\n'
+        b'<map version="1.0.1">\n'
+        b'  <node TEXT="Maturidi Academy (demo)">\n'
+        b'    <node TEXT="Library"/>\n'
+        b'    <node TEXT="Phases 0-18"/>\n'
+        b'  </node>\n'
+        b'</map>\n'
+    )
 
 
 def _demo_cover(label: str) -> bytes:

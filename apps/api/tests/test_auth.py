@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pyotp
 
@@ -91,8 +92,32 @@ async def test_full_lifecycle(tc):
     )
     assert r.status_code == 200
     fresh = r.json()
-    # استفادهٔ مجدد از توکن چرخش‌خورده → همان 401/invalid_token، ولی کل نشست
-    # باطل می‌شود (reuse detection — الگوی turbo: نشانهٔ دزدیده‌شدن توکن)
+    # استفادهٔ مجددِ فوری از توکن چرخش‌خورده = race هم‌زمانِ مشروع (دو تب/
+    # تلاش مجدد شبکه)، نه سرقت — طبق ADR-0020 در پنجرهٔ اغماض (۶۰ ثانیه)
+    # نشست باطل نمی‌شود، فقط از تازه‌ترین توکن زنده چرخش می‌شود:
+    r = await client.post(
+        f"{BASE}/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert r.status_code == 200, r.text
+    r = await client.get(f"{BASE}/users/me", headers=_auth(fresh["access_token"]))
+    assert r.status_code == 200
+    # ولی reuse واقعی (پس از پایان پنجرهٔ اغماض) هنوز نشانهٔ سرقت است و
+    # کل نشست را باطل می‌کند — شبیه‌سازی گذر زمان:
+    from sqlalchemy import update as _update
+
+    from app.models.models import RefreshToken as _RefreshToken
+    from app.modules.auth import service as _auth_service
+
+    async with tc["maker"]() as _db:
+        _past = datetime.now(UTC) - timedelta(
+            seconds=_auth_service.REUSE_DETECTION_GRACE_SECONDS + 60
+        )
+        await _db.execute(
+            _update(_RefreshToken)
+            .where(_RefreshToken.user_id == uuid.UUID(me["id"]))
+            .values(created_at=_past)
+        )
+        await _db.commit()
     r = await client.post(
         f"{BASE}/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
     )
@@ -229,17 +254,22 @@ async def test_totp_2fa(tc):
     assert r.status_code == 401
     assert r.json()["error"]["code"] == "requires_2fa"
 
-    # با کد معتبر موفق است
-    await _login(client, email, totp_code=pyotp.TOTP(secret).now())
+    # با کد معتبر موفق است — کد گامِ بعد (anti-replay گامِ ثبت‌نام را مصرف کرده؛
+    # valid_window=1 انحراف ‎±۱ گام ساعت را مجاز می‌داند)
+    import time as _time
+
+    await _login(client, email, totp_code=pyotp.TOTP(secret).at(int(_time.time()) + 30))
 
 
 async def test_admin_users_rbac(tc, db_session):
-    from app.models.models import Permission, Role, RolePermission, User, UserRole
+    from app.models.models import Permission, Role, RolePermission, UserRole
 
     client = tc["client"]
 
     # ساخت نقش/مجوز مستقیم در دیتابیس
-    role = Role(name="super_admin", description="test")
+    # نام نقش عمداً غیرممتاز است (نه admin/super_admin) تا این تست منطق
+    # require_permission را بسنجد، نه مسیر 2FA نقش‌های ممتاز (ADR-0020).
+    role = Role(name="user_manager", description="test")
     perm = Permission(key="users.manage", description="test")
     db_session.add_all([role, perm])
     await db_session.flush()
@@ -262,7 +292,7 @@ async def test_admin_users_rbac(tc, db_session):
     r = await client.get(f"{BASE}/admin/users", headers=_auth(ptokens["access_token"]))
     assert r.status_code == 403
     assert r.json()["error"]["code"] == "forbidden"
-    _ = plain  # noqa
+    _ = plain
 
 
 async def test_meta_endpoints(tc):

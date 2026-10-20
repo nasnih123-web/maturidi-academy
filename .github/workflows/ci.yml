@@ -14,14 +14,41 @@ jobs:
           python-version: "3.12"
       - name: Install
         run: pip install -r apps/api/requirements.txt
-      - name: Lint
-        run: pip install ruff && ruff check apps/api
+      - name: System fonts for PDF
+        # همان فونت‌های ایمیج production (apps/api/Dockerfile): تولید PDF
+        # گواهی/رسید به Noto Sans Arabic + DejaVu Sans سیستمی نیاز دارد؛
+        # نبودشان روی رانر تمیز ۸ تست را قرمز کرد (Run 83).
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-core fonts-dejavu-core
+      - name: Lint (ruff baseline)
+        # ruff در requirements.txt پین شده (0.17.1) — شمارش خطاها به نسخه
+        # حساس است و نصبِ بدون پین هر بار عدد متفاوتی می‌داد (ریشهٔ اختلاف
+        # ۱۱۱۸ خطای اجرای قبلی). گیت baseline: هر افزایش نسبت به
+        # tools/ruff_baseline.json قرمز می‌شود؛ بدون || true و بدون ignore.
+        run: python3 tools/check_ruff_baseline.py
       - name: Typecheck
-        run: pip install mypy && mypy apps/api/app || true # سخت‌گیرانه از فاز ۳
+        # بدهی تایپ مستند (۱۴۱ خطای mypy از قبل) — شفاف در UI با
+        # continue-on-error، نه || true خاموش. رفع بدهی ترک جدا می‌خواهد.
+        continue-on-error: true
+        run: pip install mypy && mypy apps/api/app
       - name: Tests
         run: cd apps/api && python -m pytest tests/ -q
       - name: Security scan
-        run: pip install semgrep && semgrep --config auto apps/api || true
+        # مسدودکننده (Track B) — semgrep تمیز است؛ هیچ || trueای پذیرفته نیست
+        run: pip install semgrep && semgrep --config auto apps/api
+      - name: Dependency scan
+        # مسدودکننده (قرارداد §۱۳) — pip-audit روی requirements.txt پین‌شده.
+        # ignoreها مستند و موقت‌اند:
+        #  - PYSEC-2026-1845 (pytest): ابزار dev-only، شدت پایین
+        #  - PYSEC-2026-161/1941/1942/2280/2281/248/249 (starlette 0.41.3):
+        #    رفع نیازمند ارتقای major در FastAPI است — ترک جدا لازم دارد
+        run: |
+          pip install pip-audit
+          pip-audit -r apps/api/requirements.txt \
+            --ignore-vuln PYSEC-2026-1845 \
+            --ignore-vuln PYSEC-2026-161 --ignore-vuln PYSEC-2026-1941 \
+            --ignore-vuln PYSEC-2026-1942 --ignore-vuln PYSEC-2026-2280 \
+            --ignore-vuln PYSEC-2026-2281 --ignore-vuln PYSEC-2026-248 \
+            --ignore-vuln PYSEC-2026-249
       - name: Migration check
         run: cd apps/api && alembic upgrade head && alembic downgrade -1 && alembic upgrade head
 
@@ -38,12 +65,48 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
+      - name: Dependency audit
+        # مسدودکننده برای High/Critical (قرارداد §۱۳). بعد از ارتقای
+        # next 15.5.28 و next-intl 4.9.2 درخت وب advisory ندارد.
+        run: npm audit --audit-level=high
       - run: npm run typecheck
+      # Track 2 / §۱۳: بیلد production بدون NEXT_PUBLIC_API_URL صریح فیل می‌کند
+      # (next.config.mjs) — در CI مقدار صریح dev داده می‌شود، نه fallback خاموش.
+      # API_URL (سروری) هم لازم است: route handlerها هنگام collect-page-data
+      # آن را می‌خوانند و بدون آن بیلد با خطای روشن فیل می‌کند (Track 3).
+      # هیچ سرور واقعی‌ای در CI بالا نیست و بیلد نباید به آن وابسته باشد.
       - run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+          API_URL: http://localhost:8000
+
+  crm:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/crm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: apps/crm/package-lock.json
+      - run: npm ci
+      - name: Dependency audit
+        # مسدودکننده برای High/Critical (قرارداد §۱۳). vite 6.4.4 و
+        # react-router-dom 7.18.4 و esbuild 0.25+ advisoryهای قبلی را بستند.
+        run: npm audit --audit-level=high
+      - run: npm run typecheck
+      # Track 2 / §۱۳: مثل web — VITE_API_URL صریح، نه fallback خاموش.
+      - run: npm run build
+        env:
+          VITE_API_URL: http://localhost:8000
 
   docker:
     runs-on: ubuntu-latest
-    needs: [backend]
+    # ایمیج فقط وقتی ساخته می‌شود که هر سه job پیش‌نیاز سبز باشند.
+    needs: [backend, web, crm]
     steps:
       - uses: actions/checkout@v4
       - run: docker build ./apps/api -t maturidi-api:${{ github.sha }}

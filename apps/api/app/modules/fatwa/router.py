@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -17,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.errors import APIError
-from app.models.models import User
+from app.models.models import TrustedExternalSource, User
 from app.modules.auth.dependencies import (
     get_current_user,
     require_permission,
@@ -34,9 +35,9 @@ from .schemas import (
     ChunkStatusIn,
     CitationOut,
     CompareOut,
+    IngestionRunOut,
     IngestTriggerIn,
     IngestTriggerOut,
-    IngestionRunOut,
     PositionCreateIn,
     PositionOut,
     QuizGenerateOut,
@@ -61,7 +62,7 @@ _can_knowledge = require_permission("knowledge.manage")
 _super_admin = require_permission("platform.settings")
 
 # get_current_user اختیاری — ask عمومی برای ناشناس هم باز است
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer  # noqa: E402
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 _optional_bearer = HTTPBearer(auto_error=False)
 
@@ -494,6 +495,36 @@ async def trusted_source_update(
     )
 
 
+@admin_fatwa_router.post("/trusted-sources/{source_id}/check", response_model=dict)
+async def trusted_source_check(
+    source_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(_super_admin),
+):
+    """تست اتصال منبع خارجی مورداعتماد — HEAD/GET با timeout (صفحهٔ External Sources)."""
+    import time
+
+    import httpx
+
+    src = await db.get(TrustedExternalSource, source_id)
+    if src is None:
+        raise APIError(404, "source_not_found", "منبع یافت نشد")
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            r = await client.head(src.base_url)
+            if r.status_code >= 400:
+                r = await client.get(src.base_url)
+    except Exception as exc:  # noqa: BLE001 — نتیجهٔ تست، نه خطای سرور
+        return {"ok": False, "latency_ms": int((time.monotonic() - t0) * 1000),
+                "error": f"{type(exc).__name__}"}
+    ms = int((time.monotonic() - t0) * 1000)
+    src.last_checked_at = datetime.now(UTC)
+    await db.commit()
+    return {"ok": r.status_code < 400, "status_code": r.status_code,
+            "latency_ms": ms, "checked_at": src.last_checked_at.isoformat()}
+
+
 @admin_fatwa_router.delete("/trusted-sources/{source_id}", status_code=204)
 async def trusted_source_delete(
     source_id: UUID,
@@ -501,7 +532,6 @@ async def trusted_source_delete(
     user: User = Depends(_super_admin),
 ):
     await service.trusted_source_delete(db, user, source_id)
-    return None
 
 
 # --- ادمین: audit ---

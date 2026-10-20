@@ -21,6 +21,7 @@
  * Base URL: NEXT_PUBLIC_API_URL (browser-safe) falling back to localhost.
  */
 
+import { apiBaseUrl } from './api-base';
 export type FatwaStatus = 'ok' | 'llm_unavailable' | 'idk';
 
 /** Backend status wire values: answered|llm_unavailable|no_sources. */
@@ -109,9 +110,7 @@ export class FatwaApiError extends Error {
 }
 
 function apiBase(): string {
-  const base =
-    typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_API_URL : undefined;
-  return (base ?? 'http://localhost:8000').replace(/\/+$/, '');
+  return apiBaseUrl();
 }
 
 function asString(v: unknown): string {

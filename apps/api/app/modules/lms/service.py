@@ -1,7 +1,7 @@
 """سرویس LMS — فاز ۸. قرارداد §۱۵.۲: کل منطق کسب‌وکار اینجاست؛ router هرگز به DB دست نمی‌زند.
 
 - آزمون درس از موتور فاز ۶ (`app.modules.fatwa.service.quiz_generate/quiz_submit`)
-  استفادهٔ مجدد می‌کند — بدون کپی منطق (§۱۵.۲، ADR-0006).
+  استفادهٔ مجدد می‌کند — بدون کپی منطق (§۱۵.۲، ADR-0018).
 - study_reports جدول نیست؛ گزارش از user_progress + quiz_attempts محاسبه می‌شود.
 """
 from __future__ import annotations
@@ -10,7 +10,7 @@ import base64
 import json
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -40,7 +40,7 @@ _DEFAULT_LOCALE = "fa"
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _L(texts: dict | None, locale: str = _DEFAULT_LOCALE) -> str:
@@ -512,7 +512,7 @@ async def submit_lesson_quiz(
     )
 
 
-# ---------- reports & recommendations (computed — ADR-0006) ----------
+# ---------- reports & recommendations (computed — ADR-0018) ----------
 
 
 async def _course_lesson_ids(db: AsyncSession, course_id: uuid.UUID) -> list[uuid.UUID]:
@@ -621,7 +621,7 @@ async def study_report(db: AsyncSession, user: User) -> dict:
 
 
 async def recommendations(db: AsyncSession, user: User, limit: int = 10) -> list[dict]:
-    """قوانین پیشنهاد (مستند در ADR-0006):
+    """قوانین پیشنهاد (مستند در ADR-0018):
     ۱) سطح کاربر = سطح آخرین دورهٔ فعال او (پیش‌فرض beginner).
     ۲) دروس ناتمام همان سطح، به ترتیب (sort_order دوره، sort_order درس).
     ۳) دروس دوره‌هایی که پیش‌نیازشان برآورده نشده رد می‌شوند.

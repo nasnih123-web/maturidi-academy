@@ -1,20 +1,16 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getLibraryItems } from '@/lib/library';
 import type { LibraryGridLabels } from '@/components/LibraryGrid';
 import type { LibraryKind } from '@/lib/library';
-
-const LibraryGrid = dynamic(
-  () => import('@/components/LibraryGrid').then((m) => m.LibraryGrid),
-  { ssr: false, loading: () => <p className="lib-status">…</p> },
-);
+import { LibraryGrid } from '@/components/LibraryGridLazy';
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'library' });
   return { title: t('metaTitle'), description: t('metaDescription') };
@@ -27,7 +23,8 @@ export async function generateMetadata({
  * code-split interactive grid (tabs / tags / ranked search). On API failure
  * the grid still mounts and surfaces its own honest error state.
  */
-export default async function LibraryPage({ params: { locale } }: { params: { locale: string } }) {
+export default async function LibraryPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'library' });
 

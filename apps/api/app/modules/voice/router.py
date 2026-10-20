@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.errors import APIError
+from app.core.storage import read_capped_upload
 from app.models.models import AIUsageLog, User
 from app.modules.auth.dependencies import get_current_user, require_permission
 from app.modules.fatwa.service import check_quota
@@ -61,7 +62,13 @@ async def transcribe_audio(
     STT مصرف می‌کرد.
     """
     await check_quota(db, user, _client_ip(request), "voice.transcribe")
-    content = await file.read()
+    content = await read_capped_upload(
+        file,
+        await service.max_audio_bytes(db),
+        too_large_code="audio_too_large",
+        too_large_status=422,
+        too_large_message="حجم فایل صوتی بیش از حد مجاز است",
+    )
     out = await service.transcribe(
         db, content=content, filename=file.filename, lang=lang
     )
@@ -92,7 +99,13 @@ async def ask_voice(
     سهمیهٔ AI پیش از پردازش اعمال می‌شود (یافتهٔ امنیتی فاز ۱۷ SEC-17-03).
     """
     await check_quota(db, user, _client_ip(request), "voice.ask")
-    content = await file.read()
+    content = await read_capped_upload(
+        file,
+        await service.max_audio_bytes(db),
+        too_large_code="audio_too_large",
+        too_large_status=422,
+        too_large_message="حجم فایل صوتی بیش از حد مجاز است",
+    )
     out = await service.ask_audio(
         db,
         content=content,

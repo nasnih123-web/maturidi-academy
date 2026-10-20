@@ -42,7 +42,7 @@ async def _get_token(db: AsyncSession) -> str | None:
 
 
 def _make_bot(token: str):
-    from telegram import Bot  # noqa: PLC0415 — import سنگین فقط هنگام استفاده
+    from telegram import Bot
 
     return Bot(token=token)
 
@@ -121,7 +121,7 @@ def build_review_keyboard(
     approve_nonce: str, reject_nonce: str, locale: str = "fa"
 ):
     """کیبورد inline تأیید/رد — callback_data کوتاه (سقف ۶۴ بایت تلگرام)."""
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup  # noqa: PLC0415
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     labels = _DEFAULT_REVIEW_LABELS.get(locale, _DEFAULT_REVIEW_LABELS["fa"])
     return InlineKeyboardMarkup(

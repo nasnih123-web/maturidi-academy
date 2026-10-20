@@ -1,0 +1,90 @@
+# =============================================================================
+# Metabase — self-hosted BI for the Maturidi Academy (Phase 14, Track 3)
+# =============================================================================
+#
+# READ-REPLICA GUIDANCE
+# ---------------------
+# Metabase issues its own analytical queries against PostgreSQL. Point MB_DB_*
+# at a READ REPLICA when dashboard load is high — never let ad-hoc analytics
+# fight the transactional workload on the primary. Defaults here wire to the
+# main docker-compose.yml `postgres` service (database "maturidi") for local
+# dev; in staging/production, override the MB_DB_* variables to the replica:
+#
+#   MB_DB_TYPE=postgres
+#   MB_DB_DBNAME=maturidi
+#   MB_DB_PORT=5432
+#   MB_DB_USER=<replica_reader>
+#   MB_DB_PASS=<from secrets manager — never committed>
+#   MB_DB_HOST=<replica host>
+#
+# The replica role needs only SELECT on the application schema (no DDL, no
+# writes). Metabase's own application database (its dashboards, users,
+# questions) lives in a SEPARATE database ("metabaseapp") so BI metadata
+# never pollutes the product schema.
+#
+# USAGE
+# -----
+#   docker compose -f infra/metabase/docker-compose.metabase.yml up -d
+#
+# Then register the public URL in the CRM platform settings under the key
+# "bi.metabase_url" (non-secret string) — the CRM Analytics page
+# (apps/crm/src/pages/Analytics.tsx) embeds it from there.
+#
+# Prebuilt dashboards live as documented SQL + setup steps in
+# infra/metabase/seed-dashboards.md — create them in-app against the
+# "Maturidi Academy" database connection you add on first run.
+# =============================================================================
+
+services:
+  metabase:
+    image: metabase/metabase:v0.52
+    container_name: maturidi-metabase
+    restart: unless-stopped
+    ports:
+      - "${MB_PORT:-3001}:3000"
+    environment:
+      # Metabase application database (BI metadata — separate from product data)
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: "${MB_APP_DBNAME:-metabaseapp}"
+      MB_DB_PORT: 5432
+      MB_DB_USER: "${MB_APP_DB_USER:-metabase}"
+      MB_DB_PASS: "${MB_APP_DB_PASS:?set MB_APP_DB_PASS in your environment}"
+      MB_DB_HOST: metabase-db
+      # Site URL shown in subscriptions/alerts
+      MB_SITE_URL: "${MB_SITE_URL:-http://localhost:3001}"
+      MB_SITE_NAME: "Maturidi Academy BI"
+    depends_on:
+      metabase-db:
+        condition: service_healthy
+    networks:
+      - metabase-net
+      - maturidi-backend
+
+  metabase-db:
+    image: postgres:16-alpine
+    container_name: maturidi-metabase-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${MB_APP_DB_USER:-metabase}"
+      POSTGRES_PASSWORD: "${MB_APP_DB_PASS:?set MB_APP_DB_PASS in your environment}"
+      POSTGRES_DB: "${MB_APP_DBNAME:-metabaseapp}"
+    volumes:
+      - metabase-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MB_APP_DB_USER:-metabase}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - metabase-net
+
+volumes:
+  metabase-pgdata:
+
+networks:
+  metabase-net:
+  # Attach to the main backend network so Metabase can reach the product
+  # Postgres. Create it if it doesn't exist (it is created by the root
+  # docker-compose.yml of this repo):
+  maturidi-backend:
+    external: true

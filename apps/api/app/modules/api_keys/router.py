@@ -37,7 +37,7 @@ async def create_key(
 @api_keys_router.get("", response_model=list[schemas.ApiKeyOut])
 async def list_keys(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(_admin),  # noqa: ARG001
+    user: User = Depends(_admin),
 ):
     items, _ = await service.list_keys(db)
     return items
@@ -47,7 +47,7 @@ async def list_keys(
 async def get_key(
     key_id: UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(_admin),  # noqa: ARG001
+    user: User = Depends(_admin),
 ):
     return await service.get_key(db, key_id)
 
@@ -83,7 +83,7 @@ async def revoke_key(
 async def usage_stats(
     key_id: UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(_admin),  # noqa: ARG001
+    user: User = Depends(_admin),
 ):
     return await service.usage_stats(db, key_id)
 
@@ -92,7 +92,7 @@ async def usage_stats(
 async def embed_snippet(
     key_id: UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(_admin),  # noqa: ARG001
+    user: User = Depends(_admin),
     widget: str = Query(...),
     base_url: str = Query(default=""),
 ):

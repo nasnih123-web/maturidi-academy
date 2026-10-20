@@ -18,7 +18,7 @@ from __future__ import annotations
 import base64
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,7 +46,7 @@ _TRANSITION_EVENTS = {
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _encode_cursor(created_at: datetime, lid: uuid.UUID) -> str:
@@ -221,7 +221,7 @@ async def transition(
     # فقط اگر policy صریحاً auto_publish باشد. هر خطایی این‌جا نباید مسیر
     # فتوا را بشکند.
     try:
-        from app.modules.telegram import distribute_service as _tg_dist  # noqa: PLC0415
+        from app.modules.telegram import distribute_service as _tg_dist
 
         if target == workflow.PUBLISHED:
             await _tg_dist.auto_publish_if_policy(
@@ -232,7 +232,7 @@ async def transition(
                 db, "fatwa_submission", str(submission.id), actor=actor
             )
     except Exception:  # noqa: BLE001 — تلگرام هرگز مسیر فتوا را نمی‌شکند
-        from app.core.logging import logger as _log  # noqa: PLC0415
+        from app.core.logging import logger as _log
 
         _log.exception("telegram hook failed (non-fatal)")
     return submission

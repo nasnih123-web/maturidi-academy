@@ -21,9 +21,23 @@
 
 ## ۲. معماری بکاپ فعلی
 
-- **دیتابیس:** `infra/backup.sh` — `pg_dump` از کانتینر `postgres` → `gzip` در `/var/backups/maturidi/pg-YYYY-MM-DD.sql.gz`
-- **فایل‌ها:** `mc mirror` از MinIO → `/var/backups/maturidi/minio-YYYY-MM-DD/`
-- **زمان‌بندی:** cron هاست: `0 2 * * * /path/to/infra/backup.sh`
+- **دیتابیس:** `infra/backup.sh` — `pg_dump` از کانتینر `postgres` (رمز با
+  `-e PGPASSWORD` به فرایند داخل کانتینر داده می‌شود) → `gzip` در
+  `/var/backups/maturidi/pg-YYYY-MM-DD.sql.gz` + مانیفست SHA-256 + تست
+  یکپارچگی `gzip -t`.
+- **فایل‌ها:** `infra/backup.sh` — کانتینر یک‌بارمصرف `mc`
+  (`quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z`، قابل override با
+  `MC_IMAGE`) روی همان شبکهٔ compose، `mc mirror --overwrite` از
+  `src/$S3_BUCKET` → `/var/backups/maturidi/minio-YYYY-MM-DD/` + مانیفست
+  SHA-256 تک‌تک فایل‌ها. (ایمیج minio سرور دستور `mc` ندارد؛ نسخه‌های قبلی
+  که `exec` روی سرویس minio می‌زدند همیشه ساکت فیل می‌شدند.)
+- **قرارداد اسکریپت:** همهٔ اعتبارات از env می‌آیند (`POSTGRES_USER`،
+  `POSTGRES_PASSWORD`، `POSTGRES_DB`، `MINIO_ROOT_USER`،
+  `MINIO_ROOT_PASSWORD`، `S3_BUCKET` — نبود هرکدام فیلِ بلند است)؛ کد خروج
+  هر ۴ مرحله (دامپ، mirror، مانیفست، هرس) صریح چک می‌شود و «done» فقط وقتی
+  چاپ می‌شود که همه واقعاً موفق بوده‌اند؛ mirror ناقص پاک می‌شود تا
+  دایرکتوری نیمه‌کاره «کامل» به نظر نرسد.
+- **زمان‌بندی:** cron هاست: `0 2 * * * cd /opt/maturidi && COMPOSE_FILE=docker-compose.prod.yml ./infra/backup.sh`
 - **نگهداری:** ۱۴ روز (`RETENTION_DAYS`) — فقط روی همان سرور ⚠️ (بخش ۳ را ببینید)
 
 ### ۳. بکاپ off-site (فراتر از همان سرور)
@@ -138,39 +152,46 @@ cd /opt/maturidi && docker compose -f docker-compose.prod.yml stop api web crm \
   worker-critical worker-ai worker-media worker-telegram worker-notifications worker-analytics
 
 # ۲. از وضعیت فعلی هم یک بکاپ بگیرید (شاید لازم شد برگردید!)
-docker compose -f docker-compose.prod.yml exec -T postgres \
+docker compose -f docker-compose.prod.yml exec -T -e "PGPASSWORD=$POSTGRES_PASSWORD" postgres \
   pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > /var/backups/maturidi/pg-BEFORE-RESTORE-$(date +%F-%H%M).sql.gz
 
 # ۳. آخرین بکاپ سالم را انتخاب کنید
 ls -la /var/backups/maturidi/pg-*.sql.gz | tail -5
 
 # ۴. restore به یک دیتابیس scratch اول (تست)، بعد به اصلی
-docker compose -f docker-compose.prod.yml exec -T postgres \
+docker compose -f docker-compose.prod.yml exec -T -e "PGPASSWORD=$POSTGRES_PASSWORD" postgres \
   psql -U "$POSTGRES_USER" -c "CREATE DATABASE maturidi_restore_test;"
 gunzip -c /var/backups/maturidi/pg-YYYY-MM-DD.sql.gz | \
-  docker compose -f docker-compose.prod.yml exec -T postgres \
+  docker compose -f docker-compose.prod.yml exec -T -e "PGPASSWORD=$POSTGRES_PASSWORD" postgres \
   psql -U "$POSTGRES_USER" maturidi_restore_test
 
 # ۵. راستی‌آزمایی روی scratch (الگوی تمرین بخش ۴)
-docker compose -f docker-compose.prod.yml exec -T postgres psql -U "$POSTGRES_USER" maturidi_restore_test -c "
+docker compose -f docker-compose.prod.yml exec -T -e "PGPASSWORD=$POSTGRES_PASSWORD" postgres psql -U "$POSTGRES_USER" maturidi_restore_test -c "
   SELECT 'users', COUNT(*) FROM users UNION ALL
   SELECT 'donations', COUNT(*) FROM donations UNION ALL
   SELECT 'domain_events', COUNT(*) FROM domain_events;"
 # با برآورد انتظاری مقایسه کنید (داشبورد متابیس / آخرین گزارش)
 
 # ۶. اگر سالم بود → restore به دیتابیس اصلی
-docker compose -f docker-compose.prod.yml exec -T postgres \
+docker compose -f docker-compose.prod.yml exec -T -e "PGPASSWORD=$POSTGRES_PASSWORD" postgres \
   psql -U "$POSTGRES_USER" -c "DROP DATABASE maturidi_restore_test;"
 gunzip -c /var/backups/maturidi/pg-YYYY-MM-DD.sql.gz | \
-  docker compose -f docker-compose.prod.yml exec -T postgres \
+  docker compose -f docker-compose.prod.yml exec -T -e "PGPASSWORD=$POSTGRES_PASSWORD" postgres \
   psql -U "$POSTGRES_USER" "$POSTGRES_DB"
 
 # ۷. migrationها را به head برسانید (بکاپ ممکن است از ایمیج قدیمی‌تر باشد)
 docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
 
 # ۸. فایل‌ها (MinIO) — فقط اگر فایل هم آسیب دیده
-docker compose -f docker-compose.prod.yml exec -T minio \
-  mc mirror --overwrite /var/backups/maturidi/minio-YYYY-MM-DD /data
+# کانتینر یک‌بارمصرف mc (ایمیج minio سرور دستور mc ندارد)؛ دایرکتوری بکاپ
+# به کانتینر mount می‌شود و mirror معکوس انجام می‌شود.
+docker compose -f docker-compose.prod.yml run --rm \
+  -e "MC_MINIO_USER=$MINIO_ROOT_USER" \
+  -e "MC_MINIO_PASSWORD=$MINIO_ROOT_PASSWORD" \
+  -e "MC_BUCKET=$S3_BUCKET" \
+  -v /var/backups/maturidi/minio-YYYY-MM-DD:/restore \
+  --entrypoint sh "quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z" -c \
+  "mc alias set dst http://minio:9000 \"\$MC_MINIO_USER\" \"\$MC_MINIO_PASSWORD\" >/dev/null && mc mirror --overwrite /restore \"dst/\$MC_BUCKET\""
 
 # ۹. بالا آوردن و راستی‌آزمایی نهایی
 docker compose -f docker-compose.prod.yml up -d

@@ -70,7 +70,9 @@ services:
 
   # -------------------------------------------------------------------- MinIO
   minio:
-    image: minio/minio:latest
+    # Track B: ایمیج‌های minio/minio از Docker Hub حذف شده‌اند (سپتامبر ۲۰۲۶) —
+    # همان ایمیج با digest یکسان روی quay.io منتشر می‌شود؛ latest پین نیست.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -87,15 +89,22 @@ services:
       - backend
 
   # ----------------------------------------------------------------------- API
+  # migration در سرویس یک‌بارهٔ `migrate` (پایین) اجرا می‌شود — الگوی init-job:
+  # با چند replica از api دیگر race روی migration نیست؛ شکست migration یعنی
+  # `migrate` با exit غیرصفر تمام می‌شود و api/workerها اصلاً بالا نمی‌آیند
+  # (condition: service_completed_successfully) — یعنی deploy بلند فیل می‌کند.
   api:
     build: ./apps/api
     restart: unless-stopped
     # production: چند worker برای بهره‌گیری از CPU (پیش‌فرض ۴؛ با vCPU تنظیم شود)
+    # --proxy-headers: چون TLS در reverse proxy خارجی terminate می‌شود (§۱۵)؛
+    # فقط امن است چون api:8000 فقط از شبکهٔ داخلی در دسترس است و پروکسی لبه
+    # هدرهای X-Forwarded-* جعلی را strip می‌کند (docs/ops/deployment.md §۱۵).
     command: >
-      sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000
-             --workers $${UVICORN_WORKERS:-4}"
+      uvicorn app.main:app --host 0.0.0.0 --port 8000
+      --workers $${UVICORN_WORKERS:-4} --proxy-headers --forwarded-allow-ips='*'
     depends_on:
+      migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       minio: { condition: service_healthy }
@@ -105,6 +114,13 @@ services:
       APP_ENV: production
     expose:
       - "8000"
+    # readiness روی /health (stdlib، بدون curl) — workerها هلث‌چک جدا ندارند
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     networks:
       - backend
       - frontend
@@ -117,12 +133,32 @@ services:
     build: ./apps/api
     restart: unless-stopped
     depends_on:
+      migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     env_file:
       - .env.prod
     environment:
       APP_ENV: production
+    networks:
+      - backend
+
+  # ------------------------------------------- Migration یک‌باره (init-job §۱۰)
+  # دقیقاً یک‌بار اجرا می‌شود، قبل از api و همهٔ workerها. چون فقط همین سرویس
+  # `alembic upgrade head` را اجرا می‌کند، با scale افقی api هیچ raceای روی
+  # migration نیست. `restart: "no"`: بعد از موفقیت، کانتینر متوقف می‌ماند.
+  # شکست migration → exit غیرصفر → dependents بالا نمی‌آیند → deploy بلند فیل.
+  # دستور deploy و لاگ: docs/ops/deployment.md
+  migrate:
+    build: ./apps/api
+    restart: "no"
+    depends_on:
+      postgres: { condition: service_healthy }
+    env_file:
+      - .env.prod
+    environment:
+      APP_ENV: production
+    command: ["alembic", "upgrade", "head"]
     networks:
       - backend
 
@@ -155,6 +191,11 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+    # Track 2 / §۱۳ — تفکیک SSR/مرورگر: کد سمت‌سرور (RSC/route handlers)
+    # از API_URL (سروری، رانتایم) استفاده می‌کند؛ درون شبکهٔ compose نام
+    # سرویس درست است، نه localhost و نه آدرس عمومی.
+    environment:
+      API_URL: http://api:8000
     expose:
       - "3000"
     networks:
@@ -165,6 +206,9 @@ services:
     build:
       context: .
       dockerfile: ./apps/crm/Dockerfile
+      # Track 2 / §۱۳: آدرس عمومی API برای باندل SPA — اجباری، بدون fallback
+      args:
+        VITE_API_URL: "${CRM_API_URL:?set CRM_API_URL (e.g. https://api.example.com)}"
     restart: unless-stopped
     expose:
       - "80"

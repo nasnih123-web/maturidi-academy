@@ -39,6 +39,7 @@
  */
 
 import { getAccessToken, getRefreshToken, refreshTokens } from './auth-client';
+import { apiBaseUrl } from './api-base';
 import {
   demoAskQuestion,
   demoCommentOnPost,
@@ -166,9 +167,7 @@ export function isSocialDemo(): boolean {
 }
 
 function apiBase(): string {
-  const base =
-    typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_API_URL : undefined;
-  return (base ?? 'http://localhost:8000').replace(/\/+$/, '');
+  return apiBaseUrl();
 }
 
 interface ErrorEnvelope {

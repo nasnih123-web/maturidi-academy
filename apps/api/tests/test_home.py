@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 
 BASE = "/api/v1"
 

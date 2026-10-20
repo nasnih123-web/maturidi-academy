@@ -16,16 +16,16 @@ Conventions (§۱۵):
 - All user-visible text columns are LocalizedText JSON (never single-language).
 - AI indexing is separate from publication: ai_indexed defaults false.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = '74f3c6f810a58fac'
-down_revision: Union[str, None] = 'f8a4b6c2d9e1'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = 'f8a4b6c2d9e1'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def _id_pk() -> list:

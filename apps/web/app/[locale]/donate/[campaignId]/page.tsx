@@ -1,24 +1,21 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { getCampaign, toCampaignView, formatToman, MIN_DONATE_AMOUNT } from '@/lib/finance';
 import type { DonateFlowLabels } from '@/components/finance/DonateFlow';
 import '../finance.css';
+import { DonateFlow } from '@/components/finance/DonateFlowLazy';
 
 // Code-split: the interactive form + hook never enters the shared bundle
 // (homepage First Load JS budget). SSR renders the campaign summary; the
 // form hydrates client-side.
-const DonateFlow = dynamic(
-  () => import('@/components/finance/DonateFlow').then((m) => m.DonateFlow),
-  { ssr: false, loading: () => <p className="fin-hint">…</p> },
-);
 
 export async function generateMetadata({
-  params: { locale, campaignId },
+  params,
 }: {
-  params: { locale: string; campaignId: string };
+  params: Promise<{ locale: string; campaignId: string }>;
 }): Promise<Metadata> {
+  const { locale, campaignId } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'donate' });
   try {
@@ -39,10 +36,11 @@ export async function generateMetadata({
  * the anti-double-charge guarantee.
  */
 export default async function DonateCampaignPage({
-  params: { locale, campaignId },
+  params,
 }: {
-  params: { locale: string; campaignId: string };
+  params: Promise<{ locale: string; campaignId: string }>;
 }) {
+  const { locale, campaignId } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'donate' });
   const currencyLabel = t('currency');

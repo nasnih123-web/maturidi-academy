@@ -11,7 +11,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-
 EntityType = Literal["user_ayah_note", "user_progress", "dhikr_daily_count"]
 OpType = Literal["upsert", "delete"]
 OpStatus = Literal["pending", "applied", "conflicted", "rejected"]

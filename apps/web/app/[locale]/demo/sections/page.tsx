@@ -42,7 +42,8 @@ export function generateStaticParams() {
   return [{ locale: 'fa' }, { locale: 'ar' }, { locale: 'en' }];
 }
 
-export async function generateMetadata({ params: { locale } }: { params: { locale: string } }) {
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   return { title: 'نمایشی — واریانت‌های سکشن', robots: { index: false, follow: false } };
 }
@@ -71,7 +72,8 @@ const DEMO_COPY: Record<string, { badge: string; title: string; note: string; se
   },
 };
 
-export default async function DemoSectionsPage({ params: { locale } }: { params: { locale: string } }) {
+export default async function DemoSectionsPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   if (process.env.NODE_ENV === 'production') notFound();
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'home' });

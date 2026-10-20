@@ -13,7 +13,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -48,8 +48,8 @@ SYNTHETIC_ZAKAT_RULE = {
 }
 
 SYNTHETIC_RATES = {
-    "gold_per_gram": Decimal("10"),
-    "silver_per_gram": Decimal("1"),
+    "gold_per_gram": Decimal(10),
+    "silver_per_gram": Decimal(1),
     "currency": "TST",
     "stale": False,
     "fetched_at": None,
@@ -68,7 +68,7 @@ def test_engine_fixed_shares_and_asaba():
             {"type": "mother_t", "count": 1},
             {"type": "child_t", "count": 2},
         ],
-        Decimal("1200"),
+        Decimal(1200),
         SYNTHETIC_RULE,
         rule_version=1,
     )
@@ -99,7 +99,7 @@ def test_engine_awl_scales_down_proportionally():
             {"type": "b_t", "count": 1},
             {"type": "c_t", "count": 1},
         ],
-        Decimal("1300"),
+        Decimal(1300),
         rule,
         rule_version=1,
     )
@@ -118,7 +118,7 @@ def test_engine_radd_returns_surplus():
         "radd": {"enabled": True, "excluded": []},
     }
     out = engine.compute_inheritance(
-        [{"type": "mother_t", "count": 1}], Decimal("600"), rule, rule_version=1
+        [{"type": "mother_t", "count": 1}], Decimal(600), rule, rule_version=1
     )
     assert out["shares"][0]["amount"] == "600.0000"  # ۱/۶ → رد به ۱
     assert out["shares"][0]["share_fraction"] == "1/1"
@@ -131,7 +131,7 @@ def test_engine_unknown_heir_rejected():
     try:
         engine.compute_inheritance(
             [{"type": "nope_t", "count": 1}],
-            Decimal("100"),
+            Decimal(100),
             SYNTHETIC_RULE,
             rule_version=1,
         )
@@ -146,7 +146,7 @@ def test_engine_empty_rule_data_rejected():
 
     try:
         engine.compute_inheritance(
-            [{"type": "spouse_t", "count": 1}], Decimal("100"), {}, rule_version=1
+            [{"type": "spouse_t", "count": 1}], Decimal(100), {}, rule_version=1
         )
     except engine.CalculatorError as exc:
         assert exc.code == "rule_data_empty"
@@ -161,8 +161,8 @@ def test_engine_zakat_ok():
     from app.modules.calculators import engine
 
     out = engine.compute_zakat(
-        {"cash": Decimal("500"), "gold_grams": Decimal("60"), "trade_goods": Decimal("0")},
-        Decimal("100"),
+        {"cash": Decimal(500), "gold_grams": Decimal(60), "trade_goods": Decimal(0)},
+        Decimal(100),
         SYNTHETIC_ZAKAT_RULE,
         SYNTHETIC_RATES,
         rule_version=1,
@@ -181,8 +181,8 @@ def test_engine_zakat_below_nisab():
     from app.modules.calculators import engine
 
     out = engine.compute_zakat(
-        {"cash": Decimal("50")},
-        Decimal("0"),
+        {"cash": Decimal(50)},
+        Decimal(0),
         SYNTHETIC_ZAKAT_RULE,
         SYNTHETIC_RATES,
         rule_version=1,
@@ -196,8 +196,8 @@ def test_engine_zakat_price_unavailable():
 
     rates = dict(SYNTHETIC_RATES, gold_per_gram=None)
     out = engine.compute_zakat(
-        {"gold_grams": Decimal("10")},
-        Decimal("0"),
+        {"gold_grams": Decimal(10)},
+        Decimal(0),
         SYNTHETIC_ZAKAT_RULE,
         rates,
         rule_version=1,
@@ -248,7 +248,7 @@ async def _make_user(tc, permissions: tuple[str, ...] = ()):
 
 
 def _now_iso():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 async def _create_rule(client, headers, kind, version, madhab="hanafi",
@@ -355,7 +355,7 @@ async def test_future_effective_version_not_active(tc):
 
     rule = await _create_rule(
         client, manage_h, "inheritance", 9,
-        effective_from=(datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+        effective_from=(datetime.now(UTC) + timedelta(days=30)).isoformat(),
     )
     await _submit_and_approve(client, manage_h, approve_h, "inheritance",
                               rule["id"])
@@ -459,9 +459,9 @@ async def _seed_price_cache(tc, *, hours_ago: float):
         row = NisabPriceCache(
             source="default",
             currency="TST",
-            gold_per_gram=Decimal("10"),
-            silver_per_gram=Decimal("1"),
-            fetched_at=datetime.now(timezone.utc) - timedelta(hours=hours_ago),
+            gold_per_gram=Decimal(10),
+            silver_per_gram=Decimal(1),
+            fetched_at=datetime.now(UTC) - timedelta(hours=hours_ago),
         )
         db.add(row)
         await db.commit()
@@ -485,7 +485,7 @@ async def test_nisab_rate_stale_flag(tc):
     data = r.json()
     assert data["status"] == "stale"
     assert data["stale"] is True
-    assert Decimal(data["gold_per_gram"]) == Decimal("10")
+    assert Decimal(data["gold_per_gram"]) == Decimal(10)
 
 
 async def test_nisab_rate_fresh_ok(tc):
@@ -534,7 +534,7 @@ async def test_zakat_calc_end_to_end_with_stale_price(tc):
     assert data["result"]["price_stale"] is True
     assert "price_stale" in data["result"]["notes"]
     assert data["nisab_snapshot"]["stale"] is True
-    assert Decimal(data["nisab_snapshot"]["gold_per_gram"]) == Decimal("10")
+    assert Decimal(data["nisab_snapshot"]["gold_per_gram"]) == Decimal(10)
 
 
 async def test_zakat_calc_price_unavailable(tc):

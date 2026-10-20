@@ -122,7 +122,6 @@ async def delete_project(
     await service.delete_project(
         db, project_id, actor=user, ip=_client_ip(request), ua=_ua(request)
     )
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +206,6 @@ async def delete_task(
     await service.delete_task(
         db, task_id, actor=user, ip=_client_ip(request), ua=_ua(request)
     )
-    return None
 
 
 @projects_router.post("/tasks/{task_id}/move", response_model=schemas.TaskOut)
@@ -283,4 +281,3 @@ async def delete_staff(
     await service.delete_staff(
         db, staff_id, actor=user, ip=_client_ip(request), ua=_ua(request)
     )
-    return None

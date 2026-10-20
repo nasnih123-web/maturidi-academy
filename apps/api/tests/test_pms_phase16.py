@@ -11,9 +11,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
-
-import pytest
+from datetime import UTC, datetime, timedelta
 
 from app.modules.projects import service as pms_service
 
@@ -104,6 +102,20 @@ async def _pms_admin_token(client, db_session, email: str) -> str:
     ).first()
     if not rp:
         db_session.add(RolePermission(role_id=role.id, permission_id=perm.id))
+
+    # remediation-pass-2 Track 1 (§۵): نقش ممتاز بدون TOTP با هیچ توکنی به
+    # endpoint ادمین نمی‌رسد؛ helper سکرت TOTP هم می‌نشاند.
+    import json
+
+    import pyotp
+
+    from app.core.secrets import encrypt_value
+    from app.models.models import User as _T1User
+
+    _t1u = (
+        await db_session.execute(select(_T1User).where(_T1User.id == uuid.UUID(me["id"])))
+    ).scalar_one()
+    _t1u.totp_secret = json.dumps(encrypt_value(pyotp.random_base32()))
     await db_session.commit()
     return token
 
@@ -345,7 +357,7 @@ async def test_due_soon_cron_notifies_and_marks(tc, db_session):
     worker = await _register(client, "pms-worker3@example.com")
     proj = await _make_project(client, admin_headers, "پروژه سررسید")
 
-    due = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
+    due = (datetime.now(UTC) + timedelta(hours=12)).isoformat()
     r = await client.post(
         f"{BASE}/projects/{proj['id']}/tasks",
         json={"title": _L("تسک نزدیک سررسید"), "assignee_id": worker["id"], "due_date": due},

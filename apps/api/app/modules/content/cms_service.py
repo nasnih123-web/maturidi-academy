@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -91,7 +91,7 @@ _WORKFLOW_MODELS = {"events", "quotes", "pages", "banners", "announcements"}
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _as_utc(dt: datetime | None) -> datetime | None:
@@ -99,8 +99,8 @@ def _as_utc(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 def _in_window(
@@ -146,9 +146,7 @@ def _prepare_create(resource: str, data: dict[str, Any]) -> dict[str, Any]:
             prepared[key] = _as_utc(value)
         elif key == "distribution":
             prepared[key] = value.model_dump() if value is not None else None
-        elif key == "theme_id" and value is not None:
-            prepared[key] = uuid.UUID(str(value))
-        elif key == "parent_id" and value is not None:
+        elif key == "theme_id" and value is not None or key == "parent_id" and value is not None:
             prepared[key] = uuid.UUID(str(value))
         else:
             prepared[key] = value

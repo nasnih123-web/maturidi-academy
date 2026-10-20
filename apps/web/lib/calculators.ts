@@ -29,6 +29,7 @@
  * Base URL: NEXT_PUBLIC_API_URL (browser-safe) falling back to localhost.
  */
 
+import { apiBaseUrl } from './api-base';
 export type MadhabKey = 'hanafi' | 'maliki' | 'shafi' | 'hanbali';
 
 export const MADHABS: MadhabKey[] = ['hanafi', 'maliki', 'shafi', 'hanbali'];
@@ -138,9 +139,7 @@ export class CalculatorsApiError extends Error {
 }
 
 function apiBase(): string {
-  const base =
-    typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_API_URL : undefined;
-  return (base ?? 'http://localhost:8000').replace(/\/+$/, '');
+  return apiBaseUrl();
 }
 
 async function throwForStatus(res: Response, path: string): Promise<never> {

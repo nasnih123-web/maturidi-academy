@@ -38,7 +38,7 @@ async def list_places(
     max_lat: float | None = Query(default=None, ge=-90, le=90),
     min_lng: float | None = Query(default=None, ge=-180, le=180),
     max_lng: float | None = Query(default=None, ge=-180, le=180),
-    type: str | None = Query(default=None),  # noqa: A002 — نام پارامتر API
+    type: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
 ):
     items, total = await service.list_places(
@@ -80,9 +80,9 @@ async def create_place(
 @admin_places_router.get("", response_model=schemas.PlaceList)
 async def admin_list_places(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(_admin),  # noqa: ARG001 — مجوز لازم است
+    user: User = Depends(_admin),
     status: str | None = Query(default=None),
-    type: str | None = Query(default=None),  # noqa: A002
+    type: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
 ):
     items, total = await service.list_places(
@@ -98,7 +98,7 @@ async def admin_list_places(
 async def admin_get_place(
     place_id: UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(_admin),  # noqa: ARG001
+    user: User = Depends(_admin),
 ):
     return await service.get_place(db, place_id, published_only=False)
 
@@ -142,4 +142,3 @@ async def delete_place(
         db, place_id, actor=user, ip=_client_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
-    return None

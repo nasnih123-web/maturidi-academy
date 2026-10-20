@@ -19,10 +19,11 @@ function cmsLang(locale: string): CmsLang {
  * is an honest 404, never placeholder copy.
  */
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const page = await getCmsPage(SLUG);
   const base = siteUrl();
@@ -34,7 +35,8 @@ export async function generateMetadata({
   };
 }
 
-export default async function TermsPage({ params: { locale } }: { params: { locale: string } }) {
+export default async function TermsPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: "content" });
   const page = await getCmsPage(SLUG);

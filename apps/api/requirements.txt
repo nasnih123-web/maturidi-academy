@@ -9,14 +9,18 @@ asyncpg==0.30.0
 aiosqlite==0.20.0
 redis==5.2.1
 arq==0.26.3
-pyjwt==2.10.1
+pyjwt==2.15.1
 argon2-cffi==23.1.0
-python-multipart==0.0.20
+python-multipart==0.0.31
 httpx==0.28.1
 pyotp==2.9.0
-cryptography==44.0.0
+cryptography==50.0.0
 pytest==8.3.4
 pytest-asyncio==0.25.0
+# لینتر CI — پین‌شده: شمارش خطاهای ruff به نسخه حساس است (از 0.16 قواعد
+# پیش‌فرض گسترش یافت)؛ baseline در tools/ruff_baseline.json فقط با همین
+# نسخه معنا دارد. کانفیگ: apps/api/ruff.toml
+ruff==0.17.1
 email-validator==2.2.0
 # فاز ۴ — تقویم اسلامی (انتزاع تاریخ هجری در app/core/hijri.py)
 hijri-converter==2.3.0
@@ -31,3 +35,8 @@ telethon==1.41.2
 sentry-sdk==2.72.0
 opentelemetry-sdk==1.45.1
 opentelemetry-exporter-otlp==1.45.1
+# Track 2 / §۱۲ — کلاینت S3-سازگار برای S3StorageProvider (MinIO)؛ ایمپورت lazy است
+# تا نصب‌نشدن آن در محیط dev/test کرش ندهد (فکتوری فقط با STORAGE_PROVIDER=s3 لازمش دارد)
+minio==7.2.16
+# remediation-pass-2 Track 1 (§۷) — فیک Redis برای تست‌های rate limiter (فقط تست)
+fakeredis==2.40.0

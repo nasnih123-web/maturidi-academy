@@ -5,10 +5,11 @@ import { AdhanWidget } from '@/components/AdhanWidget';
 
 /** Adhan widget page — prayer times from GET /api/v1/adhan/times only. */
 export default async function AdhanPage({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'adhan' });
   const siteConfig = await getSiteConfig();
@@ -55,10 +56,11 @@ export default async function AdhanPage({
 }
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'adhan' });
   return { title: t('metaTitle'), description: t('metaDescription') };

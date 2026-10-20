@@ -11,11 +11,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
-from sqlalchemy import select
 
 from app.modules.finance import service as finance_service
 
@@ -78,9 +77,9 @@ async def _stage_pay_settings(db_session) -> None:
 
 
 async def test_e2e_full_user_journey(tc, db_session, zfake):
+    from app.models.models import Course, CourseCohort, Donation
     from app.modules.fatwa.service import reset_ai_limits
     from app.seed_fatwa import seed_fatwa_demo
-    from app.models.models import Course, CourseCohort, Donation
 
     client = tc["client"]
     suffix = uuid.uuid4().hex[:8]
@@ -135,8 +134,8 @@ async def test_e2e_full_user_journey(tc, db_session, zfake):
         cohort = CourseCohort(
             course_id=course.id,
             title={"fa": "هم‌گروهی E2E"},
-            starts_at=datetime.now(timezone.utc) + timedelta(days=1),
-            ends_at=datetime.now(timezone.utc) + timedelta(days=30),
+            starts_at=datetime.now(UTC) + timedelta(days=1),
+            ends_at=datetime.now(UTC) + timedelta(days=30),
             max_seats=50,
             is_open=True,
         )

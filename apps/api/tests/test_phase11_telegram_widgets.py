@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -112,7 +111,7 @@ def _clean_telegram_state():
 # Fakeها: MTProto و Bot (بدون هیچ شبکه‌ای)
 # ---------------------------------------------------------------------------
 
-from app.modules.telegram.telethon_client import (  # noqa: E402
+from app.modules.telegram.telethon_client import (
     FloodWait,
     MtprotoMessage,
     SessionPasswordNeeded,
@@ -209,7 +208,7 @@ def fake_bot(monkeypatch):
     return bot
 
 
-async def _enable_bot(tc, fake_bot):  # noqa: ARG001
+async def _enable_bot(tc, fake_bot):
     await _set_settings(tc, {
         "telegram.enabled": "true",
         "telegram.bot_token": "fake-token",

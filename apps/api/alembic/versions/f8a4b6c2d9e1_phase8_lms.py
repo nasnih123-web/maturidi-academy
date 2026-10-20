@@ -4,24 +4,24 @@ Revision ID: f8a4b6c2d9e1
 Revises: e7a1b2c3d4f5
 Create Date: 2026-10-19
 
-Forward-only (§۱۲). ADR-0006 documents the contracts.
+Forward-only (§۱۲). ADR-0018 documents the contracts.
 Conventions (§۱۵):
 - FKs only to tables that exist in this or earlier phases (users, lessons
   created here before the ALTER of quiz_attempts).
 - UTC everywhere; DateTime(timezone=True).
 - All user-visible text columns are LocalizedText JSON (never single-language).
-- study_reports is service-computed (ADR-0006) — no table here.
+- study_reports is service-computed (ADR-0018) — no table here.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = 'f8a4b6c2d9e1'
-down_revision: Union[str, None] = 'e7a1b2c3d4f5'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = 'e7a1b2c3d4f5'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def _id_pk() -> list:

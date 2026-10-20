@@ -8,6 +8,7 @@
  * therefore creates exactly one payment intent server-side.
  */
 
+import { apiBaseUrl } from './api-base';
 export class DonateApiError extends Error {
   readonly status: number;
   constructor(message: string, status = 0) {
@@ -18,9 +19,7 @@ export class DonateApiError extends Error {
 }
 
 function apiBase(): string {
-  const base =
-    typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_API_URL : undefined;
-  return (base ?? 'http://localhost:8000').replace(/\/+$/, '');
+  return apiBaseUrl();
 }
 
 export interface DonateIntent {

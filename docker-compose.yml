@@ -26,7 +26,9 @@ services:
       retries: 5
 
   minio:
-    image: minio/minio:latest
+    # Track B: ایمیج‌های minio/minio از Docker Hub حذف شده‌اند (سپتامبر ۲۰۲۶) —
+    # همان ایمیج با digest یکسان روی quay.io منتشر می‌شود؛ latest پین نیست.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -53,6 +55,20 @@ services:
         condition: service_healthy
     env_file:
       - .env
+    environment:
+      # درون کانتینر باید نام سرویس‌ها (نه localhost) استفاده شود —
+      # مقادیر localhost در .env.example فقط برای اجرای محلی (bootstrap) است.
+      # environment بر env_file اولویت دارد.
+      DATABASE_URL: postgresql+asyncpg://maturidi:maturidi@postgres:5432/maturidi
+      REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT: http://minio:9000
+      APP_BASE_URL: http://localhost:8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     ports:
       - "8000:8000"
     volumes:

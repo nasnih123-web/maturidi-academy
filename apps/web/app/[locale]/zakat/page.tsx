@@ -1,18 +1,14 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import type { MadhabKey, ZakatAssetKey } from '@/lib/calculators';
-
-const ZakatCalculator = dynamic(
-  () => import('@/components/ZakatCalculator').then((m) => m.ZakatCalculator),
-  { ssr: false, loading: () => <p className="auth-loading">…</p> },
-);
+import { ZakatCalculator } from '@/components/ZakatCalculatorLazy';
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'calculators' });
   return { title: t('zakat.metaTitle'), description: t('zakat.metaDescription') };
@@ -27,10 +23,11 @@ export async function generateMetadata({
  * passed as props — the client chunk carries no i18n runtime.
  */
 export default async function ZakatPage({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'calculators' });
   return (
@@ -59,11 +56,11 @@ export default async function ZakatPage({
           debtsDeductedLabel: t('zakat.debtsDeductedLabel'),
           nisabThresholdLabel: t('zakat.nisabThresholdLabel'),
           zakatDueLabel: t('zakat.zakatDueLabel'),
-          ruleVersion: t('zakat.ruleVersion'),
-          rateNote: t('zakat.rateNote'),
+          ruleVersion: t.raw('zakat.ruleVersion') as string,
+          rateNote: t.raw('zakat.rateNote') as string,
           rateFresh: t('zakat.rateFresh'),
           rateStale: t('zakat.rateStale'),
-          rateAsOf: t('zakat.rateAsOf'),
+          rateAsOf: t.raw('zakat.rateAsOf') as string,
           ratePending: t('zakat.ratePending'),
           rateFailed: t('zakat.rateFailed'),
           print: t('zakat.print'),

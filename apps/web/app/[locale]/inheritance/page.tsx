@@ -1,18 +1,14 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import type { MadhabKey } from '@/lib/calculators';
-
-const InheritanceCalculator = dynamic(
-  () => import('@/components/InheritanceCalculator').then((m) => m.InheritanceCalculator),
-  { ssr: false, loading: () => <p className="auth-loading">…</p> },
-);
+import { InheritanceCalculator } from '@/components/InheritanceCalculatorLazy';
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'calculators' });
   return { title: t('inheritance.metaTitle'), description: t('inheritance.metaDescription') };
@@ -27,10 +23,11 @@ export async function generateMetadata({
  * passed as props — the client chunk carries no i18n runtime.
  */
 export default async function InheritancePage({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'calculators' });
   return (
@@ -62,7 +59,7 @@ export default async function InheritancePage({
           shareCol: t('inheritance.shareCol'),
           amountCol: t('inheritance.amountCol'),
           totalLabel: t('inheritance.totalLabel'),
-          ruleVersion: t('inheritance.ruleVersion'),
+          ruleVersion: t.raw('inheritance.ruleVersion') as string,
           notesTitle: t('inheritance.notesTitle'),
           print: t('inheritance.print'),
           save: t('inheritance.save'),

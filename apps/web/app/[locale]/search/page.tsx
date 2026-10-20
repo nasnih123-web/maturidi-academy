@@ -5,12 +5,14 @@ import { searchApi, ApiError } from "@/lib/api";
 import { pickText } from "@/lib/localize";
 
 export async function generateMetadata({
-  params: { locale },
-  searchParams,
+  params,
+  searchParams: searchParamsPromise,
 }: {
-  params: { locale: string };
-  searchParams: { q?: string };
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<{ q?: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
+  const searchParams = await searchParamsPromise;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: "searchPage" });
   const q = (searchParams.q ?? "").trim();
@@ -26,12 +28,14 @@ export async function generateMetadata({
  * so search works with and without JavaScript.
  */
 export default async function SearchPage({
-  params: { locale },
-  searchParams,
+  params,
+  searchParams: searchParamsPromise,
 }: {
-  params: { locale: string };
-  searchParams: { q?: string };
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<{ q?: string }>;
 }) {
+  const { locale } = await params;
+  const searchParams = await searchParamsPromise;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: "searchPage" });
   const tHome = await getTranslations({ locale, namespace: "home" });

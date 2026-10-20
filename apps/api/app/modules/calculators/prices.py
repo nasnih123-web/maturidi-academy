@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -27,7 +27,7 @@ _TTL_SETTING = "zakat.price_ttl_seconds"
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 async def _price_source_url(db: AsyncSession) -> str | None:
@@ -131,7 +131,7 @@ async def get_nisab_prices(db: AsyncSession) -> dict[str, Any]:
         fetched = cached.fetched_at
         if fetched.tzinfo is None:
             # SQLite نا‌آگاه برمی‌گرداند — همهٔ زمان‌ها UTCاند (§۱)
-            fetched = fetched.replace(tzinfo=timezone.utc)
+            fetched = fetched.replace(tzinfo=UTC)
         age = (now - fetched).total_seconds()
         if age <= ttl and cached.gold_per_gram is not None:
             return _to_out(cached, stale=False, status="ok", source="cache")

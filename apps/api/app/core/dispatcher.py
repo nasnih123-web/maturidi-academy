@@ -18,7 +18,7 @@ import asyncio
 import json
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI
 from sqlalchemy import select
@@ -36,7 +36,7 @@ MAX_BACKOFF_SECONDS = 300
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def serialize_event(event: DomainEvent) -> dict:
@@ -127,7 +127,7 @@ async def create_event_bus() -> EventBus:
     """تلاش برای Redis؛ در صورت شکست، fallback حافظه‌ای با لاگ هشدار."""
     settings = get_settings()
     try:
-        import redis.asyncio as aioredis  # noqa: PLC0415
+        import redis.asyncio as aioredis
 
         client = aioredis.from_url(settings.redis_url, socket_connect_timeout=2)
         await client.ping()
@@ -205,7 +205,7 @@ async def run_dispatcher(
             logger.exception("dispatcher cycle failed")
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=poll_interval)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
     logger.info("event dispatcher stopped")
 
@@ -249,7 +249,7 @@ async def stop_realtime(app: FastAPI) -> None:
         if task is not None:
             try:
                 await asyncio.wait_for(asyncio.shield(task), timeout=5)
-            except (asyncio.CancelledError, asyncio.TimeoutError):
+            except (TimeoutError, asyncio.CancelledError):
                 pass
             except Exception:
                 logger.exception("error stopping realtime task")

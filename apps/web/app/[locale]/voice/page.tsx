@@ -16,10 +16,11 @@ const VoiceAssistant = dynamic(
 );
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'voice' });
   return { title: t('metaTitle'), description: t('metaDescription') };
@@ -50,10 +51,11 @@ function EnglishNotice({ t }: { t: Awaited<ReturnType<typeof getTranslations>> }
 }
 
 export default async function VoicePage({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'voice' });
 

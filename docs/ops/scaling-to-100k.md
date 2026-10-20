@@ -51,7 +51,7 @@
 | Workerهای ARQ | ✅ stateless | وضعیت کار در Redis + DB (outbox)؛ هر worker جایگزین‌پذیر |
 | Web (Next.js) | ✅ stateless | خروجی build استاتیک + SSR بدون state سرور |
 | CRM | ✅ stateless | SPA استاتیک روی nginx |
-| WebSocket gateway | ⚠️ نیمه‌stateful | اتصال‌ها در حافظهٔ هر instance است؛ با چند replica باید **sticky session** یا Redis pub/sub برای fan-out (یادداشت ADR-0001: InMemoryBus تک‌فرایندی است) |
+| WebSocket gateway | ⚠️ نیمه‌stateful | اتصال‌ها در حافظهٔ هر instance است؛ با چند replica باید **sticky session** یا Redis pub/sub برای fan-out (یادداشت ADR-0017: InMemoryBus تک‌فرایندی است) |
 
 ### موارد درون‌حافظه‌ای که پیش از scale افقی باید به Redis بروند
 

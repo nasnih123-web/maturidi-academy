@@ -39,10 +39,13 @@ npm run dev
 
 ## Production web bundle
 
-`frontendDist` points at `../web/out`, i.e. a **static export** of the web
-app. Before `tauri build`, produce it with the export profile
-(`next.config.mjs`: `output: "export"` for this target — kept as a separate
-build profile so the default SSR build is untouched).
+> **وضعیت واقعی (2026-10-20):** `frontendDist` در `tauri.conf.json` به `../web/out`
+> اشاره می‌کند، اما پروفایل static-export وب (`output: "export"` در
+> `next.config.mjs`) **هنوز ساخته نشده** و وب فعلی (SSR + API routes + middleware)
+> بدون بازطراحی export نمی‌شود. تا آن زمان: `tauri dev` به `http://localhost:3000`
+> پروکسی می‌کند و بیلد production دسکتاپ **مسدود** است. مسیر پیشنهادی: پروفایل
+> export جدا در `next.config.mjs` (بدون دست‌زدن به بیلد SSR پیش‌فرض) + اسکریپت
+> `web:export` — پس از تصمیم کاربر.
 
 ## Signed builds — CI path (`.github/workflows/desktop.yml`)
 
@@ -67,10 +70,22 @@ build profile so the default SSR build is untouched).
 
 ## Notes
 
-- The updater `endpoints` URL is a placeholder — point it at the real
-  release feed before enabling auto-update in production.
+- Updater: **disabled** (`updater.active: false` — Track 2 / §۱۶). The
+  `endpoints` URL is still a placeholder (`releases.example.com`); enable
+  auto-update only after pointing it at the real release feed AND injecting
+  the real `updater.pubkey` (CI injects the key; the private key signs via
+  `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` secrets).
+- CSP (`app.security.csp`): `connect-src` currently allows only
+  `localhost:*` — correct for dev, but a production bundle that talks to the
+  deployed API must list the real API origin here (e.g.
+  `https://api.example.com`) at release time.
+- `frontendDist` points at `../web/out` (static export of the web app) — that
+  export profile (`output: "export"` in `next.config.mjs`) does not exist yet;
+  producing it is a separate build-profile task (native builds are Blocked in
+  this sandbox — no Rust toolchain; CI builds per-OS in `desktop.yml`).
 - `src-tauri/icons/icon.png` is required (plus `icon.icns`/`icon.ico` for
-  macOS/Windows bundles); generate from `apps/web/public/icon-512.png`.
+  macOS/Windows bundles); generate from `apps/web/public/icons/icon-512.png`.
+  Icons are part of the binary-asset tail uploaded manually via GitHub web UI.
 - `cargo check`/`cargo build` need a Rust toolchain — not run in this
   sandbox; CI compiles on the per-OS runners.
 

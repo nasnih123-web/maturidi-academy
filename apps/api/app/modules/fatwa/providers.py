@@ -14,7 +14,7 @@ strip/sanitize می‌کند تا متن تزریقی نتواند وارد syst
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -151,7 +151,7 @@ class ClaudeProvider(LLMProvider):
                 )
                 resp.raise_for_status()
                 data = resp.json()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise LLMProviderError(f"خطای فراخوانی Claude: {exc}") from exc
 
         blocks = data.get("content") or []
@@ -175,8 +175,9 @@ class ClaudeProvider(LLMProvider):
         max_tokens: int = 1024,
     ):
         """استریم واقعی Anthropic (SSE) — تکه‌تکه yield می‌کند."""
-        import httpx
         import json as _json
+
+        import httpx
 
         payload = layers.to_anthropic_payload()
         try:
@@ -214,7 +215,7 @@ class ClaudeProvider(LLMProvider):
                             delta = evt.get("delta") or {}
                             if delta.get("type") == "text_delta":
                                 yield delta.get("text", "")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise LLMProviderError(f"خطای استریم Claude: {exc}") from exc
 
 

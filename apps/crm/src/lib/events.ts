@@ -1,11 +1,13 @@
 import React from "react";
-import { apiUrl, getAccessToken } from "./api";
+import { apiFetch, apiUrl, getAccessToken } from "./api";
 
 /**
  * Live event feed hook — the Phase 2 acceptance-critical realtime client.
  *
- * WebSocket client for `/ws/events?token=<jwt>` (Phase 2 spec):
- * - JWT passed at handshake (query token)
+ * WebSocket client for `/ws/events` (hardening/audit-pass-1: ticket auth):
+ * - short-lived single-use ticket from POST /api/v1/auth/ws-ticket is passed
+ *   as `?ticket=` at handshake — the long-lived JWT never goes in the query
+ *   string anymore (it used to leak into logs/browser history)
  * - auto-reconnect with exponential backoff + jitter
  * - on reconnect sends `last_event_id`; the gateway replays missed events
  *   from the DB (contract §4 outbox), not just memory
@@ -85,10 +87,35 @@ export function useEventFeed(maxEvents = 200): {
       prev === "connected" ? prev : backoffRef.current > 1_000 ? "reconnecting" : "connecting",
     );
 
-    const ws = new WebSocket(`${toWsUrl()}?token=${encodeURIComponent(token)}`);
-    wsRef.current = ws;
+    const scheduleReconnect = (): void => {
+      if (manualCloseRef.current) {
+        setStatus("disconnected");
+        return;
+      }
+      setStatus("reconnecting");
+      const delay = Math.min(backoffRef.current, MAX_BACKOFF_MS);
+      const jitter = Math.floor(Math.random() * 500);
+      const waitMs = delay + jitter;
+      setRetryInSec(Math.ceil(waitMs / 1000));
+      const tick = window.setInterval(() => {
+        setRetryInSec((s) => (s !== null && s > 1 ? s - 1 : s));
+      }, 1000);
+      const id = window.setTimeout(() => {
+        window.clearInterval(tick);
+        backoffRef.current = Math.min(backoffRef.current * 2, MAX_BACKOFF_MS);
+        connect();
+      }, waitMs);
+      timersRef.current.push(id);
+    };
 
-    ws.onopen = () => {
+    const openSocket = (ticket: string): void => {
+      if (manualCloseRef.current) return; // unmount شده — سوکت تازه باز نکن
+      const ws = new WebSocket(
+        `${toWsUrl()}?ticket=${encodeURIComponent(ticket)}`,
+      );
+      wsRef.current = ws;
+
+      ws.onopen = () => {
       backoffRef.current = 1_000;
       setStatus("connected");
       armHeartbeat();
@@ -122,27 +149,6 @@ export function useEventFeed(maxEvents = 200): {
       setEvents((prev) => [event, ...prev].slice(0, maxEvents));
     };
 
-    const scheduleReconnect = (): void => {
-      if (manualCloseRef.current) {
-        setStatus("disconnected");
-        return;
-      }
-      setStatus("reconnecting");
-      const delay = Math.min(backoffRef.current, MAX_BACKOFF_MS);
-      const jitter = Math.floor(Math.random() * 500);
-      const waitMs = delay + jitter;
-      setRetryInSec(Math.ceil(waitMs / 1000));
-      const tick = window.setInterval(() => {
-        setRetryInSec((s) => (s !== null && s > 1 ? s - 1 : s));
-      }, 1000);
-      const id = window.setTimeout(() => {
-        window.clearInterval(tick);
-        backoffRef.current = Math.min(backoffRef.current * 2, MAX_BACKOFF_MS);
-        connect();
-      }, waitMs);
-      timersRef.current.push(id);
-    };
-
     ws.onerror = () => {
       // onclose follows and drives the reconnect; nothing to do here.
     };
@@ -153,6 +159,13 @@ export function useEventFeed(maxEvents = 200): {
       }
       scheduleReconnect();
     };
+    }; // end openSocket
+
+    // بلیط یک‌بارمصرف کوتاه‌مدت — JWT بلندمدت هرگز در query string نمی‌رود
+    apiFetch<{ ticket: string }>("/api/v1/auth/ws-ticket", { method: "POST" }).then(
+      ({ ticket }) => openSocket(ticket),
+      () => scheduleReconnect(),
+    );
   }, [armHeartbeat, clearTimers, maxEvents]);
 
   React.useEffect(() => {

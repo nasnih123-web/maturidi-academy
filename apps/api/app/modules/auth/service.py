@@ -9,7 +9,7 @@ import hmac
 import json
 import secrets as pysecrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,18 +20,20 @@ from app.core.audit import log_audit
 from app.core.database import ensure_aware
 from app.core.errors import APIError
 from app.core.events import emit_event
+from app.core.rate_limit import get_rate_limiter
 from app.core.secrets import decrypt_value, encrypt_value
 from app.core.security import (
+    SCOPE_2FA_SETUP,
+    SCOPE_FULL,
     create_access_token,
     generate_recovery_codes,
     generate_refresh_token,
     generate_totp_secret,
     hash_password,
     hash_token,
-    rate_limiter,
     totp_provisioning_uri,
     verify_password,
-    verify_totp,
+    verify_totp_step,
 )
 from app.models.models import (
     NotificationPreference,
@@ -44,6 +46,7 @@ from app.models.models import (
     User,
     UserConsent,
     UserRole,
+    WsTicket,
 )
 from app.modules.auth.schemas import (
     LoginIn,
@@ -59,10 +62,83 @@ REFRESH_EXPIRE_DAYS = 30
 EMAIL_VERIFY_EXPIRE_HOURS = 24
 PHONE_CODE_EXPIRE_MINUTES = 5
 RESET_TOKEN_EXPIRE_HOURS = 1
+# بلیط وب‌سوکت: کوتاه‌مدت و یک‌بارمصرف — جایگزین JWT در query string
+WS_TICKET_EXPIRE_SECONDS = 60
+# پنجرهٔ اغماض تشخیص استفادهٔ مجدد: اگر توکنِ چرخش‌یافته در این چند ثانیهٔ
+# اخیر دوباره ارائه شود، به‌احتمال زیاد رفرش هم‌زمانِ مشروع (دو تب/تلاش مجدد
+# شبکه) است، نه سرقت — پس نشست باطل نمی‌شود، فقط جفت‌توکن تازه صادر می‌شود.
+# بیرون از این پنجره، ارائهٔ توکن باطل‌شده = سرقت واقعی → ابطال نشست.
+
+
+# ---------- ابزارهای Track 1 (§۵/§۷/§۸/§۹) ----------
+
+
+def public_url(path: str) -> str:
+    """ساخت لینک عمومی از `app_base_url` با اعتبارسنجی (§۸).
+
+    هاست هرگز از هدرهای درخواست (Host/X-Forwarded-Host) خوانده نمی‌شود —
+    فقط از تنظیمات سرور؛ پس poisoning هدر Host و open redirect ممکن نیست.
+    scheme باید http/https و hostname معتبر باشد (بدون userinfo).
+    """
+    from urllib.parse import urlparse
+
+    from app.core.config import get_settings
+
+    base = (get_settings().app_base_url or "").strip().rstrip("/")
+    parsed = urlparse(base)
+    if (
+        parsed.scheme not in ("http", "https")
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+    ):
+        raise APIError(500, "bad_base_url", "آدرس پایهٔ عمومی نامعتبر است")
+    if not path.startswith("/"):
+        path = "/" + path
+    return f"{base}{path}"
+
+
+async def _claim_totp_step(
+    db: AsyncSession, user: User, step: int, *, error_status: int = 401
+) -> None:
+    """ثبت اتمیک گام زمانی TOTP — ضد replay (§۵).
+
+    UPDATE مشروط در سطح DB: فقط اگر این گام جدیدتر از آخرین گام مصرف‌شده
+    باشد موفق است؛ دو درخواست هم‌زمان با یک کد → فقط یکی `rowcount=1`
+    می‌گیرد و دیگری «کد تکراری» می‌خورد. بدون commit صریح — با تراکنش
+    فراخواننده می‌ماند.
+    """
+    res = await db.execute(
+        update(User)
+        .where(User.id == user.id)
+        .where((User.totp_last_step.is_(None)) | (User.totp_last_step < step))
+        .values(totp_last_step=step)
+    )
+    if res.rowcount != 1:
+        raise APIError(
+            error_status, "code_reused", "این کد تأیید قبلاً استفاده شده است"
+        )
+
+
+async def _consume_single_use_token(
+    db: AsyncSession, model, row_id, *, error: APIError
+) -> None:
+    """مصرف اتمیک توکن/کد یک‌بارمصرف در سطح DB (§۹).
+
+    الگوی «بخوان بعد علامت بزن» در پایتون (`if not used: used=True`)
+    زیر race هم‌زمان دو بار مصرف می‌شود؛ UPDATE مشروط با `rowcount`
+    این را در خود دیتابیس اتمیک می‌کند. بدون commit صریح.
+    """
+    res = await db.execute(
+        update(model).where(model.id == row_id, model.used.is_(False)).values(used=True)
+    )
+    if res.rowcount != 1:
+        raise error
+REUSE_DETECTION_GRACE_SECONDS = 60
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # ---------- helpers ----------
@@ -135,7 +211,8 @@ async def register(
         raise APIError(422, "terms_required", "پذیرش قوانین و حریم‌خصوصی الزامی است")
     if not data.email and not data.phone:
         raise APIError(422, "contact_required", "ایمیل یا شماره تلفن الزامی است")
-    if not rate_limiter.is_allowed(f"register:{ip}", limit=10, window_s=3600):
+    rl = get_rate_limiter()
+    if not await rl.is_allowed(f"register:{ip or 'unknown'}", limit=10, window_s=3600, auth=True):
         raise APIError(429, "rate_limited", "تعداد درخواست بیش از حد مجاز است")
 
     if data.email and await _get_user_by_identifier(db, data.email):
@@ -194,7 +271,8 @@ async def register(
             user.email,
             "تأیید ایمیل — آکادمی ماتریدی",
             "برای تأیید ایمیل خود روی لینک زیر کلیک کنید:\n"
-            f"https://example.com/verify-email?token={token}\n"
+            + public_url(f"/verify-email?token={token}")
+            + "\n"
             f"verify_token={token}",
         )
 
@@ -224,21 +302,25 @@ async def register(
 # ---------- login / session ----------
 
 async def authenticate(db: AsyncSession, data: LoginIn, ip: str | None) -> User:
-    if not rate_limiter.is_allowed(f"login:{ip}", limit=20, window_s=300):
+    rl = get_rate_limiter()
+    if not await rl.is_allowed(f"login:{ip or 'unknown'}", limit=20, window_s=300, auth=True):
         raise APIError(429, "rate_limited", "تعداد تلاش بیش از حد مجاز؛ دقایقی صبر کنید")
     user = await _get_user_by_identifier(db, data.identifier)
     if not user or not user.is_active or not verify_password(user.password_hash, data.password):
         raise APIError(401, "invalid_credentials", "ایمیل/شماره یا رمز عبور نادرست است")
     if user.totp_secret:
         secret = decrypt_value(json.loads(user.totp_secret))
-        if not data.totp_code or not verify_totp(secret, data.totp_code):
+        step = verify_totp_step(secret, data.totp_code or "")
+        if step is None:
             raise APIError(
                 401,
                 "requires_2fa",
                 "کد تأیید دوعاملی لازم است",
                 {"requires_2fa": True},
             )
-    rate_limiter.reset(f"login:{ip}")
+        # ضد replay (§۵): همین کد در همین پنجرهٔ زمانی دوباره پذیرفته نیست
+        await _claim_totp_step(db, user, step)
+    await rl.reset(f"login:{ip or 'unknown'}")
     return user
 
 
@@ -278,59 +360,55 @@ async def create_session_pair(
         user_agent=device_info,
     )
     await db.commit()
+    # اجرای سمت-سرور الزام TOTP برای نقش‌های ممتاز (قرارداد فاز ۰ §۲):
+    # ادمین/super_admin بدون TOTP فقط توکن عامل-اول (2fa_setup) می‌گیرد که
+    # هیچ endpoint نیازمند مجوز را باز نمی‌کند — تا وقتی 2FA را ثبت‌نام کند.
+    scope = SCOPE_2FA_SETUP if await must_enroll_2fa(db, user) else SCOPE_FULL
     # sid در access token می‌نشیند تا get_current_user بتواند ابطال نشست را
     # بی‌درنگ اعمال کند (الگوی turbo — وگرنه توکن تا ۱۵ دقیقه زنده می‌ماند).
-    return create_access_token(str(user.id), extra={"sid": str(session.id)}), plain
+    return (
+        create_access_token(str(user.id), extra={"sid": str(session.id)}, scope=scope),
+        plain,
+    )
 
 
-async def refresh_pair(db: AsyncSession, refresh_token: str) -> tuple[str, str]:
-    row = (
-        await db.execute(
-            select(RefreshToken).where(RefreshToken.token_hash == hash_token(refresh_token))
-        )
-    ).scalar_one_or_none()
-    if not row or ensure_aware(row.expires_at) < _utcnow():
-        raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
+async def _rotate_token(db: AsyncSession, row: RefreshToken) -> tuple[str, str]:
+    """چرخش استاندارد: توکن فعلی باطل، توکن جدید صادر می‌شود (فاز ۰ §۲).
 
-    if row.revoked:
-        # تشخیص استفادهٔ مجدد (reuse detection — الگوی turbo):
-        # اگر این توکن با rotation جایگزین شده (جانشین دارد) و دوباره ارائه شود،
-        # یعنی توکن دزدیده شده؛ کل نشست باطل می‌شود. کد خطا همان invalid_token
-        # می‌ماند تا قرارداد API نشکند.
-        successor = (
-            await db.execute(
-                select(RefreshToken.id)
-                .where(RefreshToken.rotated_from == row.id)
-                .limit(1)
-            )
-        ).first()
-        if successor is not None and row.session_id is not None:
-            await _revoke_session(db, row.session_id)
-            await emit_event(
-                db,
-                aggregate_type="user",
-                aggregate_id=str(row.user_id),
-                event_type="token.reuse_detected",
-                payload={"session_id": str(row.session_id)},
-            )
-            await log_audit(
-                db,
-                actor_id=row.user_id,
-                actor_type="user",
-                action="token.reuse_detected",
-                entity_type="refresh_token",
-                entity_id=str(row.id),
-                new_values={"session_revoked": True},
-            )
-            await db.commit()
-        raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
+    ادعای اتمیک (§۹): `UPDATE ... WHERE revoked=FALSE` تضمین می‌کند در
+    رفرشِ واقعاً هم‌زمان فقط یک رشته برنده شود؛ بازنده به‌جای خطای کاذب
+    (false logout)، روی تازه‌ترین توکن زندهٔ همان نشست می‌چرخد — همان
+    رفتار پنجرهٔ اغماض، ولی بدون تکیه بر زمان. حداکثر چند تلاش، بعد خطا.
 
+    دامنهٔ access token هم‌زمان با وضعیت TOTP کاربر تعیین می‌شود تا
+    ارتقای غیرمجاز از توکن محدود به کامل ممکن نباشد.
+    """
     user = await db.get(User, row.user_id)
     if not user or not user.is_active:
         raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر است")
 
-    # rotation: توکن قبلی باطل، توکن جدید صادر می‌شود (فاز ۰ §۲)
-    row.revoked = True
+    for _ in range(3):
+        # دروازهٔ اتمیک: فقط اگر هنوز باطل نشده بود علامت بزن. دو رفرش
+        # هم‌زمان روی یک سطر → فقط یکی rowcount=1 می‌گیرد.
+        claim = await db.execute(
+            update(RefreshToken)
+            .where(RefreshToken.id == row.id, RefreshToken.revoked.is_(False))
+            .values(revoked=True)
+        )
+        if claim.rowcount == 1:
+            break
+        # بازندهٔ race: روی تازه‌ترین توکن زندهٔ همان نشست بچرخ
+        row = (
+            await _latest_live_session_token(db, row.session_id)
+            if row.session_id
+            else None
+        )
+        if row is None:
+            raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
+    else:
+        raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
+    row.revoked = True  # همگام‌سازی شیء ORM با UPDATE مشروط بالا
+
     new_plain = generate_refresh_token()
     db.add(
         RefreshToken(
@@ -363,8 +441,79 @@ async def refresh_pair(db: AsyncSession, refresh_token: str) -> tuple[str, str]:
         entity_id=str(row.id),
     )
     await db.commit()
+    scope = SCOPE_2FA_SETUP if await must_enroll_2fa(db, user) else SCOPE_FULL
     extra = {"sid": str(row.session_id)} if row.session_id else None
-    return create_access_token(str(user.id), extra=extra), new_plain
+    return create_access_token(str(user.id), extra=extra, scope=scope), new_plain
+
+
+async def _latest_live_session_token(
+    db: AsyncSession, session_id: uuid.UUID
+) -> RefreshToken | None:
+    """تازه‌ترین رفرش‌توکن زندهٔ یک نشست (برای مسیر اغماض race هم‌زمان)."""
+    return (
+        await db.execute(
+            select(RefreshToken)
+            .where(
+                RefreshToken.session_id == session_id,
+                RefreshToken.revoked.is_(False),
+                RefreshToken.expires_at > _utcnow(),
+            )
+            .order_by(RefreshToken.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def refresh_pair(db: AsyncSession, refresh_token: str) -> tuple[str, str]:
+    row = (
+        await db.execute(
+            select(RefreshToken).where(RefreshToken.token_hash == hash_token(refresh_token))
+        )
+    ).scalar_one_or_none()
+    if not row or ensure_aware(row.expires_at) < _utcnow():
+        raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
+
+    if row.revoked:
+        # تشخیص استفادهٔ مجدد (reuse detection — الگوی turbo):
+        # اگر این توکن با rotation جایگزین شده (جانشین دارد) و دوباره ارائه شود،
+        # یا سرقت واقعی است یا رفرش هم‌زمانِ مشروع (دو تب/تلاش مجدد شبکه).
+        # تفکیک با پنجرهٔ اغماض: جانشینِ تازه (≤۶۰ ثانیه) یعنی race هم‌زمان —
+        # نشست باطل نمی‌شود، فقط از تازه‌ترین توکن زنده چرخش می‌شود.
+        successor = (
+            await db.execute(
+                select(RefreshToken)
+                .where(RefreshToken.rotated_from == row.id)
+                .order_by(RefreshToken.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if successor is not None and row.session_id is not None:
+            age_s = (_utcnow() - ensure_aware(successor.created_at)).total_seconds()
+            if age_s <= REUSE_DETECTION_GRACE_SECONDS:
+                live = await _latest_live_session_token(db, row.session_id)
+                if live is not None:
+                    return await _rotate_token(db, live)
+            await _revoke_session(db, row.session_id)
+            await emit_event(
+                db,
+                aggregate_type="user",
+                aggregate_id=str(row.user_id),
+                event_type="token.reuse_detected",
+                payload={"session_id": str(row.session_id)},
+            )
+            await log_audit(
+                db,
+                actor_id=row.user_id,
+                actor_type="user",
+                action="token.reuse_detected",
+                entity_type="refresh_token",
+                entity_id=str(row.id),
+                new_values={"session_revoked": True},
+            )
+            await db.commit()
+        raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
+
+    return await _rotate_token(db, row)
 
 
 async def logout(db: AsyncSession, user: User, refresh_token: str) -> None:
@@ -434,7 +583,13 @@ async def verify_email(db: AsyncSession, token: str) -> User:
     user = await db.get(User, row.user_id)
     if not user:
         raise APIError(400, "invalid_token", "توکن تأیید نامعتبر است")
-    row.used = True
+    # مصرف اتمیک در سطح DB (§۹) — نه «بخوان بعد علامت بزن» در پایتون
+    await _consume_single_use_token(
+        db,
+        PasswordResetToken,
+        row.id,
+        error=APIError(400, "invalid_token", "توکن تأیید نامعتبر یا منقضی است"),
+    )
     user.is_verified = True
     await emit_event(
         db,
@@ -459,7 +614,8 @@ async def verify_email(db: AsyncSession, token: str) -> User:
 async def request_phone_code(
     db: AsyncSession, user: User, data: PhoneCodeRequestIn
 ) -> None:
-    if not rate_limiter.is_allowed(f"sms:{user.id}", limit=5, window_s=3600):
+    rl = get_rate_limiter()
+    if not await rl.is_allowed(f"sms:{user.id}", limit=5, window_s=3600, auth=True):
         raise APIError(429, "rate_limited", "تعداد درخواست کد بیش از حد مجاز است")
     code = f"{pysecrets.randbelow(900000) + 100000:06d}"
     db.add(
@@ -492,7 +648,13 @@ async def verify_phone_code(db: AsyncSession, user: User, data: PhoneVerifyIn) -
         or not hmac.compare_digest(row.code_hash, hash_token(data.code))
     ):
         raise APIError(400, "invalid_code", "کد تأیید نامعتبر یا منقضی است")
-    row.used = True
+    # مصرف اتمیک در سطح DB (§۹)
+    await _consume_single_use_token(
+        db,
+        PhoneVerificationCode,
+        row.id,
+        error=APIError(400, "invalid_code", "کد تأیید نامعتبر یا منقضی است"),
+    )
     user.phone = data.phone
     user.is_verified = True
     await emit_event(
@@ -515,8 +677,21 @@ async def verify_phone_code(db: AsyncSession, user: User, data: PhoneVerifyIn) -
 
 # ---------- password reset ----------
 
-async def request_password_reset(db: AsyncSession, email: str) -> None:
-    # همیشه 200 — جلوگیری از شمارش ایمیل‌های ثبت‌شده
+async def request_password_reset(
+    db: AsyncSession, email: str, ip: str | None
+) -> None:
+    # همیشه 200 — جلوگیری از شمارش ایمیل‌های ثبت‌شده (anti-enumeration).
+    # ضد اسپم (§۸): سقف جدا برای IP و برای ایمیلِ نرمالیزه‌شده.
+    rl = get_rate_limiter()
+    normalized = (email or "").strip().lower()
+    if not await rl.is_allowed(
+        f"pwreset:ip:{ip or 'unknown'}", limit=10, window_s=3600, auth=True
+    ):
+        raise APIError(429, "rate_limited", "تعداد درخواست بیش از حد مجاز است")
+    if normalized and not await rl.is_allowed(
+        f"pwreset:email:{normalized}", limit=3, window_s=3600, auth=True
+    ):
+        raise APIError(429, "rate_limited", "تعداد درخواست بیش از حد مجاز است")
     user = await _get_user_by_identifier(db, email)
     if user and user.email:
         token = pysecrets.token_urlsafe(32)
@@ -533,7 +708,8 @@ async def request_password_reset(db: AsyncSession, email: str) -> None:
             user.email,
             "بازیابی رمز عبور — آکادمی ماتریدی",
             "برای تعیین رمز جدید:\n"
-            f"https://example.com/reset-password?token={token}\n"
+            + public_url(f"/reset-password?token={token}")
+            + "\n"
             f"reset_token={token}\n"
             "این لینک یک ساعت اعتبار دارد.",
         )
@@ -554,7 +730,13 @@ async def confirm_password_reset(db: AsyncSession, token: str, new_password: str
     user = await db.get(User, row.user_id)
     if not user or not user.is_active:
         raise APIError(400, "invalid_token", "توکن بازیابی نامعتبر است")
-    row.used = True
+    # مصرف اتمیک در سطح DB (§۹) — استفادهٔ هم‌زمان دو بار ممکن نیست
+    await _consume_single_use_token(
+        db,
+        PasswordResetToken,
+        row.id,
+        error=APIError(400, "invalid_token", "توکن بازیابی نامعتبر یا منقضی است"),
+    )
     user.password_hash = hash_password(new_password)
     # بعد از تغییر رمز، همهٔ نشست‌ها باطل می‌شوند (امنیتی)
     await _revoke_user_tokens(db, user.id)
@@ -589,8 +771,16 @@ async def setup_2fa(db: AsyncSession, user: User) -> tuple[str, str]:
 async def enable_2fa(
     db: AsyncSession, user: User, data: TwoFAEnableIn, ip: str | None
 ) -> list[str]:
-    if not verify_totp(data.secret, data.code):
+    rl = get_rate_limiter()
+    if not await rl.is_allowed(
+        f"2fa:enable:{user.id}", limit=20, window_s=600, auth=True
+    ):
+        raise APIError(429, "rate_limited", "تعداد تلاش بیش از حد مجاز است")
+    step = verify_totp_step(data.secret, data.code)
+    if step is None:
         raise APIError(400, "invalid_code", "کد تأیید دوعاملی نادرست است")
+    # ضد replay (§۵): همین کد در همین پنجره دوباره پذیرفته نیست
+    await _claim_totp_step(db, user, step, error_status=400)
     user.totp_secret = json.dumps(encrypt_value(data.secret))
     codes = generate_recovery_codes()
     for code in codes:
@@ -616,6 +806,11 @@ async def enable_2fa(
 
 
 async def recover_2fa(db: AsyncSession, data: TwoFARecoverIn, ip: str | None) -> None:
+    rl = get_rate_limiter()
+    if not await rl.is_allowed(
+        f"2fa:recover:{ip or 'unknown'}", limit=10, window_s=3600, auth=True
+    ):
+        raise APIError(429, "rate_limited", "تعداد تلاش بیش از حد مجاز است")
     user = await _get_user_by_identifier(db, data.email)
     if not user or not user.is_active or not verify_password(user.password_hash, data.password):
         raise APIError(401, "invalid_credentials", "ایمیل یا رمز عبور نادرست است")
@@ -634,8 +829,20 @@ async def recover_2fa(db: AsyncSession, data: TwoFARecoverIn, ip: str | None) ->
     )
     if not match:
         raise APIError(400, "invalid_code", "کد بازیابی نامعتبر است")
-    match.used = True
+    # مصرف اتمیک کد بازیابی در سطح DB (§۹) — دو درخواست هم‌زمان با یک کد،
+    # فقط یکی موفق می‌شود
+    await _consume_single_use_token(
+        db,
+        RecoveryCode,
+        match.id,
+        error=APIError(400, "invalid_code", "کد بازیابی نامعتبر است"),
+    )
     user.totp_secret = None
+    user.totp_last_step = None
+    # غیرفعال شدن 2FA رویداد امنیتی حساس است (§۵/§۹): همهٔ نشست‌ها
+    # و رفرش‌توکن‌ها باطل می‌شوند تا توکن‌های صادرشدهٔ قبلی — که با
+    # وضعیت TOTP قدیمی ساخته شده‌اند — بی‌اعتبار شوند.
+    await _revoke_user_tokens(db, user.id)
     await emit_event(
         db,
         aggregate_type="user",
@@ -653,3 +860,68 @@ async def recover_2fa(db: AsyncSession, data: TwoFARecoverIn, ip: str | None) ->
         ip=ip,
     )
     await db.commit()
+
+
+# ---------- بلیط یک‌بارمصرف WebSocket (hardening/audit-pass-1) ----------
+
+async def issue_ws_ticket(
+    db: AsyncSession, user: User, session_id: uuid.UUID | None = None
+) -> tuple[str, int]:
+    """صدور بلیط ۶۰ ثانیه‌ای و یک‌بارمصرف برای handshake وب‌سوکت.
+
+    فقط هش بلیط در DB می‌ماند. بلیط جای JWT بلندمدت در query string
+    می‌نشیند تا توکن در لاگ‌ها/تاریخچهٔ مرورگر لو نرود.
+
+    بلیط به نشست صادرکننده گره می‌خورد (remediation-pass-2 Track 1):
+    اگر نشست پیش از مصرف بلیط باطل شود، بلیط هم مرده است.
+    """
+    ticket = pysecrets.token_urlsafe(32)
+    db.add(
+        WsTicket(
+            user_id=user.id,
+            session_id=session_id,
+            ticket_hash=hash_token(ticket),
+            expires_at=_utcnow() + timedelta(seconds=WS_TICKET_EXPIRE_SECONDS),
+        )
+    )
+    await db.commit()
+    return ticket, WS_TICKET_EXPIRE_SECONDS
+
+
+async def redeem_ws_ticket(db: AsyncSession, ticket: str) -> User | None:
+    """مصرف اتمیک بلیط — یک‌بارمصرف بودن با UPDATE مشروط تضمین می‌شود.
+
+    None یعنی بلیط نامعتبر، منقضی، قبلاً مصرف‌شده، نشستِ گره‌خورده باطل،
+    یا کاربر غیرفعال — در همهٔ این حالت‌ها handshake رد می‌شود.
+    """
+    row = (
+        await db.execute(
+            select(WsTicket).where(WsTicket.ticket_hash == hash_token(ticket))
+        )
+    ).scalar_one_or_none()
+    if row is None or row.used_at is not None:
+        return None
+    if ensure_aware(row.expires_at) <= _utcnow():
+        return None
+    # گره‌خوردن به نشست: ابطال نشست، بلیطِ هنوزمصرف‌نشده را هم می‌میراند
+    if row.session_id is not None:
+        session = await db.get(Session, row.session_id)
+        if (
+            session is None
+            or session.revoked
+            or session.user_id != row.user_id
+        ):
+            return None
+    # دروازهٔ اتمیک تک‌مصرفی: فقط اگر هنوز مصرف نشده بود علامت بزن
+    res = await db.execute(
+        update(WsTicket)
+        .where(WsTicket.id == row.id, WsTicket.used_at.is_(None))
+        .values(used_at=_utcnow())
+    )
+    await db.commit()
+    if res.rowcount != 1:
+        return None
+    user = await db.get(User, row.user_id)
+    if not user or not user.is_active:
+        return None
+    return user

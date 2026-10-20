@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -421,7 +421,7 @@ async def test_banner_scheduling_window(tc):
     client = tc["client"]
     h = await _make_admin(tc)
     sfx = _uid()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     active = await _publish_banner(
         client,

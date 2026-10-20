@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC
 
 from sqlalchemy import select
 
@@ -291,10 +292,10 @@ async def test_prerequisite_blocks_certificate_and_enrollment(tc):
 
 
 async def _make_cohort(tc, headers, course_id, **overrides):
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     client = tc["client"]
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     body = {
         "course_id": course_id,
         "title": {"fa": f"هم‌گروهی {_uid()}", "ar": "مجموعة", "en": "Cohort"},

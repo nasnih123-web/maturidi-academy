@@ -6,8 +6,11 @@
   + ثبت در متریک‌های درون‌حافظه‌ای.
 - SecurityHeadersMiddleware: هدرهای امنیتی پایه — فقط افزودنی است، هیچ تغییری
   در قرارداد API ایجاد نمی‌کند.
+- BodySizeLimitMiddleware: سقف سراسری حجم body بر اساس هدر Content-Length
+  (Track 2 / §۱۵) — آپلودهای فایل سقف دقیق‌تر خودشان را در
+  read_capped_upload دارند؛ این میدل‌ویر سپر سراسریِ ارزان است.
 
-ترتیب اجرا (در main.py): RequestId → AccessLog → SecurityHeaders.
+ترتیب اجرا (در main.py): RequestId → BodySizeLimit → AccessLog → SecurityHeaders.
 """
 from __future__ import annotations
 
@@ -82,3 +85,42 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         for name, value in self.HEADERS.items():
             response.headers.setdefault(name, value)
         return response
+
+
+class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    """سقف سراسری حجم بدنهٔ درخواست — Track 2 / §۱۵.
+
+    اگر هدر Content-Length از سقف بیشتر باشد، بدون خواندن حتی یک بایت از
+    body، 413 با پاکت خطای یکپارچه (§۱) برمی‌گرداند. برای bodyهای chunked
+    بدون Content-Length، سقف‌های دقیق‌ترِ per-module (read_capped_upload در
+    app/core/storage.py) اعمال می‌شود.
+    """
+
+    def __init__(self, app, max_bytes: int) -> None:
+        super().__init__(app)
+        self._max_bytes = max_bytes
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        declared = request.headers.get("content-length")
+        if declared is not None:
+            try:
+                size = int(declared)
+            except ValueError:
+                size = 0
+            if size > self._max_bytes:
+                from starlette.responses import JSONResponse
+
+                return JSONResponse(
+                    status_code=413,
+                    content={
+                        "error": {
+                            "code": "request_body_too_large",
+                            "message": "حجم درخواست بیش از سقف مجاز است",
+                            "details": {"max_bytes": self._max_bytes},
+                        },
+                        "request_id": request_id_var.get(),
+                    },
+                )
+        return await call_next(request)

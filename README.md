@@ -26,11 +26,10 @@ apps/
   desktop/    Tauri
 packages/
   design-tokens/  رنگ/تایپوگرافی/فاصله — خام، بدون فریم‌ورک خاص
-  ui-web/         کامپوننت React (DOM) برای web و crm
+  ui-web/         کامپوننت React (DOM) برای crm
   ui-native/      کامپوننت React Native برای mobile
-  icons/         آیکون‌ها
-  shared-types/  تایپ‌های مشترک
-  config/        کانفیگ مشترک
+  # نکته: icons/ و shared-types/ و config/ عمداً ساخته نشده‌اند —
+  # آیکون‌ها در design-tokens/motifs/ هستند؛ جزئیات در packages/README.md
 infra/        Docker Compose و اسکریپت‌های زیرساخت
 docs/
   engineering-contract.md   قرارداد مهندسی — قبل از هر تغییری خوانده شود

@@ -6,7 +6,7 @@ import { EMPTY_L10N, type CmsBlock, type LocalizedText } from "./contentApi";
  * LMS service — Phase 8 (Track 3, CRM).
  *
  * Management-plane client over the Track 1 backend contract
- * (`/api/v1/admin/lms/*`, ADR-0006). ADR-001: all parsing, defaults, and
+ * (`/api/v1/admin/lms/*`, ADR-0018). ADR-001: all parsing, defaults, and
  * API access live here — components only render.
  *
  * Backend notes (aligned with apps/api/app/modules/lms/{router,schemas}.py):

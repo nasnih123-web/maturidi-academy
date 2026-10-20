@@ -14,9 +14,9 @@ import base64
 import json
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import APIError
@@ -27,12 +27,16 @@ from app.models.models import (
     ModerationBannedWord,
     Notification,
     PostLike,
+    RefreshToken,
+    Role,
+    Session,
     SocialComment,
     SocialFollow,
     SocialGroup,
     SocialPost,
     SocialReport,
     User,
+    UserRole,
 )
 
 # ---------------------------------------------------------------------------
@@ -41,7 +45,7 @@ from app.models.models import (
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _L(fa: str, ar: str, en: str) -> dict:
@@ -506,6 +510,32 @@ async def _remove_reported_content(db: AsyncSession, report: SocialReport) -> No
             comment.status = "removed"
 
 
+async def _is_protected(db: AsyncSession, target: User) -> bool:
+    """کاربر دارای نقش super_admin قابل بن نیست."""
+    rows = (
+        await db.execute(
+            select(Role.name)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .where(UserRole.user_id == target.id)
+        )
+    ).scalars().all()
+    return "super_admin" in rows
+
+
+async def _revoke_user_sessions(db: AsyncSession, target: User) -> None:
+    """ابطال همهٔ نشست‌ها و توکن‌های کاربر بن‌شده."""
+    await db.execute(
+        update(Session)
+        .where(Session.user_id == target.id, Session.revoked.is_(False))
+        .values(revoked=True)
+    )
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == target.id, RefreshToken.revoked.is_(False))
+        .values(revoked=True)
+    )
+
+
 async def action_report(
     db: AsyncSession, *, report: SocialReport, action: str, note: str | None, actor: User
 ) -> SocialReport:
@@ -544,6 +574,23 @@ async def action_report(
                 body=note,
                 data={"report_id": str(report.id)},
             )
+    elif action == "ban_user":
+        ban_id: uuid.UUID | None = None
+        if report.target_type == "post":
+            post = await db.get(SocialPost, report.target_id)
+            ban_id = post.author_id if post else None
+        elif report.target_type == "comment":
+            comment = await db.get(SocialComment, report.target_id)
+            ban_id = comment.author_id if comment else None
+        elif report.target_type == "user":
+            ban_id = report.target_id
+        if ban_id:
+            target_user = await db.get(User, ban_id)
+            if target_user and not await _is_protected(db, target_user):
+                target_user.is_active = False
+                await _revoke_user_sessions(db, target_user)
+        report.status = "actioned"
+        report.actioned_at = now
     else:  # pragma: no cover — اعتبارسنجی Literal در اسکیما
         raise APIError(422, "invalid_action", "اقدام نامعتبر است")
     report.action = action

@@ -15,6 +15,7 @@ import type { AdhanSettings } from './settings';
  *   Times are "HH:MM" in the user's local timezone (tz param).
  */
 
+import { apiBaseUrl } from './api-base';
 export interface PrayerTimings {
   imsak: string;
   fajr: string;
@@ -124,7 +125,7 @@ export async function clientPrayerTimes(
   lng: number,
   settings: AdhanSettings,
 ): Promise<AdhanTimes> {
-  const base = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000').replace(/\/+$/, '');
+  const base = apiBaseUrl();
   const params = new URLSearchParams({ lat: String(lat), lng: String(lng) });
   if (settings.method) params.set('method', settings.method);
   if (settings.madhab) params.set('madhab', settings.madhab);

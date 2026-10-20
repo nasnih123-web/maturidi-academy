@@ -7,30 +7,55 @@ access token به نشست (sid) گره خورده است: اگر نشست با�
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import ensure_aware, get_db
 from app.core.errors import APIError
-from app.core.security import decode_access_token
+from app.core.security import SCOPE_FULL, decode_access_token
 from app.models.models import Permission, RolePermission, Session, User, UserRole
+from app.modules.auth.service import must_enroll_2fa
 
 _bearer = HTTPBearer(auto_error=False)
 
 _LAST_ACTIVE_TOUCH_SECONDS = 60
 
 
+async def _reject_privileged_without_2fa(db: AsyncSession, user: User) -> None:
+    """بازبینی لحظه‌ای الزام TOTP برای نقش‌های ممتاز (§۵، defense-in-depth).
+
+    دامنهٔ توکن (`scope`) در لحظهٔ صدور تعیین می‌شود؛ اگر بعداً نقش کاربر
+    ارتقا یابد (admin شود) یا TOTPش غیرفعال شود، توکنِ قدیمیِ `full` نباید
+    همچنان درهای مدیریتی را باز کند. این چک در هر درخواستِ نیازمند مجوز،
+    وضعیتِ فعلیِ کاربر را از DB می‌خواند — مستقل از scope توکن.
+    """
+    if await must_enroll_2fa(db, user):
+        raise APIError(
+            403,
+            "requires_2fa",
+            "برای این عملیات باید احراز دوعاملی کامل شده باشد",
+        )
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: AsyncSession = Depends(get_db),
+    # نکتهٔ FastAPI: پارامتر Request باید دقیقاً با همین annotation بیاید؛
+    # شکل `Request | None` توسط FastAPI به‌عنوان Query-param عادی تلقی و
+    # ساخت اپ با FastAPIError می‌شکند. دیفالت None فقط برای فراخوانی‌های
+    # مستقیم (_optional_user در روترها) است؛ در مسیر Depends همیشه request واقعی تزریق می‌شود.
+    request: Request = None,  # type: ignore[assignment]
 ) -> User:
     if not credentials:
         raise APIError(401, "unauthorized", "توکن احراز هویت ارسال نشده است")
     payload = decode_access_token(credentials.credentials)
+    # دامنهٔ توکن برای تصمیم‌های پایین‌دستی (require_permission) نگه داشته می‌شود
+    if request is not None:
+        request.state.token_scope = payload.get("scope", SCOPE_FULL)
     try:
         user_id = uuid.UUID(payload["sub"])
     except (KeyError, ValueError):
@@ -45,9 +70,12 @@ async def get_current_user(
         session = await db.get(Session, session_id)
         if session is None or session.revoked:
             raise APIError(401, "session_revoked", "نشست پایان یافته است")
+        # نشست برای مصرف‌کننده‌های پایین‌دستی (مثل صدور بلیط WS) نگه داشته می‌شود
+        if request is not None:
+            request.state.session_id = session_id
         # لمس throttled آخرین فعالیت — بدون commit صریح در dependency
         # (برخلاف turbo که در dep کامیت می‌کند؛ نوشتن با تراکنش درخواست می‌ماند).
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if (now - ensure_aware(session.last_active_at)).total_seconds() > _LAST_ACTIVE_TOUCH_SECONDS:
             session.last_active_at = now
 
@@ -57,13 +85,57 @@ async def get_current_user(
     return user
 
 
+def require_full_scope():
+    """توکن عامل-اول (2fa_setup) را رد می‌کند — برای endpointهایی که
+    احراز هویتِ کامل (شامل 2FA نقش‌های ممتاز) لازم دارند ولی مجوز
+    خاصی چک نمی‌کنند (مثل صدور بلیط وب‌سوکت)."""
+
+    async def _check_scope(
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+        request: Request = None,  # type: ignore[assignment]  # FastAPI تزریق می‌کند
+    ) -> User:
+        scope = (
+            getattr(request.state, "token_scope", SCOPE_FULL)
+            if request is not None
+            else SCOPE_FULL
+        )
+        if scope != SCOPE_FULL:
+            raise APIError(
+                403,
+                "requires_2fa",
+                "برای این عملیات باید احراز دوعاملی کامل شده باشد",
+            )
+        # بازبینی لحظه‌ای: ارتقای نقش/غیرفعال‌سازی TOTP پس از صدور توکن (§۵)
+        await _reject_privileged_without_2fa(db, user)
+        return user
+
+    return _check_scope
+
+
 def require_permission(permission_key: str):
     """فکتوری dependency — بررسی مجوز واقعی از روی جدول‌ها، نه enum."""
 
     async def _check(
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
+        request: Request = None,  # type: ignore[assignment]  # FastAPI تزریق می‌کند
     ) -> User:
+        # توکن عامل-اول (2fa_setup) هیچ دسترسی نیازمند مجوز ندارد —
+        # اجرای سمت-سرور الزام TOTP برای نقش‌های ممتاز (قرارداد فاز ۰ §۲).
+        scope = (
+            getattr(request.state, "token_scope", SCOPE_FULL)
+            if request is not None
+            else SCOPE_FULL
+        )
+        if scope != SCOPE_FULL:
+            raise APIError(
+                403,
+                "requires_2fa",
+                "برای این عملیات باید احراز دوعاملی کامل شده باشد",
+            )
+        # بازبینی لحظه‌ای: ارتقای نقش/غیرفعال‌سازی TOTP پس از صدور توکن (§۵)
+        await _reject_privileged_without_2fa(db, user)
         stmt = (
             select(Permission.id)
             .select_from(UserRole)

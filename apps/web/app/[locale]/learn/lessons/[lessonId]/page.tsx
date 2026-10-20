@@ -1,25 +1,17 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { ApiError, getCourseServer, lessonHasQuiz } from '@/lib/lms';
 import { LessonArticleHead, LessonContentView } from '@/components/LessonContent';
 import type { LessonPlayerLabels } from '@/components/LessonPlayer';
 import type { QuizRunnerLabels } from '@/components/QuizRunnerShell';
-
-const LessonProgressIsland = dynamic(
-  () => import('@/components/LessonPlayer').then((m) => m.LessonProgressIsland),
-  { ssr: false, loading: () => <p className="lms-state">…</p> },
-);
-const LessonQuizIsland = dynamic(
-  () => import('@/components/LessonPlayer').then((m) => m.LessonQuizIsland),
-  { ssr: false, loading: () => <p className="lms-state">…</p> },
-);
+import { LessonProgressIsland, LessonQuizIsland } from '@/components/LessonPlayerLazy';
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'lms' });
   return { title: t('lessonMetaTitle'), description: t('lessonMetaDescription') };
@@ -35,12 +27,14 @@ export async function generateMetadata({
  * code-split client islands (ssr: false) for the First Load JS budget.
  */
 export default async function LessonPage({
-  params: { locale, lessonId },
-  searchParams,
+  params,
+  searchParams: searchParamsPromise,
 }: {
-  params: { locale: string; lessonId: string };
-  searchParams: { course?: string };
+  params: Promise<{ locale: string; lessonId: string }>;
+  searchParams: Promise<{ course?: string }>;
 }) {
+  const { locale, lessonId } = await params;
+  const searchParams = await searchParamsPromise;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'lms' });
   const tq = await getTranslations({ locale, namespace: 'quiz' });

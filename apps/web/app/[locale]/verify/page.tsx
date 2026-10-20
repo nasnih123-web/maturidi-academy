@@ -1,17 +1,13 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
-
-const VerifyPanel = dynamic(() => import('@/components/VerifyPanel').then((m) => m.VerifyPanel), {
-  ssr: false,
-  loading: () => <p className="auth-loading">…</p>,
-});
+import { VerifyPanel } from '@/components/VerifyPanelLazy';
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'verify' });
   return { title: t('metaTitle'), description: t('metaDescription') };
@@ -25,10 +21,11 @@ export async function generateMetadata({
  * is code-split (ssr: false) per the First Load JS budget.
  */
 export default async function VerifyPage({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'verify' });
   return (

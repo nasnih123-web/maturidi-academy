@@ -1,18 +1,14 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import type { FatwaSubmitLabels } from '@/components/social/labels';
-
-const SubmitFatwaView = dynamic(
-  () => import('@/components/fatwa/SubmitFatwaView').then((m) => m.SubmitFatwaView),
-  { ssr: false, loading: () => <p className="auth-loading">…</p> },
-);
+import { SubmitFatwaView } from '@/components/fatwa/SubmitFatwaViewLazy';
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'fatwa' });
   return { title: t('submit.metaTitle'), description: t('submit.metaDescription') };
@@ -23,7 +19,8 @@ export async function generateMetadata({
  * visible only to the scholar_author role. POST /api/v1/fatwa/submissions
  * enters the shared workflow (draft → in_review → …). Code-split.
  */
-export default async function SubmitFatwaPage({ params: { locale } }: { params: { locale: string } }) {
+export default async function SubmitFatwaPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'fatwa' });
   const tCalc = await getTranslations({ locale, namespace: 'calculators' });

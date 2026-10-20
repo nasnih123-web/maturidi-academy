@@ -18,7 +18,7 @@ import hashlib
 import hmac
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,7 +44,7 @@ CALLBACK_TTL_HOURS = 24
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _is_expired(expires_at: datetime) -> bool:
@@ -59,7 +59,7 @@ def _idem_key(content_type: str, content_id: str, target: str) -> str:
 
 def _sign_nonce(nonce: str, op: str, content_id: str) -> str:
     key = get_settings().encryption_key.encode("utf-8")
-    msg = f"{nonce}:{op}:{content_id}".encode("utf-8")
+    msg = f"{nonce}:{op}:{content_id}".encode()
     return hmac.new(key, msg, hashlib.sha256).hexdigest()
 
 
@@ -173,7 +173,7 @@ async def fetch_content(
     """برمی‌گرداند: {title, excerpt, url} یا None اگر محتوا یافت نشد."""
     try:
         if content_type == "fatwa_submission":
-            from app.modules.fatwa import submissions_service  # noqa: PLC0415
+            from app.modules.fatwa import submissions_service
 
             sub = await submissions_service.get_submission(
                 db, uuid.UUID(content_id)
@@ -265,11 +265,36 @@ def _published_out(row: TelegramPublished) -> dict:
     }
 
 
+async def _telegram_allowed(db: AsyncSession, row: TelegramPublished) -> bool:
+    """گیت توزیع تلگرام در زمان سرو — فاز ۱۴ (ADR-0011، §۹.۵).
+
+    lazy import برای جلوگیری از چرخهٔ وارداتی. content_type ناشناخته →
+    محافظه‌کارانه مجاز (رفتار قبلی حفظ می‌شود).
+    """
+    try:
+        from app.modules.admin import (
+            content_center_service as control_svc,
+        )
+        from app.modules.admin.control_registry import (
+            TELEGRAM_CONTENT_DOMAINS,
+        )
+
+        domain = TELEGRAM_CONTENT_DOMAINS.get(row.source_content_type)
+        if domain is None:
+            return True
+        return await control_svc.is_channel_allowed(
+            db, domain, row.source_content_type, row.source_content_id, "telegram"
+        )
+    except Exception:  # noqa: BLE001 — خطای گیت هرگز انتشار را نمی‌شکند
+        logger.exception("telegram distribution gate failed (fail-open)")
+        return True
+
+
 async def _enqueue_telegram_job(job_name: str, **kwargs) -> bool:
     """گذاشتن جاب در صف telegram — صادقانه False اگر ورکر/Redis نباشد."""
     try:
-        from arq import create_pool  # noqa: PLC0415
-        from arq.connections import RedisSettings  # noqa: PLC0415
+        from arq import create_pool
+        from arq.connections import RedisSettings
 
         pool = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
         await pool.enqueue_job(job_name, _queue_name="telegram", **kwargs)
@@ -362,6 +387,29 @@ async def send_pending(db: AsyncSession, published_id: uuid.UUID) -> dict:
         raise APIError(404, "publish_not_found", "رکورد انتشار یافت نشد")
     if row.status == "sent":
         return _published_out(row)  # قبلاً ارسال شده — اثر تکراری ندارد
+
+    # --- فاز ۱۴ (ADR-0011): گیت توزیع در زمان سرو (§۹.۵) ---
+    # محتوایی که برای تلگرام ممنوع شده (web منتشر ولی telegram=false)
+    # این‌جا skip می‌شود، نه ارسال — حتی اگر رکورد publish ساخته شده باشد.
+    if not await _telegram_allowed(db, row):
+        row.status = "skipped"
+        row.error = "distribution_forbidden"
+        await log_audit(
+            db,
+            actor_id=None,
+            actor_type="system",
+            action="telegram.publish.skipped",
+            entity_type="telegram_published",
+            entity_id=str(row.id),
+            new_values={
+                "reason": "distribution_forbidden",
+                "content_type": row.source_content_type,
+                "content_id": row.source_content_id,
+            },
+        )
+        await db.commit()
+        await db.refresh(row)
+        return _published_out(row)
 
     policy = await get_policy(db, row.source_content_type, create=False)
     template = policy.message_template if policy else None
@@ -523,7 +571,7 @@ async def auto_publish_if_policy(
 
 async def _system_actor(db: AsyncSession) -> User:
     """کاربر سیستمی برای انتشار خودکار — اولین super_admin فعال."""
-    from app.models.models import Role, UserRole  # noqa: PLC0415
+    from app.models.models import Role, UserRole
 
     stmt = (
         select(User)
@@ -641,7 +689,7 @@ async def notify_review_request(
 
 async def verify_webhook_secret(db: AsyncSession, provided: str | None) -> bool:
     """احراز هویت وبهوک تلگرام — هدر X-Telegram-Bot-Api-Secret-Token."""
-    from app.core.platform_settings import get_setting as _gs  # noqa: PLC0415
+    from app.core.platform_settings import get_setting as _gs
 
     expected = await _gs(db, "telegram.webhook_secret")
     if not expected or not provided:
@@ -670,7 +718,7 @@ async def apply_callback(
 
     result: dict
     if cb.source_content_type == "fatwa_submission":
-        from app.modules.fatwa import submissions_service  # noqa: PLC0415
+        from app.modules.fatwa import submissions_service
 
         target = {"approve": "approved", "reject": "rejected"}.get(cb.op)
         if target is None:

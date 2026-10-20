@@ -107,7 +107,7 @@ async def connect_confirm_code(
 @telegram_router.get("/connect/status", response_model=schemas.ConnectStatus)
 async def connect_status(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(_admin),  # noqa: ARG001
+    user: User = Depends(_admin),
 ):
     return await connect_service.status(db)
 
@@ -171,7 +171,7 @@ async def import_channel(
 @telegram_router.get("/distribute/policies", response_model=list[schemas.PolicyOut])
 async def list_policies(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(_admin),  # noqa: ARG001
+    user: User = Depends(_admin),
 ):
     return await distribute_service.list_policies(db)
 
@@ -216,7 +216,7 @@ async def publish_now(
 @telegram_router.get("/distribute/log", response_model=schemas.PublishedList)
 async def publish_log(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(_admin),  # noqa: ARG001
+    user: User = Depends(_admin),
     content_type: str | None = Query(default=None),
     status: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -255,3 +255,56 @@ async def revoke_publish(
         db, published_id, actor=user,
         ip=_client_ip(request), user_agent=_ua(request),
     )
+
+
+@telegram_router.post(
+    "/distribute/approve/{published_id}", response_model=schemas.PublishedOut
+)
+async def approve_publish(
+    published_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(_admin),
+):
+    """تأیید دستی انتشار — صف manual_approval (مرکز تلگرام فاز ۱۴). idempotent."""
+    from app.modules.telegram.distribute_service import TelegramPublished
+
+    row = await db.get(TelegramPublished, published_id)
+    if row is None:
+        raise APIError(404, "publish_not_found", "رکورد انتشار یافت نشد")
+    if row.status not in ("pending", "failed"):
+        raise APIError(422, "bad_status", f"وضعیت {row.status} قابل تأیید نیست")
+    await log_audit(
+        db, actor_id=user.id, actor_type="admin", action="telegram.publish.approve",
+        entity_type="telegram_published", entity_id=str(row.id),
+        ip=_client_ip(request), user_agent=_ua(request),
+    )
+    return await distribute_service.send_pending(db, published_id)
+
+
+@telegram_router.post(
+    "/distribute/reject/{published_id}", response_model=schemas.PublishedOut
+)
+async def reject_publish(
+    published_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(_admin),
+):
+    """رد دستی انتشار — صف manual_approval."""
+    from app.modules.telegram.distribute_service import TelegramPublished
+
+    row = await db.get(TelegramPublished, published_id)
+    if row is None:
+        raise APIError(404, "publish_not_found", "رکورد انتشار یافت نشد")
+    if row.status not in ("pending", "failed"):
+        raise APIError(422, "bad_status", f"وضعیت {row.status} قابل رد نیست")
+    row.status = "rejected"
+    await log_audit(
+        db, actor_id=user.id, actor_type="admin", action="telegram.publish.reject",
+        entity_type="telegram_published", entity_id=str(row.id),
+        ip=_client_ip(request), user_agent=_ua(request),
+    )
+    await db.commit()
+    await db.refresh(row)
+    return row

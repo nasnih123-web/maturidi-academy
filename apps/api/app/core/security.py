@@ -3,7 +3,7 @@
 - هش رمز عبور: Argon2id
 - Access token کوتاه‌مدت (۱۵ دقیقه، HS256) + رفرش‌توکن opaque با rotation
 - 2FA = TOTP (+ کدهای بازیابی یک‌بارمصرف با هش)
-- Rate limiter حافظه‌ای برای dev — در production با Redis جایگزین شود.
+- Rate limiter حافظه‌ای (قدیمی) + `app.core.rate_limit` توزیع‌شده با Redis (§۷)
 """
 from __future__ import annotations
 
@@ -38,17 +38,31 @@ def verify_password(password_hash: str, password: str) -> bool:
 
 # ---------- JWT (access, کوتاه‌مدت) ----------
 
-def create_access_token(user_id: str, extra: dict | None = None) -> str:
+# دامنه‌های توکن دسترسی:
+# - "full": توکن کامل (پس از احراز هویت کامل، شامل 2FA برای نقش‌های ممتاز)
+# - "2fa_setup": توکن عامل-اول برای ادمینِ بدون TOTP — فقط برای ثبت‌نام 2FA
+#   معتبر است و هیچ endpoint نیازمند مجوز (require_permission) را باز نمی‌کند.
+SCOPE_FULL = "full"
+SCOPE_2FA_SETUP = "2fa_setup"
+
+
+def create_access_token(
+    user_id: str, extra: dict | None = None, scope: str = SCOPE_FULL
+) -> str:
     settings = get_settings()
     now = int(time.time())
     payload: dict = {
         "sub": user_id,
         "type": "access",
+        "scope": scope,
         "iat": now,
         "exp": now + settings.access_token_expire_minutes * 60,
         "jti": pysecrets.token_hex(8),
     }
     if extra:
+        # extra هرگز اجازهٔ بازنویسی claimهای امنیتی را ندارد
+        for key in ("sub", "type", "scope", "iat", "exp", "jti"):
+            extra.pop(key, None)
         payload.update(extra)
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
@@ -93,6 +107,31 @@ def verify_totp(secret: str, code: str) -> bool:
         return False
 
 
+TOTP_STEP_SECONDS = 30
+
+
+def verify_totp_step(secret: str, code: str, valid_window: int = 1) -> int | None:
+    """تأیید TOTP و برگرداندن شمارندهٔ گام زمانیِ (۳۰ ثانیه‌ای) منطبق.
+
+    None یعنی کد نامعتبر/منقضی. گام برگشتی برای ضد replay استفاده می‌شود:
+    فراخواننده باید با UPDATE مشروط اتمیک (`totp_last_step < گام`) ثبت کند
+    که همین کد در همین پنجره قبلاً مصرف نشده است. پنجرهٔ پذیرش دقیقاً
+    معادل `verify(..., valid_window=1)` است تا رفتار قبلی حفظ شود.
+    """
+    try:
+        totp = pyotp.TOTP(secret)
+    except Exception:
+        return None
+    current = int(time.time()) // TOTP_STEP_SECONDS
+    for step in range(current - valid_window, current + valid_window + 1):
+        try:
+            if totp.verify(code, for_time=step * TOTP_STEP_SECONDS, valid_window=0):
+                return step
+        except Exception:
+            return None
+    return None
+
+
 def generate_recovery_codes(n: int = 10) -> list[str]:
     return [f"{pysecrets.token_hex(2)}-{pysecrets.token_hex(2)}".upper() for _ in range(n)]
 
@@ -102,7 +141,9 @@ def generate_recovery_codes(n: int = 10) -> list[str]:
 class RateLimiter:
     """پنجرهٔ لغزان ساده + قفل موقت بعد از عبور از سقف.
 
-    در production باید با Redis (ثابت بین instanceها) جایگزین شود.
+    نگه‌داشته‌شده برای سازگاری (lms/library)؛ endpointهای حساس احراز هویت
+    از `app.core.rate_limit.DistributedRateLimiter` (پشتوانهٔ Redis، §۷)
+    استفاده می‌کنند — حافظهٔ درون‌فرایندی بین instanceها مشترک نیست.
     """
 
     def __init__(self) -> None:

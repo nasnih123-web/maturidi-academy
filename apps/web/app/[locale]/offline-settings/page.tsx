@@ -8,20 +8,22 @@ import { OfflineSettingsClient, type OfflineSettingsLabels } from '@/components/
  */
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'offline' });
   return { title: t('settingsMetaTitle') };
 }
 
 export default async function OfflineSettingsPage({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'offline' });
   const labels: OfflineSettingsLabels = {

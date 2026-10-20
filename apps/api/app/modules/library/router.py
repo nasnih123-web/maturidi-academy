@@ -221,10 +221,15 @@ async def create_item(
         meta = LibraryItemMetaIn.model_validate(json.loads(metadata))
     except Exception as exc:
         raise APIError(422, "invalid_metadata", f"متادیتای JSON نامعتبر است: {exc}")
-    content = await file.read()
+    # خواندن جریانی با سقف حجم (§۷): فایل غول‌پیکر هرگز کامل در RAM بار نمی‌شود
+    content = await service.read_upload_capped(
+        file, service.upload_limit_for_kind(meta.kind)
+    )
     cover_content, cover_filename = None, None
     if cover is not None:
-        cover_content = await cover.read()
+        cover_content = await service.read_upload_capped(
+            cover, service.upload_limit_for_kind("cover")
+        )
         cover_filename = cover.filename
     return _out(
         await service.create_item(
@@ -252,7 +257,11 @@ async def update_item(
         raise APIError(422, "invalid_metadata", f"متادیتای JSON نامعتبر است: {exc}")
     new_content, new_filename = None, None
     if file is not None:
-        new_content = await file.read()
+        # سقف حجم بر اساس نوعِ آیتمِ موجود — پیش از خواندن کامل در RAM (§۷)
+        kind = await service.get_item_kind(db, item_id)
+        new_content = await service.read_upload_capped(
+            file, service.upload_limit_for_kind(kind)
+        )
         new_filename = file.filename
     return _out(
         await service.update_item(

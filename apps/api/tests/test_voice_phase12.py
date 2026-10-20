@@ -15,7 +15,8 @@ import uuid
 import pytest
 
 from app.core.errors import APIError
-from app.modules.voice import intents, service, tts as tts_mod
+from app.modules.voice import intents, service
+from app.modules.voice import tts as tts_mod
 
 BASE = "/api/v1"
 
@@ -99,6 +100,20 @@ async def _voice_admin_token(client, db_session, email: str) -> str:
         db_session.add(RolePermission(role_id=role.id, permission_id=perm.id))
         await db_session.flush()
     db_session.add(UserRole(user_id=uuid.UUID(me["id"]), role_id=role.id))
+
+    # remediation-pass-2 Track 1 (§۵): نقش ممتاز بدون TOTP با هیچ توکنی به
+    # endpoint ادمین نمی‌رسد؛ helper سکرت TOTP هم می‌نشاند.
+    import json
+
+    import pyotp
+
+    from app.core.secrets import encrypt_value
+    from app.models.models import User as _T1User
+
+    _t1u = (
+        await db_session.execute(select(_T1User).where(_T1User.id == uuid.UUID(me["id"])))
+    ).scalar_one()
+    _t1u.totp_secret = json.dumps(encrypt_value(pyotp.random_base32()))
     await db_session.commit()
     reset_settings_cache()
     return token

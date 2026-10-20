@@ -16,16 +16,16 @@ Conventions (§۱۵):
 - user_ayah_notes keeps NO workflow_status: notes are user data, not
   publishable content (§۹); privacy is enforced by owner-scoped queries.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = 'c7d21f4a9053'
-down_revision: Union[str, None] = 'b6d09fa96517'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = 'b6d09fa96517'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

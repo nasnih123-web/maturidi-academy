@@ -10,6 +10,7 @@ import importlib.util
 from typing import Protocol
 
 from app.core.errors import APIError
+
 from .intents import SUPPORTED_LANGS
 
 

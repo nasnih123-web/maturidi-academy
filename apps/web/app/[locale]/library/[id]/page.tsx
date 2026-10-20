@@ -9,10 +9,11 @@ import { LibraryAccessGate, type LibraryAccessGateLabels } from '@/components/Li
 import { LibraryCard } from '@/components/LibraryCard';
 
 export async function generateMetadata({
-  params: { locale, id },
+  params,
 }: {
-  params: { locale: string; id: string };
+  params: Promise<{ locale: string; id: string }>;
 }): Promise<Metadata> {
+  const { locale, id } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'library' });
   try {
@@ -110,10 +111,11 @@ function viewLabels(
  * retries with the user's token when logged in, else shows login-required.
  */
 export default async function LibraryItemPage({
-  params: { locale, id },
+  params,
 }: {
-  params: { locale: string; id: string };
+  params: Promise<{ locale: string; id: string }>;
 }) {
+  const { locale, id } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'library' });
   const vl = viewLabels(t);

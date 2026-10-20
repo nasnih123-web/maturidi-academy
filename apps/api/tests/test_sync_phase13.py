@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
 from sqlalchemy import select
 
 BASE = "/api/v1"
@@ -431,6 +430,7 @@ async def test_dhikr_daily_count_max_wins(tc):
     assert res[0]["status"] == "applied"
 
     from datetime import date as _date
+
     from app.models.models import DhikrDailyCount, User
 
     maker = tc["maker"]
@@ -561,7 +561,7 @@ async def test_register_device_upsert_and_token_rotation(tc):
     )
     assert r.status_code == 200, r.text
 
-    from app.models.models import UserDevice, User
+    from app.models.models import User, UserDevice
     maker = tc["maker"]
     async with maker() as db:
         user = (await db.execute(
@@ -630,7 +630,7 @@ async def test_web_push_subscribe_unsubscribe(tc):
     )
     assert r.status_code == 200, r.text
 
-    from app.models.models import WebPushSubscription, User
+    from app.models.models import User, WebPushSubscription
     maker = tc["maker"]
     async with maker() as db:
         user = (await db.execute(
@@ -675,6 +675,7 @@ async def test_vapid_key_not_configured_returns_unconfigured(tc):
 async def test_admin_sync_devices_requires_permission(tc, db_session):
     """GET /admin/sync/devices: بدون مجوز 403؛ با sync.manage همهٔ دستگاه‌ها."""
     import uuid as _uuid
+
     from app.models.models import Permission, Role, RolePermission, UserRole
 
     client = tc["client"]

@@ -55,9 +55,8 @@ async def _make_super_admin(client, db_session, email: str) -> str:
     """کاربر با مجوز platform.settings (الگوی test_hardening)."""
     from sqlalchemy import select
 
-    from app.models.models import Permission, Role, RolePermission, UserRole
-
     from app.core.platform_settings import reset_settings_cache
+    from app.models.models import Permission, Role, RolePermission, UserRole
 
     reset_settings_cache()
 
@@ -92,6 +91,19 @@ async def _make_super_admin(client, db_session, email: str) -> str:
         db_session.add(RolePermission(role_id=role.id, permission_id=perm.id))
         await db_session.flush()
     db_session.add(UserRole(user_id=uuid.UUID(me["id"]), role_id=role.id))
+    # remediation-pass-2 Track 1 (§۵): نقش ممتاز بدون TOTP با هیچ توکنی —
+    # حتی full — به endpoint ادمین نمی‌رسد؛ پس helper سکرت TOTP هم می‌نشاند.
+    import json
+
+    import pyotp
+
+    from app.core.secrets import encrypt_value
+    from app.models.models import User as _User
+
+    _u = (
+        await db_session.execute(select(_User).where(_User.id == uuid.UUID(me["id"])))
+    ).scalar_one()
+    _u.totp_secret = json.dumps(encrypt_value(pyotp.random_base32()))
     await db_session.commit()
     reset_settings_cache()
     return tokens["access_token"]

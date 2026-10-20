@@ -7,10 +7,11 @@ import { MadhabCompare } from '@/components/MadhabCompare';
 import { EmptyState } from '@/components/EmptyState';
 
 export async function generateMetadata({
-  params: { locale, topicId },
+  params,
 }: {
-  params: { locale: string; topicId: string };
+  params: Promise<{ locale: string; topicId: string }>;
 }): Promise<Metadata> {
+  const { locale, topicId } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'fatwa' });
   return { title: `${t('compareTitle')} | ${t('metaTitle')}` };
@@ -24,10 +25,11 @@ export async function generateMetadata({
  * Next.js not-found page.
  */
 export default async function ComparePage({
-  params: { locale, topicId },
+  params,
 }: {
-  params: { locale: string; topicId: string };
+  params: Promise<{ locale: string; topicId: string }>;
 }) {
+  const { locale, topicId } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'fatwa' });
 
