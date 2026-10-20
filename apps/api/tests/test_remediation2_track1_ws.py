@@ -7,9 +7,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy import select, update
 
 BASE = "/api/v1"
@@ -127,7 +126,7 @@ async def test_expired_ticket_rejected(tc):
         await db.execute(
             update(WsTicket)
             .where(WsTicket.ticket_hash == hash_token(ticket))
-            .values(expires_at=datetime.now(timezone.utc) - timedelta(seconds=1))
+            .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
         )
         await db.commit()
         assert await redeem_ws_ticket(db, ticket) is None

@@ -167,7 +167,6 @@ def test_public_url_rejects_bad_base(monkeypatch):
 def test_kavenegar_api_error_body_not_fake_success():
     """§۸: HTTP 200 با return.status غیر 200 → خطا (نه «موفقیت جعلی»)."""
     import asyncio
-    import json
 
     import httpx
 
@@ -195,7 +194,6 @@ def test_kavenegar_api_error_body_not_fake_success():
         async def post(self, *a, **kw):
             return _FakeResp()
 
-    import app.core.sms as sms_mod
 
     orig = httpx.AsyncClient
     httpx.AsyncClient = _FakeClient

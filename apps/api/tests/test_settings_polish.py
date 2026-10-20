@@ -55,9 +55,8 @@ async def _make_super_admin(client, db_session, email: str) -> str:
     """کاربر با مجوز platform.settings (الگوی test_hardening)."""
     from sqlalchemy import select
 
-    from app.models.models import Permission, Role, RolePermission, UserRole
-
     from app.core.platform_settings import reset_settings_cache
+    from app.models.models import Permission, Role, RolePermission, UserRole
 
     reset_settings_cache()
 

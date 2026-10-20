@@ -11,9 +11,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
-
-import pytest
+from datetime import UTC, datetime, timedelta
 
 from app.modules.projects import service as pms_service
 
@@ -359,7 +357,7 @@ async def test_due_soon_cron_notifies_and_marks(tc, db_session):
     worker = await _register(client, "pms-worker3@example.com")
     proj = await _make_project(client, admin_headers, "پروژه سررسید")
 
-    due = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
+    due = (datetime.now(UTC) + timedelta(hours=12)).isoformat()
     r = await client.post(
         f"{BASE}/projects/{proj['id']}/tasks",
         json={"title": _L("تسک نزدیک سررسید"), "assignee_id": worker["id"], "due_date": due},

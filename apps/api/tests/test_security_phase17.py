@@ -336,8 +336,6 @@ async def test_jwt_wrong_secret_rejected(tc):
 
 async def test_jwt_expired_rejected(tc):
     """توکن منقضی رد می‌شود."""
-    import base64
-    import json
 
     from app.core.config import get_settings
 

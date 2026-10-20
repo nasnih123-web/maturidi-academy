@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -156,7 +156,7 @@ async def test_report_queue_sla_and_status_transitions(tc):
     assert r.status_code == 201, r.text
     post_id = r.json()["id"]
 
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
     r = await client.post(
         f"{BASE}/social/report",
         json={"target_type": "post", "target_id": post_id, "reason": "محتوای نامناسب"},

@@ -12,7 +12,6 @@ from __future__ import annotations
 import time
 import uuid
 
-import pytest
 from sqlalchemy import select
 
 BASE = "/api/v1"
@@ -77,7 +76,6 @@ async def _ensure_role_perm(db, role_name: str, perm_key: str):
 
 async def _make_admin(tc, suffix: str, with_totp: bool = False):
     """ادمین واقعی؛ with_totp=True یعنی TOTP فعال با سکرت شناخته‌شده."""
-    import pyotp
 
     from app.core.secrets import encrypt_value
     from app.core.security import hash_password

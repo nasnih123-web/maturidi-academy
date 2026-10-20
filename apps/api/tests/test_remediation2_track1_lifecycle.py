@@ -12,7 +12,6 @@ import asyncio
 import threading
 import uuid
 
-import pytest
 from sqlalchemy import func, select
 
 BASE = "/api/v1"
@@ -170,12 +169,13 @@ async def test_password_reset_revokes_all_sessions(tc):
 
 async def test_concurrent_recovery_code_single_use(tc):
     """دو درخواست هم‌زمان با یک کد بازیابی → فقط یکی 200، دیگری 400."""
+    import json
+
     import pyotp
 
     from app.core.secrets import encrypt_value
-    from app.core.security import generate_recovery_codes, hash_password, hash_token
+    from app.core.security import generate_recovery_codes, hash_token
     from app.models.models import RecoveryCode, User
-    import json
 
     client = tc["client"]
     email = f"rc9-{_uid()}@example.com"

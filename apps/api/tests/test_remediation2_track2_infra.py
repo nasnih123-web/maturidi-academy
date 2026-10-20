@@ -91,16 +91,29 @@ def test_compose_dev_uses_service_names():
 
 
 def test_ci_semgrep_is_blocking():
-    """ادعای pass-1: semgrep در CI مسدودکننده است (نه || true، نه continue-on-error)."""
+    """ادعای pass-1: semgrep در CI مسدودکننده است (نه || true، نه continue-on-error).
+
+    به‌روزرسانی دامنه‌محور (نه تضعیف): تنها continue-on-error مجاز در کل
+    فایل، گام Typecheck (mypy) است — سازوکار شفاف UI برای بدهی تایپ مستند،
+    به‌جای || true خاموش قبلی. این تست حالا هر دو را pin می‌کند: Security
+    scan همچنان بدون continue-on-error و || true، و دقیقاً یک
+    continue-on-error در فایل هست و آن هم داخل گام Typecheck است.
+    """
     content = _read(".github/workflows/ci.yml")
-    assert "continue-on-error" not in content
-    # گام Security scan: فقط خطوط run: واقعی بررسی شود (نه کامنت‌ها)
+    # گام Security scan: مسدودکنندهٔ کامل — نه || true، نه continue-on-error
     scan = content.split("Security scan", 1)[1].split("- name:", 1)[0]
+    assert "continue-on-error" not in scan
+    # فقط خطوط run: واقعی بررسی شود (نه کامنت‌ها)
     run_lines = [
         ln for ln in scan.splitlines() if ln.strip().startswith("run:")
     ]
     assert run_lines, "no run: line in semgrep step"
     assert not any("|| true" in ln for ln in run_lines), "semgrep step is not blocking"
+    # تنها استثنای فایل: دقیقاً یک کلید continue-on-error، داخل گام Typecheck
+    coe_keys = re.findall(r"(?m)^\s*continue-on-error:", content)
+    assert len(coe_keys) == 1, f"expected exactly 1 continue-on-error step key, got {len(coe_keys)}"
+    typecheck = content.split("Typecheck", 1)[1].split("- name:", 1)[0]
+    assert "continue-on-error:" in typecheck
 
 
 def test_backup_script_has_sha256_manifest():

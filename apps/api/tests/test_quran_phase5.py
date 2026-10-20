@@ -12,7 +12,7 @@
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -522,14 +522,14 @@ async def test_munajat_window_logic(tc, db_session):
     from app.modules.quran import service as qsvc
 
     # ۰۳:۳۰ به وقت تهران (+۳:۳۰) = ۰۰:۰۰ UTC → داخل پنجرهٔ ۰۲:۰۰–۰۵:۰۰
-    inside = datetime(2026, 10, 19, 0, 0, tzinfo=timezone.utc)
+    inside = datetime(2026, 10, 19, 0, 0, tzinfo=UTC)
     st = await qsvc.get_munajat_status(db_session, tz_offset=3.5, now_utc=inside)
     assert st["enabled"] is True
     assert st["in_window"] is True
     assert st["window"] == {"start": "02:00", "end": "05:00"}
 
     # ۱۲:۰۰ UTC → خارج از پنجره
-    outside = datetime(2026, 10, 19, 12, 0, tzinfo=timezone.utc)
+    outside = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
     st = await qsvc.get_munajat_status(db_session, tz_offset=3.5, now_utc=outside)
     assert st["in_window"] is False
 

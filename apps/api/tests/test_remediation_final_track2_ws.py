@@ -19,11 +19,11 @@ import json
 import socket
 import threading
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
 import websockets
-from datetime import datetime, timezone
 from sqlalchemy import select
 
 BASE = "/api/v1"
@@ -105,7 +105,7 @@ async def test_ticket_bound_to_session_a_dies_with_a_while_b_lives(tc):
             await db.execute(select(User).where(User.email == email))
         ).scalar_one()
         # دو نشست واقعی برای یک کاربر
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         sess_a = Session(user_id=user.id, device_info="dev-A", last_active_at=now)
         sess_b = Session(user_id=user.id, device_info="dev-B", last_active_at=now)
         db.add_all([sess_a, sess_b])

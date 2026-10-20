@@ -16,14 +16,15 @@ import json
 import socket
 import threading
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
 import websockets
-from app.modules.content.service import ContentAdapter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.content.service import ContentAdapter
 
 # ---------- helpers ----------
 
@@ -437,8 +438,8 @@ async def test_content_empty_registry_graceful(tc):
 async def _temp_maker(tmp_path):
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-    from app.core.database import Base
     import app.models  # noqa: F401
+    from app.core.database import Base
 
     db_file = str(tmp_path / "unit.db")
     engine = create_async_engine(
@@ -485,7 +486,7 @@ async def test_dispatch_dead_letter_after_five_failures(tmp_path):
                 ev = await db.get(DomainEvent, uuid.UUID(eid))
                 if ev.failed_at is not None:
                     break
-                ev.created_at = datetime.now(timezone.utc) - timedelta(seconds=600)
+                ev.created_at = datetime.now(UTC) - timedelta(seconds=600)
                 await db.commit()
 
         async with maker() as db:
@@ -635,7 +636,7 @@ async def test_admin_dead_letter_endpoints(tc):
     async with tc["maker"]() as db:
         ev = await db.get(DomainEvent, uuid.UUID(eid))
         ev.retry_count = 5
-        ev.failed_at = datetime.now(timezone.utc)
+        ev.failed_at = datetime.now(UTC)
         await db.commit()
 
     r = await client.get("/api/v1/admin/events/dead-letter", headers=headers)

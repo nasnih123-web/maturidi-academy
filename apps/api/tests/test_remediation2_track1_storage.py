@@ -12,7 +12,6 @@ Blocked). لبهٔ شبکه (bucket_exists/make_bucket) با stub در سطح ک
 """
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
@@ -224,7 +223,6 @@ async def test_ensure_storage_ready_prod_fails_loud_on_unreachable(
 ):
     """یافتهٔ ۴: در production با MinIOِ در دسترس‌نبودن، startup فیل می‌شود."""
     from app.core import storage as storage_mod
-    from app.core.config import get_settings
 
     settings = _prod_s3_env(monkeypatch)
     stub = _StubClient(error=ConnectionError("refused"))
