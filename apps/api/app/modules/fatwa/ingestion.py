@@ -12,7 +12,7 @@ approval: chunkهای ساخته‌شده با workflow_status=draft می‌ما
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -80,7 +80,7 @@ async def run_ingestion(
     if run is None:
         raise ValueError(f"ingestion run یافت نشد: {run_id}")
     run.status = "running"
-    run.started_at = datetime.now(timezone.utc)
+    run.started_at = datetime.now(UTC)
     await db.flush()
 
     stats: dict[str, Any] = {"stages": {}}
@@ -128,13 +128,13 @@ async def run_ingestion(
 
         run.status = "done"
         run.stats = stats
-    except Exception as exc:  # noqa: BLE001 — ثبت خطا در run، نه سکوت
+    except Exception as exc:
         run.status = "failed"
         stats["error"] = str(exc)
         run.stats = stats
         raise
     finally:
-        run.finished_at = datetime.now(timezone.utc)
+        run.finished_at = datetime.now(UTC)
         await db.flush()
     return stats
 

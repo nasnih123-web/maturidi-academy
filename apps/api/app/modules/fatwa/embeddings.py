@@ -209,7 +209,7 @@ class LocalModelEmbeddingProvider(EmbeddingProvider):
 
     def __init__(self) -> None:
         try:
-            from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+            from sentence_transformers import SentenceTransformer
         except ImportError as exc:
             raise EmbeddingProviderError(
                 "sentence-transformers نصب نیست؛ ai.embedding_provider را "
@@ -294,7 +294,7 @@ def pgvector_available() -> bool:
     ):
         return False
     try:
-        import pgvector  # noqa: F401, PLC0415
+        import pgvector  # noqa: F401
     except ImportError:
         return False
     return True

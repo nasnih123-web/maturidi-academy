@@ -27,7 +27,7 @@
 """
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from fractions import Fraction
 from typing import Any
 
@@ -237,7 +237,7 @@ def compute_zakat(
             "asset_categories در rule_data تعریف نشده است",
         )
 
-    total = Decimal("0")
+    total = Decimal(0)
     for key, raw in (assets or {}).items():
         cat = categories.get(key)
         if cat is None:
@@ -264,7 +264,7 @@ def compute_zakat(
     notes: list[str] = []
     net = total - debt
     if net < 0:
-        net = Decimal("0")
+        net = Decimal(0)
         notes.append("debts_exceed_assets")
 
     basis = nisab_config.get("nisab_basis", "gold")
@@ -289,7 +289,7 @@ def compute_zakat(
         raise CalculatorError("bad_rule_number", "نرخ زکات باید بین ۰ و ۱ باشد")
 
     nisab_met = net >= nisab_value
-    zakat_due = (net * rate) if nisab_met else Decimal("0")
+    zakat_due = (net * rate) if nisab_met else Decimal(0)
     if rates.get("stale"):
         notes.append("price_stale")
 

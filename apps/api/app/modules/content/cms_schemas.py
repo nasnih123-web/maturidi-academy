@@ -161,7 +161,7 @@ class NavItemOut(BaseModel):
     ends_at: datetime | None
     created_at: datetime
     updated_at: datetime
-    children: list["NavItemOut"] = Field(default_factory=list)
+    children: list[NavItemOut] = Field(default_factory=list)
 
 
 NavItemOut.model_rebuild()

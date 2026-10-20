@@ -8,7 +8,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-
 # --- ورودی‌های محاسبه ---
 
 
@@ -52,7 +51,7 @@ class ZakatCalcIn(BaseModel):
     assets: dict[str, Decimal] = Field(
         description="دسته→مقدار؛ دسته‌های grams بر حسب گرم"
     )
-    debts: Decimal = Field(ge=0, default=Decimal("0"))
+    debts: Decimal = Field(ge=0, default=Decimal(0))
     madhab: str | None = Field(default=None)
 
 

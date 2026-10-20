@@ -8,18 +8,18 @@ from __future__ import annotations
 import hashlib
 import time
 from collections import defaultdict, deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import workflow as _workflow
 from app.core.audit import log_audit
 from app.core.errors import APIError
 from app.core.events import emit_event
 from app.core.platform_settings import get_typed_setting
-from app.core import workflow as _workflow
 from app.models.models import (
     AIUsageLog,
     FatwaMessage,
@@ -44,10 +44,10 @@ from .embeddings import (
     get_embedding_provider,
 )
 from .providers import (
-    LLMProvider,
-    PromptLayers,
     SAFETY_PROMPT,
     SYSTEM_PROMPT,
+    LLMProvider,
+    PromptLayers,
     build_context_block,
     resolve_provider,
 )
@@ -143,7 +143,7 @@ async def check_quota(
     quota = await daily_quota(db)
     if user is not None:
         # شمارش DB-محور برای کاربران احرازهویت‌شده
-        day_start = datetime.now(timezone.utc).replace(
+        day_start = datetime.now(UTC).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
         count = (
@@ -1027,7 +1027,7 @@ async def trusted_source_update(
             setattr(src, k, v)
     if "base_url" in fields:
         src.domain = _domain_of(fields["base_url"])
-    src.last_checked_at = datetime.now(timezone.utc)
+    src.last_checked_at = datetime.now(UTC)
     await db.flush()
     await log_audit(
         db,

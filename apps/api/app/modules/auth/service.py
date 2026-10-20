@@ -9,7 +9,7 @@ import hmac
 import json
 import secrets as pysecrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -138,7 +138,7 @@ REUSE_DETECTION_GRACE_SECONDS = 60
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # ---------- helpers ----------
