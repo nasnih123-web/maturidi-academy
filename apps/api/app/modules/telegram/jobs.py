@@ -14,8 +14,8 @@ async def telegram_import_channel(
     ctx, *, channel: str, limit: int, actor_id: str
 ) -> dict:
     """درون‌ریزی آرشیو کانال — بدنهٔ اصلی در import_service.run_import."""
-    from app.core.database import SessionLocal  # noqa: PLC0415
-    from app.modules.telegram import import_service  # noqa: PLC0415
+    from app.core.database import SessionLocal
+    from app.modules.telegram import import_service
 
     _ = ctx
     async with SessionLocal() as db:
@@ -27,8 +27,8 @@ async def telegram_import_channel(
 @register_task("telegram")
 async def telegram_publish_message(ctx, *, published_id: str) -> dict:
     """ارسال یک رکورد انتشار pending — idempotent."""
-    from app.core.database import SessionLocal  # noqa: PLC0415
-    from app.modules.telegram import distribute_service  # noqa: PLC0415
+    from app.core.database import SessionLocal
+    from app.modules.telegram import distribute_service
 
     _ = ctx
     async with SessionLocal() as db:

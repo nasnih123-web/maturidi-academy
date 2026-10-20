@@ -12,7 +12,7 @@ audit old/new values نیست — فقط {"field": "telegram_session", "changed"
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +33,7 @@ _PHONE_RE = re.compile(r"^\+?[0-9]{5,20}$")
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _mask_phone(phone: str) -> str:

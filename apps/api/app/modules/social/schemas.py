@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 
 from app.modules.home.schemas import LocalizedText
 
-
 # ---------------------------------------------------------------------------
 # گروه‌ها
 # ---------------------------------------------------------------------------
@@ -134,7 +133,7 @@ class ReportQueuePage(BaseModel):
 
 
 class ReportAction(BaseModel):
-    action: Literal["triage", "dismiss", "remove_content", "warn_user"]
+    action: Literal["triage", "dismiss", "remove_content", "warn_user", "ban_user"]
     note: str | None = Field(default=None, max_length=2000)
 
 

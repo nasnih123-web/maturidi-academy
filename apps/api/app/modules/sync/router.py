@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -162,5 +162,5 @@ async def offline_pack(
     items = await service.offline_pack(db, user)
     return OfflinePackOut(
         items=[OfflinePackItem(**i) for i in items],
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
     )

@@ -74,9 +74,8 @@ class _RealTelethonClient:
     """آداپتور Telethon واقعی — lazy import تا بدون telethon هم import شود."""
 
     def __init__(self, session_str: str | None, api_id: int, api_hash: str):
-        from telethon.sessions import StringSession  # noqa: PLC0415
-
-        from telethon import TelegramClient  # noqa: PLC0415
+        from telethon import TelegramClient
+        from telethon.sessions import StringSession
 
         self._client = TelegramClient(
             StringSession(session_str or ""), api_id, api_hash
@@ -97,7 +96,7 @@ class _RealTelethonClient:
     async def sign_in_with_code(
         self, phone: str, code: str, phone_code_hash: str
     ) -> None:
-        from telethon.errors import SessionPasswordNeededError  # noqa: PLC0415
+        from telethon.errors import SessionPasswordNeededError
 
         try:
             await self._client.sign_in(
@@ -110,7 +109,7 @@ class _RealTelethonClient:
         await self._client.sign_in(password=password)
 
     def save_session(self) -> str:
-        from telethon.sessions import StringSession  # noqa: PLC0415
+        from telethon.sessions import StringSession
 
         return StringSession.save(self._client.session)
 
@@ -118,7 +117,7 @@ class _RealTelethonClient:
         return self._iter(channel, limit)
 
     async def _iter(self, channel: str, limit: int):
-        from telethon.errors import FloodWaitError  # noqa: PLC0415
+        from telethon.errors import FloodWaitError
 
         entity = await self._client.get_entity(channel)
         try:
@@ -158,7 +157,7 @@ def _from_telethon_message(msg: Any) -> MtprotoMessage:
         file_size=file_size,
         media_bytes=media_bytes,
     )
-    wrapped._raw = msg  # noqa: SLF001 — فقط آداپتور واقعی
+    wrapped._raw = msg
     return wrapped
 
 

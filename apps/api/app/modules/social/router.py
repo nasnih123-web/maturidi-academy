@@ -390,7 +390,6 @@ async def delete_banned_word(
     user: User = Depends(_words),
 ):
     await service.delete_banned_word(db, word_id)
-    return None
 
 
 # ---------------------------------------------------------------------------

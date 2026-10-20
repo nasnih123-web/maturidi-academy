@@ -10,7 +10,7 @@ import json
 import threading
 import time
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +18,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import APIError
 from app.core.events import emit_event
 from app.core.platform_settings import get_typed_setting
-from app.models.models import DhikrDailyCount, DhikrSession, SyncTombstone, User, UserAyahNote
+from app.models.models import (
+    DhikrDailyCount,
+    DhikrSession,
+    SyncTombstone,
+    User,
+    UserAyahNote,
+)
 from app.modules.sync.service import record_entity_change
 
 from . import adhan as adhan_calc
@@ -47,8 +53,8 @@ _NOTES_CURSOR_LIMIT = 50
 
 def _utc_iso(dt: datetime) -> str:
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc).isoformat()
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).isoformat()
 
 
 async def _quran_setting(db: AsyncSession, key: str):
@@ -337,7 +343,7 @@ async def update_note(
         note.is_private = is_private
     # فاز ۱۳: نسخهٔ خوش‌بینانه + ژورنال sync
     note.version = (note.version or 1) + 1
-    note.updated_at = datetime.now(timezone.utc)
+    note.updated_at = datetime.now(UTC)
     await db.flush()
     await record_entity_change(
         db, user_id=user.id, device_id="api",
@@ -360,7 +366,7 @@ async def delete_note(db: AsyncSession, user: User, note_id: uuid.UUID) -> None:
     await db.delete(note)
     await db.flush()
     # فاز ۱۳: حذف مستقیم هم tombstone می‌خواهد تا بین دستگاه‌ها همگام شود
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     existing_ts = (
         await db.execute(
             select(SyncTombstone).where(
@@ -461,7 +467,7 @@ async def _bump_daily(
     db: AsyncSession, user: User, dhikr_text: str, amount: int
 ) -> None:
     """upsert تجمیع روزانه — تاریخ UTC (§۱)."""
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     stmt = select(DhikrDailyCount).where(
         DhikrDailyCount.user_id == user.id,
         DhikrDailyCount.date == today,
@@ -477,7 +483,7 @@ async def _bump_daily(
     row.total_count = (row.total_count or 0) + amount
     # فاز ۱۳: نسخهٔ خوش‌بینانه + ژورنال sync
     row.version = (row.version or 1) + 1
-    row.updated_at = datetime.now(timezone.utc)
+    row.updated_at = datetime.now(UTC)
     await db.flush()
     await record_entity_change(
         db, user_id=user.id, device_id="api",
@@ -511,7 +517,7 @@ async def increment_session(
         and session.ended_at is None
     )
     if completed_now:
-        session.ended_at = datetime.now(timezone.utc)
+        session.ended_at = datetime.now(UTC)
         await emit_event(
             db,
             aggregate_type="dhikr_session",
@@ -529,7 +535,7 @@ async def increment_session(
 
 
 async def today_totals(db: AsyncSession, user: User) -> dict:
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     rows = (
         await db.execute(
             select(DhikrDailyCount.dhikr_text, DhikrDailyCount.total_count)
@@ -598,7 +604,7 @@ async def get_munajat_status(
 
     enabled = await _quran_setting(db, "munajat.enabled")
     window = await _quran_setting(db, "munajat.window") or {}
-    now_utc = now_utc or datetime.now(timezone.utc)
+    now_utc = now_utc or datetime.now(UTC)
     local = now_utc + timedelta(hours=tz_offset)
     in_window = False
     if enabled:
@@ -615,5 +621,5 @@ async def get_munajat_status(
         "enabled": bool(enabled),
         "window": {"start": window.get("start"), "end": window.get("end")},
         "in_window": in_window,
-        "server_time_utc": now_utc.astimezone(timezone.utc).isoformat(),
+        "server_time_utc": now_utc.astimezone(UTC).isoformat(),
     }

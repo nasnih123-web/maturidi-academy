@@ -17,15 +17,14 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import cast, func, Integer, select
+from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import workflow
 from app.core.audit import log_audit
 from app.core.errors import APIError
-from app.core.events import emit_event
 from app.core.logging import logger
 from app.models.models import LibraryItem, User
 
@@ -46,7 +45,7 @@ _EXT_KIND: dict[str, str] = {
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _detect_kind(file_name: str | None, mime_type: str | None) -> str | None:
@@ -123,7 +122,7 @@ async def run_import(
     client: mtproto.MtprotoClient | None = None,
 ) -> dict:
     """اجرای درون‌ریزی — هم از جاب ARQ، هم مستقیم در تست (client جعلی)."""
-    from app.modules.library import service as library_service  # noqa: PLC0415
+    from app.modules.library import service as library_service
 
     actor = await db.get(User, actor_id)
     if actor is None:
