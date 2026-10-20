@@ -16,16 +16,16 @@ Forward-only (§۱۲). جدول‌های جدید موتور sync (ADR-0010):
 - version + updated_at روی user_ayah_notes و dhikr_daily_counts
 - version روی user_progress (این جدول updated_at را از قبل دارد)
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = 'b93cee5d2cdf'
-down_revision: Union[str, None] = '8d3e5f7a9c1b'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = '8d3e5f7a9c1b'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

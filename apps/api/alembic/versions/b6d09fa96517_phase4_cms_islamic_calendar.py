@@ -21,16 +21,16 @@ Conventions (§۹, §۹.۵):
   not a future-phase coupling (§۹.۵ "no future-FK coupling" is about phases
   that don't exist yet — themes exists since phase 0).
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = 'b6d09fa96517'
-down_revision: Union[str, None] = 'a13459a0e8e9'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = 'a13459a0e8e9'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 WORKFLOW_STATUSES = ('draft', 'in_review', 'approved', 'published', 'rejected', 'archived')
 

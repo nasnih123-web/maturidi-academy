@@ -7,15 +7,16 @@ Create Date: 2026-10-19
 Backward-compatible: هر دو ستون nullable اضافه می‌شوند؛ downgrade آن‌ها را
 حذف می‌کند (دادهٔ امنیتی حساسی در آن‌ها نیست — گام زمانی و ارجاع نشست).
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "c2a91f7e44b1"
-down_revision: Union[str, None] = "b21c9aa4d7e1"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "b21c9aa4d7e1"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

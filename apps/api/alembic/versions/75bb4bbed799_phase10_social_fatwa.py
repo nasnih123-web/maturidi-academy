@@ -22,16 +22,16 @@ Question clustering:
 Notifications (phase-2 infra extension — persisted so web/CRM can list):
 - notifications
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = '75bb4bbed799'
-down_revision: Union[str, None] = '74f3c6f810a58fac'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = '74f3c6f810a58fac'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 WORKFLOW_STATUSES = ('draft', 'in_review', 'approved', 'published', 'rejected', 'archived')
 

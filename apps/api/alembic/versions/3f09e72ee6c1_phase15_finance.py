@@ -13,16 +13,16 @@ Conventions (§۱۵):
 - UTC everywhere; DateTime(timezone=True).
 - Amounts: BigInteger IRR (§۱۵ — هیچ قاعدهٔ فقهی/نرخی هاردکد نیست؛ فقط واحد ریال).
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = '3f09e72ee6c1'
-down_revision: Union[str, None] = 'd4e5f6a7b8c9'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = 'd4e5f6a7b8c9'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def _id_pk() -> list:

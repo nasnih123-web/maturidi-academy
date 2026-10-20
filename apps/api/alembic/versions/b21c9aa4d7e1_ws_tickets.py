@@ -7,15 +7,16 @@ Create Date: 2026-10-19
 Forward-only (§۱۲). جدول ws_tickets: بلیط کوتاه‌مدت (۶۰ ثانیه) و
 یک‌بارمصرف برای handshake وب‌سوکت — جایگزین امن JWT در query string.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "b21c9aa4d7e1"
-down_revision: Union[str, None] = "f17a0b1c2d3e"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "f17a0b1c2d3e"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

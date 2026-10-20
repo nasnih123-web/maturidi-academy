@@ -12,16 +12,16 @@ Forward-only (§۱۲). New domain tables (ADR-0009):
   voice_sessions؛ هر دو جدول در همین فاز ساخته می‌شوند پس «no future-FK
   coupling» (§۹.۵) نقض نمی‌شود.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = '8d3e5f7a9c1b'
-down_revision: Union[str, None] = '7c1d2b3a4e5f'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = '7c1d2b3a4e5f'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
