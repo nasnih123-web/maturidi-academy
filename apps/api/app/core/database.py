@@ -5,9 +5,16 @@
 PostgreSQL بدون تغییر کار کند.
 """
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+
+if TYPE_CHECKING:
+    # فقط برای annotation رشته‌ای ensure_aware — ایمپورت runtime داخل خود تابع است
+    from datetime import datetime
+
+from datetime import UTC
 
 from app.core.config import get_settings
 
@@ -40,8 +47,8 @@ def ensure_aware(dt) -> "datetime":
 
     روی PostgreSQL (مقصد production) مقادیر از قبل aware هستند و دست‌نخورده می‌مانند.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     if isinstance(dt, datetime) and dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=UTC)
     return dt

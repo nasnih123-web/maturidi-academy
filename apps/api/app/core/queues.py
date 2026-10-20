@@ -95,7 +95,7 @@ def register_cron(queue_name: str, **cron_kwargs: Any) -> Callable:
 
 def cron_jobs_for(queue_name: str) -> list[Any]:
     """ساخت لیست arq.cron برای WorkerSettings یک صف."""
-    from arq import cron as _cron  # noqa: PLC0415 — import سنگین فقط وقتی لازم است
+    from arq import cron as _cron
 
     return [
         _cron(entry["fn"], **entry["kwargs"])

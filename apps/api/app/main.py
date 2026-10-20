@@ -22,7 +22,6 @@ from app.core.dispatcher import start_realtime, stop_realtime
 from app.core.errors import register_error_handlers
 from app.core.logging import logger, setup_logging
 from app.core.metrics import METRICS
-from app.core.storage import ensure_storage_ready
 from app.core.middleware import (
     AccessLogMiddleware,
     BodySizeLimitMiddleware,
@@ -30,67 +29,68 @@ from app.core.middleware import (
     SecurityHeadersMiddleware,
 )
 from app.core.realtime import websocket_endpoint
-from app.modules.admin.router import router as admin_router
-from app.modules.admin.content_center_router import router as admin_content_router
-from app.modules.admin.connections_router import router as admin_connections_router
+from app.core.storage import ensure_storage_ready
 from app.modules.admin.builds_router import router as admin_builds_router
+from app.modules.admin.connections_router import router as admin_connections_router
+from app.modules.admin.content_center_router import router as admin_content_router
 from app.modules.admin.notifications_router import router as admin_notifications_router
-from app.modules.admin.users_admin_router import router as admin_users_router
 from app.modules.admin.roles_router import router as admin_roles_router
+from app.modules.admin.router import router as admin_router
+from app.modules.admin.users_admin_router import router as admin_users_router
+from app.modules.api_keys.router import api_keys_router
 from app.modules.auth.router import router as auth_router
-from app.modules.lms.router import (
-    admin_lms_router,
-    lms_router,
-    public_cert_router,
-)
-from app.modules.library.router import (
-    admin_library_router,
-    library_router,
-)
 from app.modules.calculators.router import (
     admin_calc_router,
     calc_router,
 )
 from app.modules.content.cms_router import router as cms_router
 from app.modules.content.router import router as content_router
+from app.modules.fatwa.clusters_router import clusters_router
 from app.modules.fatwa.router import (
     admin_fatwa_router,
     fatwa_router,
     verify_router,
 )
-from app.modules.fatwa.clusters_router import clusters_router
 from app.modules.fatwa.submissions_router import submissions_router
-from app.modules.social.router import (
-    admin_social_router,
-    moderation_router,
-    social_router,
-)
-from app.modules.places.router import (
-    admin_places_router,
-    places_router,
-)
-from app.modules.telegram.router import telegram_router
-from app.modules.api_keys.router import api_keys_router
-from app.modules.widgets.router import widgets_router
-from app.modules.voice.router import (
-    admin_voice_router,
-    voice_router,
-)
 from app.modules.finance.router import (
     admin_finance_router,
     finance_router,
 )
-from app.modules.projects import projects_router, staff_router
-from app.modules.sync.router import sync_router
-from app.modules.widgets.cors import WidgetCorsMiddleware
 from app.modules.home.router import router as home_router
+from app.modules.library.router import (
+    admin_library_router,
+    library_router,
+)
+from app.modules.lms.router import (
+    admin_lms_router,
+    lms_router,
+    public_cert_router,
+)
 from app.modules.meta.router import router as meta_router
+from app.modules.places.router import (
+    admin_places_router,
+    places_router,
+)
+from app.modules.projects import projects_router, staff_router
 from app.modules.quran.router import (
     adhan_router,
     quran_router,
     tasbih_router,
 )
+from app.modules.social.router import (
+    admin_social_router,
+    moderation_router,
+    social_router,
+)
+from app.modules.sync.router import sync_router
+from app.modules.telegram.router import telegram_router
 from app.modules.users.router import router as users_router
+from app.modules.voice.router import (
+    admin_voice_router,
+    voice_router,
+)
+from app.modules.widgets.cors import WidgetCorsMiddleware
+from app.modules.widgets.router import widgets_router
 
 setup_logging()
 settings = get_settings()
@@ -101,7 +101,7 @@ def _init_sentry() -> None:
     if not settings.sentry_dsn:
         return
     try:
-        import sentry_sdk  # noqa: PLC0415
+        import sentry_sdk
     except ImportError:
         logger.warning("sentry_dsn is set but sentry-sdk is not installed")
         return
@@ -118,12 +118,12 @@ def _init_otel() -> None:
     if not settings.otel_exporter_otlp_endpoint:
         return
     try:
-        from opentelemetry import trace  # noqa: PLC0415
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (  # noqa: PLC0415
+        from opentelemetry import trace
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
             OTLPSpanExporter,
         )
-        from opentelemetry.sdk.trace import TracerProvider  # noqa: PLC0415
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor  # noqa: PLC0415
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
     except ImportError:
         logger.warning("otel endpoint is set but opentelemetry packages are not installed")
         return
@@ -182,7 +182,7 @@ register_error_handlers(app)
 
 # فایل‌های static (فعلاً: فونت‌های سفارشی آپلودشده از CRM — میل‌استون polish).
 # دایرکتوری runtime ساخته می‌شود و در git نیست؛ URLها به‌صورت /static/... برمی‌گردند.
-from app.modules.admin.service import STATIC_DIR  # noqa: E402
+from app.modules.admin.service import STATIC_DIR
 
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

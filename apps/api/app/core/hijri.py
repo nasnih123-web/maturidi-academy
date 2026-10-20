@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from hijri_converter import Gregorian as _Gregorian
 
@@ -35,4 +35,4 @@ def hijri_month_day(day: date | None = None) -> tuple[int, int]:
 
 def utc_today() -> date:
     """امروزِ UTC — نقطهٔ واحد «امروز» برای منطق سمت سرور."""
-    return datetime.now(timezone.utc).date()
+    return datetime.now(UTC).date()

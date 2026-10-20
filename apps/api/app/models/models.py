@@ -13,8 +13,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
+from sqlalchemy import JSON as SA_JSON
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -30,14 +31,13 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
 )
-from sqlalchemy import JSON as SA_JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _uuid() -> uuid.UUID:

@@ -12,16 +12,16 @@ Conventions (§۱۵):
 - All user-visible text columns are LocalizedText JSON (never single-language).
 - study_reports is service-computed (ADR-0018) — no table here.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = 'f8a4b6c2d9e1'
-down_revision: Union[str, None] = 'e7a1b2c3d4f5'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = 'e7a1b2c3d4f5'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def _id_pk() -> list:

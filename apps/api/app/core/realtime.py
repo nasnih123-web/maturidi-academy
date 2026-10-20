@@ -373,7 +373,7 @@ async def websocket_endpoint(
         while True:
             try:
                 msg = await asyncio.wait_for(websocket.receive_json(), timeout=interval)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 try:
                     await websocket.send_json({"type": "ping", "ts": time.time()})
                 except Exception:
