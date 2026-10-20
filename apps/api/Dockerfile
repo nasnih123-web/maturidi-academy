@@ -8,6 +8,13 @@
 FROM python:3.12-slim
 WORKDIR /code
 
+# فونت‌های سیستمی برای PDF گواهی/رسید (app/modules/lms/certificates.py):
+# Noto Sans Arabic (fa/ar) + DejaVu Sans (en) — بدون این‌ها تولید PDF در
+# production با RuntimeError می‌ترکد (در CI گیت‌هاب رویت شد: ۸ تست قرمز).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-noto-core fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 # کاربر غیرریشه برای runtime
 RUN useradd -m -u 10001 appuser
 
