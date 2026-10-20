@@ -21,11 +21,11 @@ from app.modules.content import calendar_tasks as _calendar_tasks  # noqa: F401
 # ثبت جاب‌های صف media فاز ۹ (transcribe/OCR)
 from app.modules.library import tasks as _library_tasks  # noqa: F401
 
-# ثبت جاب‌های صف telegram فاز ۱۱ (درون‌ریزی کانال + انتشار)
-from app.modules.telegram import jobs as _telegram_jobs  # noqa: F401
-
 # ثبت کرون اعلان سررسید تسک‌ها — فاز ۱۶ (صف notifications)
 from app.modules.projects import due_cron as _pms_due_cron  # noqa: F401
+
+# ثبت جاب‌های صف telegram فاز ۱۱ (درون‌ریزی کانال + انتشار)
+from app.modules.telegram import jobs as _telegram_jobs  # noqa: F401
 
 
 def _make_settings_class(queue_name: str) -> type:

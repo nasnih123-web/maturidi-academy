@@ -11,7 +11,7 @@ import asyncio
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -25,7 +25,6 @@ from app.core.platform_settings import (
 )
 from app.core.secrets import encrypt_value
 from app.core.security import hash_password
-from app.modules.content.cms_service import ensure_calendar_settings, seed_legal_pages
 from app.models.models import (
     HomeSection,
     Permission,
@@ -37,6 +36,7 @@ from app.models.models import (
     User,
     UserRole,
 )
+from app.modules.content.cms_service import ensure_calendar_settings, seed_legal_pages
 
 # مجوزهای پایه — با رشد فازها تکمیل می‌شود
 BASE_PERMISSIONS = [
@@ -306,7 +306,6 @@ async def seed_platform_settings_defaults(db: AsyncSession) -> list[str]:
         "adhan.defaults": {"calculation_method": "mwl", "madhab": "shafi"},
         # --- فاز ۶: موتور فتوای هوشمند ---
         "ai.provider": "none",
-        "ai.claude_model": "claude-sonnet-4-5",
         "ai.claude_model": "claude-sonnet-4-5",
         "ai.daily_quota_per_user": 20,
         "ai.rate_per_minute": 5,

@@ -10,7 +10,7 @@ idempotent (قابل اجرای چندباره):
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,12 +33,11 @@ from app.models.models import (
     SocialGroup,
     SocialPost,
     User,
-    UserRole,
 )
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _L(fa: str, ar: str, en: str) -> dict:

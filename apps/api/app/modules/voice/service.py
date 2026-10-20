@@ -9,7 +9,7 @@ from __future__ import annotations
 import base64
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,11 +23,11 @@ from app.core.platform_settings import (
     stage_setting,
 )
 from app.models.models import User, VoiceSession, VoiceUsageLog
-
-from . import intents, stt, tts
 from app.modules.fatwa import service as fatwa_service
 from app.modules.quran import service as quran_service
 from app.modules.quran.surahs import get_surah
+
+from . import intents, stt, tts
 
 # ---------------------------------------------------------------------------
 # تنظیمات (platform_settings با پیش‌فرض — الگوی quran/service.py)
@@ -519,7 +519,7 @@ _USAGE_LIMIT = 50
 
 
 def _encode_cursor(created_at: datetime, lid: uuid.UUID) -> str:
-    raw = json.dumps({"t": created_at.astimezone(timezone.utc).isoformat(), "id": str(lid)})
+    raw = json.dumps({"t": created_at.astimezone(UTC).isoformat(), "id": str(lid)})
     return base64.urlsafe_b64encode(raw.encode()).decode()
 
 
@@ -563,7 +563,7 @@ async def list_usage(
             "lang": r.lang,
             "stt_ms": r.stt_ms,
             "tts_provider": r.tts_provider,
-            "created_at": r.created_at.astimezone(timezone.utc).isoformat(),
+            "created_at": r.created_at.astimezone(UTC).isoformat(),
         }
         for r in rows
     ]

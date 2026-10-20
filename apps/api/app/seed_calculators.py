@@ -9,7 +9,7 @@ Idempotent: بر اساس (kind, madhab, version) upsert می‌شود.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +22,7 @@ _MADHABS = ("hanafi", "maliki", "shafii", "hanbali")
 
 
 def _utcnow():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 async def seed_calculator_rules(db: AsyncSession) -> dict:

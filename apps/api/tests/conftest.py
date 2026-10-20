@@ -16,8 +16,8 @@ TEST_DB = os.environ.get("MATURIDI_TEST_DB", "/tmp/maturidi_test_phase1.db")
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def tc():
     """کلاینت HTTP + دیتابیس تست تازه + ضبط ایمیل/پیامک."""
+    import app.models
     from app.core.database import Base
-    import app.models  # noqa: F401 — ثبت همهٔ جدول‌ها در metadata قبل از create_all
 
     if os.path.exists(TEST_DB):
         os.remove(TEST_DB)

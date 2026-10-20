@@ -5,7 +5,7 @@ import base64
 import json
 import secrets as pysecrets
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +15,6 @@ from app.core.errors import APIError
 from app.core.events import emit_event
 from app.core.security import hash_password
 from app.models.models import (
-    AuditLog,
     Donation,
     FatwaMessage,
     FatwaSession,
@@ -33,7 +32,7 @@ from app.modules.users.schemas import MeUpdate
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 async def register_device(

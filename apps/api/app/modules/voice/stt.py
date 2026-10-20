@@ -13,6 +13,7 @@ import time
 from typing import Protocol
 
 from app.core.errors import APIError
+
 from .intents import SUPPORTED_LANGS
 
 STT_TIMEOUT_S = 60
@@ -76,7 +77,7 @@ class FasterWhisperSTT:
             return await asyncio.wait_for(
                 asyncio.to_thread(_run), timeout=STT_TIMEOUT_S
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise APIError(
                 503, "stt_timeout",
                 "رونویسی بیش از حد طول کشید؛ لطفاً فایل کوتاه‌تری بفرستید",

@@ -17,6 +17,10 @@ pyotp==2.9.0
 cryptography==50.0.0
 pytest==8.3.4
 pytest-asyncio==0.25.0
+# لینتر CI — پین‌شده: شمارش خطاهای ruff به نسخه حساس است (از 0.16 قواعد
+# پیش‌فرض گسترش یافت)؛ baseline در tools/ruff_baseline.json فقط با همین
+# نسخه معنا دارد. کانفیگ: apps/api/ruff.toml
+ruff==0.17.1
 email-validator==2.2.0
 # فاز ۴ — تقویم اسلامی (انتزاع تاریخ هجری در app/core/hijri.py)
 hijri-converter==2.3.0

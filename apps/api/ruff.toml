@@ -1,0 +1,28 @@
+# کانفیگ Ruff — آکادمی ماتریدی (API)
+#
+# نسخهٔ Ruff حتماً باید پین‌شده باشد (requirements.txt: ruff==0.17.1 و ci.yml):
+# از نسخهٔ 0.16 مجموعه‌قواعد پیش‌فرض Ruff گسترش پیدا کرد و شمارش خطاهای
+# همین کد بین نسخه‌ها از ۶۲ (0.15) تا ۱۲۴۷ (0.17) نوسان می‌کند — بدون pin
+# هر اجرای CI عدد متفاوتی تولید می‌کند و baseline بی‌معنا می‌شود.
+target-version = "py312"
+
+[lint.flake8-bugbear]
+# B008 (فراخوانی تابع در مقدار پیش‌فرض آرگومان) برای الگوی استاندارد FastAPI
+# نویز است: Depends()/Query()/File() و فکتوری‌های require_permission /
+# require_full_scope دقیقاً برای فراخوانی هنگام تعریف route طراحی شده‌اند و
+# شیء immutable برمی‌گردانند. خود مستندات Ruff همین extend-immutable-calls
+# را برای FastAPI توصیه می‌کند. قاعده خاموش نیست — برای هر فراخوانی دیگری
+# (مثلاً datetime.now() در پیش‌فرض) همچنان خطا می‌دهد.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Security",
+    "app.modules.auth.dependencies.require_permission",
+    "app.modules.auth.dependencies.require_full_scope",
+]

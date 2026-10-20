@@ -106,7 +106,7 @@ _COMPILED: dict[str, list[re.Pattern]] = {
 _ARABIC_LETTER = r"[\u0621-\u064a\u066e-\u06d3]"
 
 
-def _word_boundary_name(name: str) -> "re.Pattern[str]":
+def _word_boundary_name(name: str) -> re.Pattern[str]:
     return re.compile(
         rf"(?<!{_ARABIC_LETTER}){re.escape(name)}(?!{_ARABIC_LETTER})"
     )
