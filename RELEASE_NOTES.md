@@ -34,9 +34,9 @@ PR #1 from `hardening/remediation-pass-2`.
   any increase).
 
 ### Known limitations (honest)
-- 45 binary assets (fonts/logo/icons) are NOT yet in the GitHub tree — the API
-  cannot transfer binaries; they must be uploaded once via the GitHub web UI
-  (list in the evidence package). All file contents exist in the local repo.
+- The 45 binary assets (fonts/logo/icons) were uploaded to `main` via the
+  GitHub web UI on 2026-10-20 and verified byte-identical (blob SHA) against
+  the local repo — the tree on GitHub is now complete.
 - Not yet verified on live infrastructure: PostgreSQL, multi-process Redis,
   MinIO, ClamAV, native mobile/desktop builds, EAS cloud builds (needs the
   owner's expo.dev connection).
