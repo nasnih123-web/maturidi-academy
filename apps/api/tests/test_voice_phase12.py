@@ -15,7 +15,8 @@ import uuid
 import pytest
 
 from app.core.errors import APIError
-from app.modules.voice import intents, service, tts as tts_mod
+from app.modules.voice import intents, service
+from app.modules.voice import tts as tts_mod
 
 BASE = "/api/v1"
 

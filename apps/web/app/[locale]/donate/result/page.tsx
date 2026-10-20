@@ -1,22 +1,19 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { Suspense } from 'react';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import type { DonateResultLabels } from '@/components/finance/DonateResult';
 import '../finance.css';
+import { DonateResultFlow } from '@/components/finance/DonateResultFlowLazy';
 
 // Code-split: the return-state reader (useSearchParams + sessionStorage)
 // never enters the shared bundle.
-const DonateResultFlow = dynamic(
-  () => import('@/components/finance/DonateResultFlow').then((m) => m.DonateResultFlow),
-  { ssr: false, loading: () => <p className="fin-hint">…</p> },
-);
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'donate' });
   return { title: t('resultMetaTitle') };
@@ -30,7 +27,8 @@ export async function generateMetadata({
  * before the redirect, shows success/failure, and links the receipt PDF
  * (GET /api/v1/finance/receipts/{intent_id}).
  */
-export default async function DonateResultPage({ params: { locale } }: { params: { locale: string } }) {
+export default async function DonateResultPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'donate' });
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import pkgutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -71,7 +71,7 @@ def _user_stub():
         locale="fa",
         is_active=True,
         is_verified=True,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         password_hash="HASH-MUST-NOT-LEAK",
         totp_secret="TOTP-MUST-NOT-LEAK",
     )
@@ -122,7 +122,7 @@ def test_api_key_out_exposes_prefix_only():
         is_active=True,
         abuse_flag=False,
         last_used_at=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         revoked_at=None,
         key_hash="HASH-OF-RAW-KEY-MUST-NOT-LEAK",
     )

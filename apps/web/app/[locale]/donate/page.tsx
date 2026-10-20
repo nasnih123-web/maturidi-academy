@@ -6,10 +6,11 @@ import { EmptyState } from '@/components/EmptyState';
 import './finance.css';
 
 export async function generateMetadata({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'donate' });
   return { title: t('metaTitle'), description: t('metaDescription') };
@@ -23,7 +24,8 @@ export async function generateMetadata({
  * presentational cards. API failure renders an honest error state; an empty
  * catalogue renders an honest empty state (contract §15: no mock data).
  */
-export default async function DonatePage({ params: { locale } }: { params: { locale: string } }) {
+export default async function DonatePage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'donate' });
   const currencyLabel = t('currency');
