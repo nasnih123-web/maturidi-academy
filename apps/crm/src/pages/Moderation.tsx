@@ -20,6 +20,12 @@ import {
   useDeleteBannedWord,
   useReports,
 } from "../lib/moderation";
+import {
+  FLAG_ACTIONS,
+  type ContentFlag,
+  type FlagAction,
+} from "../lib/admin14";
+import { useContentFlags, useFlagAction } from "../lib/admin14Hooks";
 
 /**
  * Social moderation center — Phase 10 (CRM track).
@@ -34,8 +40,8 @@ import {
  * and refresh the queue without a reload.
  */
 
-type ModTab = "queue" | "banned";
-const TABS: ModTab[] = ["queue", "banned"];
+type ModTab = "queue" | "banned" | "flags";
+const TABS: ModTab[] = ["queue", "banned", "flags"];
 
 function initialTab(): ModTab {
   try {
@@ -532,6 +538,136 @@ function BannedTab(): React.ReactElement {
 /* page shell                                                          */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* content flags — Phase 14 unified inbox (social reports stay above)  */
+/* ------------------------------------------------------------------ */
+
+function FlagRow({ flag }: { flag: ContentFlag }): React.ReactElement {
+  const { t, formatDate } = useI18n();
+  const [open, setOpen] = React.useState(false);
+  const [action, setAction] = React.useState<FlagAction>("dismiss");
+  const [note, setNote] = React.useState("");
+  const act = useFlagAction();
+
+  return (
+    <tr>
+      <td>
+        {flag.content_title}
+        <div className="hint mono">
+          {flag.domain}/{flag.content_type}/{flag.id.slice(0, 8)}…
+        </div>
+      </td>
+      <td className="hint">{flag.reason || "—"}</td>
+      <td className="hint">{flag.reporter || t("social10.anonReporter")}</td>
+      <td>
+        <Badge tone={flag.status === "open" ? "danger" : flag.status === "triaged" ? "warning" : "neutral"}>
+          {t(`social10.rep_${flag.status}`) === `social10.rep_${flag.status}` ? flag.status : t(`social10.rep_${flag.status}`)}
+        </Badge>
+      </td>
+      <td className="hint">{flag.reported_at ? formatDate(flag.reported_at) : "—"}</td>
+      <td>
+        {!open ? (
+          <Button size="sm" onClick={() => setOpen(true)}>
+            {t("admin14.flagAction")}
+          </Button>
+        ) : (
+          <div className="row">
+            <select value={action} onChange={(e) => setAction(e.target.value as FlagAction)} aria-label={t("admin14.flagAction")}>
+              {FLAG_ACTIONS.map((a) => (
+                <option key={a} value={a}>
+                  {t(`admin14.act${a[0].toUpperCase()}${a.slice(1).replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())}`)}
+                </option>
+              ))}
+            </select>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={t("admin14.flagNotePh")}
+              aria-label={t("admin14.flagNote")}
+            />
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={act.isPending}
+              onClick={() =>
+                act.mutate(
+                  { id: flag.id, action, note: note || undefined },
+                  { onSuccess: () => { setOpen(false); setNote(""); } },
+                )
+              }
+            >
+              {t("admin14.flagConfirm")}
+            </Button>
+            <Button size="sm" onClick={() => setOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+          </div>
+        )}
+        {act.isError && <p className="error-text">{errText(act.error)}</p>}
+      </td>
+    </tr>
+  );
+}
+
+function FlagsTab(): React.ReactElement {
+  const { t } = useI18n();
+  const [status, setStatus] = React.useState("");
+  const flags = useContentFlags(status || undefined);
+
+  return (
+    <div>
+      <p className="hint" style={{ fontSize: "0.9rem", marginBottom: "1rem" }}>
+        {t("admin14.flagHint")}
+      </p>
+      <div className="row" style={{ marginBottom: "0.75rem" }}>
+        <label>
+          {t("admin14.fStatus")}
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="">{t("admin14.all")}</option>
+            {["open", "triaged", "dismissed", "actioned"].map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="button" className="btn" onClick={() => void flags.refetch()}>
+          {t("common.refresh")}
+        </button>
+      </div>
+      {flags.isLoading && <p className="hint">{t("common.loading")}</p>}
+      {flags.isError && (
+        <div className="panel" role="alert">
+          <p>{t("admin14.backendMissing")}</p>
+          <p className="hint">{errText(flags.error)}</p>
+        </div>
+      )}
+      {flags.isSuccess && (flags.data ?? []).length === 0 && <p className="hint">{t("social10.emptyQueue")}</p>}
+      {(flags.data ?? []).length > 0 && (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>{t("admin14.flagContent")}</th>
+                <th>{t("admin14.flagReason")}</th>
+                <th>{t("admin14.flagReporter")}</th>
+                <th>{t("admin14.colStatus")}</th>
+                <th>{t("social10.tableReportedAt")}</th>
+                <th>{t("admin14.flagAction")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(flags.data ?? []).map((f) => (
+                <FlagRow key={f.id} flag={f} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Moderation(): React.ReactElement {
   const { t, setLocale } = useI18n();
   const [tab, setTab] = React.useState<ModTab>(initialTab);
@@ -577,12 +713,14 @@ export default function Moderation(): React.ReactElement {
             className={`locale-tab${tab === tb ? " on" : ""}`}
             onClick={() => setTab(tb)}
           >
-            {t(`social10.tab_${tb}`)}
+            {tb === "flags" ? t("admin14.tabFlags") : t(`social10.tab_${tb}`)}
           </button>
         ))}
       </div>
 
-      <div role="tabpanel">{tab === "queue" ? <QueueTab /> : <BannedTab />}</div>
+      <div role="tabpanel">
+        {tab === "queue" ? <QueueTab /> : tab === "flags" ? <FlagsTab /> : <BannedTab />}
+      </div>
     </div>
   );
 }
