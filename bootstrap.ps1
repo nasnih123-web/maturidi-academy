@@ -25,18 +25,17 @@ try {
   # ---------- ۱) پیش‌نیازها ----------
   Say "بررسی پیش‌نیازها…"
 
-  # این پروژه دقیقاً به Python 3.12 نیاز دارد:
-  # در 3.13/3.14 برای pydantic wheel آماده نیست و بیلد آن به Rust نیاز دارد
-  # که دانلودش در ایران با خطای DNS شکست می‌خورد.
+  # این پروژه به Python 3.14 نیاز دارد (Phase-1 v1.1.0: کل استک
+  # requirements.txt روی 3.14 پین و راستی‌آزمایی شده است).
   $pyExe = "python"; $pyPre = @(); $pyv = ""
   try {
-    $t = (py -3.12 --version 2>&1).ToString()
-    if ($t -match "Python (3\.12\.\d+)") { $pyv = $Matches[1]; $pyExe = "py"; $pyPre = @("-3.12") }
+    $t = (py -3.14 --version 2>&1).ToString()
+    if ($t -match "Python (3\.14\.\d+)") { $pyv = $Matches[1]; $pyExe = "py"; $pyPre = @("-3.14") }
   } catch {}
   if ([string]::IsNullOrWhiteSpace($pyv)) {
-    try { $pyv = (python --version 2>&1).ToString().Split()[1] } catch { Die "پایتون پیدا نشد. نسخهٔ 3.12 را نصب کنید: winget install Python.Python.3.12" }
+    try { $pyv = (python --version 2>&1).ToString().Split()[1] } catch { Die "پایتون پیدا نشد. نسخهٔ 3.14 را نصب کنید: winget install Python.Python.3.14" }
   }
-  if (-not $pyv.StartsWith("3.12")) { Die "نسخهٔ پایتون شما $pyv است؛ این پروژه دقیقاً به Python 3.12 نیاز دارد (در 3.13/3.14 نصب وابستگی‌ها شکست می‌خورد). نصب کنید: winget install Python.Python.3.12" }
+  if (-not $pyv.StartsWith("3.14")) { Die "نسخهٔ پایتون شما $pyv است؛ این پروژه به Python 3.14 نیاز دارد. نصب کنید: winget install Python.Python.3.14" }
 
   try { $nodev = (node --version 2>&1).ToString().TrimStart("v") } catch { Die "نود پیدا نشد. نصب کنید: https://nodejs.org/ (نسخهٔ LTS)" }
   if (-not (Test-Version $nodev 20 0)) { Die "نسخهٔ Node شما $nodev است؛ نسخهٔ ۲۰ یا جدیدتر لازم است." }

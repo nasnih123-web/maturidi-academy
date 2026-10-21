@@ -377,3 +377,251 @@ export function parseDecimalInput(raw: string): number | null {
   const n = Number(normalized);
   return Number.isFinite(n) ? n : null;
 }
+
+/** Localized fraction display ("7/12" → "۷/۱۲"). Presentation only. */
+export function formatFraction(share: string, locale: string): string {
+  const nf = new Intl.NumberFormat(intlLocale(locale), { useGrouping: false });
+  return share
+    .split('/')
+    .map((part) => {
+      const n = Number(part);
+      return Number.isFinite(n) ? nf.format(n) : part;
+    })
+    .join('/');
+}
+
+/* ------------------------------------------------------------------ */
+/* Phase 4 — source calculators (extended zakat / miras / mosaref)      */
+/*                                                                      */
+/* All three endpoints are stateless: the backend never persists the    */
+/* financial/family inputs. Zakat-extended and miras sit behind the     */
+/* same scholar-review gate as Phase 7 (rules_not_approved → pending    */
+/* state). Mosaref is linguistics, fully public.                        */
+/* ------------------------------------------------------------------ */
+
+export interface ZakatExtendedRequest {
+  money?: { amount: number; coin_price: number };
+  gold_grams?: number;
+  silver_grams?: number;
+  sheep?: number;
+  cows?: { count: number; musinna_price?: number };
+  camels?: number;
+  horses?: { count: number; total_value?: number };
+  oshr?: { amount_kg: number; irrigation: 'rain_fed' | 'irrigated' };
+  khoms?: { amount: number };
+}
+
+export interface ZakatDueItem {
+  kind: string;
+  count: number;
+  age_years?: number;
+}
+
+export interface ZakatExtendedSections {
+  money?: {
+    nisab_met: boolean;
+    total_coins: string;
+    zakat_coins: string;
+    zakat_amount: string;
+  };
+  gold?: { nisab_met: boolean; zakat_grams: string };
+  silver?: { nisab_met: boolean; zakat_grams: string };
+  sheep?: { due: ZakatDueItem[] };
+  cows?: { due: ZakatDueItem[]; musinna_fortieths: number; extra_money?: string };
+  camels?: { due: ZakatDueItem[] };
+  horses?: {
+    rule_note: string;
+    dinar_per_head: number;
+    total_dinar: number;
+    value_zakat?: string;
+  };
+  oshr?: { oshr_kg: string };
+  khoms?: { khoms: string };
+}
+
+export interface ZakatExtendedResult {
+  sections: ZakatExtendedSections;
+  applied_rule_version: string;
+}
+
+export async function calculateZakatExtended(
+  request: ZakatExtendedRequest,
+  opts: { signal?: AbortSignal } = {},
+): Promise<ZakatExtendedResult> {
+  const body = await postJson<unknown>('/api/v1/calculators/zakat/extended', request, {
+    signal: opts.signal,
+  });
+  const o = (body ?? {}) as Record<string, unknown>;
+  return {
+    sections: (o.sections ?? {}) as ZakatExtendedSections,
+    applied_rule_version: String(o.applied_rule_version ?? ''),
+  };
+}
+
+export interface MirasRequest {
+  gender: 'male' | 'female';
+  husband?: boolean;
+  father?: boolean;
+  mother?: boolean;
+  grandfather?: boolean;
+  mgm?: boolean;
+  pgm?: boolean;
+  wives?: number;
+  sons?: number;
+  daughters?: number;
+  son_sons?: number;
+  son_daughters?: number;
+  brothers?: number;
+  sisters?: number;
+  paternal_brothers?: number;
+  paternal_sisters?: number;
+  uterine_brothers?: number;
+  uterine_sisters?: number;
+  full_brother_sons?: number;
+  paternal_brother_sons?: number;
+  full_uncles?: number;
+  paternal_uncles?: number;
+  full_uncle_sons?: number;
+  paternal_uncle_sons?: number;
+  daughter_sons?: number;
+  daughter_daughters?: number;
+  son_daughter_sons?: number;
+  son_daughter_daughters?: number;
+  maternal_grandfather?: number;
+  remote_grandmothers?: number;
+  sister_sons?: number;
+  sister_daughters?: number;
+  full_brother_daughters?: number;
+  paternal_brother_daughters?: number;
+  uterine_brother_children?: number;
+  uterine_sister_children?: number;
+  maternal_uncles?: number;
+  maternal_aunts?: number;
+  maternal_paternal_uncles?: number;
+  paternal_aunts?: number;
+  paternal_uncle_daughters?: number;
+  estate_value: number;
+  funeral?: number;
+  debt?: number;
+  will?: number;
+  will_for_heir?: boolean;
+  will_approved?: boolean;
+  impediments?: {
+    religion_mixed?: boolean;
+    killer?: boolean;
+    simultaneous_death?: boolean;
+    slavery?: boolean;
+  };
+}
+
+export interface MirasRow {
+  key: string;
+  count: number;
+  share: string;
+  amount: string;
+  per_person_amount: string;
+  asaba_part?: string | null;
+}
+
+export interface MirasResult {
+  status: 'computed' | 'stopped';
+  stop_code?: string | null;
+  estate_value?: string | null;
+  funeral?: string | null;
+  debt?: string | null;
+  will_applied?: string | null;
+  net_estate?: string | null;
+  awl: boolean;
+  radd: boolean;
+  rows: MirasRow[];
+  blocked: string[];
+  notes: string[];
+  applied_rule_version: string;
+}
+
+export async function calculateMiras(
+  request: MirasRequest,
+  opts: { signal?: AbortSignal } = {},
+): Promise<MirasResult> {
+  const body = await postJson<unknown>('/api/v1/calculators/inheritance/miras', request, {
+    signal: opts.signal,
+  });
+  const o = (body ?? {}) as Record<string, unknown>;
+  return {
+    status: o.status === 'stopped' ? 'stopped' : 'computed',
+    stop_code: typeof o.stop_code === 'string' ? o.stop_code : null,
+    estate_value: typeof o.estate_value === 'string' ? o.estate_value : null,
+    funeral: typeof o.funeral === 'string' ? o.funeral : null,
+    debt: typeof o.debt === 'string' ? o.debt : null,
+    will_applied: typeof o.will_applied === 'string' ? o.will_applied : null,
+    net_estate: typeof o.net_estate === 'string' ? o.net_estate : null,
+    awl: o.awl === true,
+    radd: o.radd === true,
+    rows: Array.isArray(o.rows) ? (o.rows as MirasRow[]) : [],
+    blocked: Array.isArray(o.blocked) ? (o.blocked as string[]) : [],
+    notes: Array.isArray(o.notes) ? (o.notes as string[]) : [],
+    applied_rule_version: String(o.applied_rule_version ?? ''),
+  };
+}
+
+export const MOSAREF_BABS = [
+  'faala',
+  'faala2',
+  'faala3',
+  'faala4',
+  'faala5',
+  'faala6',
+  'afala',
+  'faala_m',
+  'faaala',
+  "tafa''ala",
+  'tafaaala',
+  'infaala',
+  'iftaala',
+  'istafala',
+  'rubaai_mujarrad',
+  "rubaai_tafa'lala",
+] as const;
+
+export type MosarefBab = (typeof MOSAREF_BABS)[number];
+export type MosarefTransitivity = 'mutaadi' | 'laazim';
+export type HarfJar = 'bi' | 'li' | 'an' | 'min' | 'ila' | 'ala' | 'fi';
+
+export interface MosarefTable {
+  key: string;
+  columns: Record<string, string[]>;
+}
+
+export interface MosarefResult {
+  root: string;
+  bab: string;
+  transitivity: string;
+  harf_jar: string;
+  verb_class: string;
+  tables: MosarefTable[];
+  flags: Record<string, boolean>;
+}
+
+export async function conjugateMosaref(
+  root: string,
+  bab: MosarefBab,
+  transitivity: MosarefTransitivity,
+  harfJar: HarfJar,
+  opts: { signal?: AbortSignal } = {},
+): Promise<MosarefResult> {
+  const body = await postJson<unknown>(
+    '/api/v1/calculators/mosaref',
+    { root, bab, transitivity, harf_jar: harfJar },
+    { signal: opts.signal },
+  );
+  const o = (body ?? {}) as Record<string, unknown>;
+  return {
+    root: asString(o.root),
+    bab: asString(o.bab),
+    transitivity: asString(o.transitivity),
+    harf_jar: asString(o.harf_jar),
+    verb_class: asString(o.verb_class),
+    tables: Array.isArray(o.tables) ? (o.tables as MosarefTable[]) : [],
+    flags: (o.flags ?? {}) as Record<string, boolean>,
+  };
+}
