@@ -273,9 +273,10 @@ def extract_ayah_reference(text: str) -> tuple[int, int] | None:
         for name, num in surah_map.items():
             if len(name) < 2:
                 continue
-            if _word_boundary_name(name).search(norm):
-                if best is None or len(name) > best[0]:
-                    best = (len(name), num, name)
+            if _word_boundary_name(name).search(norm) and (
+                best is None or len(name) > best[0]
+            ):
+                best = (len(name), num, name)
         if best is not None:
             surah_num = best[1]
             surah_name_hit = best[2]
@@ -293,9 +294,10 @@ def extract_ayah_reference(text: str) -> tuple[int, int] | None:
     topic_map = _get_topic_map()
     best_topic: tuple[int, tuple[int, int]] | None = None
     for keyword, ref in topic_map.items():
-        if keyword in norm:
-            if best_topic is None or len(keyword) > best_topic[0]:
-                best_topic = (len(keyword), ref)
+        if keyword in norm and (
+            best_topic is None or len(keyword) > best_topic[0]
+        ):
+            best_topic = (len(keyword), ref)
     if best_topic is not None:
         return best_topic[1]
     return None

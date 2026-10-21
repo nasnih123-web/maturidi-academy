@@ -1,0 +1,15 @@
+# Railway — service "api" (root directory: apps/api)
+# Schema: Railway config-as-code (railway.toml). Deploy status: prepared,
+# NOT deployed — no Railway account yet (docs/ops/railway-deployment.md).
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# $PORT is injected by Railway. Single uvicorn process per replica here;
+# scale with Railway replicas instead of --workers.
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --timeout-graceful-shutdown 30"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

@@ -20,19 +20,83 @@ from app.models.models import (
     FatwaSession,
     Notification,
     NotificationPreference,
+    Permission,
     RefreshToken,
+    Role,
+    RolePermission,
     Session,
     User,
     UserAyahNote,
     UserConsent,
     UserDevice,
+    UserRole,
     WebPushSubscription,
 )
-from app.modules.users.schemas import MeUpdate
+from app.modules.users.schemas import MeUpdate, UserOut
 
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+async def roles_permissions_for(
+    db: AsyncSession, user_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[list[str], list[str]]]:
+    """نقش‌ها و مجوزهای واقعی هر کاربر از جدول‌های RBAC (قرارداد §۲ — فاز ۲).
+
+    batch: دو کوئری برای کل صفحه، بدون N+1. خروجی مرتب‌شده و قطعی است تا
+    پاسخ API پایدار باشد.
+    """
+    result: dict[uuid.UUID, tuple[list[str], list[str]]] = {
+        uid: ([], []) for uid in user_ids
+    }
+    if not user_ids:
+        return result
+    role_rows = await db.execute(
+        select(UserRole.user_id, Role.name)
+        .join(Role, Role.id == UserRole.role_id)
+        .where(UserRole.user_id.in_(user_ids))
+    )
+    for uid, name in role_rows.all():
+        result[uid][0].append(name)
+    perm_rows = await db.execute(
+        select(UserRole.user_id, Permission.key)
+        .select_from(UserRole)
+        .join(RolePermission, RolePermission.role_id == UserRole.role_id)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .where(UserRole.user_id.in_(user_ids))
+        .distinct()
+    )
+    for uid, key in perm_rows.all():
+        if key not in result[uid][1]:
+            result[uid][1].append(key)
+    for roles, perms in result.values():
+        roles.sort()
+        perms.sort()
+    return result
+
+
+async def build_user_out(db: AsyncSession, user: User) -> UserOut:
+    """UserOut با نقش‌ها/مجوزهای واقعی (فاز ۲) — مبنای گیتینگ UI در CRM."""
+    mapping = await roles_permissions_for(db, [user.id])
+    roles, perms = mapping[user.id]
+    return UserOut.model_validate(user).model_copy(
+        update={"roles": roles, "permissions": perms}
+    )
+
+
+async def build_user_outs(db: AsyncSession, users: list[User]) -> list[UserOut]:
+    """نسخهٔ batch برای لیست ادمین (بدون N+1)."""
+    mapping = await roles_permissions_for(db, [u.id for u in users])
+    return [
+        UserOut.model_validate(u).model_copy(
+            update={
+                "roles": mapping[u.id][0],
+                "permissions": mapping[u.id][1],
+            }
+        )
+        for u in users
+    ]
 
 
 async def register_device(

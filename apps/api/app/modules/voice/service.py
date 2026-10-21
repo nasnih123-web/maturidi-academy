@@ -10,6 +10,7 @@ import base64
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,7 +47,7 @@ DEFAULTS: dict[str, object] = {
 SETTING_KEYS = tuple(DEFAULTS)
 
 
-async def _voice_setting(db: AsyncSession, key: str):
+async def _voice_setting(db: AsyncSession, key: str) -> Any:
     return await get_typed_setting(db, key, DEFAULTS[key])
 
 
@@ -54,7 +55,8 @@ async def _int_setting(db: AsyncSession, key: str) -> int:
     try:
         return int(await _voice_setting(db, key))
     except (TypeError, ValueError):
-        return int(DEFAULTS[key])
+        default = DEFAULTS[key]
+        return default if isinstance(default, int) else int(str(default))
 
 
 async def max_audio_bytes(db: AsyncSession) -> int:

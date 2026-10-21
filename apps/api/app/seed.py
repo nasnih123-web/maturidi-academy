@@ -406,7 +406,9 @@ async def main() -> None:
         )
         sys.exit(1)
 
-    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    maker: async_sessionmaker[AsyncSession] = async_sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
     async with maker() as db:
         roles: dict[str, Role] = {}
         for name, desc in BASE_ROLES:
@@ -482,8 +484,14 @@ async def main() -> None:
             "terms_version": "v1",
         }
         for key, value in defaults.items():
-            exists = await db.get(PlatformSetting, key)
-            if not exists:
+            # select به‌جای session.get: استنتاج ژنریک استاب SQLAlchemy روی این
+            # session (که هم‌زمان executeهای RolePermission دارد) get را خطا می‌دهد.
+            setting_exists = (
+                await db.execute(
+                    select(PlatformSetting).where(PlatformSetting.key == key)
+                )
+            ).scalar_one_or_none()
+            if not setting_exists:
                 db.add(
                     PlatformSetting(
                         key=key,
