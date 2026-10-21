@@ -1003,14 +1003,18 @@ async def trusted_source_create(
 
 
 async def trusted_source_list(db: AsyncSession) -> list[TrustedExternalSource]:
-    return (
-        await db.execute(
-            select(TrustedExternalSource).order_by(
-                TrustedExternalSource.priority.desc(),
-                TrustedExternalSource.name,
+    return list(
+        (
+            await db.execute(
+                select(TrustedExternalSource).order_by(
+                    TrustedExternalSource.priority.desc(),
+                    TrustedExternalSource.name,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
 
 async def trusted_source_update(

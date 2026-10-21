@@ -13,6 +13,7 @@ annotationهای body در _register_resource به متغیر closure (کلاس 
 ارجاع می‌دهند و FastAPI باید آن‌ها را در زمان تعریف resolve کند.
 """
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -29,8 +30,8 @@ _can_publish = require_permission("content.publish")
 
 def _register_resource(
     resource: str,
-    create_schema: type,
-    update_schema: type,
+    create_schema: type[BaseModel],
+    update_schema: type[BaseModel],
     summary: str,
 ) -> None:
     """ثبت شش endpoint مدیریتی یک منبع CMS — الگوی یکدست برای هر شش جدول."""
@@ -68,8 +69,10 @@ def _register_resource(
         db: AsyncSession = Depends(get_db),
     ):
         """ساخت آیتم جدید — نیازمند مجوز content.create."""
+        # body نمونهٔ create_schema (زیرکلاس BaseModel) است؛ چون annotation
+        # داینامیک است، model_dump از خود BaseModel صدا زده می‌شود.
         return await service.create_item(
-            db, resource, body.model_dump(), actor_id=user.id
+            db, resource, BaseModel.model_dump(body), actor_id=user.id
         )
 
     @router.get(f"/{resource}/{{item_id}}", operation_id=f"cms_get_{resource}")
@@ -90,7 +93,11 @@ def _register_resource(
     ):
         """ویرایش جزئی — نیازمند مجوز content.create."""
         return await service.update_item(
-            db, resource, item_id, body.model_dump(exclude_unset=True), actor_id=user.id
+            db,
+            resource,
+            item_id,
+            BaseModel.model_dump(body, exclude_unset=True),
+            actor_id=user.id,
         )
 
     @router.delete(f"/{resource}/{{item_id}}", operation_id=f"cms_delete_{resource}")

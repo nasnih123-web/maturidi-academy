@@ -181,8 +181,9 @@ class ClaudeProvider(LLMProvider):
 
         payload = layers.to_anthropic_payload()
         try:
-            async with httpx.AsyncClient(timeout=timeout_s) as client:
-                async with client.stream(
+            async with (
+                httpx.AsyncClient(timeout=timeout_s) as client,
+                client.stream(
                     "POST",
                     self._ENDPOINT,
                     headers={
@@ -199,22 +200,23 @@ class ClaudeProvider(LLMProvider):
                         ],
                         "stream": True,
                     },
-                ) as resp:
-                    resp.raise_for_status()
-                    async for line in resp.aiter_lines():
-                        if not line.startswith("data:"):
-                            continue
-                        data_str = line[5:].strip()
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            evt = _json.loads(data_str)
-                        except ValueError:
-                            continue
-                        if evt.get("type") == "content_block_delta":
-                            delta = evt.get("delta") or {}
-                            if delta.get("type") == "text_delta":
-                                yield delta.get("text", "")
+                ) as resp,
+            ):
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    data_str = line[5:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        evt = _json.loads(data_str)
+                    except ValueError:
+                        continue
+                    if evt.get("type") == "content_block_delta":
+                        delta = evt.get("delta") or {}
+                        if delta.get("type") == "text_delta":
+                            yield delta.get("text", "")
         except Exception as exc:
             raise LLMProviderError(f"خطای استریم Claude: {exc}") from exc
 

@@ -9,13 +9,23 @@
 """
 from __future__ import annotations
 
+from typing import TypedDict
+
+
+class LegalBlock(TypedDict):
+    """یک بلوک متن حقوقی: نوع بلوک + متن سه‌زبانه."""
+
+    type: str
+    text: dict[str, str]
+
+
 LEGAL_TEXT_VERSION = "v1"
 
 # ---------------------------------------------------------------------------
 # متن شرایط استفاده — کوتاه، واقعی، سه‌زبانه
 # ---------------------------------------------------------------------------
 
-TERMS_BLOCKS = [
+TERMS_BLOCKS: list[LegalBlock] = [
     {
         "type": "heading",
         "text": {
@@ -114,7 +124,7 @@ TERMS_BLOCKS = [
 # متن حریم‌خصوصی — کوتاه، واقعی، سه‌زبانه
 # ---------------------------------------------------------------------------
 
-PRIVACY_BLOCKS = [
+PRIVACY_BLOCKS: list[LegalBlock] = [
     {
         "type": "heading",
         "text": {

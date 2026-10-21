@@ -131,6 +131,79 @@ async def nisab_rate(db: AsyncSession = Depends(get_db)):
     return schemas.NisabRateOut(**await service.get_nisab_rate(db))
 
 
+# --- عمومی: فاز ۴ (زکات توسعه‌یافته / فرائض / مُصَرِّف) ---
+# هر سه Stateless هستند: ورودی مالی/خانوادگی کاربر هرگز ذخیره نمی‌شود.
+
+
+@calc_router.post("/zakat/extended", response_model=schemas.ZakatExtendedOut)
+async def zakat_extended(
+    body: schemas.ZakatExtendedIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """زکات توسعه‌یافتهٔ منبع (پلکانی + چهارپایان + عشر + خمس).
+
+    گیت فاز ۷ پابرجاست: فقط با config تأییدشدهٔ دارای بخش extended.
+    """
+    sections: dict = {}
+    if body.money is not None:
+        sections["money"] = {
+            "amount": body.money.amount, "coin_price": body.money.coin_price,
+        }
+    if body.gold_grams is not None:
+        sections["gold_grams"] = body.gold_grams
+    if body.silver_grams is not None:
+        sections["silver_grams"] = body.silver_grams
+    if body.sheep is not None:
+        sections["sheep"] = body.sheep
+    if body.cows is not None:
+        sections["cows"] = {
+            "count": body.cows.count,
+            "musinna_price": body.cows.musinna_price,
+        }
+    if body.camels is not None:
+        sections["camels"] = body.camels
+    if body.horses is not None:
+        sections["horses"] = {
+            "count": body.horses.count,
+            "total_value": body.horses.total_value,
+        }
+    if body.oshr is not None:
+        sections["oshr"] = {
+            "amount_kg": body.oshr.amount_kg,
+            "irrigation": body.oshr.irrigation,
+        }
+    if body.khoms is not None:
+        sections["khoms"] = {"amount": body.khoms.amount}
+    data = await service.calculate_zakat_extended(db, sections=sections)
+    return schemas.ZakatExtendedOut(**data)
+
+
+@calc_router.post("/inheritance/miras", response_model=schemas.MirasOut)
+async def inheritance_miras(
+    body: schemas.MirasIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """فرائض حنفی بر مبنای السراجیة (موتور miras فاز ۴).
+
+    گیت فاز ۷ پابرجاست: فقط با config تأییدشدهٔ حنفی دارای بخش miras.
+    توقف محاسبه با status=stopped برمی‌گردد، نه خطا.
+    """
+    data = await service.calculate_miras(db, payload=body.model_dump())
+    return schemas.MirasOut(**data)
+
+
+@calc_router.post("/mosaref", response_model=schemas.MosarefOut)
+async def mosaref_conjugate(body: schemas.MosarefIn):
+    """مُصَرِّف افعال عربی — عمومی و بدون گیت (زبان‌شناسی، نه فقه)."""
+    data = service.conjugate_mosaref(
+        root=body.root,
+        bab=body.bab,
+        transitivity=body.transitivity,
+        harf_jar=body.harf_jar,
+    )
+    return schemas.MosarefOut(**data)
+
+
 # --- ادمین: rule_configs ---
 
 

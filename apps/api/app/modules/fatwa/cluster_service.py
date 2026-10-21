@@ -189,7 +189,7 @@ async def list_clusters(
                 and_(QuestionCluster.created_at == ts, QuestionCluster.id < lid),
             )
         )
-    rows = (await db.execute(stmt.limit(limit + 1))).scalars().all()
+    rows = list((await db.execute(stmt.limit(limit + 1))).scalars().all())
     next_cursor = None
     if len(rows) > limit:
         rows = rows[:limit]
