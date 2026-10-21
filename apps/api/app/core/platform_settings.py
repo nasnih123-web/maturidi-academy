@@ -98,7 +98,6 @@ SETTING_DEFS: dict[str, dict] = {
     "push.vapid_private_key": {"type": "secret", "sensitive": True, "label": "کلید خصوصی VAPID (web push)"},
 }
 
-_MISS = object()
 _cache: dict[str, tuple[str, float]] = {}
 _cache_lock = threading.Lock()
 _version: int = 0
@@ -139,11 +138,11 @@ def reset_settings_cache() -> None:
 async def get_setting(db: AsyncSession, key: str, default: str | None = None) -> str | None:
     """مقدار رمزگشایی‌شدهٔ خام (رشته). برای localized یک JSON رشته‌ای برمی‌گردد."""
     with _cache_lock:
-        entry = _cache.get(key, _MISS)
-    if entry is not _MISS:
+        entry = _cache.get(key)
+    if entry is not None:
         value, stored_at = entry
         if time.monotonic() - stored_at <= SETTINGS_CACHE_TTL:
-            return value  # type: ignore[return-value]
+            return value
     row = await db.get(PlatformSetting, key)
     if row is None:
         return default
@@ -220,9 +219,10 @@ def _validate_particles(value: Any) -> dict:
         elif k == "count":
             if not isinstance(v, int) or isinstance(v, bool) or not 0 <= v <= 1000:
                 raise ValueError("particles.count must be an int in 0..1000")
-        elif k in ("speed", "parallax"):
-            if not isinstance(v, (int, float)) or isinstance(v, bool) or v < 0:
-                raise ValueError(f"particles.{k} must be a non-negative number")
+        elif k in ("speed", "parallax") and (
+            not isinstance(v, (int, float)) or isinstance(v, bool) or v < 0
+        ):
+            raise ValueError(f"particles.{k} must be a non-negative number")
         out[k] = float(v) if k in ("speed", "parallax") else v
     return out
 

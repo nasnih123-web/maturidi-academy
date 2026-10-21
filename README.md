@@ -5,12 +5,15 @@ mobile app and desktop shell — built on one shared FastAPI backend, with
 CMS, Quran, fatwa (RAG), inheritance/zakat calculators, library, LMS,
 donations/payments, an internal project system and Telegram integration.
 
-> **Status as of 2026-10-20.** All 18 build phases (0–17) are implemented.
-> PR #1 (`hardening/remediation-pass-2`) passed real GitHub CI end-to-end
-> (run 85: backend, web, crm and docker jobs all green) and is being merged
-> into `main`. This does **not** mean every capability is
-> production-verified — see [Honest capability status](#honest-capability-status)
-> below before planning a launch.
+> **Status as of 2026-10-21 (v1.1.0 remediation).** All 18 build phases
+> (0–17) are implemented; v1.0.0 shipped via PR #1 (real GitHub CI green),
+> and the v2 remediation added: Python 3.14 / Node 24 baselines, complete
+> MFA enrollment, mypy at 0 with a blocking CI typecheck, the three
+> source calculators, and real CRM build dispatch. This does **not**
+> mean every capability is production-verified — see
+> [Honest capability status](#honest-capability-status) below before
+> planning a launch, and `docs/audit-v2/DONE_CRITERIA.md` for the
+> item-by-item matrix.
 
 Repository: https://github.com/nasnih123-web/maturidi-academy
 
@@ -78,9 +81,9 @@ icons live inside `design-tokens` (see `packages/README.md`).
 
 | Tool | Version | Source of truth |
 |---|---|---|
-| Node.js | 22.11.0 | `.nvmrc` |
-| Python | 3.12.x (**required** — pinned pydantic has no 3.14 wheels) | `apps/api/Dockerfile`, `apps/api/requirements.txt` |
-| FastAPI / uvicorn / pydantic | 0.115.6 / 0.34.0 / 2.10.4 | `apps/api/requirements.txt` |
+| Node.js | 24 LTS | `.nvmrc` |
+| Python | 3.14.x (**required** — the pinned stack targets 3.14; 3.15 is pre-release only) | `apps/api/Dockerfile`, `apps/api/requirements.txt` |
+| FastAPI / uvicorn / pydantic | 0.156.4 / 0.54.0 / 2.14.1 | `apps/api/requirements.txt` |
 | Next.js / React / next-intl (web) | 15.5.28 / 18.3.1 / 4.9.2 | `apps/web/package.json` |
 | Vite / React / react-router-dom (CRM) | 6.4.4 / 18.3.1 / 7.18.4 | `apps/crm/package.json` |
 | Expo SDK / React (mobile) | ~53.0.20 / 19.0.0 | `apps/mobile/package.json` |
@@ -93,8 +96,8 @@ There is no root `package.json`; each app installs separately.
 ## Tests, quality gates, builds
 
 ```bash
-cd apps/api && pytest                          # backend — 582 tests
-python tools/check_ruff_baseline.py            # ruff gate: 160 frozen findings, increases fail
+cd apps/api && pytest                          # backend — 630 tests
+python tools/check_ruff_baseline.py            # ruff gate: 133 frozen findings, increases fail
 cd apps/web && npm run build                   # Next.js production build
 cd apps/crm && npm run build                   # tsc --noEmit && vite build
 npm audit --audit-level=high                   # CI gate, in apps/web and apps/crm
@@ -104,8 +107,9 @@ docker compose -f docker-compose.prod.yml config   # validate prod compose (with
 
 CI (`.github/workflows/ci.yml`) runs: backend lint gate + tests + semgrep +
 pip-audit + migration check, web build, CRM build, and a docker job that
-needs all three. mypy currently reports pre-existing type debt and runs as
-a visible, non-blocking step — green CI does not mean zero type errors.
+needs all three. mypy is at **0 errors** and the Typecheck step is
+blocking (v1.1.0; it was non-blocking type debt in v1.0.0). See
+`docs/RUNTIME_SUPPORT_MATRIX.md` and `docs/SECURITY_REPORT.md`.
 
 ## Environment & secrets
 
@@ -130,9 +134,11 @@ above, backup/restore drill in the dev sandbox.
 **Partial:** AI fatwa/voice features degrade honestly to "unavailable"
 until a real `ANTHROPIC_API_KEY` / speech models are configured;
 inheritance/zakat calculators stay gated until scholars approve the
-versioned rule configs; desktop Tauri shell exists but **no native
-installers have been produced**; mobile has **no `eas.json` and no EAS
-project connected yet** (owner action on expo.dev).
+versioned rule configs (the v1.1.0 source-rule drafts included);
+desktop Tauri shell works at config level (ADR-0023) but **no native
+installers have been produced**; mobile has real assets and `eas.json`
+APK profiles, but **no EAS project is connected yet** (owner action on
+expo.dev — until then no signed APK exists).
 
 **Blocked on real infrastructure (not yet verifiable in the dev
 sandbox):** live PostgreSQL and multi-process Redis behaviour, live MinIO,

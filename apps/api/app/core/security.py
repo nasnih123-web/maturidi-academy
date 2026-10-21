@@ -11,6 +11,7 @@ import hashlib
 import secrets as pysecrets
 import time
 from collections import defaultdict, deque
+from datetime import UTC, datetime
 
 import jwt
 import pyotp
@@ -125,7 +126,10 @@ def verify_totp_step(secret: str, code: str, valid_window: int = 1) -> int | Non
     current = int(time.time()) // TOTP_STEP_SECONDS
     for step in range(current - valid_window, current + valid_window + 1):
         try:
-            if totp.verify(code, for_time=step * TOTP_STEP_SECONDS, valid_window=0):
+            # pyotp 2.10: for_time باید datetime باشد (int در stub پذیرفته نیست؛
+            # تبدیل از timestamp با UTC همان شمارندهٔ قبلی را می‌دهد)
+            for_time = datetime.fromtimestamp(step * TOTP_STEP_SECONDS, tz=UTC)
+            if totp.verify(code, for_time=for_time, valid_window=0):
                 return step
         except Exception:
             return None

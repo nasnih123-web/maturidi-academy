@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from typing import ClassVar
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -70,7 +71,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     در production پشت TLS توسط ingress/proxy تنظیم شود.
     """
 
-    HEADERS = {
+    HEADERS: ClassVar[dict[str, str]] = {
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
         "Referrer-Policy": "strict-origin-when-cross-origin",
