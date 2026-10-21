@@ -1,13 +1,13 @@
 # فاز ۱۷ — Dockerfile production برای وب (Next.js 14)
 # بیلد از ریشهٔ ریپو (context: .) چون به packages/design-tokens نیاز دارد.
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY apps/web/package.json apps/web/package-lock.json ./web/
 COPY packages/design-tokens ./packages/design-tokens
 WORKDIR /app/web
 RUN npm ci --no-audit --no-fund
 
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app/web
 COPY --from=deps /app/web/node_modules ./node_modules
 COPY --from=deps /app/packages /app/packages
@@ -20,7 +20,7 @@ ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app/web
 ENV NODE_ENV=production
 # بدون output:standalone در next.config — کل بیلد + node_modules کپی می‌شود

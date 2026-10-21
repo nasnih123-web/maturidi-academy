@@ -52,9 +52,23 @@ npx expo run:ios            # needs Xcode (macOS)
 npm run typecheck           # tsc --noEmit
 ```
 
-The API base URL defaults to `http://localhost:8000`. On a physical device
-use your LAN IP (e.g. `http://192.168.1.50:8000`); the Android emulator can
-use `http://10.0.2.2:8000`.
+The API base URL is resolved by `app.config.js` into `expo.extra.apiUrl`:
+`EXPO_PUBLIC_API_URL` wins; for the **development** environment only, the
+default is `http://localhost:8000` (on a physical device use your LAN IP,
+e.g. `http://192.168.1.50:8000`; the Android emulator can use
+`http://10.0.2.2:8000`). **Preview/production builds fail loudly** when no
+real, non-localhost API URL is configured (audit F-09) — set it in the EAS
+environment variables on expo.dev or pass it as a build-workflow input.
+
+## EAS builds
+
+Profiles live in `eas.json`: `development` (dev client, APK), `preview`
+(internal APK), `production-apk` (internal APK — a real `.apk`, not an AAB)
+and `production` (store AAB). `extra.easProjectId` is **empty on purpose**:
+linking the real Expo project is the owner's step (`eas init`) — see
+`docs/ops/APK_BUILD_GUIDE.md` (MOBILE-EAS-01). Image assets in `assets/`
+(icon, adaptive icon, splash, notification icon) are generated from the
+school emblem (`apps/web/public/logo.jpg`).
 
 ## Offline & sync
 

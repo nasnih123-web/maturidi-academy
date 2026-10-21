@@ -12,7 +12,7 @@ import { LoginParticles } from "../components/LoginParticles";
  */
 
 export default function Login(): React.ReactElement {
-  const { user, loading, login } = useAuth();
+  const { user, loading, login, mustEnroll2fa } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
 
@@ -26,6 +26,11 @@ export default function Login(): React.ReactElement {
 
   if (!loading && user) {
     return <Navigate to="/" replace />;
+  }
+  if (!loading && mustEnroll2fa) {
+    // Restricted-scope session: enrollment on the Security page is the
+    // only way forward (contract §2).
+    return <Navigate to="/settings/security" replace />;
   }
 
   async function handleSubmit(e: React.FormEvent): Promise<void> {
