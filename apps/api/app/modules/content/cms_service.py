@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,7 +68,20 @@ EVENT_PREFIX = {
     "announcements": "announcement",
 }
 
-_MODELS = {
+# گونه‌های مدل CMS: پنج مدل گردش‌کار‌دار (ماشین §۹) + NavItem که گردش‌کار ندارد
+# و با visible/پنجرهٔ زمانی کنترل می‌شود. دسترسی به ستون‌های خاص هر مدل در
+# توابع پایین با همین تفکیک و گاردهای resource/_LIST_FILTERS انجام می‌شود.
+WorkflowModel = IslamicEvent | ScholarQuote | Page | Banner | Announcement
+CmsModel = WorkflowModel | NavItem
+_WORKFLOW_CLASSES: tuple[type[WorkflowModel], ...] = (
+    IslamicEvent,
+    ScholarQuote,
+    Page,
+    Banner,
+    Announcement,
+)
+
+_MODELS: dict[str, type[CmsModel]] = {
     "events": IslamicEvent,
     "quotes": ScholarQuote,
     "pages": Page,
@@ -107,11 +120,10 @@ def _in_window(
     starts_at: datetime | None, ends_at: datetime | None, now: datetime
 ) -> bool:
     """آیا now درون پنجرهٔ [starts_at, ends_at] است؟ None یعنی باز."""
-    if starts_at is not None and ensure_aware(starts_at) > now:
-        return False
-    if ends_at is not None and ensure_aware(ends_at) < now:
-        return False
-    return True
+    return not (
+        (starts_at is not None and ensure_aware(starts_at) > now)
+        or (ends_at is not None and ensure_aware(ends_at) < now)
+    )
 
 
 def _to_dict(obj: Any) -> dict[str, Any]:
@@ -173,14 +185,18 @@ async def list_items(
     if workflow_status and "workflow_status" in _LIST_FILTERS[resource]:
         if workflow_status not in workflow.STATUSES:
             raise APIError(422, "unknown_status", f"وضعیت ناشناخته: {workflow_status}")
-        stmt = stmt.where(model.workflow_status == workflow_status)
+        # گارد _LIST_FILTERS یعنی resource حتماً یکی از مدل‌های گردش‌کار‌دار است
+        stmt = stmt.where(cast(type[WorkflowModel], model).workflow_status == workflow_status)
     if placement and "placement" in _LIST_FILTERS[resource]:
-        stmt = stmt.where(model.placement == placement)
+        # placement فقط روی Banner/Announcement است (طبق _LIST_FILTERS)
+        stmt = stmt.where(cast(type[Banner] | type[Announcement], model).placement == placement)
     if locale and "locale" in _LIST_FILTERS[resource]:
-        stmt = stmt.where(model.locale == locale)
+        # locale فقط روی NavItem است (طبق _LIST_FILTERS)
+        stmt = stmt.where(cast(type[NavItem], model).locale == locale)
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
     if resource == "nav":
-        stmt = stmt.order_by(model.parent_id.is_(None).desc(), model.sort_order.asc())
+        nav_model = cast(type[NavItem], model)
+        stmt = stmt.order_by(nav_model.parent_id.is_(None).desc(), nav_model.sort_order.asc())
     else:
         stmt = stmt.order_by(model.created_at.desc())
     rows = (await db.execute(stmt.limit(min(limit, 200)).offset(max(offset, 0)))).scalars().all()
@@ -210,7 +226,9 @@ async def create_item(
         if exists:
             raise APIError(409, "slug_taken", "این slug قبلاً استفاده شده است")
     obj = model(**_prepare_create(resource, data))
-    obj.created_by = actor_id
+    if isinstance(obj, _WORKFLOW_CLASSES):
+        # created_by فقط روی مدل‌های گردش‌کار‌دار ستون است؛ NavItem ندارد
+        obj.created_by = actor_id
     db.add(obj)
     await db.flush()
     prefix = EVENT_PREFIX[resource]
@@ -220,7 +238,7 @@ async def create_item(
         aggregate_id=str(obj.id),
         event_type=f"{prefix}.created",
         payload={"workflow_status": obj.workflow_status, "version": obj.version}
-        if hasattr(obj, "workflow_status")
+        if isinstance(obj, _WORKFLOW_CLASSES)
         else {"id": str(obj.id)},
     )
     await log_audit(
@@ -244,13 +262,16 @@ async def update_item(
     obj = await db.get(model, _uuid_or_404(item_id))
     if obj is None:
         raise APIError(404, "not_found", "آیتم یافت نشد")
+    # db.get با entity یونیونی به Base برمی‌گردد؛ مدل واقعی یکی از CmsModelهاست
+    obj = cast(CmsModel, obj)
     if resource == "pages" and "slug" in data:
         raise APIError(422, "slug_immutable", "تغییر slug پس از ساخت مجاز نیست")
     prepared = _prepare_create(resource, data)
     old_status = getattr(obj, "workflow_status", None)
     for key, value in prepared.items():
         setattr(obj, key, value)
-    if hasattr(obj, "version"):
+    if isinstance(obj, _WORKFLOW_CLASSES):
+        # version فقط روی مدل‌های گردش‌کار‌دار ستون است (معادل hasattr قبلی)
         obj.version = (obj.version or 0) + 1
     db.add(obj)
     await db.flush()
@@ -261,7 +282,7 @@ async def update_item(
         aggregate_id=str(obj.id),
         event_type=f"{prefix}.updated",
         payload={"workflow_status": old_status, "version": obj.version}
-        if old_status is not None
+        if old_status is not None and isinstance(obj, _WORKFLOW_CLASSES)
         else {"version": getattr(obj, "version", None)},
     )
     await log_audit(
@@ -288,13 +309,17 @@ async def transition_item(
     obj = await db.get(model, _uuid_or_404(item_id))
     if obj is None:
         raise APIError(404, "not_found", "آیتم یافت نشد")
+    # گارد _WORKFLOW_MODELS بالا تضمین می‌کند obj یکی از مدل‌های گردش‌کار‌دار است
+    obj = cast(WorkflowModel, obj)
     current = obj.workflow_status
     workflow.validate_transition(current, to)  # نامعتبر → 422
     obj.workflow_status = to
     obj.version = (obj.version or 0) + 1
     if to == workflow.PUBLISHED:
-        if resource == "pages" and obj.published_at is None:
-            obj.published_at = _utcnow()
+        if resource == "pages":
+            page = cast(Page, obj)
+            if page.published_at is None:
+                page.published_at = _utcnow()
         if obj.distribution is None:
             obj.distribution = dict(DEFAULT_DISTRIBUTION)
     db.add(obj)
@@ -333,7 +358,7 @@ async def archive_item(db: AsyncSession, resource: str, item_id: str, *, actor_i
     برای nav_items که گردش‌کار ندارند، بایگانی یعنی visible=false.
     """
     if resource == "nav":
-        model = _MODELS["nav"]
+        model = cast(type[NavItem], _MODELS["nav"])
         obj = await db.get(model, _uuid_or_404(item_id))
         if obj is None:
             raise APIError(404, "not_found", "آیتم یافت نشد")
@@ -588,7 +613,7 @@ async def run_islamic_calendar_cycle(
     active_event_id = active.get("event_id")
 
     if candidate is not None and str(candidate.id) != active_event_id:
-        new_active = {
+        new_active: dict[str, str | None] = {
             "event_id": str(candidate.id),
             "theme_id": str(candidate.theme_id),
             "activated_at": now.isoformat(),

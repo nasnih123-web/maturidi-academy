@@ -1,5 +1,5 @@
 import React from "react";
-import { Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./lib/auth";
 import { useI18n } from "./lib/i18n";
 import { useCrmFonts } from "./lib/fonts";
@@ -34,15 +34,22 @@ import Connections from "./pages/Connections";
 import Builds from "./pages/Builds";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
+import Security from "./pages/Security";
 
 function ProtectedRoute(): React.ReactElement {
-  const { user, loading } = useAuth();
+  const { user, loading, mustEnroll2fa } = useAuth();
   const { t } = useI18n();
+  const location = useLocation();
   if (loading) {
     return <div className="page">{t("common.loading")}</div>;
   }
-  if (!user) {
+  if (!user && !mustEnroll2fa) {
     return <Navigate to="/login" replace />;
+  }
+  // Mandatory TOTP enrollment (contract §2): with a restricted-scope
+  // session the ONLY reachable page is Security, until enrollment completes.
+  if (mustEnroll2fa && location.pathname !== "/settings/security") {
+    return <Navigate to="/settings/security" replace />;
   }
   return <Outlet />;
 }
@@ -93,6 +100,7 @@ export default function App(): React.ReactElement {
             <Route path="builds" element={<Builds />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="settings/security" element={<Security />} />
             <Route path="appearance" element={<Appearance />} />
             <Route path="branding" element={<Branding />} />
           </Route>

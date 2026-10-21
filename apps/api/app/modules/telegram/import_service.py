@@ -129,7 +129,7 @@ async def run_import(
         raise APIError(404, "actor_not_found", "کاربر اجراکننده یافت نشد")
 
     owns_client = client is None
-    if owns_client:
+    if client is None:
         api_id, api_hash = await _telethon_creds(db)
         session_str = await load_session(db)
         if not session_str:

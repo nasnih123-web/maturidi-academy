@@ -968,6 +968,10 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
 .calc-table th, .calc-table td { padding: 0.6rem 0.8rem; border-bottom: 1px solid rgba(212, 175, 55, 0.18); text-align: start; font-variant-numeric: tabular-nums; }
 .calc-table thead th { color: #e5c07b; font-weight: 700; font-size: 0.85rem; }
 .calc-table tfoot td { border-bottom: none; font-weight: 800; color: hsl(var(--text-primary)); }
+.calc-table-scroll { overflow-x: auto; }
+.calc-table-block { margin-block-start: 1.4rem; }
+.calc-table-block h3 { font-size: 0.95rem; color: #e5c07b; margin: 0 0 0.5rem; }
+.calc-check { display: flex; gap: 0.5rem; align-items: center; font-size: 0.92rem; padding: 0.25rem 0; }
 .calc-rule-version { font-size: 0.8rem; color: hsl(var(--text-muted)); margin: 0; }
 .calc-notes h3 { font-size: 0.9rem; color: #e5c07b; margin: 0 0 0.4rem; }
 .calc-notes ul { margin: 0; padding-inline-start: 1.2rem; font-size: 0.88rem; color: hsl(var(--text-secondary)); line-height: 1.8; }

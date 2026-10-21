@@ -533,7 +533,8 @@ async def test_zakat_mini_no_rule(tc, monkeypatch):
     client = tc["client"]
 
     # بدون rule تأییدشده: ۵۰۳ صادقانه، نه نرخ ساختگی (§۱۵.۵)
-    async def no_rule(db, kind, madhab=None):
+    # (**_kwargs: امضای داخلی get_active_rule در فاز ۴ پارامتر require_key گرفت)
+    async def no_rule(db, kind, madhab=None, **_kwargs):
         raise APIError(422, "rules_not_approved", "no rule")
 
     monkeypatch.setattr(calc_service, "get_active_rule", no_rule)

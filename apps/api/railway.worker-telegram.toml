@@ -1,0 +1,15 @@
+# Railway — worker service "worker-telegram" (root directory: apps/api)
+# Same image as the api service; only the start command differs. In the
+# Railway dashboard set this file as the service's config file path
+# (Settings -> Config as code), or keep railway.toml and override the
+# start command in the service settings instead. Workers have no HTTP
+# port, so no healthcheckPath. Deploy status: prepared, NOT deployed
+# (docs/ops/railway-deployment.md).
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "python -m app.worker telegram"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

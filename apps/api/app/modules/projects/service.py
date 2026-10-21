@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
@@ -138,8 +139,13 @@ async def _notify_task_event(
 
 def _task_out(t: Task) -> schemas.TaskOut:
     return schemas.TaskOut(
-        id=t.id, project_id=t.project_id, title=t.title,
-        description=t.description, assignee_id=t.assignee_id, status=t.status,
+        id=t.id, project_id=t.project_id,
+        title=schemas.LocalizedText.model_validate(t.title),
+        description=(
+            schemas.LocalizedText.model_validate(t.description)
+            if t.description is not None
+            else None
+        ), assignee_id=t.assignee_id, status=t.status,
         due_date=t.due_date, priority=t.priority,
         related_entity_type=t.related_entity_type,
         related_entity_id=t.related_entity_id, created_by=t.created_by,
@@ -176,7 +182,8 @@ async def create_project(
     await db.commit()
     await db.refresh(p)
     return schemas.ProjectOut(
-        id=p.id, title=p.title, status=p.status, created_by=p.created_by,
+        id=p.id, title=schemas.LocalizedText.model_validate(p.title),
+        status=p.status, created_by=p.created_by,
         created_at=p.created_at, updated_at=p.updated_at, task_count=0,
     )
 
@@ -209,7 +216,8 @@ async def list_projects(
             )
         ).scalar_one()
         items.append(schemas.ProjectOut(
-            id=p.id, title=p.title, status=p.status, created_by=p.created_by,
+            id=p.id, title=schemas.LocalizedText.model_validate(p.title),
+            status=p.status, created_by=p.created_by,
             created_at=p.created_at, updated_at=p.updated_at, task_count=cnt,
         ))
     return items, next_cursor
@@ -229,7 +237,8 @@ async def project_out(db: AsyncSession, p: Project) -> schemas.ProjectOut:
         )
     ).scalar_one()
     return schemas.ProjectOut(
-        id=p.id, title=p.title, status=p.status, created_by=p.created_by,
+        id=p.id, title=schemas.LocalizedText.model_validate(p.title),
+        status=p.status, created_by=p.created_by,
         created_at=p.created_at, updated_at=p.updated_at, task_count=cnt,
     )
 
@@ -342,7 +351,8 @@ async def create_task(
         )
         await _notify_task_event(
             db, assignee_id=t.assignee_id, kind="assigned",
-            task=t, project_title=(await db.get(Project, project_id)).title,
+            # پروژهٔ تسک با FK تضمین شده است؛ get در اینجا هرگز None نیست
+            task=t, project_title=cast(Project, await db.get(Project, project_id)).title,
         )
     await db.commit()
     await db.refresh(t)
@@ -461,7 +471,8 @@ async def update_task(
         )
         await _notify_task_event(
             db, assignee_id=new_assignee, kind="assigned",
-            task=t, project_title=(await db.get(Project, t.project_id)).title,
+            # پروژهٔ تسک با FK تضمین شده است؛ get در اینجا هرگز None نیست
+            task=t, project_title=cast(Project, await db.get(Project, t.project_id)).title,
         )
     await db.commit()
     await db.refresh(t)
@@ -557,6 +568,8 @@ async def run_task_due_soon_cycle(
     scanned = len(rows)
     notified = 0
     for t in rows:
+        if t.due_date is None:
+            continue  # کوئری بالا due_date.is_not(None) دارد؛ گارد صرفاً تایپی است
         t.due_notified_at = now
         if t.assignee_id:
             project = await db.get(Project, t.project_id)
@@ -583,7 +596,9 @@ async def run_task_due_soon_cycle(
 
 def _staff_out(s: StaffMember) -> schemas.StaffOut:
     return schemas.StaffOut(
-        id=s.id, user_id=s.user_id, title=s.title, department=s.department,
+        id=s.id, user_id=s.user_id,
+        title=schemas.LocalizedText.model_validate(s.title),
+        department=schemas.LocalizedText.model_validate(s.department),
         joined_date=s.joined_date, is_active=s.is_active,
         created_at=s.created_at, updated_at=s.updated_at,
     )

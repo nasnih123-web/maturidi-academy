@@ -155,7 +155,7 @@ async def list_submissions(
                 and_(FatwaSubmission.created_at == ts, FatwaSubmission.id < lid),
             )
         )
-    rows = (await db.execute(stmt.limit(limit + 1))).scalars().all()
+    rows = list((await db.execute(stmt.limit(limit + 1))).scalars().all())
     next_cursor = None
     if len(rows) > limit:
         rows = rows[:limit]

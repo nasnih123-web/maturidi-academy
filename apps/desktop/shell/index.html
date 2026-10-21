@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>آکادمی ماتریدی — دسکتاپ</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #07271e;
+        --panel: #0a3527;
+        --gold: #c9a227;
+        --text: #f3ead2;
+        --muted: #b9ac8d;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Vazirmatn", "Segoe UI", Tahoma, sans-serif;
+        padding: 2rem 1rem;
+      }
+      main {
+        max-width: 34rem;
+        text-align: center;
+        background: var(--panel);
+        border: 1px solid rgba(201, 162, 39, 0.35);
+        border-radius: 1rem;
+        padding: 2.5rem 2rem;
+      }
+      img { width: 7rem; height: 7rem; border-radius: 50%; }
+      h1 { font-size: 1.5rem; margin: 1rem 0 0.25rem; color: var(--gold); }
+      .sub { color: var(--muted); margin: 0 0 1.5rem; font-size: 0.9rem; }
+      section p { line-height: 1.9; margin: 0.5rem 0; }
+      .en { direction: ltr; color: var(--muted); font-size: 0.85rem; }
+      code {
+        direction: ltr;
+        display: inline-block;
+        background: rgba(0, 0, 0, 0.35);
+        padding: 0.1rem 0.45rem;
+        border-radius: 0.35rem;
+        font-size: 0.85em;
+      }
+      button {
+        margin-top: 1.25rem;
+        background: var(--gold);
+        color: #231a02;
+        border: 0;
+        border-radius: 0.6rem;
+        padding: 0.65rem 1.6rem;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button:hover { filter: brightness(1.08); }
+      .spinner {
+        width: 2.2rem; height: 2.2rem;
+        margin: 1rem auto 0;
+        border-radius: 50%;
+        border: 3px solid rgba(201, 162, 39, 0.25);
+        border-top-color: var(--gold);
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="icon.png" alt="نشان آکادمی ماتریدی" />
+      <h1>آکادمی ماتریدی</h1>
+      <p class="sub">Maturidi Academy — Desktop</p>
+
+      <section id="state-loading" hidden>
+        <p>در حال اتصال به وب‌اپ آکادمی…</p>
+        <div class="spinner" aria-hidden="true"></div>
+      </section>
+
+      <section id="state-offline" hidden>
+        <p>اتصال اینترنت برقرار نیست. پس از اتصال، دوباره تلاش کنید.</p>
+        <p class="en">You appear to be offline. Reconnect and retry.</p>
+        <button id="retry" type="button">تلاش دوباره</button>
+      </section>
+
+      <section id="state-unconfigured">
+        <p>
+          نشانی وب‌اپ برای این نسخهٔ دسکتاپ تنظیم نشده است. مدیر استقرار باید
+          نشانی واقعی وب‌اپ production را در فایل
+          <code>shell/config.js</code>
+          (متغیر <code>MATURIDI_WEB_URL</code>) قرار دهد — پوسته بدون نشانی
+          معتبر، هیچ صفحه‌ای را حدس نمی‌زند.
+        </p>
+        <p class="en">
+          This desktop build is not configured yet: the deployment must set
+          <code>MATURIDI_WEB_URL</code> in <code>shell/config.js</code> to the
+          real production web origin (ADR-0023).
+        </p>
+      </section>
+    </main>
+    <script src="config.js"></script>
+    <script src="shell.js"></script>
+  </body>
+</html>

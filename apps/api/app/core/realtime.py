@@ -80,9 +80,11 @@ def _event_visible_to(client: _Client, event: dict) -> bool:
     (ایمیل، session_id، ...): اشتراک `user.*` یا `*` نباید رویداد کاربرِ
     دیگر را لو بدهد. فقط خودِ مالک، یا دارندهٔ مجوز `users.manage`.
     """
-    if event.get("aggregate_type") == "user":
-        if event.get("aggregate_id") != str(client.user_id):
-            return "users.manage" in client.permissions
+    if (
+        event.get("aggregate_type") == "user"
+        and event.get("aggregate_id") != str(client.user_id)
+    ):
+        return "users.manage" in client.permissions
     return True
 
 

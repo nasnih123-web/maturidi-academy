@@ -68,6 +68,11 @@ class User(Base):
     # کدی که برای همین گام (یا قدیمی‌تر) قبلاً پذیرفته شده دوباره قبول نیست.
     # remediation-pass-2 Track 1 (§۵)
     totp_last_step: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # زمان فعال‌شدن فعلی TOTP (فاز ۲ — GET /2fa/status): با enable ست و با
+    # disable/recover پاک می‌شود؛ مبنای enrolled_at در پاسخ status.
+    totp_enabled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
@@ -2072,7 +2077,15 @@ class BuildRelease(Base):
 
 
 class BuildRequest(Base):
-    """درخواست بازسازی اپ — در dev/sandbox فقط ثبت می‌شود؛ امضای واقعی با CI."""
+    """درخواست بازسازی اپ — dispatch واقعی به GitHub Actions (F-05 remediation).
+
+    چرخهٔ صادقانه: ردیف فقط وقتی ساخته می‌شود که ارائه‌دهندهٔ بیلد پیکربندی
+    شده باشد (وگرنه API خطای 503 می‌دهد)؛ dispatch به workflow متناظر پلتفرم
+    ارسال می‌شود و وضعیت از روی workflow run واقعی همگام می‌شود
+    (queued → running → completed | failed). ردیف‌های legacy فاز ۱۴
+    provider ندارند (provider=NULL) — یعنی هرگز dispatch نشده‌اند و UI
+    آن‌ها را «ارسال‌نشده» نشان می‌دهد، نه «در صفِ در حال انجام».
+    """
 
     __tablename__ = "build_requests"
 
@@ -2086,8 +2099,20 @@ class BuildRequest(Base):
     )  # branch/commit درخواستی
     status: Mapped[str] = mapped_column(
         String(16), default="queued", index=True
-    )  # queued | running | done | failed
+    )  # queued | running | completed | failed
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # برندینگ درخواستی CRM: app_name/package_id/version_code/api_url/environment
+    branding: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # ردیابی ارائه‌دهندهٔ بیلد — NULL یعنی هرگز dispatch نشده (legacy)
+    provider: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )  # github_actions
+    provider_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    provider_run_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    artifact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    dispatched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     requested_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id"), nullable=True
     )

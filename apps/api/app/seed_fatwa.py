@@ -16,6 +16,8 @@
 """
 from __future__ import annotations
 
+from typing import TypedDict
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -86,6 +88,16 @@ def _paragraph(block_set: int, index: int, lang: str) -> str:
     return block["text"][lang]
 
 
+class _TopicSpec(TypedDict):
+    """مشخصات یک موضوع نمایشی سید فتوا."""
+
+    key: str
+    title: dict[str, str]
+    description: dict[str, str]
+    position_lang: str
+    paragraph: tuple[int, int]
+
+
 async def seed_fatwa_demo(db: AsyncSession) -> dict[str, int]:
     """idempotent: chunk نمایشی تکراری ساخته نمی‌شود (کلید source_ref.id)."""
     provider = HashEmbeddingProvider()
@@ -127,7 +139,7 @@ async def seed_fatwa_demo(db: AsyncSession) -> dict[str, int]:
         created_chunks += 1
 
     # دو موضوع نمایشی — مواضع فقط نقل‌قول از chunkهای بالا، وضعیت draft
-    topics_spec = [
+    topics_spec: list[_TopicSpec] = [
         {
             "key": "demo_fatwa_methodology",
             "title": {

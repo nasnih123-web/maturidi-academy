@@ -840,12 +840,15 @@ async def test_builds_prereqs_rebuild_releases(tc):
     assert data["platforms"]["android"]["ready"] is False
     assert "google_play" in data["platforms"]["android"]["missing"]
 
+    # F-05 remediation: بدون ارائه‌دهندهٔ بیلد پیکربندی‌شده (توکن/repo گیت‌هاب
+    # در env تست نیست) rebuild صادقانه 503 است و هیچ «queued» دروغینی ساخته
+    # نمی‌شود — جریان dispatch موفق در tests/test_builds_dispatch.py پوشش دارد.
     r = await client.post(f"{BASE}/admin/builds/rebuild", headers=admin,
                           json={"platform": "android", "version": "1.0.0"})
-    assert r.status_code == 200, r.text
-    data = r.json()
-    assert data["status"] == "queued"
-    assert data["signing_ready"] is False
+    assert r.status_code == 503, r.text
+    assert r.json()["error"]["code"] == "build_provider_not_configured"
+    r = await client.get(f"{BASE}/admin/builds/prereqs", headers=admin)
+    assert r.json()["provider"]["configured"] is False
 
     r = await client.get(f"{BASE}/admin/builds/releases", headers=admin)
     assert r.status_code == 200 and r.json() == []

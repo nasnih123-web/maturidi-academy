@@ -503,9 +503,10 @@ async def increment_session(
     session = await _get_owned_session(db, user, session_id)
     if session.ended_at is not None:
         raise APIError(409, "session_ended", "این نشست تسبیح پایان یافته است")
-    if idempotency_key:
-        # کلید تکراری → بدون افزایش دوباره، همان وضعیت فعلی برمی‌گردد
-        if not _claim_increment_key(f"{user.id}:{session_id}:{idempotency_key}"):
+    # کلید تکراری → بدون افزایش دوباره، همان وضعیت فعلی برمی‌گردد
+    if idempotency_key and not _claim_increment_key(
+        f"{user.id}:{session_id}:{idempotency_key}"
+    ):
             await db.rollback()
             await db.refresh(session)
             return _session_out(session)

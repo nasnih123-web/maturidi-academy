@@ -188,9 +188,29 @@ class RebuildIn(BaseModel):
     version: str | None = None
     ref: str | None = None
     note: str | None = None
+    # برندینگ بیلد (F-05 remediation) — اعتبارسنجی دامنه‌ای در builds_service
+    app_name: str | None = None
+    package_id: str | None = None
+    version_code: int | None = None
+    api_url: str | None = None
+    environment: str | None = None
 
 
-class RebuildOut(BaseModel):
+class BuildProviderFields(BaseModel):
+    """فیلدهای ردیابی ارائه‌دهندهٔ بیلد — provider=None یعنی legacy/ارسال‌نشده."""
+
+    branding: dict[str, Any] = {}
+    provider: str | None = None
+    provider_run_id: str | None = None
+    provider_run_url: str | None = None
+    artifact_name: str | None = None
+    # نشانی Release پیش‌نویس مقصد — فقط وقتی درخواست با تگ (production +
+    # نسخهٔ معتبر) dispatch شده باشد؛ وگرنه None (سیاست release_tag_for).
+    release_url: str | None = None
+    dispatched_at: str | None = None
+
+
+class RebuildOut(BuildProviderFields):
     id: str
     platform: str
     version: str | None = None
@@ -202,7 +222,7 @@ class RebuildOut(BaseModel):
     created_at: str
 
 
-class BuildRequestOut(BaseModel):
+class BuildRequestOut(BuildProviderFields):
     id: str
     platform: str
     version: str | None = None

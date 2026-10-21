@@ -1,0 +1,1932 @@
+{
+ "provenance": {
+  "source_url": "http://dl.ghadimyol.ir/calculator/miras.html",
+  "source_sha256": "8cb9d11c5eb41f73612dd6abc43957e324a1ce5460304296d6281ae24c3dc8e6",
+  "fetched": "2026-10-21 via plain HTTP (HTTPS failed)",
+  "attributed_author": "مهران ساعدی (per user attribution; name appears in zakat.html)",
+  "license": "no explicit license text in source — rules re-implemented, code/prose not copied",
+  "generated_by": "tools/golden/generate_fixtures.py + tools/golden/harness.js (original page JS executed in Node vm)"
+ },
+ "cases": [
+  {
+   "id": "wife_mother_father_sons_daughters",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "120000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "wives": 1,
+     "father": true,
+     "mother": true,
+     "sons": 2,
+     "daughters": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "120000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "wives",
+      "count": 1,
+      "share": "1/8"
+     },
+     {
+      "key": "mother",
+      "count": 1,
+      "share": "1/6"
+     },
+     {
+      "key": "father",
+      "count": 1,
+      "share": "1/6"
+     },
+     {
+      "key": "sons",
+      "count": 2,
+      "share": "13/30"
+     },
+     {
+      "key": "daughtersAsabah",
+      "count": 1,
+      "share": "13/120"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "umariyya_husband",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "husband": true,
+     "father": true,
+     "mother": true
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "60000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "husband",
+      "count": 1,
+      "share": "1/2"
+     },
+     {
+      "key": "mother",
+      "count": 1,
+      "share": "1/6"
+     },
+     {
+      "key": "father",
+      "count": 1,
+      "share": "1/3"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "awl_husband_mother_sisters_uterine",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "100000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "husband": true,
+     "mother": true,
+     "sisters": 2,
+     "uterine_brothers": 1,
+     "uterine_sisters": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "100000",
+    "will_applied": "0",
+    "awl": true,
+    "radd": false,
+    "rows": [
+     {
+      "key": "husband",
+      "count": 1,
+      "share": "3/10"
+     },
+     {
+      "key": "mother",
+      "count": 1,
+      "share": "1/10"
+     },
+     {
+      "key": "uterine",
+      "count": 2,
+      "share": "1/5"
+     },
+     {
+      "key": "fullSisters",
+      "count": 2,
+      "share": "2/5"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "daughter_only_radd",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "50000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "daughters": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "50000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": true,
+    "rows": [
+     {
+      "key": "daughters",
+      "count": 1,
+      "share": "1/1"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "mother_daughters_radd",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "90000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "mother": true,
+     "daughters": 2
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "90000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": true,
+    "rows": [
+     {
+      "key": "mother",
+      "count": 1,
+      "share": "1/5"
+     },
+     {
+      "key": "daughters",
+      "count": 2,
+      "share": "4/5"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "wife_daughters_father",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "240000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "wives": 1,
+     "daughters": 2,
+     "father": true
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "240000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "wives",
+      "count": 1,
+      "share": "1/8"
+     },
+     {
+      "key": "father",
+      "count": 1,
+      "share": "5/24"
+     },
+     {
+      "key": "daughters",
+      "count": 2,
+      "share": "2/3"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "akdariyya",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "90000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "husband": true,
+     "mother": true,
+     "grandfather": true,
+     "sisters": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "90000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "husband",
+      "count": 1,
+      "share": "1/2"
+     },
+     {
+      "key": "mother",
+      "count": 1,
+      "share": "1/3"
+     },
+     {
+      "key": "grandfather",
+      "count": 1,
+      "share": "1/6"
+     }
+    ],
+    "blocked": [
+     "sisters"
+    ]
+   }
+  },
+  {
+   "id": "grandfather_blocks_siblings",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "120000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "mother": true,
+     "grandfather": true,
+     "brothers": 2,
+     "sisters": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "120000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "mother",
+      "count": 1,
+      "share": "1/6"
+     },
+     {
+      "key": "grandfather",
+      "count": 1,
+      "share": "5/6"
+     }
+    ],
+    "blocked": [
+     "brothers",
+     "sisters"
+    ]
+   }
+  },
+  {
+   "id": "grandchildren_asaba",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "80000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "wives": 1,
+     "son_sons": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "80000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "wives",
+      "count": 1,
+      "share": "1/8"
+     },
+     {
+      "key": "sonSons",
+      "count": 1,
+      "share": "7/8"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "grandchildren_mixed_asaba",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "80000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "son_sons": 1,
+     "son_daughters": 2
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "80000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "sonSons",
+      "count": 1,
+      "share": "1/2"
+     },
+     {
+      "key": "sonDaughtersAsabah",
+      "count": 2,
+      "share": "1/2"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "sondaughter_completion_radd",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "daughters": 1,
+     "son_daughters": 2
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "60000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": true,
+    "rows": [
+     {
+      "key": "daughters",
+      "count": 1,
+      "share": "3/4"
+     },
+     {
+      "key": "sonDaughters",
+      "count": 2,
+      "share": "1/4"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "paternal_sister_completion_radd",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "sisters": 1,
+     "paternal_sisters": 2
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "60000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": true,
+    "rows": [
+     {
+      "key": "fullSisters",
+      "count": 1,
+      "share": "3/4"
+     },
+     {
+      "key": "paternalSisters",
+      "count": 2,
+      "share": "1/4"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "paternal_sister_awl_quirk",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "70000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "husband": true,
+     "paternal_sisters": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "70000",
+    "will_applied": "0",
+    "awl": true,
+    "radd": false,
+    "rows": [
+     {
+      "key": "husband",
+      "count": 1,
+      "share": "3/7"
+     },
+     {
+      "key": "paternalSisters",
+      "count": 1,
+      "share": "4/7"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "uterine_and_full_brother",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "120000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "mother": true,
+     "uterine_brothers": 1,
+     "uterine_sisters": 1,
+     "brothers": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "120000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "mother",
+      "count": 1,
+      "share": "1/6"
+     },
+     {
+      "key": "uterine",
+      "count": 2,
+      "share": "1/3"
+     },
+     {
+      "key": "brothers",
+      "count": 1,
+      "share": "1/2"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "dhawu_daughters_son",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "40000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "daughter_sons": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "40000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "dhawu_daughterSons",
+      "count": 1,
+      "share": "1/1"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "dhawu_class1_mixed",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "40000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "daughter_sons": 1,
+     "daughter_daughters": 1
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "dhawu_multibranch"
+   }
+  },
+  {
+   "id": "dhawu_sister_children",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "40000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "sister_sons": 1,
+     "sister_daughters": 1
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "dhawu_multibranch"
+   }
+  },
+  {
+   "id": "dhawu_multibranch_stop",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "40000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "daughter_sons": 1,
+     "maternal_uncles": 1
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "dhawu_multibranch"
+   }
+  },
+  {
+   "id": "dhawu_brother_daughters_only",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "40000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "full_brother_daughters": 2
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "40000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "dhawu_class3_fullBrotherDaughters",
+      "count": 2,
+      "share": "1/1"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "impediment_religion",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "40000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": true,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "sons": 1
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "impediment_religion"
+   }
+  },
+  {
+   "id": "will_third_nonheir",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "90000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "40000",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "sons": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "60000",
+    "will_applied": "30000",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "sons",
+      "count": 1,
+      "share": "1/1"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "will_heir_approved",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "90000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "30000",
+    "will_for_heir": true,
+    "will_approved": true,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "sons": 1,
+     "daughters": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "60000",
+    "will_applied": "30000",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "sons",
+      "count": 1,
+      "share": "2/3"
+     },
+     {
+      "key": "daughtersAsabah",
+      "count": 1,
+      "share": "1/3"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "will_heir_not_approved",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "90000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "30000",
+    "will_for_heir": true,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "sons": 1,
+     "daughters": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "90000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "sons",
+      "count": 1,
+      "share": "2/3"
+     },
+     {
+      "key": "daughtersAsabah",
+      "count": 1,
+      "share": "1/3"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "funeral_debt_husband_daughter",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "100000",
+    "funeral": "5000",
+    "debt": "15000",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "husband": true,
+     "daughters": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "80000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": true,
+    "rows": [
+     {
+      "key": "husband",
+      "count": 1,
+      "share": "1/4"
+     },
+     {
+      "key": "daughters",
+      "count": 1,
+      "share": "3/4"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "grandmothers_and_father",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "father": true,
+     "mgm": true,
+     "pgm": true
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "60000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "grandmothers",
+      "count": 1,
+      "share": "1/6"
+     },
+     {
+      "key": "father",
+      "count": 1,
+      "share": "5/6"
+     }
+    ],
+    "blocked": [
+     "pgm"
+    ]
+   }
+  },
+  {
+   "id": "sisters_asaba_maalghayr",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "80000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "daughters": 1,
+     "sisters": 2,
+     "paternal_sisters": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "80000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "daughters",
+      "count": 1,
+      "share": "1/2"
+     },
+     {
+      "key": "sistersFemaleDesc",
+      "count": 2,
+      "share": "1/2"
+     }
+    ],
+    "blocked": [
+     "paternal_sisters"
+    ]
+   }
+  },
+  {
+   "id": "siblings_asaba_with_husband",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "80000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "husband": true,
+     "brothers": 1,
+     "sisters": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "80000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "husband",
+      "count": 1,
+      "share": "1/2"
+     },
+     {
+      "key": "brothers",
+      "count": 1,
+      "share": "1/3"
+     },
+     {
+      "key": "sistersAsabah",
+      "count": 1,
+      "share": "1/6"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "sondaughters_blocked_two_daughters",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "daughters": 2,
+     "son_daughters": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "60000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": true,
+    "rows": [
+     {
+      "key": "daughters",
+      "count": 2,
+      "share": "1/1"
+     }
+    ],
+    "blocked": [
+     "son_daughters"
+    ]
+   }
+  },
+  {
+   "id": "three_wives_son",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "80000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "wives": 3,
+     "sons": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "80000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "wives",
+      "count": 3,
+      "share": "1/8"
+     },
+     {
+      "key": "sons",
+      "count": 1,
+      "share": "7/8"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "grandfather_with_son",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "grandfather": true,
+     "sons": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "60000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "grandfather",
+      "count": 1,
+      "share": "1/6"
+     },
+     {
+      "key": "sons",
+      "count": 1,
+      "share": "5/6"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "mother_sixth_by_siblings",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "husband": true,
+     "mother": true,
+     "brothers": 2
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "60000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "husband",
+      "count": 1,
+      "share": "1/2"
+     },
+     {
+      "key": "mother",
+      "count": 1,
+      "share": "1/6"
+     },
+     {
+      "key": "brothers",
+      "count": 2,
+      "share": "1/3"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "no_heirs_stop",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {}
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "no_distributable_heir"
+   }
+  },
+  {
+   "id": "dhawu_mix_lock_stop",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "40000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "full_brother_daughters": 1,
+     "sister_sons": 1
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "dhawu_multibranch"
+   }
+  },
+  {
+   "id": "dhawu_maternal_grandfather",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "40000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "maternal_grandfather": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "40000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "dhawu_class2_maternalGrandfather",
+      "count": 1,
+      "share": "1/1"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "dhawu_two_uncles_stop",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "40000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "maternal_uncles": 2
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "incomplete_total"
+   }
+  },
+  {
+   "id": "dhawu_two_daughter_sons_stop",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "40000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "daughter_sons": 2
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "incomplete_total"
+   }
+  },
+  {
+   "id": "dhawu_class3_sister_daughters_only",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "40000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "sister_daughters": 2
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "incomplete_total"
+   }
+  },
+  {
+   "id": "wife_and_mother_radd_excl_spouse",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "wives": 1,
+     "mother": true
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "60000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": true,
+    "rows": [
+     {
+      "key": "wives",
+      "count": 1,
+      "share": "1/4"
+     },
+     {
+      "key": "mother",
+      "count": 1,
+      "share": "3/4"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "husband_only_stop",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "husband": true
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "incomplete_total"
+   }
+  },
+  {
+   "id": "wife_only_stop",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "wives": 1
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "incomplete_total"
+   }
+  },
+  {
+   "id": "dhawu_mix_dead_branch_stop",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "40000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "full_brother_daughters": 1,
+     "sister_sons": 1,
+     "sister_daughters": 1
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "dhawu_multibranch"
+   }
+  },
+  {
+   "id": "dhawu_fbd_alone",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "full_brother_daughters": 2
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "60000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "dhawu_class3_fullBrotherDaughters",
+      "count": 2,
+      "share": "1/1"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "dhawu_uterine_children_alone",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "uterine_brother_children": 3
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "60000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "dhawu_class3_uterineBrotherChildren",
+      "count": 3,
+      "share": "1/1"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "dhawu_class2_rg2_stop",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "remote_grandmothers": 2
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "incomplete_total"
+   }
+  },
+  {
+   "id": "dhawu_class1_dd2_stop",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "daughter_daughters": 2
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "incomplete_total"
+   }
+  },
+  {
+   "id": "dhawu_class1_mixed_11",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "daughter_sons": 1,
+     "daughter_daughters": 1
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "dhawu_multibranch"
+   }
+  },
+  {
+   "id": "dhawu_class1_mixed_21_stop",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "daughter_sons": 2,
+     "daughter_daughters": 1
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "dhawu_multibranch"
+   }
+  },
+  {
+   "id": "dhawu_class4_aunts2_stop",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "maternal_aunts": 2
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "incomplete_total"
+   }
+  },
+  {
+   "id": "dhawu_class4_uncle1",
+   "inputs": {
+    "gender": "female",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "maternal_uncles": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "60000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "dhawu_class4_maternalUncles",
+      "count": 1,
+      "share": "1/1"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "dhawu_mix_fbd_ss_stop",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "full_brother_daughters": 1,
+     "sister_sons": 1
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "dhawu_multibranch"
+   }
+  },
+  {
+   "id": "dhawu_class2_both_stop",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "maternal_grandfather": 1,
+     "remote_grandmothers": 1
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "dhawu_multibranch"
+   }
+  },
+  {
+   "id": "dhawu_class3_pbd_alone",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "paternal_brother_daughters": 1
+    }
+   },
+   "expected": {
+    "status": "computed",
+    "net": "60000",
+    "will_applied": "0",
+    "awl": false,
+    "radd": false,
+    "rows": [
+     {
+      "key": "dhawu_class3_paternalBrotherDaughters",
+      "count": 1,
+      "share": "1/1"
+     }
+    ],
+    "blocked": []
+   }
+  },
+  {
+   "id": "dhawu_sister_children_11",
+   "inputs": {
+    "gender": "male",
+    "estate_value": "60000",
+    "funeral": "0",
+    "debt": "0",
+    "will": "0",
+    "will_for_heir": false,
+    "will_approved": false,
+    "impediments": {
+     "religion_mixed": false,
+     "killer": false,
+     "simultaneous_death": false,
+     "slavery": false
+    },
+    "family": {
+     "sister_sons": 1,
+     "sister_daughters": 1
+    }
+   },
+   "expected": {
+    "status": "stopped",
+    "stop_code": "dhawu_multibranch"
+   }
+  }
+ ]
+}

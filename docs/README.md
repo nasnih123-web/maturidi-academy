@@ -1,6 +1,6 @@
 # Documentation Index — Maturidi Academy
 
-Every guide in this repository, in one place. Status as of 2026-10-20.
+Every guide in this repository, in one place. Status as of 2026-10-21.
 Only files that actually exist in the repo are listed here.
 
 ## Start here
@@ -8,10 +8,16 @@ Only files that actually exist in the repo are listed here.
 | Document | What it is |
 |---|---|
 | [../README.md](../README.md) | Project entry page: quick start, structure, versions, honest capability status |
+| [../CHANGELOG.md](../CHANGELOG.md) | Version-by-version changelog (v1.1.0, v1.0.0) |
+| [../RELEASE_NOTES.md](../RELEASE_NOTES.md) | Release notes with honest limitations per version |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Deployment index: local, Docker Compose production, Railway (config shipped, deploy BLOCKED), backup/restore |
+| [RUNTIME_SUPPORT_MATRIX.md](RUNTIME_SUPPORT_MATRIX.md) | Supported runtimes: Python 3.14.0 / Node 24 LTS baselines, what is untested, SBOM link |
 | [installation/LOCAL_DEVELOPMENT.md](installation/LOCAL_DEVELOPMENT.md) | Step-by-step local setup — Windows, macOS, Linux, plus mobile/desktop prerequisites |
 | [installation/LOCAL_DEVELOPMENT.fa.md](installation/LOCAL_DEVELOPMENT.fa.md) | راهنمای نصب و اجرای محلی (فارسی) |
 | [ops/production-installation.md](ops/production-installation.md) | Production installation on a real Linux server (compose, secrets, smoke tests, upgrade/rollback) |
 | [ops/production-installation.fa.md](ops/production-installation.fa.md) | راهنمای نصب Production روی سرور (فارسی) |
+| [ops/railway-deployment.md](ops/railway-deployment.md) | Railway deployment — configs shipped, deployment BLOCKED on owner account |
+| [ops/APK_BUILD_GUIDE.md](ops/APK_BUILD_GUIDE.md) | راهنمای بیلد APK — CRM Builds dispatch flow, EAS profiles, owner steps (MOBILE-EAS-01) |
 
 ## Engineering rules & architecture
 
@@ -41,6 +47,16 @@ Only files that actually exist in the repo are listed here.
 
 | Document | What it is |
 |---|---|
+| [SECURITY_REPORT.md](SECURITY_REPORT.md) | v1.1.0 consolidated security report: scan results, MFA properties, scope-enforcement fix, residuals |
+| [MFA_GUIDE.md](MFA_GUIDE.md) | MFA user/admin guide (fa summary + EN): enrollment, recovery codes, disable/regenerate, admin recovery, rate limits |
+| [audit-v2/AUDIT_REPORT.md](audit-v2/AUDIT_REPORT.md) | Phase-0 audit for the v2 remediation mission (19 findings, F-01…F-19) |
+| [audit-v2/FEATURE_STATUS_MATRIX.md](audit-v2/FEATURE_STATUS_MATRIX.md) | Per-feature real status at audit time, with evidence |
+| [audit-v2/FINAL_VERIFICATION.md](audit-v2/FINAL_VERIFICATION.md) | Final verification of the v1.1.0 tree: verbatim test/scan/drill outputs |
+| [audit-v2/TYPE_DEBT_BURNDOWN.md](audit-v2/TYPE_DEBT_BURNDOWN.md) | mypy 163 → 0 and ruff 160 → 133 burndown record + residual plan |
+| [audit-v2/DONE_CRITERIA.md](audit-v2/DONE_CRITERIA.md) | §16-style done matrix: PASS/FAIL/BLOCKED/NOT TESTED per area |
+| [audit-v2/SBOM.cdx.json](audit-v2/SBOM.cdx.json) | SBOM (CycloneDX 1.6, API dependencies) |
+| [calculators/CALCULATORS_INTEGRATION.md](calculators/CALCULATORS_INTEGRATION.md) | Source calculators integration: provenance, license decision, golden tests, fiqh-review status |
+| [../THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) | Third-party content notices (source calculators) |
 | [audits/PHASE17_REMEDIATION_REPORT.md](audits/PHASE17_REMEDIATION_REPORT.md) | Consolidated remediation report for the hardening passes on PR #1 |
 | [audit/production-readiness.md](audit/production-readiness.md) | Production-readiness audit notes |
 | [audit/initial-audit.md](audit/initial-audit.md) | Initial audit |

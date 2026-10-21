@@ -5,7 +5,8 @@ all product logic lives in `apps/web` (ADR-001 — the UI is replaceable, the
 shell only hosts it). The shell adds three native capabilities:
 
 - **Window** hosting the web app — dev: `http://localhost:3000` (`tauri dev`),
-  prod: bundled static export (`frontendDist: ../web/out`).
+  prod: the bundled local shell in `shell/` (`frontendDist: ../shell`) that
+  navigates to the configured production web URL (ADR-0023).
 - **OS notifications** via `tauri-plugin-notification` (capability:
   `notification:default` in `src-tauri/capabilities/default.json`).
 - **System-tray icon** with menu **Open / Sync now / Quit**
@@ -17,13 +18,19 @@ shell only hosts it). The shell adds three native capabilities:
 ```
 apps/desktop/
   package.json                 # @tauri-apps/cli; `npm run dev|build`
+  shell/                       # ADR-0023 local shell frontend (frontendDist)
+    index.html / shell.js      # state pages (loading / offline / unconfigured)
+    config.js                  # MATURIDI_WEB_URL — set at packaging time
+    icon.png                   # emblem shown on the state pages
   src-tauri/
     tauri.conf.json            # window, tray, CSP, bundle, updater (moved here
                                # from apps/desktop/ in Phase 13 — the Tauri 2
                                # conventional location)
     Cargo.toml / build.rs / src/main.rs
     capabilities/default.json
-    icons/                     # icon.png (+ .icns/.ico for macOS/Windows)
+    icons/                     # generated set: icon.png 512, 32/128/256,
+                               # icon.ico, icon.icns (from the emblem)
+  tauri.conf.json              # ⚠ STALE divergent root copy — see Notes (F-12)
 ```
 
 ## Dev
@@ -37,15 +44,26 @@ npm install
 npm run dev
 ```
 
-## Production web bundle
+## Production bundle — the local shell (ADR-0023)
 
-> **وضعیت واقعی (2026-10-20):** `frontendDist` در `tauri.conf.json` به `../web/out`
-> اشاره می‌کند، اما پروفایل static-export وب (`output: "export"` در
-> `next.config.mjs`) **هنوز ساخته نشده** و وب فعلی (SSR + API routes + middleware)
-> بدون بازطراحی export نمی‌شود. تا آن زمان: `tauri dev` به `http://localhost:3000`
-> پروکسی می‌کند و بیلد production دسکتاپ **مسدود** است. مسیر پیشنهادی: پروفایل
-> export جدا در `next.config.mjs` (بدون دست‌زدن به بیلد SSR پیش‌فرض) + اسکریپت
-> `web:export` — پس از تصمیم کاربر.
+The web app cannot be static-exported (middleware + route handlers + SSR
+pages), so the production desktop bundle ships a small **local shell**
+(`shell/`) instead of `apps/web/out`:
+
+1. At packaging time, set the real production web origin in
+   `shell/config.js`: `window.MATURIDI_WEB_URL = "https://<web-origin>"`.
+2. On launch the shell navigates the webview to that origin with
+   `location.replace` — the desktop app then runs the real web app and its
+   real API contracts; the shell holds no product logic (ADR-001).
+3. With no URL configured, the shell shows an honest built-in
+   "not configured" page (it never guesses or hardcodes a URL); while
+   offline it shows an offline page with a retry button.
+
+> **وضعیت واقعی (2026-10-21):** پوسته پیاده و `frontendDist: ../shell`
+> تنظیم شد (ADR-0023). تا وقتی وب production مستقر نشود و نشانی واقعی در
+> `config.js` قرار نگیرد، باینری فقط صفحهٔ وضعیت داخلی را نشان می‌دهد.
+> بیلد native در این sandbox اجرا نشده (نبود Rust toolchain) — مسیر CI
+> روی runnerهای هر OS آماده است: **NOT TESTED**.
 
 ## Signed builds — CI path (`.github/workflows/desktop.yml`)
 
@@ -75,17 +93,22 @@ npm run dev
   auto-update only after pointing it at the real release feed AND injecting
   the real `updater.pubkey` (CI injects the key; the private key signs via
   `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` secrets).
-- CSP (`app.security.csp`): `connect-src` currently allows only
-  `localhost:*` — correct for dev, but a production bundle that talks to the
-  deployed API must list the real API origin here (e.g.
-  `https://api.example.com`) at release time.
-- `frontendDist` points at `../web/out` (static export of the web app) — that
-  export profile (`output: "export"` in `next.config.mjs`) does not exist yet;
-  producing it is a separate build-profile task (native builds are Blocked in
-  this sandbox — no Rust toolchain; CI builds per-OS in `desktop.yml`).
-- `src-tauri/icons/icon.png` is required (plus `icon.icns`/`icon.ico` for
-  macOS/Windows bundles); generate from `apps/web/public/icons/icon-512.png`.
-  Icons are part of the binary-asset tail uploaded manually via GitHub web UI.
+- CSP (`app.security.csp`): the shell page itself only loads local files
+  (`script-src 'self'`); after navigation, the remote web origin's own
+  policies apply. `connect-src` still lists `localhost:*` for the dev flow.
+- `src-tauri/icons/` holds the real generated icon set (2026-10-21, from
+  the school emblem `apps/web/public/logo.jpg`, via Pillow):
+  `icon.png` (512), `32x32.png`, `128x128.png`, `128x128@2x.png`,
+  `icon.ico`, `icon.icns`. `bundle.icon` and the tray icon reference exactly
+  these files. Regenerate with Pillow from the emblem (or `tauri icon` on a
+  machine with the Tauri CLI) whenever the emblem changes.
+- **⚠ Root `apps/desktop/tauri.conf.json` is a STALE DIVERGENT copy (F-12).**
+  Tauri 2 reads only `src-tauri/tauri.conf.json`; the root file is not a
+  byte-copy — it has `updater.active: true` with an `example.com` endpoint,
+  `devUrl` on port 1420, `frontendDist: ../dist`, a different CSP, and no
+  tray/plugins config. It was **not** deleted in the v1.1.0 remediation
+  because it differs meaningfully (ADR-0023): owner action — review and
+  delete it; until then no tooling may reference it.
 - `cargo check`/`cargo build` need a Rust toolchain — not run in this
   sandbox; CI compiles on the per-OS runners.
 

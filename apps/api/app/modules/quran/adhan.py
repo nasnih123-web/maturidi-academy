@@ -161,8 +161,8 @@ class _Calculator:
         t = {k: v * 24.0 for k, v in self._times_frac(day).items()}
         # تطبیق با منطقهٔ زمانی: tz − lng/15
         offset = self.tz - self.lng / 15.0
-        for k in t:
-            t[k] = _fix_hour(t[k] + offset)
+        for k, v in t.items():
+            t[k] = _fix_hour(v + offset)
         # midnight استاندارد: میانگین غروب و فجرِ فردا
         fajr_next = _fix_hour(self._times_frac(_next_day(day))["fajr"] * 24.0 + offset)
         end = fajr_next + 24.0 if fajr_next < t["sunset"] else fajr_next
@@ -180,7 +180,7 @@ def _next_day(d: date) -> date:
 
 def _fmt(hours: float) -> str:
     """گرد به دقیقهٔ نزدیک — قالب HH:MM (ساعت ۲۴)."""
-    total = int(round(_fix_hour(hours) * 60.0)) % (24 * 60)
+    total = round(_fix_hour(hours) * 60.0) % (24 * 60)
     return f"{total // 60:02d}:{total % 60:02d}"
 
 

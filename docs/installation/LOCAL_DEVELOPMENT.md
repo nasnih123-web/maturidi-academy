@@ -13,7 +13,7 @@ Step-by-step guide for running the whole monorepo on a developer machine.
 
 | Part | Tech | Local address |
 |---|---|---|
-| API | FastAPI (Python 3.12), `apps/api` | http://localhost:8000 |
+| API | FastAPI (Python 3.14), `apps/api` | http://localhost:8000 |
 | Web | Next.js 15.5.28, `apps/web` | http://localhost:3000 |
 | CRM | React + Vite 6.4.4, `apps/crm` | http://localhost:5173 |
 | Infrastructure (dev compose) | PostgreSQL, Redis, MinIO, Prometheus, Grafana, Loki | various ports |
@@ -27,14 +27,14 @@ common dev setup.
 | Tool | Version | Why / notes |
 |---|---|---|
 | Git | any recent | clone + version control |
-| Node.js | **22.11.0** (see `.nvmrc`) | web + CRM + mobile + desktop shells |
+| Node.js | **24** (see `.nvmrc`) | web + CRM + mobile + desktop shells |
 | npm | bundled with Node | the package manager actually used by every app here |
-| Python | **3.12.x — required** | only needed for the *direct* (non-Docker) API run. The pinned `pydantic` in `apps/api/requirements.txt` has **no Python 3.14 wheels** — do not use 3.14. |
+| Python | **3.14.x — required** | only needed for the *direct* (non-Docker) API run. The pinned stack in `apps/api/requirements.txt` targets 3.14 (wheels verified in the v1.1.0 remediation) — do not use other versions for the direct path. |
 | Docker Desktop / Docker Engine + Compose | current | recommended way to run the infrastructure services |
 
-> **Python 3.12 is a hard requirement for the direct API path.** If your
-> machine only has Python 3.14, either install 3.12 side-by-side or use the
-> Docker path (the API image is `python:3.12-slim`).
+> **Python 3.14 is the required runtime for the direct API path**
+> (upgraded in the v1.1.0 remediation — Phase 1; the pinned stack targets
+> 3.14). The Docker path uses the `python:3.14-slim` API image.
 
 ---
 
@@ -46,19 +46,19 @@ common dev setup.
 2. **Docker Desktop** with the **WSL 2** backend enabled
    (Settings → General → "Use the WSL 2 based engine"). Start it and wait
    until it reports "Engine running".
-3. **Node.js 22.11.0** — either:
+3. **Node.js 24** — either:
    - the LTS installer from https://nodejs.org (pick the version in `.nvmrc`), or
-   - nvm-windows: `nvm install 22.11.0` then `nvm use 22.11.0`.
-4. **Python 3.12** (only for the direct API path) — https://www.python.org
-   (a 3.12.x installer; check "Add python.exe to PATH").
+   - nvm-windows: `nvm install 24` then `nvm use 24`.
+4. **Python 3.14** (only for the direct API path) — https://www.python.org
+   (a 3.14.x installer; check "Add python.exe to PATH").
 
 Verify in a new PowerShell window:
 
 ```powershell
 git --version
-node --version      # expect v22.11.0
+node --version      # expect v24.x
 npm --version
-python --version    # expect Python 3.12.x (direct API path only)
+python --version    # expect Python 3.14.x (direct API path only)
 docker --version
 docker compose version
 ```
@@ -166,15 +166,15 @@ Differences from Windows; everything else in §3 applies unchanged.
 ### 4.1 Tools
 
 - **Git**: `xcode-select --install` (macOS) or your distro package manager.
-- **Node 22.11.0**: use `nvm`:
+- **Node 24**: use `nvm`:
   ```bash
   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
   nvm install   # reads .nvmrc in the repo root
   nvm use
   ```
-- **Python 3.12**: macOS — `brew install python@3.12`; Debian/Ubuntu — the
-  distro package may be older/newer; if it is not 3.12.x, install 3.12 via
-  `pyenv` (`pyenv install 3.12`).
+- **Python 3.14**: macOS — `brew install python@3.14`; Debian/Ubuntu — the
+  distro package may be older/newer; if it is not 3.14.x, install 3.14 via
+  `pyenv` (`pyenv install 3.14`).
 - **Docker**: Docker Desktop on macOS; Docker Engine + Compose plugin on
   Linux (see the production guide for the server install commands).
 
@@ -193,7 +193,7 @@ cp .env.example .env   # then edit secrets, see §6
 docker compose up -d                       # infrastructure
 
 cd apps/api
-python3.12 -m venv .venv
+python3.14 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ./setup.sh                                 # migrations + super_admin seed
@@ -317,7 +317,7 @@ local dev databases and MinIO data.
 ### 7.2 Desktop (`apps/desktop`, Tauri 2)
 
 - Stack: Tauri **2** (`@tauri-apps/cli ^2.2.0`), app version `0.1.0`.
-- Prerequisites: Node 22.11.0, **Rust** (via `rustup`), and the platform
+- Prerequisites: Node 24, **Rust** (via `rustup`), and the platform
   native libraries:
   - **Linux**: WebKitGTK / GTK development packages and packaging tools for
     your distro (e.g. on Debian/Ubuntu: `libwebkit2gtk-4.1-dev`,
@@ -344,7 +344,7 @@ local dev databases and MinIO data.
 |---|---|---|
 | API exits complaining about secrets | placeholder `JWT_SECRET` / `ENCRYPTION_KEY` in `.env` | set strong random values (see production guide §secrets for `openssl rand` examples) |
 | PDF generation `RuntimeError: arabic/latin system fonts not found` | fonts missing on a bare host | install `fonts-noto-core` + `fonts-dejavu-core`, or run the API in Docker |
-| `pip install` tries to build pydantic from source / fails | Python is 3.14, not 3.12 | install Python 3.12.x and recreate the venv |
+| `pip install` tries to build pydantic from source / fails | Python is not 3.14 | install Python 3.14.x and recreate the venv |
 | Web build fails on `/api/search` | `API_URL` not set for the build | set `API_URL=http://localhost:8000` (and `NEXT_PUBLIC_API_URL`) before `npm run build` |
 | Phone can't reach the API from Expo Go | `localhost` points at the phone | use the dev machine's LAN IP for the API URL |
 | `bootstrap.ps1` window vanishes | it was double-clicked | open PowerShell in the folder first, then run the command from §3.4 |

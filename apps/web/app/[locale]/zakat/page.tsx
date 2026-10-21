@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import type { MadhabKey, ZakatAssetKey } from '@/lib/calculators';
 import { ZakatCalculator } from '@/components/ZakatCalculatorLazy';
+import { ZakatExtendedCalculator } from '@/components/ZakatExtendedCalculatorLazy';
+import type { ZakatExtendedLabels } from '@/components/ZakatExtendedCalculator';
 
 export async function generateMetadata({
   params,
@@ -64,6 +66,58 @@ export default async function ZakatPage({
           ratePending: t('zakat.ratePending'),
           rateFailed: t('zakat.rateFailed'),
           print: t('zakat.print'),
+        }}
+      />
+      <h2 className="page-title">{t('zakatExtended.title')}</h2>
+      <p className="page-sub">{t('zakatExtended.subtitle')}</p>
+      <ZakatExtendedCalculator
+        locale={locale}
+        labels={{
+          moneyTitle: t('zakatExtended.moneyTitle'),
+          moneyAmountLabel: t('zakatExtended.moneyAmountLabel'),
+          coinPriceLabel: t('zakatExtended.coinPriceLabel'),
+          goldLabel: t('zakatExtended.goldLabel'),
+          silverLabel: t('zakatExtended.silverLabel'),
+          gramsHint: t('zakatExtended.gramsHint'),
+          livestockTitle: t('zakatExtended.livestockTitle'),
+          sheepLabel: t('zakatExtended.sheepLabel'),
+          cowsLabel: t('zakatExtended.cowsLabel'),
+          musinnaPriceLabel: t('zakatExtended.musinnaPriceLabel'),
+          camelsLabel: t('zakatExtended.camelsLabel'),
+          horsesLabel: t('zakatExtended.horsesLabel'),
+          horsesValueLabel: t('zakatExtended.horsesValueLabel'),
+          oshrTitle: t('zakatExtended.oshrTitle'),
+          oshrAmountLabel: t('zakatExtended.oshrAmountLabel'),
+          irrigationLabel: t('zakatExtended.irrigationLabel'),
+          rainFed: t('zakatExtended.rainFed'),
+          irrigated: t('zakatExtended.irrigated'),
+          khomsTitle: t('zakatExtended.khomsTitle'),
+          khomsAmountLabel: t('zakatExtended.khomsAmountLabel'),
+          calculate: t('zakatExtended.calculate'),
+          calculating: t('zakatExtended.calculating'),
+          invalidInput: t('zakatExtended.invalidInput'),
+          failed: t('zakatExtended.failed'),
+          pendingTitle: t('zakatExtended.pendingTitle'),
+          pendingBody: t('zakatExtended.pendingBody'),
+          recalculate: t('zakatExtended.recalculate'),
+          resultTitle: t('zakatExtended.resultTitle'),
+          nisabMet: t('zakatExtended.nisabMet'),
+          nisabNotMet: t('zakatExtended.nisabNotMet'),
+          zakatCoinsLabel: t('zakatExtended.zakatCoinsLabel'),
+          zakatAmountLabel: t('zakatExtended.zakatAmountLabel'),
+          zakatGramsLabel: t('zakatExtended.zakatGramsLabel'),
+          dueLabel: t('zakatExtended.dueLabel'),
+          dueKinds: t.raw('zakatExtended.dueKinds') as Record<string, string>,
+          ageYears: t('zakatExtended.ageYears'),
+          fortiethsLabel: t('zakatExtended.fortiethsLabel'),
+          extraMoneyLabel: t('zakatExtended.extraMoneyLabel'),
+          horseRuleNote: t('zakatExtended.horseRuleNote'),
+          horseDinarLabel: t('zakatExtended.horseDinarLabel'),
+          horseValueLabel: t('zakatExtended.horseValueLabel'),
+          oshrDueLabel: t('zakatExtended.oshrDueLabel'),
+          khomsDueLabel: t('zakatExtended.khomsDueLabel'),
+          ruleVersion: t.raw('zakatExtended.ruleVersion') as string,
+          draftNote: t('zakatExtended.draftNote'),
         }}
       />
     </div>

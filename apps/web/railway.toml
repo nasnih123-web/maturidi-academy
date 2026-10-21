@@ -1,0 +1,13 @@
+# Railway — service "web" (root directory: apps/web)
+# `npm start` (Next.js) binds the $PORT Railway injects automatically.
+# Deploy status: prepared, NOT deployed (docs/ops/railway-deployment.md).
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

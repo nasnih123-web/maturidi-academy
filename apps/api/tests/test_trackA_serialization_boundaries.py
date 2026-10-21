@@ -34,9 +34,7 @@ def _out_schemas():
             if not issubclass(obj, BaseModel):
                 continue
             name = obj.__name__
-            if name.endswith("Out") or name.endswith("Page") or name.endswith(
-                "Summary"
-            ):
+            if name.endswith(("Out", "Page", "Summary")):
                 yield name, obj
 
 
@@ -90,6 +88,11 @@ def test_user_out_hides_secrets():
         "is_active",
         "is_verified",
         "created_at",
+        # فاز ۲: نقش‌ها/مجوزهای RBAC عمداً expose می‌شوند (نام نقش و کلید
+        # مجوز secret نیستند — گیتینگ UI روی همان‌ها سوار است). مقادیر
+        # پیش‌فرض خالی‌اند و هیچ دادهٔ حساسی از این مسیر نشت نمی‌کند.
+        "roles",
+        "permissions",
     }
     blob = str(out)
     assert "HASH-MUST-NOT-LEAK" not in blob

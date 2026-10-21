@@ -4,7 +4,7 @@
 #     powershell -ExecutionPolicy Bypass -File bootstrap.ps1
 #
 # این اسکریپت همه‌چیز را آماده می‌کند:
-#   ۱) بررسی پیش‌نیازها (Python 3.11+ ، Node 20+ ، npm)
+#   ۱) بررسی پیش‌نیازها (Python 3.14 ، Node 24+ ، npm)
 #   ۲) ساخت venv و نصب وابستگی‌های API + اجرای migration + seed اولیه
 #   ۳) npm install برای وب و CRM (فقط اگر قبلاً نصب نشده باشند)
 #   ۴) اجرای هر سه سرویس در پنجره‌های جدا و نمایش آدرس‌ها
@@ -25,21 +25,22 @@ try {
   # ---------- ۱) پیش‌نیازها ----------
   Say "بررسی پیش‌نیازها…"
 
-  # این پروژه دقیقاً به Python 3.12 نیاز دارد:
-  # در 3.13/3.14 برای pydantic wheel آماده نیست و بیلد آن به Rust نیاز دارد
-  # که دانلودش در ایران با خطای DNS شکست می‌خورد.
+  # این پروژه به Python 3.14 نیاز دارد (Phase-1 v1.1.0: کل استک
+  # requirements.txt روی 3.14 پین و راستی‌آزمایی شده است).
   $pyExe = "python"; $pyPre = @(); $pyv = ""
   try {
-    $t = (py -3.12 --version 2>&1).ToString()
-    if ($t -match "Python (3\.12\.\d+)") { $pyv = $Matches[1]; $pyExe = "py"; $pyPre = @("-3.12") }
+    $t = (py -3.14 --version 2>&1).ToString()
+    if ($t -match "Python (3\.14\.\d+)") { $pyv = $Matches[1]; $pyExe = "py"; $pyPre = @("-3.14") }
   } catch {}
   if ([string]::IsNullOrWhiteSpace($pyv)) {
-    try { $pyv = (python --version 2>&1).ToString().Split()[1] } catch { Die "پایتون پیدا نشد. نسخهٔ 3.12 را نصب کنید: winget install Python.Python.3.12" }
+    try { $pyv = (python --version 2>&1).ToString().Split()[1] } catch { Die "پایتون پیدا نشد. نسخهٔ 3.14 را نصب کنید: winget install Python.Python.3.14" }
   }
-  if (-not $pyv.StartsWith("3.12")) { Die "نسخهٔ پایتون شما $pyv است؛ این پروژه دقیقاً به Python 3.12 نیاز دارد (در 3.13/3.14 نصب وابستگی‌ها شکست می‌خورد). نصب کنید: winget install Python.Python.3.12" }
+  if (-not $pyv.StartsWith("3.14")) { Die "نسخهٔ پایتون شما $pyv است؛ این پروژه به Python 3.14 نیاز دارد. نصب کنید: winget install Python.Python.3.14" }
 
-  try { $nodev = (node --version 2>&1).ToString().TrimStart("v") } catch { Die "نود پیدا نشد. نصب کنید: https://nodejs.org/ (نسخهٔ LTS)" }
-  if (-not (Test-Version $nodev 20 0)) { Die "نسخهٔ Node شما $nodev است؛ نسخهٔ ۲۰ یا جدیدتر لازم است." }
+  # خط مبنای Node نسخهٔ 24 است (.nvmrc) — سیاست یکسان با bootstrap.sh:
+  # نسخه‌های قدیمی‌تر از 24 رد می‌شوند.
+  try { $nodev = (node --version 2>&1).ToString().TrimStart("v") } catch { Die "نود پیدا نشد. Node.js 24 یا جدیدتر نصب کنید: https://nodejs.org/" }
+  if (-not (Test-Version $nodev 24 0)) { Die "نسخهٔ Node شما $nodev است؛ این پروژه به Node 24 یا جدیدتر نیاز دارد (خط مبنای .nvmrc)." }
 
   try { npm --version | Out-Null } catch { Die "npm پیدا نشد (همراه Node.js نصب می‌شود)." }
   Write-Host "  Python $pyv  ✓    Node $nodev  ✓"
@@ -104,15 +105,22 @@ try {
     $elapsed = 0
     Write-Host "  در انتظار $name" -NoNewline
     while ($elapsed -lt $timeoutSec) {
-      try { Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3 | Out-Null; Write-Host " ✓"; return }
+      try { Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3 | Out-Null; Write-Host " ✓"; return $true }
       catch { Write-Host "." -NoNewline; Start-Sleep -Seconds 2; $elapsed += 2 }
     }
     Write-Host ""; Warn "$name بالا نیامد؛ پنجرهٔ آن را بررسی کنید."
+    return $false
   }
 
-  Wait-For "API" "http://127.0.0.1:8000/health" 90
-  Wait-For "CRM" "http://127.0.0.1:5173/" 120
-  Wait-For "WEB" "http://127.0.0.1:3000/fa" 240
+  # صداقت وضعیت: اگر حتی یک سرویس بالا نیامده باشد، پیام موفقیت نهایی
+  # چاپ نمی‌شود و اسکریپت با خطای روشن و کد خروج ۱ تمام می‌شود.
+  $notReady = @()
+  if (-not (Wait-For "API" "http://127.0.0.1:8000/health" 90)) { $notReady += "API" }
+  if (-not (Wait-For "CRM" "http://127.0.0.1:5173/" 120)) { $notReady += "CRM" }
+  if (-not (Wait-For "WEB" "http://127.0.0.1:3000/fa" 240)) { $notReady += "WEB" }
+  if ($notReady.Count -gt 0) {
+    Die ("این سرویس‌ها بالا نیامدند: " + ($notReady -join "، ") + " — نصب/اجرا کامل نیست. پنجرهٔ سرویس ناموفق را بررسی کنید؛ پیام موفقیت نمایش داده نمی‌شود.")
+  }
 
   Say "همه‌چیز آماده است 🎉"
   Write-Host @"

@@ -14,7 +14,7 @@
 
 | بخش | فناوری | نشانی محلی |
 |---|---|---|
-| API | ‎FastAPI (Python 3.12)‎، پوشهٔ `apps/api` | http://localhost:8000 |
+| API | ‎FastAPI (Python 3.14)‎، پوشهٔ `apps/api` | http://localhost:8000 |
 | وب | ‎Next.js 15.5.28‎، پوشهٔ `apps/web` | http://localhost:3000 |
 | CRM | ‎React + Vite 6.4.4‎، پوشهٔ `apps/crm` | http://localhost:5173 |
 | زیرساخت (کامپوز توسعه) | PostgreSQL،‏ Redis،‏ MinIO،‏ Prometheus،‏ Grafana،‏ Loki | پورت‌های مختلف |
@@ -28,14 +28,14 @@
 | ابزار | نسخه | توضیح |
 |---|---|---|
 | Git | هر نسخهٔ اخیر | کلون و کنترل نسخه |
-| Node.js | **22.11.0** (طبق `.nvmrc`) | وب، CRM، موبایل و پوستهٔ دسکتاپ |
+| Node.js | **24** (طبق `.nvmrc`) | وب، CRM، موبایل و پوستهٔ دسکتاپ |
 | npm | همراه Node | مدیر بسته‌ای که واقعاً همهٔ اپ‌های این پروژه استفاده می‌کنند |
-| Python | **3.12.x — الزامی** | فقط برای اجرای *مستقیم* (بدون داکر) API لازم است. نسخهٔ پین‌شدهٔ `pydantic` در `apps/api/requirements.txt` برای **Python 3.14 ویل ندارد** — از 3.14 استفاده نکنید. |
+| Python | **3.14.x — الزامی** | فقط برای اجرای *مستقیم* (بدون داکر) API لازم است. استک پین‌شده در `apps/api/requirements.txt` روی 3.14 هدف‌گذاری شده است (ویل‌ها در رمدیشن v1.1.0 راستی‌آزمایی شدند) — برای مسیر مستقیم از نسخهٔ دیگری استفاده نکنید. |
 | Docker Desktop / ‏Docker Engine + Compose | نسخهٔ جاری | روش پیشنهادی اجرای سرویس‌های زیرساخت |
 
-> **Python 3.12 برای مسیر مستقیم API یک الزام سخت است.** اگر روی سیستم‌تان
-> فقط Python 3.14 دارید، یا 3.12 را کنار آن نصب کنید یا از مسیر داکر
-> استفاده کنید (ایمیج API بر پایهٔ `python:3.12-slim` است).
+> **Python 3.14 ران‌تایم لازم برای مسیر مستقیم API است** (در رمدیشن
+> v1.1.0 ارتقا یافت — فاز ۱؛ استک پین‌شده روی 3.14 هدف‌گذاری شده است).
+> مسیر داکر از ایمیج API بر پایهٔ `python:3.14-slim` استفاده می‌کند.
 
 ---
 
@@ -47,19 +47,19 @@
 2. **Docker Desktop** با موتور **WSL 2** فعال
    (Settings ← General ← گزینهٔ "Use the WSL 2 based engine"). آن را اجرا
    کنید و صبر کنید تا وضعیت "Engine running" را نشان دهد.
-3. **Node.js 22.11.0** — یکی از دو راه:
+3. **Node.js 24** — یکی از دو راه:
    - نصب‌کنندهٔ LTS از https://nodejs.org (نسخهٔ نوشته‌شده در `.nvmrc`)، یا
-   - nvm-windows: ‎`nvm install 22.11.0`‎ و سپس `nvm use 22.11.0`.
-4. **Python 3.12** (فقط برای مسیر مستقیم API) — از https://www.python.org
-   (نصب‌کنندهٔ 3.12.x؛ گزینهٔ "Add python.exe to PATH" را فعال کنید).
+   - nvm-windows: ‎`nvm install 24`‎ و سپس `nvm use 24`.
+4. **Python 3.14** (فقط برای مسیر مستقیم API) — از https://www.python.org
+   (نصب‌کنندهٔ 3.14.x؛ گزینهٔ "Add python.exe to PATH" را فعال کنید).
 
 در یک پنجرهٔ PowerShell جدید بررسی کنید:
 
 ```powershell
 git --version
-node --version      # انتظار: v22.11.0
+node --version      # انتظار: v24.x
 npm --version
-python --version    # انتظار: Python 3.12.x (فقط مسیر مستقیم API)
+python --version    # انتظار: Python 3.14.x (فقط مسیر مستقیم API)
 docker --version
 docker compose version
 ```
@@ -169,15 +169,15 @@ npm run dev           # http://localhost:5173
 ### ۴.۱ ابزارها
 
 - **Git**: در macOS دستور `xcode-select --install` یا در لینوکس مدیر بستهٔ توزیع.
-- **Node 22.11.0**: با `nvm`:
+- **Node 24**: با `nvm`:
   ```bash
   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
   nvm install   # فایل .nvmrc ریشهٔ مخزن را می‌خواند
   nvm use
   ```
-- **Python 3.12**: در macOS — ‎`brew install python@3.12`‎؛ در
+- **Python 3.14**: در macOS — ‎`brew install python@3.14`‎؛ در
   Debian/Ubuntu ممکن است نسخهٔ بستهٔ توزیع قدیمی‌تر/جدیدتر باشد؛ اگر
-  3.12.x نیست، 3.12 را با `pyenv` نصب کنید (`pyenv install 3.12`).
+  3.14.x نیست، 3.14 را با `pyenv` نصب کنید (`pyenv install 3.14`).
 - **Docker**: در macOS ‏Docker Desktop؛ در لینوکس Docker Engine + پلاگین
   Compose (فرمان‌های نصب سرور در راهنمای استقرار آمده است).
 
@@ -196,7 +196,7 @@ cp .env.example .env   # سپس اسرار را ویرایش کنید، بخش �
 docker compose up -d                       # زیرساخت
 
 cd apps/api
-python3.12 -m venv .venv
+python3.14 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ./setup.sh                                 # مایگریشن‌ها + seed ساخت super_admin
@@ -322,7 +322,7 @@ deactivate                          # خروج از venv پایتون
 ### ۷.۲ دسکتاپ (`apps/desktop`، ‏Tauri 2)
 
 - استک: ‏Tauri **2** ‏(`@tauri-apps/cli ^2.2.0`)، نسخهٔ اپ `0.1.0`.
-- پیش‌نیازها: ‏Node 22.11.0، ‏**Rust** ‏(با `rustup`) و کتابخانه‌های بومی
+- پیش‌نیازها: ‏Node 24، ‏**Rust** ‏(با `rustup`) و کتابخانه‌های بومی
   هر پلتفرم:
   - **لینوکس**: بسته‌های توسعهٔ WebKitGTK / GTK و ابزارهای بسته‌بندی
     توزیع‌تان (مثلاً در Debian/Ubuntu: ‏`libwebkit2gtk-4.1-dev`،‏
@@ -349,7 +349,7 @@ deactivate                          # خروج از venv پایتون
 |---|---|---|
 | API با شکایت از اسرار خارج می‌شود | `JWT_SECRET` / `ENCRYPTION_KEY` به‌صورت placeholder در `.env` | مقادیر تصادفی قوی بگذارید (مثال‌های `openssl rand` در بخش اسرار راهنمای production) |
 | خطای `RuntimeError: arabic/latin system fonts not found` در ساخت PDF | نبود فونت روی میزبان خالی | نصب `fonts-noto-core` + `fonts-dejavu-core`، یا اجرای API با داکر |
-| `pip install` می‌خواهد pydantic را از سورس بسازد / شکست می‌خورد | نسخهٔ پایتون 3.14 است، نه 3.12 | ‏Python 3.12.x نصب و venv را از نو بسازید |
+| `pip install` می‌خواهد pydantic را از سورس بسازد / شکست می‌خورد | نسخهٔ پایتون 3.14 نیست | ‏Python 3.14.x نصب و venv را از نو بسازید |
 | بیلد وب روی `/api/search` شکست می‌خورد | `API_URL` برای بیلد تنظیم نشده | پیش از `npm run build` هردوی `API_URL=http://localhost:8000` و `NEXT_PUBLIC_API_URL` را تنظیم کنید |
 | گوشی در Expo Go به API نمی‌رسد | `localhost` به خود گوشی اشاره می‌کند | برای نشانی API از IP شبکهٔ داخلی ماشین توسعه استفاده کنید |
 | پنجرهٔ `bootstrap.ps1` ناپدید می‌شود | با دوبار کلیک باز شده | اول PowerShell را در پوشه باز کنید، بعد فرمان بخش ۳.۴ را بزنید |

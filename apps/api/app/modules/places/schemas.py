@@ -27,7 +27,7 @@ class PlaceCreate(BaseModel):
     type: str = Field(default="mosque")
     video_360_id: UUID | None = None
 
-    def model_post_init(self, __context) -> None:
+    def model_post_init(self, context, /) -> None:
         if self.type not in PLACE_TYPES:
             raise ValueError(f"unknown place type: {self.type}")
 
@@ -40,7 +40,7 @@ class PlaceUpdate(BaseModel):
     type: str | None = None
     video_360_id: UUID | None = None
 
-    def model_post_init(self, __context) -> None:
+    def model_post_init(self, context, /) -> None:
         if self.type is not None and self.type not in PLACE_TYPES:
             raise ValueError(f"unknown place type: {self.type}")
 

@@ -15,6 +15,9 @@ from arq import run_worker
 
 from app.core.queues import QUEUES, worker_settings_for
 
+# ثبت کرون همگام‌سازی وضعیت بیلدها با GitHub — صف analytics (F-05 remediation)
+from app.modules.admin import builds_tasks as _builds_tasks  # noqa: F401
+
 # ثبت کرون‌جاب‌ها (side-effect آگاهانه در entrypoint ورکر — نه در مسیر سرویس API)
 from app.modules.content import calendar_tasks as _calendar_tasks  # noqa: F401
 

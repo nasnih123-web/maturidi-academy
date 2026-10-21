@@ -3,7 +3,9 @@
  *
  * Runtime configuration. Values come from (in priority order):
  *  1. EXPO_PUBLIC_* environment variables (EAS / .env)
- *  2. app.json `expo.extra`
+ *  2. `expo.extra` — resolved at build time by app.config.js (API URL +
+ *     branding overrides; production profiles fail loudly without a real
+ *     non-localhost URL there, see F-09)
  *  3. Safe local defaults
  *
  * No secrets are read here — tokens live in expo-secure-store (secureStore.ts).

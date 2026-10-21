@@ -21,12 +21,12 @@ STRONG_ENC = "b" * 64
 
 
 def _prod(**kw):
-    base = dict(
-        app_env="production",
-        jwt_secret=STRONG_JWT,
-        encryption_key=STRONG_ENC,
-        app_base_url="https://api.example.org",
-    )
+    base = {
+        "app_env": "production",
+        "jwt_secret": STRONG_JWT,
+        "encryption_key": STRONG_ENC,
+        "app_base_url": "https://api.example.org",
+    }
     base.update(kw)
     return Settings(**base)
 

@@ -5,7 +5,7 @@
 # - فایل‌های alembic هم کپی می‌شوند چون سرویس یک‌بارهٔ `migrate` در
 #   docker-compose.prod.yml در startup دستور `alembic upgrade head` را اجرا
 #   می‌کند (بدون آن‌ها کانتینر migrate crash می‌کرد)
-FROM python:3.12-slim
+FROM python:3.14-slim
 WORKDIR /code
 
 # فونت‌های سیستمی برای PDF گواهی/رسید (app/modules/lms/certificates.py):
@@ -34,4 +34,4 @@ USER appuser
 
 # نکته: HEALTHCHECK عمداً این‌جا نیست — همین ایمیج برای worker-های ARQ هم
 # استفاده می‌شود (پورت 8000 ندارند). هلث‌چک فقط در compose برای سرویس api.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "30"]

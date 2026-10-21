@@ -46,6 +46,9 @@ services:
 
   api:
     build: ./apps/api
+    # Dockerfile CMD یووی‌کورن --timeout-graceful-shutdown 30 دارد؛ مهلت توقف
+    # کانتینر باید از آن بیشتر باشد.
+    stop_grace_period: 40s
     depends_on:
       postgres:
         condition: service_healthy

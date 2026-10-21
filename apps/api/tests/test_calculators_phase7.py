@@ -397,7 +397,7 @@ async def test_rule_lifecycle_audit_logged(tc):
     assert "calculator.rule_created" in actions
     assert "calculator.rule_submitted" in actions
     assert "calculator.rule_approved" in actions
-    approved = [r for r in rows if r.action == "calculator.rule_approved"][0]
+    approved = next(r for r in rows if r.action == "calculator.rule_approved")
     assert approved.new_values["status"] == "approved"
     assert approved.actor_id is not None
 

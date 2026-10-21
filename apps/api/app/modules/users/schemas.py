@@ -22,6 +22,11 @@ class UserOut(BaseModel):
     is_active: bool
     is_verified: bool
     created_at: datetime
+    # نقش‌ها و مجوزهای واقعی از جدول‌های RBAC (قرارداد §۲ — فاز ۲):
+    # لایهٔ سرویس آن‌ها را پر می‌کند تا گیتینگ UI روی دادهٔ واقعی باشد،
+    # نه stub permissive. اعتبارسنجی مستقیم از ORM (بدون سرویس) خالی می‌ماند.
+    roles: list[str] = Field(default_factory=list)
+    permissions: list[str] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

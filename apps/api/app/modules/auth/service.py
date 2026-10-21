@@ -10,8 +10,10 @@ import json
 import secrets as pysecrets
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import email as email_mod
@@ -54,6 +56,7 @@ from app.modules.auth.schemas import (
     PhoneVerifyIn,
     RegisterIn,
     TwoFAEnableIn,
+    TwoFAReauthIn,
     TwoFARecoverIn,
 )
 from app.modules.content.legal import LEGAL_TEXT_VERSION
@@ -108,11 +111,14 @@ async def _claim_totp_step(
     می‌گیرد و دیگری «کد تکراری» می‌خورد. بدون commit صریح — با تراکنش
     فراخواننده می‌ماند.
     """
-    res = await db.execute(
-        update(User)
-        .where(User.id == user.id)
-        .where((User.totp_last_step.is_(None)) | (User.totp_last_step < step))
-        .values(totp_last_step=step)
+    res = cast(
+        CursorResult[Any],
+        await db.execute(
+            update(User)
+            .where(User.id == user.id)
+            .where((User.totp_last_step.is_(None)) | (User.totp_last_step < step))
+            .values(totp_last_step=step)
+        ),
     )
     if res.rowcount != 1:
         raise APIError(
@@ -129,8 +135,11 @@ async def _consume_single_use_token(
     زیر race هم‌زمان دو بار مصرف می‌شود؛ UPDATE مشروط با `rowcount`
     این را در خود دیتابیس اتمیک می‌کند. بدون commit صریح.
     """
-    res = await db.execute(
-        update(model).where(model.id == row_id, model.used.is_(False)).values(used=True)
+    res = cast(
+        CursorResult[Any],
+        await db.execute(
+            update(model).where(model.id == row_id, model.used.is_(False)).values(used=True)
+        ),
     )
     if res.rowcount != 1:
         raise error
@@ -390,21 +399,25 @@ async def _rotate_token(db: AsyncSession, row: RefreshToken) -> tuple[str, str]:
     for _ in range(3):
         # دروازهٔ اتمیک: فقط اگر هنوز باطل نشده بود علامت بزن. دو رفرش
         # هم‌زمان روی یک سطر → فقط یکی rowcount=1 می‌گیرد.
-        claim = await db.execute(
-            update(RefreshToken)
-            .where(RefreshToken.id == row.id, RefreshToken.revoked.is_(False))
-            .values(revoked=True)
+        claim = cast(
+            CursorResult[Any],
+            await db.execute(
+                update(RefreshToken)
+                .where(RefreshToken.id == row.id, RefreshToken.revoked.is_(False))
+                .values(revoked=True)
+            ),
         )
         if claim.rowcount == 1:
             break
         # بازندهٔ race: روی تازه‌ترین توکن زندهٔ همان نشست بچرخ
-        row = (
+        next_row = (
             await _latest_live_session_token(db, row.session_id)
             if row.session_id
             else None
         )
-        if row is None:
+        if next_row is None:
             raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
+        row = next_row
     else:
         raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
     row.revoked = True  # همگام‌سازی شیء ORM با UPDATE مشروط بالا
@@ -782,6 +795,10 @@ async def enable_2fa(
     # ضد replay (§۵): همین کد در همین پنجره دوباره پذیرفته نیست
     await _claim_totp_step(db, user, step, error_status=400)
     user.totp_secret = json.dumps(encrypt_value(data.secret))
+    user.totp_enabled_at = _utcnow()
+    # فعال‌سازی مجدد (مثلاً تعویض گوشی): مجموعهٔ قبلی کدهای بازیابی در همان
+    # تراکنش باطل می‌شود تا کدهای قدیمی کنار مجموعهٔ تازه معتبر نمانند.
+    await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
     codes = generate_recovery_codes()
     for code in codes:
         db.add(RecoveryCode(user_id=user.id, code_hash=hash_token(code)))
@@ -839,6 +856,7 @@ async def recover_2fa(db: AsyncSession, data: TwoFARecoverIn, ip: str | None) ->
     )
     user.totp_secret = None
     user.totp_last_step = None
+    user.totp_enabled_at = None
     # غیرفعال شدن 2FA رویداد امنیتی حساس است (§۵/§۹): همهٔ نشست‌ها
     # و رفرش‌توکن‌ها باطل می‌شوند تا توکن‌های صادرشدهٔ قبلی — که با
     # وضعیت TOTP قدیمی ساخته شده‌اند — بی‌اعتبار شوند.
@@ -860,6 +878,200 @@ async def recover_2fa(db: AsyncSession, data: TwoFARecoverIn, ip: str | None) ->
         ip=ip,
     )
     await db.commit()
+
+
+# ---------- چرخهٔ حیات 2FA (فاز ۲ — F-02: status / disable / regenerate) ----------
+
+
+async def get_2fa_status(db: AsyncSession, user: User) -> dict[str, Any]:
+    """وضعیت فعلی 2FA کاربر: فعال بودن، زمان فعال‌سازی، کدهای باقی‌مانده."""
+    remaining = (
+        await db.execute(
+            select(func.count())
+            .select_from(RecoveryCode)
+            .where(RecoveryCode.user_id == user.id, RecoveryCode.used.is_(False))
+        )
+    ).scalar_one()
+    return {
+        "enabled": user.totp_secret is not None,
+        "enrolled_at": user.totp_enabled_at,
+        "recovery_codes_remaining": int(remaining),
+    }
+
+
+async def _verify_second_factor(
+    db: AsyncSession,
+    user: User,
+    *,
+    password: str,
+    code: str | None,
+    recovery_code: str | None,
+) -> str:
+    """احراز مجدد برای عملیات حساس 2FA: رمز عبور فعلی + عامل دوم.
+
+    عامل دوم یا کد TOTP فعلی است (با ضد replay اتمیکِ `_claim_totp_step`)
+    یا یک کد بازیابیِ مصرف‌نشده (مصرف اتمیکِ تک‌بار در همان تراکنش).
+    برمی‌گرداند: "totp" یا "recovery" (فقط برای audit — هرگز خود کد/سکرت).
+    """
+    if not verify_password(user.password_hash, password):
+        raise APIError(401, "invalid_credentials", "رمز عبور نادرست است")
+    if not user.totp_secret:
+        raise APIError(400, "no_2fa", "احراز دوعاملی برای این حساب فعال نیست")
+    if code:
+        secret = decrypt_value(json.loads(user.totp_secret))
+        step = verify_totp_step(secret, code)
+        if step is None:
+            raise APIError(400, "invalid_code", "کد تأیید دوعاملی نادرست است")
+        # ضد replay (§۵): همین کد در همین پنجره دوباره پذیرفته نیست
+        await _claim_totp_step(db, user, step, error_status=400)
+        return "totp"
+    if recovery_code:
+        wanted = hash_token(recovery_code.strip().upper())
+        rows = (
+            await db.execute(
+                select(RecoveryCode).where(
+                    RecoveryCode.user_id == user.id, RecoveryCode.used.is_(False)
+                )
+            )
+        ).scalars().all()
+        match = next(
+            (r for r in rows if hmac.compare_digest(r.code_hash, wanted)), None
+        )
+        if not match:
+            raise APIError(400, "invalid_code", "کد بازیابی نامعتبر است")
+        # مصرف اتمیک در سطح DB (§۹) — replay همان کد در درخواست دوم رد می‌شود
+        await _consume_single_use_token(
+            db,
+            RecoveryCode,
+            match.id,
+            error=APIError(400, "invalid_code", "کد بازیابی نامعتبر است"),
+        )
+        return "recovery"
+    raise APIError(
+        400, "second_factor_required", "کد تأیید دوعاملی یا کد بازیابی لازم است"
+    )
+
+
+async def _revoke_other_sessions(
+    db: AsyncSession, user_id: uuid.UUID, keep_session_id: uuid.UUID | None
+) -> None:
+    """ابطال همهٔ نشست‌ها/رفرش‌توکن‌های کاربر به‌جز نشست جاری (فاز ۲).
+
+    رفرش‌توکن‌های بدون نشست (session_id=NULL) هم باطل می‌شوند — نمی‌توان
+    ثابت کرد متعلق به نشست جاری‌اند. بدون commit صریح.
+    """
+    session_stmt = update(Session).where(
+        Session.user_id == user_id, Session.revoked.is_(False)
+    )
+    token_stmt = update(RefreshToken).where(
+        RefreshToken.user_id == user_id, RefreshToken.revoked.is_(False)
+    )
+    if keep_session_id is not None:
+        session_stmt = session_stmt.where(Session.id != keep_session_id)
+        token_stmt = token_stmt.where(
+            or_(
+                RefreshToken.session_id.is_(None),
+                RefreshToken.session_id != keep_session_id,
+            )
+        )
+    await db.execute(session_stmt.values(revoked=True))
+    await db.execute(token_stmt.values(revoked=True))
+
+
+async def disable_2fa(
+    db: AsyncSession,
+    user: User,
+    data: TwoFAReauthIn,
+    ip: str | None,
+    current_session_id: uuid.UUID | None,
+) -> None:
+    """غیرفعال‌سازی احرازشدهٔ 2FA (فاز ۲ — F-02).
+
+    نیازمند احراز مجدد کامل (رمز عبور + TOTP یا کد بازیابی). سکرت و همهٔ
+    کدهای بازیابی پاک می‌شوند و نشست‌های دیگر باطل می‌شوند تا توکن‌هایی
+    که با وضعیت TOTP قبلی صادر شده‌اند زنده نمانند.
+    """
+    rl = get_rate_limiter()
+    if not await rl.is_allowed(
+        f"2fa:disable:{user.id}", limit=10, window_s=600, auth=True
+    ):
+        raise APIError(429, "rate_limited", "تعداد تلاش بیش از حد مجاز است")
+    method = await _verify_second_factor(
+        db,
+        user,
+        password=data.password,
+        code=data.code,
+        recovery_code=data.recovery_code,
+    )
+    user.totp_secret = None
+    user.totp_last_step = None
+    user.totp_enabled_at = None
+    await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
+    await _revoke_other_sessions(db, user.id, current_session_id)
+    await emit_event(
+        db,
+        aggregate_type="user",
+        aggregate_id=str(user.id),
+        event_type="user.2fa_disabled",
+        payload={"method": method},
+    )
+    await log_audit(
+        db,
+        actor_id=user.id,
+        actor_type="user",
+        action="user.2fa_disable",
+        entity_type="user",
+        entity_id=str(user.id),
+        new_values={"method": method},
+        ip=ip,
+    )
+    await db.commit()
+
+
+async def regenerate_recovery_codes(
+    db: AsyncSession, user: User, data: TwoFAReauthIn, ip: str | None
+) -> list[str]:
+    """صدور مجدد کدهای بازیابی با احراز مجدد (فاز ۲ — F-02).
+
+    مجموعهٔ قبلی در همان تراکنش حذف و مجموعهٔ تازه درج می‌شود؛ از لحظهٔ
+    commit، کدهای قدیمی بی‌اعتبارند (جایگزینی اتمیک). کدها فقط هش‌شده
+    ذخیره می‌شوند؛ متن ساده فقط همین یک بار در پاسخ برمی‌گردد.
+    """
+    rl = get_rate_limiter()
+    if not await rl.is_allowed(
+        f"2fa:regenerate:{user.id}", limit=10, window_s=600, auth=True
+    ):
+        raise APIError(429, "rate_limited", "تعداد تلاش بیش از حد مجاز است")
+    method = await _verify_second_factor(
+        db,
+        user,
+        password=data.password,
+        code=data.code,
+        recovery_code=data.recovery_code,
+    )
+    await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
+    codes = generate_recovery_codes()
+    for code in codes:
+        db.add(RecoveryCode(user_id=user.id, code_hash=hash_token(code)))
+    await emit_event(
+        db,
+        aggregate_type="user",
+        aggregate_id=str(user.id),
+        event_type="user.2fa_recovery_regenerated",
+        payload={"method": method},
+    )
+    await log_audit(
+        db,
+        actor_id=user.id,
+        actor_type="user",
+        action="user.2fa_recovery_regenerate",
+        entity_type="user",
+        entity_id=str(user.id),
+        new_values={"method": method, "count": len(codes)},
+        ip=ip,
+    )
+    await db.commit()
+    return codes
 
 
 # ---------- بلیط یک‌بارمصرف WebSocket (hardening/audit-pass-1) ----------
@@ -913,10 +1125,13 @@ async def redeem_ws_ticket(db: AsyncSession, ticket: str) -> User | None:
         ):
             return None
     # دروازهٔ اتمیک تک‌مصرفی: فقط اگر هنوز مصرف نشده بود علامت بزن
-    res = await db.execute(
-        update(WsTicket)
-        .where(WsTicket.id == row.id, WsTicket.used_at.is_(None))
-        .values(used_at=_utcnow())
+    res = cast(
+        CursorResult[Any],
+        await db.execute(
+            update(WsTicket)
+            .where(WsTicket.id == row.id, WsTicket.used_at.is_(None))
+            .values(used_at=_utcnow())
+        ),
     )
     await db.commit()
     if res.rowcount != 1:

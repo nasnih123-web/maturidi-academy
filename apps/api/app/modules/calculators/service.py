@@ -27,12 +27,16 @@ from app.models.models import (
     ZakatRuleConfig,
 )
 
-from . import engine, prices
+from . import engine, miras_engine, mosaref_engine, prices, zakat_engine
 
 _VALID_MADHABS = ("hanafi", "maliki", "shafii", "hanbali")
 _RULE_STATUSES = ("draft", "pending_review", "approved", "rejected")
 
-_KIND_MODELS = {
+# هر دو مدل rule-config ستون‌های مشترک _RuleConfigMixin را دارند؛ گونهٔ یونیونی
+# یعنی همهٔ دسترسی‌های ستونی این سرویس روی هر دو مدل معتبر است.
+RuleConfig = InheritanceRuleConfig | ZakatRuleConfig
+
+_KIND_MODELS: dict[str, tuple[type[RuleConfig], str]] = {
     "inheritance": (InheritanceRuleConfig, "inheritance_rule_config"),
     "zakat": (ZakatRuleConfig, "zakat_rule_config"),
 }
@@ -42,7 +46,7 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def _model_for(kind: str) -> tuple[type, str]:
+def _model_for(kind: str) -> tuple[type[RuleConfig], str]:
     try:
         return _KIND_MODELS[kind]
     except KeyError as exc:
@@ -55,9 +59,15 @@ def _model_for(kind: str) -> tuple[type, str]:
 
 
 async def get_active_rule(
-    db: AsyncSession, kind: str, madhab: str | None = None
+    db: AsyncSession, kind: str, madhab: str | None = None,
+    require_key: str | None = None,
 ):
-    """جدیدترین config تأییدشدهٔ در پنجرهٔ اثربخشی؛ وگرنه rules_not_approved."""
+    """جدیدترین config تأییدشدهٔ در پنجرهٔ اثربخشی؛ وگرنه rules_not_approved.
+
+    با require_key، جدیدترین کانفیگی انتخاب می‌شود که آن کلید را در
+    rule_data دارد — قالب‌های هم‌زیست (Phase-7 در برابر قالب‌های منبعِ
+    فاز ۴) همدیگر را shadow نمی‌کنند و دروازهٔ هر قالب مستقل می‌ماند.
+    """
     model, _ = _model_for(kind)
     now = _utcnow()
     stmt = (
@@ -75,7 +85,12 @@ async def get_active_rule(
         stmt = stmt.where(model.madhab == madhab)
     else:
         stmt = stmt.where(model.madhab.is_(None))
-    rule = (await db.execute(stmt)).scalars().first()
+    rule: Any = None
+    for candidate in (await db.execute(stmt)).scalars().all():
+        data = getattr(candidate, "rule_data", None) or {}
+        if require_key is None or require_key in data:
+            rule = candidate
+            break
     if rule is None:
         raise APIError(
             422,
@@ -94,6 +109,16 @@ async def get_active_rule(
 
 def _engine_error(exc: engine.CalculatorError) -> APIError:
     return APIError(422, exc.code, exc.message)
+
+
+def _not_approved(kind: str, madhab: str | None) -> APIError:
+    return APIError(
+        422,
+        "rules_not_approved",
+        "هنوز هیچ پیکربندی تأییدشده‌ای برای این محاسبه وجود ندارد؛ "
+        "قواعد باید ابتدا توسط عالم بازبینی و تأیید شوند",
+        details={"kind": kind, "madhab": madhab},
+    )
 
 
 async def calculate_inheritance(
@@ -117,7 +142,8 @@ async def calculate_inheritance(
         if existing is not None:
             return _case_to_dict(existing)
 
-    rule = await get_active_rule(db, "inheritance", madhab)
+    rule = await get_active_rule(db, "inheritance", madhab,
+                                 require_key="shares")
     try:
         result = engine.compute_inheritance(
             heirs, estate_value, rule.rule_data or {}, rule.version
@@ -192,7 +218,8 @@ async def calculate_zakat(
         if existing is not None:
             return _zakat_calc_to_dict(existing)
 
-    rule = await get_active_rule(db, "zakat", madhab)
+    rule = await get_active_rule(db, "zakat", madhab,
+                                 require_key="asset_categories")
     price_info = await prices.get_nisab_prices(db)
 
     def _rate(v: Any) -> Decimal | None:
@@ -243,6 +270,77 @@ def _zakat_calc_to_dict(calc: ZakatCalculation) -> dict[str, Any]:
 
 async def get_nisab_rate(db: AsyncSession) -> dict[str, Any]:
     return await prices.get_nisab_prices(db)
+
+
+# ---------------------------------------------------------------------------
+# فاز ۴ — محاسبه‌گرهای منبع (Stateless: هیچ رکوردی در DB نوشته نمی‌شود)
+# ---------------------------------------------------------------------------
+
+
+async def calculate_zakat_extended(
+    db: AsyncSession, *, sections: dict[str, Any]
+) -> dict[str, Any]:
+    """زکات توسعه‌یافته (چهارپایان/طلا/نقره/اموال/عشر/خمس) با قالب extended.
+
+    گیت: فقط وقتی جدیدترین config تأییدشده بخش extended داشته باشد؛
+    در غیر این صورت همان rules_not_approved فاز ۷.
+    """
+    rule = await get_active_rule(db, "zakat", require_key="extended")
+    extended = (rule.rule_data or {}).get("extended")
+    if not isinstance(extended, dict) or \
+            extended.get("format") != "source_extended_v1":
+        raise _not_approved("zakat", None)
+    try:
+        result = zakat_engine.compute_zakat_extended(sections, extended)
+    except engine.CalculatorError as exc:
+        raise _engine_error(exc) from exc
+    return {"sections": result, "applied_rule_version": rule.version}
+
+
+async def calculate_miras(
+    db: AsyncSession, *, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """فرائض حنفی (موتور miras) — فقط مذهب حنفی و فقط config دارای miras.
+
+    توقف محاسبه (موانع/نبود وارث/مجموع ناقص) خطا نیست: با
+    status=stopped و stop_code ماشینی برمی‌گردد تا UI همان هشدار منبع
+    را نشان دهد. هیچ رکوردی ذخیره نمی‌شود.
+    """
+    rule = await get_active_rule(db, "inheritance", "hanafi",
+                                 require_key="miras")
+    miras = (rule.rule_data or {}).get("miras")
+    if not isinstance(miras, dict) or miras.get("format") != "miras_v1":
+        raise _not_approved("inheritance", "hanafi")
+    estate_keys = (
+        "estate_value", "funeral", "debt", "will", "will_for_heir",
+        "will_approved", "impediments",
+    )
+    estate = {k: payload.get(k) for k in estate_keys}
+    estate["impediments"] = payload.get("impediments") or {}
+    family = {k: v for k, v in payload.items() if k not in estate_keys}
+    try:
+        result = miras_engine.compute_miras(family, estate, miras)
+    except miras_engine.MirasStopped as exc:
+        return {
+            "status": "stopped",
+            "stop_code": exc.code,
+            "applied_rule_version": rule.version,
+        }
+    except engine.CalculatorError as exc:
+        raise _engine_error(exc) from exc
+    result["applied_rule_version"] = rule.version
+    return result
+
+
+def conjugate_mosaref(
+    *, root: str, bab: str, transitivity: str, harf_jar: str
+) -> dict[str, Any]:
+    """صرف فعل عربی — زبان‌شناسی است، نه فقه؛ بدون گیت و بدون DB."""
+    try:
+        return mosaref_engine.conjugate_verb(
+            root, bab, transitivity, harf_jar)
+    except engine.CalculatorError as exc:
+        raise _engine_error(exc) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -418,8 +516,8 @@ async def rule_update(
         )
     old = {"status": rule.status, "version": rule.version,
            "source": rule.source}
-    allowed = ("source", "effective_from", "effective_to",
-               "change_reason", "rule_data")
+    allowed: tuple[str, ...] = ("source", "effective_from", "effective_to",
+                                 "change_reason", "rule_data")
     if kind == "zakat":
         allowed = allowed + ("asset_categories",)
     changed: dict[str, Any] = {}

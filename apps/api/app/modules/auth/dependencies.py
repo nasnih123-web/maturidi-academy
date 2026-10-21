@@ -24,6 +24,20 @@ _bearer = HTTPBearer(auto_error=False)
 
 _LAST_ACTIVE_TOUCH_SECONDS = 60
 
+# تنها مسیرهایی که توکن عامل-اول (2fa_setup) حق صدازدنشان را دارد (فاز ۲):
+# چرخهٔ ثبت‌نام 2FA + خروج. هر مسیر دیگری — از جمله endpointهای عادیِ
+# get_current_user مثل /users/me — برای این دامنه 403 است؛ تا پیش از فاز ۲
+# فقط require_permission/require_full_scope دامنه را چک می‌کردند و مسیرهای
+# ساده (پروفایل، export، حذف حساب، نشست‌ها…) با توکن محدود باز بودند.
+_2FA_SETUP_ALLOWED_PATHS = frozenset(
+    {
+        "/api/v1/auth/2fa/setup",
+        "/api/v1/auth/2fa/enable",
+        "/api/v1/auth/2fa/status",
+        "/api/v1/auth/logout",
+    }
+)
+
 
 async def _reject_privileged_without_2fa(db: AsyncSession, user: User) -> None:
     """بازبینی لحظه‌ای الزام TOTP برای نقش‌های ممتاز (§۵، defense-in-depth).
@@ -53,9 +67,22 @@ async def get_current_user(
     if not credentials:
         raise APIError(401, "unauthorized", "توکن احراز هویت ارسال نشده است")
     payload = decode_access_token(credentials.credentials)
+    scope = payload.get("scope", SCOPE_FULL)
     # دامنهٔ توکن برای تصمیم‌های پایین‌دستی (require_permission) نگه داشته می‌شود
     if request is not None:
-        request.state.token_scope = payload.get("scope", SCOPE_FULL)
+        request.state.token_scope = scope
+    if scope != SCOPE_FULL:
+        # توکن عامل-اول فقط برای تکمیل ثبت‌نام 2FA صادر می‌شود (فاز ۲):
+        # خارج از فهرست سفیدِ چرخهٔ 2FA هیچ مسیری باز نیست. فراخوانی‌های
+        # مستقیم بدون request (کمکی‌های optional-auth روترهای عمومی) هم
+        # رد می‌شوند و آن‌ها APIError را به «کاربر ناشناس» ترجمه می‌کنند.
+        path = request.url.path if request is not None else ""
+        if path not in _2FA_SETUP_ALLOWED_PATHS:
+            raise APIError(
+                403,
+                "requires_2fa",
+                "برای این عملیات باید احراز دوعاملی کامل شده باشد",
+            )
     try:
         user_id = uuid.UUID(payload["sub"])
     except (KeyError, ValueError):

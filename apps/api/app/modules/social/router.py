@@ -40,8 +40,12 @@ def _group_out(
 ) -> schemas.GroupOut:
     return schemas.GroupOut(
         id=group.id,
-        name=group.name,
-        description=group.description,
+        name=schemas.LocalizedText.model_validate(group.name),
+        description=(
+            schemas.LocalizedText.model_validate(group.description)
+            if group.description is not None
+            else None
+        ),
         slug=group.slug,
         is_public=group.is_public,
         member_count=group.member_count or 0,
@@ -412,7 +416,7 @@ async def notifications(
             schemas.NotificationOut(
                 id=n.id,
                 notif_type=n.notif_type,
-                title=n.title,
+                title=schemas.LocalizedText.model_validate(n.title),
                 body=n.body,
                 data=n.data,
                 read_at=n.read_at,
@@ -436,7 +440,7 @@ async def notification_read(
     return schemas.NotificationOut(
         id=n.id,
         notif_type=n.notif_type,
-        title=n.title,
+        title=schemas.LocalizedText.model_validate(n.title),
         body=n.body,
         data=n.data,
         read_at=n.read_at,

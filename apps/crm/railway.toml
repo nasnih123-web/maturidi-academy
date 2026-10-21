@@ -1,0 +1,16 @@
+# Railway — service "crm" (root directory: apps/crm)
+# Static SPA served by nginx from the Dockerfile (CMD unchanged).
+# NOTE: the Dockerfile's nginx listens on port 80, while Railway injects
+# $PORT — before enabling public networking for this service, switch the
+# nginx `listen` to the PORT env (exact step in
+# docs/ops/railway-deployment.md §CRM). Deploy status: prepared, NOT
+# deployed (no Railway account yet).
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

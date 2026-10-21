@@ -157,7 +157,8 @@ def test_engine_pure_no_app_or_io_imports():
     """قرارداد ADR-0006: موتور pure است — بدون app، بدون DB، بدون شبکه."""
     import app.modules.calculators.engine as eng_mod
 
-    src = open(eng_mod.__file__, encoding="utf-8").read()
+    with open(eng_mod.__file__, encoding="utf-8") as f:
+        src = f.read()
     tree = ast.parse(src)
     banned = {
         "app", "sqlalchemy", "httpx", "requests", "socket",
@@ -169,9 +170,10 @@ def test_engine_pure_no_app_or_io_imports():
             for a in node.names:
                 if a.name.split(".")[0] in banned:
                     found.add(a.name)
-        elif isinstance(node, ast.ImportFrom):
-            if (node.module or "").split(".")[0] in banned:
-                found.add(node.module)
+        elif isinstance(node, ast.ImportFrom) and (
+            (node.module or "").split(".")[0] in banned
+        ):
+            found.add(node.module)
     assert not found, f"engine.py imports ممنوعه دارد: {found}"
 
 

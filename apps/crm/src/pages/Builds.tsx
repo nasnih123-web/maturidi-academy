@@ -4,11 +4,12 @@ import {
   BUILD_TARGETS,
   certExpiryInfo,
   errText,
-  isRequestActive,
+  requestIsLive,
   useBuildRequests,
   usePrereqs,
   useRebuild,
   useReleases,
+  type BuildBranding,
   type BuildTarget,
   type RebuildResult,
 } from "../lib/ops14";
@@ -35,6 +36,15 @@ import { useI18n } from "../lib/i18n";
  * (ADR-001).
  */
 
+type RebuildInput = {
+  platform: BuildTarget;
+  version?: string;
+  note?: string;
+  branding?: BuildBranding;
+};
+
+const BUILD_ENVIRONMENTS = ["development", "preview", "production"] as const;
+
 function RebuildModal({
   onClose,
   onConfirm,
@@ -42,13 +52,31 @@ function RebuildModal({
   t,
 }: {
   onClose: () => void;
-  onConfirm: (input: { platform: BuildTarget; version?: string; note?: string }) => void;
+  onConfirm: (input: RebuildInput) => void;
   pending: boolean;
   t: (p: string) => string;
 }) {
   const [platform, setPlatform] = React.useState<BuildTarget>("android");
   const [version, setVersion] = React.useState("");
   const [note, setNote] = React.useState("");
+  const [appName, setAppName] = React.useState("");
+  const [packageId, setPackageId] = React.useState("");
+  const [versionCode, setVersionCode] = React.useState("");
+  const [apiUrl, setApiUrl] = React.useState("");
+  const [environment, setEnvironment] = React.useState<string>("preview");
+  const isMobile = platform === "android" || platform === "ios";
+
+  const buildBranding = (): BuildBranding | undefined => {
+    if (!isMobile) return undefined;
+    const b: BuildBranding = { environment };
+    if (appName.trim()) b.app_name = appName.trim();
+    if (packageId.trim()) b.package_id = packageId.trim();
+    const vc = Number.parseInt(versionCode, 10);
+    if (Number.isInteger(vc) && vc > 0) b.version_code = vc;
+    if (apiUrl.trim()) b.api_url = apiUrl.trim();
+    return b;
+  };
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={t("builds14.rebuildTitle")}>
       <div className="modal-card">
@@ -89,6 +117,66 @@ function RebuildModal({
             placeholder={t("builds14.rebuildNotePlaceholder")}
           />
         </div>
+        {isMobile && (
+          <>
+            <p className="hint" style={{ margin: "0.25rem 0 0" }}>
+              <strong>{t("builds14.brandingTitle")}</strong>
+            </p>
+            <div className="field">
+              <label htmlFor="build-app-name">{t("builds14.appName")}</label>
+              <input
+                id="build-app-name"
+                value={appName}
+                onChange={(e) => setAppName(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="build-package-id">{t("builds14.packageId")}</label>
+              <input
+                id="build-package-id"
+                dir="ltr"
+                value={packageId}
+                onChange={(e) => setPackageId(e.target.value)}
+                placeholder={t("builds14.packageIdPlaceholder")}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="build-version-code">{t("builds14.versionCode")}</label>
+              <input
+                id="build-version-code"
+                dir="ltr"
+                inputMode="numeric"
+                value={versionCode}
+                onChange={(e) => setVersionCode(e.target.value)}
+                placeholder="1"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="build-api-url">{t("builds14.apiUrl")}</label>
+              <input
+                id="build-api-url"
+                dir="ltr"
+                value={apiUrl}
+                onChange={(e) => setApiUrl(e.target.value)}
+                placeholder={t("builds14.apiUrlPlaceholder")}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="build-environment">{t("builds14.environment")}</label>
+              <select
+                id="build-environment"
+                value={environment}
+                onChange={(e) => setEnvironment(e.target.value)}
+              >
+                {BUILD_ENVIRONMENTS.map((env) => (
+                  <option key={env} value={env}>
+                    {t(`builds14.env_${env}`)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
         <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
           <Button variant="ghost" onClick={onClose} disabled={pending}>
             {t("common.cancel")}
@@ -102,6 +190,7 @@ function RebuildModal({
                 platform,
                 version: version.trim() || undefined,
                 note: note.trim() || undefined,
+                branding: buildBranding(),
               })
             }
           >
@@ -128,8 +217,50 @@ function RebuildResultPanel({ result }: { result: RebuildResult }) {
           <span dir="ltr">{result.missing_signing.join(", ")}</span>
         </p>
       )}
+      {result.provider_run_url && (
+        <p className="hint" style={{ margin: "0.4rem 0 0" }}>
+          <a href={result.provider_run_url} target="_blank" rel="noopener noreferrer">
+            {t("builds14.runLink")}
+          </a>
+        </p>
+      )}
       <p className="hint" style={{ margin: "0.4rem 0 0" }}>
         {t("builds14.requestTracking")}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Honest build-provider state (F-05): when the API has no GitHub dispatch
+ * provider configured, say so up front — a rebuild click then returns a
+ * truthful 503 instead of a forever-"queued" record.
+ */
+function ProviderBanner() {
+  const { t } = useI18n();
+  const prereqsQ = usePrereqs();
+  if (!prereqsQ.isSuccess) return null;
+  const provider = prereqsQ.data.provider;
+  if (provider.configured) {
+    return (
+      <p className="hint" role="status">
+        {t("builds14.providerConfigured")}
+        {provider.repo ? (
+          <>
+            {" — "}
+            <span dir="ltr">{provider.repo}</span>
+          </>
+        ) : null}
+      </p>
+    );
+  }
+  return (
+    <div className="conn-result warn" role="alert">
+      <p style={{ margin: 0 }}>
+        <Badge tone="warning">{t("builds14.providerNotConfigured")}</Badge>
+      </p>
+      <p className="hint" style={{ margin: "0.4rem 0 0" }}>
+        {t("builds14.providerNotConfiguredHint")}
       </p>
     </div>
   );
@@ -228,9 +359,9 @@ export default function Builds(): React.ReactElement {
   const [lastResult, setLastResult] = React.useState<RebuildResult | null>(null);
 
   const requests = requestsQ.data ?? [];
-  const polling = requests.some((r) => isRequestActive(r.status));
+  const polling = requests.some((r) => requestIsLive(r));
 
-  const confirmRebuild = (input: { platform: BuildTarget; version?: string; note?: string }) => {
+  const confirmRebuild = (input: RebuildInput) => {
     rebuildMut.mutate(input, {
       onSuccess: (res) => {
         setModalOpen(false);
@@ -243,6 +374,8 @@ export default function Builds(): React.ReactElement {
     <div className="page">
       <h1>{t("builds14.title")}</h1>
       <p className="hint">{t("builds14.hint")}</p>
+
+      <ProviderBanner />
 
       {/* rebuild action */}
       <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
@@ -360,29 +493,67 @@ export default function Builds(): React.ReactElement {
                     <th>{t("builds14.colPlatform")}</th>
                     <th>{t("builds14.colVersion")}</th>
                     <th>{t("builds14.colReqStatus")}</th>
+                    <th>{t("builds14.colRun")}</th>
                     <th>{t("builds14.colCreated")}</th>
                     <th>{t("builds14.colFinished")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {requests.map((r) => (
-                    <tr key={r.id}>
-                      <td>{t(`builds14.platform_${r.platform}`)}</td>
-                      <td>
-                        <code dir="ltr">{r.version ?? "—"}</code>
-                      </td>
-                      <td>
-                        <Badge tone={isRequestActive(r.status) ? "info" : "neutral"}>
-                          {t(`builds14.reqStatus_${r.status}`) !== `builds14.reqStatus_${r.status}`
-                            ? t(`builds14.reqStatus_${r.status}`)
-                            : r.status}
-                        </Badge>
-                        {r.note && <span className="hint"> — {r.note}</span>}
-                      </td>
-                      <td>{r.created_at ? formatDate(r.created_at) : "—"}</td>
-                      <td>{r.finished_at ? formatDate(r.finished_at) : "—"}</td>
-                    </tr>
-                  ))}
+                  {requests.map((r) => {
+                    // Legacy Phase-14 rows were never dispatched (no
+                    // provider): label them truthfully, never as "queued".
+                    const notDispatched = r.status === "queued" && r.provider === null;
+                    return (
+                      <tr key={r.id}>
+                        <td>{t(`builds14.platform_${r.platform}`)}</td>
+                        <td>
+                          <code dir="ltr">{r.version ?? "—"}</code>
+                          {r.branding.package_id && (
+                            <span className="hint">
+                              {" "}
+                              (<span dir="ltr">{r.branding.package_id}</span>)
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {notDispatched ? (
+                            <Badge tone="warning">
+                              {t("builds14.reqStatus_notDispatched")}
+                            </Badge>
+                          ) : (
+                            <Badge tone={requestIsLive(r) ? "info" : "neutral"}>
+                              {t(`builds14.reqStatus_${r.status}`) !==
+                              `builds14.reqStatus_${r.status}`
+                                ? t(`builds14.reqStatus_${r.status}`)
+                                : r.status}
+                            </Badge>
+                          )}
+                          {r.note && <span className="hint"> — {r.note}</span>}
+                        </td>
+                        <td>
+                          {r.provider_run_url ? (
+                            <a
+                              href={r.provider_run_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {t("builds14.runLink")}
+                            </a>
+                          ) : (
+                            "—"
+                          )}
+                          {r.artifact_name && (
+                            <span className="hint">
+                              {" "}
+                              (<span dir="ltr">{r.artifact_name}</span>)
+                            </span>
+                          )}
+                        </td>
+                        <td>{r.created_at ? formatDate(r.created_at) : "—"}</td>
+                        <td>{r.finished_at ? formatDate(r.finished_at) : "—"}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             ))}

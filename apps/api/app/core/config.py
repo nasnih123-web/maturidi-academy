@@ -78,6 +78,15 @@ class Settings(BaseSettings):
     # سقف دقیق‌تر خودشان را دارند (read_capped_upload) — این سپر سراسری است.
     max_request_body_bytes: int = 10 * 1024 * 1024
 
+    # مرکز بیلدها — dispatch واقعی به GitHub Actions (F-05 remediation).
+    # هر دو خالی (پیش‌فرض) = ارائه‌دهندهٔ بیلد پیکربندی نشده است و
+    # POST /admin/builds/rebuild صادقانه 503 build_provider_not_configured
+    # می‌دهد — هرگز ردیف «queued» بدون dispatch ساخته نمی‌شود.
+    # توکن باید fine-grained PAT با دسترسی Actions: RW روی همان repo باشد؛
+    # مقدار آن هرگز در دیتابیس/audit/لاگ ذخیره نمی‌شود (§۱۴).
+    github_dispatch_token: str = ""
+    github_repo: str = ""  # owner/repo — مثل nasnih123-web/maturidi-academy
+
     @property
     def is_dev(self) -> bool:
         return self.app_env == "dev"

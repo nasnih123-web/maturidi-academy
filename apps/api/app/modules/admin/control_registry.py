@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Text, cast, or_, select
+from sqlalchemy import Text, cast, false, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import APIError
@@ -168,7 +168,7 @@ def _cms_filters(stmt: Any, model: Any, f: ListFilters, title_col: Any) -> Any:
         stmt = stmt.where(model.workflow_status == f.status)
     if f.author_id:
         au = _uuid_or_none(f.author_id)
-        stmt = stmt.where(model.created_by == au) if au else stmt.where(False)
+        stmt = stmt.where(model.created_by == au) if au else stmt.where(false())
     if f.date_from:
         stmt = stmt.where(model.created_at >= f.date_from)
     if f.date_to:
@@ -285,7 +285,7 @@ async def _list_fatwa_submissions(db: AsyncSession, f: ListFilters) -> list[dict
         stmt = stmt.where(FatwaSubmission.workflow_status == f.status)
     if f.author_id:
         au = _uuid_or_none(f.author_id)
-        stmt = stmt.where(FatwaSubmission.author_id == au) if au else stmt.where(False)
+        stmt = stmt.where(FatwaSubmission.author_id == au) if au else stmt.where(false())
     if f.date_from:
         stmt = stmt.where(FatwaSubmission.created_at >= f.date_from)
     if f.date_to:
@@ -343,7 +343,7 @@ async def _list_knowledge_chunks(db: AsyncSession, f: ListFilters) -> list[dict]
         stmt = stmt.where(FiqhKnowledgeChunk.workflow_status == f.status)
     if f.author_id:
         au = _uuid_or_none(f.author_id)
-        stmt = stmt.where(FiqhKnowledgeChunk.approved_by == au) if au else stmt.where(False)
+        stmt = stmt.where(FiqhKnowledgeChunk.approved_by == au) if au else stmt.where(false())
     if f.ai_scope and f.ai_scope != "none":
         # ai_scopes لیست JSON است — فیلتر در حافظه برای سازگاری SQLite/Postgres
         pass
@@ -419,7 +419,7 @@ async def _list_library_items(db: AsyncSession, f: ListFilters) -> list[dict]:
         stmt = stmt.where(LibraryItem.workflow_status == f.status)
     if f.author_id:
         au = _uuid_or_none(f.author_id)
-        stmt = stmt.where(LibraryItem.created_by == au) if au else stmt.where(False)
+        stmt = stmt.where(LibraryItem.created_by == au) if au else stmt.where(false())
     if f.visibility:
         stmt = stmt.where(LibraryItem.visibility == f.visibility)
     if f.date_from:
@@ -496,7 +496,7 @@ async def _list_courses(db: AsyncSession, f: ListFilters) -> list[dict]:
         stmt = stmt.where(_like(Course.title, f.q))
     if f.author_id:
         # دوره‌ها نویسنده ندارند — فیلتر نویسنده یعنی نتیجهٔ خالی
-        stmt = stmt.where(False)
+        stmt = stmt.where(false())
     if f.status:
         # نگاشت یکپارچه: published ↔ فعال، archived ↔ غیرفعال
         if f.status == "published":
@@ -504,7 +504,7 @@ async def _list_courses(db: AsyncSession, f: ListFilters) -> list[dict]:
         elif f.status == "archived":
             stmt = stmt.where(Course.is_active.is_(False))
         else:
-            stmt = stmt.where(False)
+            stmt = stmt.where(false())
     if f.visibility:
         stmt = stmt.where(Course.visibility == f.visibility)
     if f.date_from:
@@ -561,10 +561,10 @@ async def _list_social_posts(db: AsyncSession, f: ListFilters) -> list[dict]:
         stmt = stmt.where(_like(SocialPost.body, f.q))
     if f.status:
         mapped = {"published": "published", "archived": "removed"}.get(f.status)
-        stmt = stmt.where(SocialPost.status == mapped) if mapped else stmt.where(False)
+        stmt = stmt.where(SocialPost.status == mapped) if mapped else stmt.where(false())
     if f.author_id:
         au = _uuid_or_none(f.author_id)
-        stmt = stmt.where(SocialPost.author_id == au) if au else stmt.where(False)
+        stmt = stmt.where(SocialPost.author_id == au) if au else stmt.where(false())
     if f.date_from:
         stmt = stmt.where(SocialPost.created_at >= f.date_from)
     if f.date_to:
@@ -622,7 +622,7 @@ async def _list_places(db: AsyncSession, f: ListFilters) -> list[dict]:
         stmt = stmt.where(ReligiousPlace.workflow_status == f.status)
     if f.author_id:
         au = _uuid_or_none(f.author_id)
-        stmt = stmt.where(ReligiousPlace.created_by == au) if au else stmt.where(False)
+        stmt = stmt.where(ReligiousPlace.created_by == au) if au else stmt.where(false())
     if f.date_from:
         stmt = stmt.where(ReligiousPlace.created_at >= f.date_from)
     if f.date_to:
