@@ -1,17 +1,126 @@
 name: Desktop builds (Tauri)
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Attach bundles to the GitHub Release with this tag (e.g. v1.1.0). Empty = workflow artifacts only."
+        required: false
+        default: ""
   push:
     tags: ["desktop-v*"]
 
+# Default token stays read-only; jobs that touch a Release opt in below.
+permissions:
+  contents: read
+
 jobs:
+  # ── Resolve the target release ONCE (avoids matrix create-races) ──────
+  resolve:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # only for `gh release create` of a DRAFT when missing
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      attach: ${{ steps.meta.outputs.attach }}
+      tag_commit: ${{ steps.meta.outputs.tag_commit }}
+      release_state: ${{ steps.meta.outputs.release_state }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve version + release tag
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IN_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          # tauri.conf.json is JSONC (it contains // comments) — plain
+          # require() throws on it. tools/ci/tauri-version.mjs strips
+          # comments string-safely. NOTE: this resolve step was verified
+          # locally with the verbatim command (a real GitHub Actions run
+          # is only possible after the owner uploads this workflow).
+          VERSION="$(node tools/ci/tauri-version.mjs apps/desktop/src-tauri/tauri.conf.json)"
+          TAG=""
+          if [[ "${GITHUB_REF:-}" == refs/tags/desktop-v* ]]; then
+            VERSION="${GITHUB_REF_NAME#desktop-v}"
+            TAG="v$VERSION"
+          elif [ -n "$IN_TAG" ]; then
+            TAG="$IN_TAG"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [ -n "$TAG" ]; then
+            echo "attach=true" >> "$GITHUB_OUTPUT"
+            # ── Release guard (same rules as mobile.yml's release job) ──
+            # 1. A PUBLISHED release is never touched.
+            # 2. An existing tag pointing at a DIFFERENT commit is never
+            #    moved/reused: attach is allowed only to that version's
+            #    still-DRAFT release (::warning + tag_commit recorded).
+            # 3. Missing release → created as DRAFT; missing tag → created
+            #    at exactly this build's commit (--target $GITHUB_SHA).
+            BUILD_SHA="$GITHUB_SHA"
+            REPO="$GITHUB_REPOSITORY"
+            abort() { echo "::error title=BLOCKED::$1"; exit 1; }
+            TAG_COMMIT=""
+            if OBJ_SHA="$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq .object.sha 2>/dev/null)"; then
+              OBJ_TYPE="$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq .object.type)"
+              if [ "$OBJ_TYPE" = "tag" ]; then
+                TAG_COMMIT="$(gh api "repos/$REPO/git/tags/$OBJ_SHA" --jq .object.sha)"
+              else
+                TAG_COMMIT="$OBJ_SHA"
+              fi
+            fi
+            REL_DRAFT=""
+            if D="$(gh api "repos/$REPO/releases/tags/$TAG" --jq .draft 2>/dev/null)"; then
+              REL_DRAFT="$D"
+            fi
+            if [ "$REL_DRAFT" = "false" ]; then
+              abort "Release $TAG is already PUBLISHED — automation never adds assets to a published release."
+            fi
+            if [ -n "$TAG_COMMIT" ] && [ "$TAG_COMMIT" != "$BUILD_SHA" ]; then
+              if [ "$REL_DRAFT" = "true" ]; then
+                echo "::warning::Tag $TAG points at $TAG_COMMIT but this build is $BUILD_SHA — attaching to the existing DRAFT release only; the tag commit is recorded in build-manifest-*.json."
+              else
+                abort "Tag $TAG already exists at commit $TAG_COMMIT (this build is $BUILD_SHA) and no draft release exists for it — refusing to reuse or move an existing tag."
+              fi
+            fi
+            if [ -z "$REL_DRAFT" ]; then
+              ARGS=(release create "$TAG" --repo "$REPO" --draft
+                    --title "Maturidi Academy $TAG"
+                    --notes "Automated draft created by the desktop build workflow. Desktop bundles are currently UNSIGNED (no code-signing certificate configured) — see build-manifest-*.json per platform. Review checksums and signing status before publishing.")
+              if [ -z "$TAG_COMMIT" ]; then ARGS+=(--target "$BUILD_SHA"); fi
+              gh "${ARGS[@]}"
+              STATE="created"
+              if [ -z "$TAG_COMMIT" ]; then TAG_COMMIT="$BUILD_SHA"; fi
+              echo "Created DRAFT release for $TAG at $TAG_COMMIT"
+            else
+              STATE="existing-draft"
+              echo "Found existing DRAFT release for $TAG (tag commit: $TAG_COMMIT)"
+            fi
+            echo "tag_commit=$TAG_COMMIT" >> "$GITHUB_OUTPUT"
+            echo "release_state=$STATE" >> "$GITHUB_OUTPUT"
+          else
+            echo "attach=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No release tag resolved — bundles will be workflow artifacts only."
+          fi
+
   build:
+    needs: resolve
     # نکتهٔ فاز ۲: Tauri روی هر سیستم‌عامل باید روی runner همان OS بیلد شود —
     # cross-compile از یک کانتینر لینوکسی ممکن نیست.
     strategy:
+      fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: macos-latest
+            platform: macos
+          - os: ubuntu-latest
+            platform: linux
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write # only used by the `gh release upload` step
     defaults:
       run:
         working-directory: apps/desktop
@@ -22,11 +131,133 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: npm ci
+      - name: Verify shell + icon assets (ADR-0023)
+        # فرانت‌اند دسکتاپ پوستهٔ محلی apps/desktop/shell است
+        # (frontendDist=../shell) + مجموعهٔ آیکون‌های تولیدشده؛ پیش از بیلد
+        # native نبودشان را همین‌جا و با صدای بلند اعلام کن.
+        shell: bash
+        run: |
+          test -f shell/index.html
+          test -f shell/shell.js
+          test -f shell/config.js
+          test -f src-tauri/icons/32x32.png
+          test -f src-tauri/icons/128x128.png
+          test -f src-tauri/icons/128x128@2x.png
+          test -f src-tauri/icons/icon.png
+          test -f src-tauri/icons/icon.ico
+          test -f src-tauri/icons/icon.icns
+          echo "desktop shell + icons present"
+      - name: Linux bundle prerequisites
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - run: npm run tauri build
-      - name: Upload artifact
+
+      # ── Collect THIS platform's real outputs, rename, hash, manifest ──
+      - name: Collect bundles + manifest + checksums
+        id: collect
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          REL_TAG: ${{ needs.resolve.outputs.tag }}
+          REL_TAG_COMMIT: ${{ needs.resolve.outputs.tag_commit }}
+          REL_STATE: ${{ needs.resolve.outputs.release_state }}
+        run: |
+          set -euo pipefail
+          BUNDLE="src-tauri/target/release/bundle"
+          OUT="release-assets"
+          mkdir -p "$OUT"
+          shopt -s nullglob
+          FILES=()
+          case "$PLATFORM" in
+            windows) CANDIDATES=("$BUNDLE"/msi/*.msi "$BUNDLE"/nsis/*-setup.exe "$BUNDLE"/nsis/*.exe) ;;
+            macos)   CANDIDATES=("$BUNDLE"/dmg/*.dmg "$BUNDLE"/macos/*.app.tar.gz) ;;
+            linux)   CANDIDATES=("$BUNDLE"/appimage/*.AppImage "$BUNDLE"/deb/*.deb "$BUNDLE"/rpm/*.rpm) ;;
+          esac
+          for f in "${CANDIDATES[@]}"; do
+            [ -f "$f" ] || continue
+            base="$(basename "$f")"
+            ext="${base##*.}"
+            if [[ "$base" == *.app.tar.gz ]]; then ext="app.tar.gz"; fi
+            dest="maturidi-academy-${PLATFORM}-v${VERSION}.${ext}"
+            # چند فایل هم‌قالب (مثلاً دو exe) نباید روی هم بنویسند:
+            if [ -e "$OUT/$dest" ]; then dest="maturidi-academy-${PLATFORM}-v${VERSION}-${base}"; fi
+            cp "$f" "$OUT/$dest"
+            FILES+=("$dest")
+            echo "collected: $f -> $dest"
+          done
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "::error title=BLOCKED::Tauri build produced no bundle files for $PLATFORM — nothing will be attached to any release."
+            exit 1
+          fi
+          cd "$OUT"
+          sha256sum "${FILES[@]}" > "SHA256SUMS-${PLATFORM}.txt"
+          PLATFORM="$PLATFORM" VERSION="$VERSION" \
+          REL_TAG="$REL_TAG" REL_TAG_COMMIT="$REL_TAG_COMMIT" REL_STATE="$REL_STATE" \
+          node -e "
+            const fs=require('fs'),crypto=require('crypto');
+            const files=process.argv.slice(1).map(name=>{
+              const b=fs.readFileSync(name);
+              return {file:name, sha256:crypto.createHash('sha256').update(b).digest('hex'), bytes:b.length};
+            });
+            const m={
+              product:'maturidi-academy', platform:process.env.PLATFORM,
+              version:process.env.VERSION, commit_sha:process.env.GITHUB_SHA,
+              workflow_run:'https://github.com/'+process.env.GITHUB_REPOSITORY+'/actions/runs/'+process.env.GITHUB_RUN_ID,
+              built_at_utc:new Date().toISOString(),
+              release_tag:process.env.REL_TAG||null,
+              tag_commit:process.env.REL_TAG_COMMIT||null,
+              release_state:process.env.REL_STATE||null,
+              signing_status:'unsigned',
+              signing_note:'No code-signing certificate / Apple notarization configured for this repository. Installers are functional but unsigned; OS warnings (SmartScreen/Gatekeeper) are expected until the owner adds signing.',
+              install_test:'NOT TESTED on the target OS — bundles were only built on the CI runner; a successful build does not prove a healthy install.',
+              artifacts:files
+            };
+            fs.writeFileSync('build-manifest-'+process.env.PLATFORM+'.json', JSON.stringify(m,null,2));
+          " "${FILES[@]}"
+          ls -la
+          cat "SHA256SUMS-${PLATFORM}.txt"
+
+      - name: Upload workflow artifact (traceability)
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-${{ matrix.os }}
-          path: apps/desktop/src-tauri/target/release/bundle/
+          name: desktop-${{ matrix.platform }}
+          path: apps/desktop/release-assets/
           retention-days: 90
-# خروجی‌ها در MinIO نگه‌داری می‌شوند (۱۰ بیلد آخر هر پلتفرم) — اتصال در فاز ۱۴.
+
+      - name: Attach bundles to the release (when resolved)
+        if: needs.resolve.outputs.attach == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          # PLATFORM باید همین‌جا تعریف شود: env هر step جداست و تعریف آن در
+          # step «Collect» به این step نمی‌رسد؛ بدون آن، ارجاع‌های ${PLATFORM}
+          # زیر set -u بعد از آپلود موفق، Job را قرمز می‌کردند.
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" release-assets/* --clobber
+          echo "Attached ${PLATFORM} bundles to release $TAG"
+          echo "::warning::Desktop bundles are UNSIGNED — the release must stay draft until the owner reviews build-manifest-${PLATFORM}.json."
+
+# صداقت وضعیت:
+# - هر پلتفرم روی runner خودش بیلد و خروجی واقعی همان پلتفرم (msi/exe ،dmg ،
+#   AppImage/deb/rpm) با نام نسخه‌دار جمع می‌شود؛ نبود خروجی = خطای BLOCKED.
+# - برای هر پلتفرم build-manifest-<platform>.json (شامل commit SHA، نسخه،
+#   SHA-256، وضعیت امضا، tag_commit و release_state) + فایل
+#   SHA256SUMS-<platform>.txt ساخته و همراه فایل‌ها به Release همان نسخه
+#   الصاق می‌شود.
+# - گارد Release (جاب resolve): به Release منتشرشده هرگز چیزی اضافه نمی‌شود؛
+#   Tag موجودِ اشاره‌کننده به کامیت دیگر جابه‌جا/مصادره نمی‌شود (فقط الصاق به
+#   Draft همان نسخه با هشدار)؛ Release جدید همیشه Draft است و Tag جدید دقیقاً
+#   روی کامیت همین بیلد ساخته می‌شود.
+# - نصب‌کننده‌ها فعلاً UNSIGNED هستند (گواهی امضای کد پیکربندی نشده) و تست
+#   نصب روی سیستم‌عامل هدف انجام نشده (در مانیفست: NOT TESTED)؛ موفقیت بیلد
+#   اثبات نصب سالم نیست و خروجی امضانشده «نسخهٔ سالم نهایی» معرفی نمی‌شود.
+# - خواندن نسخه از tauri.conf.json با tools/ci/tauri-version.mjs انجام
+#   می‌شود (فایل JSONC است و require خام روی آن خطا می‌دهد)؛ این گام با
+#   همان فرمان، محلی راستی‌آزمایی شده و اجرای واقعی Actions فقط پس از
+#   آپلود مالک ممکن است.

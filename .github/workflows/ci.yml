@@ -1,4 +1,8 @@
 name: CI
+# نکتهٔ انتشار (v1.1.0): این workflow روی گیت‌هاب فقط وقتی اجرا می‌شود که
+# مالک فایل‌های .github/workflows/* را از طریق وب گیت‌هاب آپلود کند (اپ
+# پروژه اجازهٔ push آن‌ها را ندارد). پیش از آپلود، همهٔ گام‌های backend
+# عیناً روی Python 3.14 محلی اجرا و سبز شده‌اند — مدرک: گزارش مأموریت v2.
 on:
   push:
     branches: [main]
@@ -11,7 +15,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
+      - name: Runtime evidence
+        # مدرک نسخهٔ واقعی مفسر در لاگ run می‌ماند (ادعا بدون خروجی پذیرفته نیست)
+        run: python --version && python -c "import sys; assert sys.version_info[:2] == (3, 14), sys.version"
       - name: Install
         run: pip install -r apps/api/requirements.txt
       - name: System fonts for PDF
@@ -26,10 +33,11 @@ jobs:
         # tools/ruff_baseline.json قرمز می‌شود؛ بدون || true و بدون ignore.
         run: python3 tools/check_ruff_baseline.py
       - name: Typecheck
-        # بدهی تایپ مستند (۱۴۱ خطای mypy از قبل) — شفاف در UI با
-        # continue-on-error، نه || true خاموش. رفع بدهی ترک جدا می‌خواهد.
-        continue-on-error: true
-        run: pip install mypy && mypy apps/api/app
+        # بدهی تایپ صفر است (۱۶۳ خطا در mypy 2.4.0 → ۰؛ شرح کامل:
+        # docs/audit-v2/TYPE_DEBT_BURNDOWN.md). این گام blocking است و
+        # از داخل apps/api اجرا می‌شود تا mypy.ini همان‌جا discover شود.
+        working-directory: apps/api
+        run: mypy app
       - name: Tests
         run: cd apps/api && python -m pytest tests/ -q
       - name: Security scan
@@ -37,18 +45,12 @@ jobs:
         run: pip install semgrep && semgrep --config auto apps/api
       - name: Dependency scan
         # مسدودکننده (قرارداد §۱۳) — pip-audit روی requirements.txt پین‌شده.
-        # ignoreها مستند و موقت‌اند:
-        #  - PYSEC-2026-1845 (pytest): ابزار dev-only، شدت پایین
-        #  - PYSEC-2026-161/1941/1942/2280/2281/248/249 (starlette 0.41.3):
-        #    رفع نیازمند ارتقای major در FastAPI است — ترک جدا لازم دارد
+        # Phase-1 (v1.1.0): هر ۸ ignore سابق حذف شد — با ارتقای Python 3.14 و
+        # fastapi 0.156.4 (starlette 1.9.0) و pytest 9.1.1، اسکن کامل بدون
+        # هیچ ignoreای سبز است (راستی‌آزمایی محلی: pip-audit = ۰ یافته).
         run: |
           pip install pip-audit
-          pip-audit -r apps/api/requirements.txt \
-            --ignore-vuln PYSEC-2026-1845 \
-            --ignore-vuln PYSEC-2026-161 --ignore-vuln PYSEC-2026-1941 \
-            --ignore-vuln PYSEC-2026-1942 --ignore-vuln PYSEC-2026-2280 \
-            --ignore-vuln PYSEC-2026-2281 --ignore-vuln PYSEC-2026-248 \
-            --ignore-vuln PYSEC-2026-249
+          pip-audit -r apps/api/requirements.txt
       - name: Migration check
         run: cd apps/api && alembic upgrade head && alembic downgrade -1 && alembic upgrade head
 
