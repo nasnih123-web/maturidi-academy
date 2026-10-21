@@ -38,7 +38,7 @@ disposable, volumes are not.
 
 Use a Linux distribution **supported by Docker Engine** — in practice a
 current Ubuntu LTS (22.04 / 24.04) or Debian stable. The requirement comes
-from Docker Engine and the `python:3.12-slim`-based images, not from the
+from Docker Engine and the `python:3.14-slim`-based images, not from the
 application code itself.
 
 ### 2.2 Resources — **initial estimates, not measured capacity**
