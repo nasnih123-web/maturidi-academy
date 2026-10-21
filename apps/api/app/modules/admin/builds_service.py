@@ -59,6 +59,25 @@ ENVIRONMENTS = tuple(_PROFILE_BY_ENVIRONMENT)
 
 # نام پکیج معتبر جاوا/اندروید: دست‌کم دو بخش، هر بخش با حرف کوچک شروع شود
 _PACKAGE_ID_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
+# نسخهٔ انتشار معتبر برای ساخت تگ: digits.digits.digits (مثل 1.1.0)
+_RELEASE_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
+
+
+def release_tag_for(*, version: str | None, branding: dict) -> str:
+    """تگ Release مقصد dispatch — سیاست صریح نسخه (تابع خالص).
+
+    فقط وقتی «v<version>» برمی‌گردد که هر دو شرط برقرار باشد:
+    environment == "production" و version شکل نسخهٔ انتشار معتبر
+    (digits.digits.digits) داشته باشد. در همهٔ حالت‌های دیگر "" است:
+    بیلدهای preview/development فقط workflow artifact می‌مانند و هیچ
+    Releaseای لمس نمی‌شود؛ نسخهٔ نامعتبر هم هرگز تگ نمی‌سازد.
+    """
+    if str(branding.get("environment") or "") != "production":
+        return ""
+    v = (version or "").strip()
+    if not _RELEASE_VERSION_RE.match(v):
+        return ""
+    return f"v{v}"
 # URL محلی — در بیلد production ممنوع (همان قاعدهٔ app.config.js موبایل)
 _LOCAL_URL_RE = re.compile(r"^https?://(localhost|127\.0\.0\.1|10\.0\.2\.2|\[::1\])(:|$|/)")
 
@@ -156,12 +175,18 @@ def build_dispatch_body(
 ) -> tuple[str, dict]:
     """(نام workflow, بدنهٔ workflow_dispatch) — تابع خالص، بدون شبکه.
 
-    ورودی‌ها فقط برای mobile.yml فرستاده می‌شوند (desktop.yml ورودی تعریف
-    نکرده است؛ ارسال ورودی تعریف‌نشده به GitHub خطای 422 می‌دهد).
+    فقط ورودی‌هایی فرستاده می‌شوند که workflow مقصد واقعاً تعریف کرده است
+    (ارسال ورودی تعریف‌نشده به GitHub خطای 422 می‌دهد): mobile.yml ورودی‌های
+    برندینگ + release_tag را می‌گیرد؛ desktop.yml فقط release_tag را تعریف
+    کرده است (وقتی سیاست نسخه تگی ندهد، برای دسکتاپ اصلاً inputs فرستاده
+    نمی‌شود). release_tag از release_tag_for می‌آید: فقط production با
+    نسخهٔ معتبر — و workflow آن را تحت گارد Release (فقط Draft، هرگز
+    Release منتشرشده) به Release همان نسخه وصل می‌کند.
     همهٔ مقادیر inputs باید رشته باشند (قرارداد GitHub).
     """
     workflow = _WORKFLOW_BY_PLATFORM[platform]
     body: dict[str, Any] = {"ref": ref or "main"}
+    tag = release_tag_for(version=version, branding=branding)
     if platform in ("android", "ios"):
         environment = str(branding.get("environment") or "preview")
         body["inputs"] = {
@@ -174,7 +199,10 @@ def build_dispatch_body(
             "api_url": str(branding.get("api_url") or ""),
             "environment": environment,
             "request_id": request_id,
+            "release_tag": tag,
         }
+    elif platform == "desktop" and tag:
+        body["inputs"] = {"release_tag": tag}
     return workflow, body
 
 
@@ -422,6 +450,22 @@ async def get_prereqs(db: AsyncSession) -> dict:
     return {"signing": signing, "platforms": platforms, "provider": provider_status()}
 
 
+def _release_url(r: BuildRequest) -> str | None:
+    """نشانی Release مقصد — فقط برای درخواستی که واقعاً با تگ dispatch شده.
+
+    تگ از همان سیاست release_tag_for بازسازی می‌شود (production + نسخهٔ
+    معتبر)؛ تا وقتی dispatch انجام نشده باشد (dispatched_at خالی) یا ریپو
+    پیکربندی نشده باشد، None است — لینک حدسی ساخته نمی‌شود.
+    """
+    tag = release_tag_for(version=r.version, branding=r.branding or {})
+    if not tag or r.dispatched_at is None:
+        return None
+    repo = get_settings().github_repo.strip()
+    if not repo:
+        return None
+    return f"https://github.com/{repo}/releases/tag/{tag}"
+
+
 def _request_out(r: BuildRequest) -> dict:
     return {
         "id": str(r.id), "platform": r.platform, "version": r.version,
@@ -431,6 +475,7 @@ def _request_out(r: BuildRequest) -> dict:
         "provider_run_id": r.provider_run_id,
         "provider_run_url": r.provider_run_url,
         "artifact_name": r.artifact_name,
+        "release_url": _release_url(r),
         "dispatched_at": r.dispatched_at.isoformat() if r.dispatched_at else None,
         "created_at": r.created_at.isoformat(),
         "finished_at": r.finished_at.isoformat() if r.finished_at else None,

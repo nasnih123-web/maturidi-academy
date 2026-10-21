@@ -204,6 +204,9 @@ class BuildProviderFields(BaseModel):
     provider_run_id: str | None = None
     provider_run_url: str | None = None
     artifact_name: str | None = None
+    # نشانی Release پیش‌نویس مقصد — فقط وقتی درخواست با تگ (production +
+    # نسخهٔ معتبر) dispatch شده باشد؛ وگرنه None (سیاست release_tag_for).
+    release_url: str | None = None
     dispatched_at: str | None = None
 
 

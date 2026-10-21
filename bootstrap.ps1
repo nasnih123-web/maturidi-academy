@@ -103,15 +103,22 @@ try {
     $elapsed = 0
     Write-Host "  در انتظار $name" -NoNewline
     while ($elapsed -lt $timeoutSec) {
-      try { Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3 | Out-Null; Write-Host " ✓"; return }
+      try { Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3 | Out-Null; Write-Host " ✓"; return $true }
       catch { Write-Host "." -NoNewline; Start-Sleep -Seconds 2; $elapsed += 2 }
     }
     Write-Host ""; Warn "$name بالا نیامد؛ پنجرهٔ آن را بررسی کنید."
+    return $false
   }
 
-  Wait-For "API" "http://127.0.0.1:8000/health" 90
-  Wait-For "CRM" "http://127.0.0.1:5173/" 120
-  Wait-For "WEB" "http://127.0.0.1:3000/fa" 240
+  # صداقت وضعیت: اگر حتی یک سرویس بالا نیامده باشد، پیام موفقیت نهایی
+  # چاپ نمی‌شود و اسکریپت با خطای روشن و کد خروج ۱ تمام می‌شود.
+  $notReady = @()
+  if (-not (Wait-For "API" "http://127.0.0.1:8000/health" 90)) { $notReady += "API" }
+  if (-not (Wait-For "CRM" "http://127.0.0.1:5173/" 120)) { $notReady += "CRM" }
+  if (-not (Wait-For "WEB" "http://127.0.0.1:3000/fa" 240)) { $notReady += "WEB" }
+  if ($notReady.Count -gt 0) {
+    Die ("این سرویس‌ها بالا نیامدند: " + ($notReady -join "، ") + " — نصب/اجرا کامل نیست. پنجرهٔ سرویس ناموفق را بررسی کنید؛ پیام موفقیت نمایش داده نمی‌شود.")
+  }
 
   Say "همه‌چیز آماده است 🎉"
   Write-Host @"

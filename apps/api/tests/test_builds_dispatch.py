@@ -145,6 +145,8 @@ def test_build_dispatch_body_mobile_inputs_are_strings():
     inputs = body["inputs"]
     assert inputs["profile"] == "production-apk"  # production → پروفایل APK واقعی
     assert inputs["version_code"] == "7"
+    # production + نسخهٔ معتبر → تگ Release مقصد (سیاست release_tag_for)
+    assert inputs["release_tag"] == "v1.1.0"
     assert all(isinstance(v, str) for v in inputs.values())
     assert len(inputs) <= 10  # سقف GitHub برای inputs
 
@@ -156,6 +158,85 @@ def test_build_dispatch_body_desktop_has_no_inputs():
     )
     assert workflow == "desktop.yml"
     assert body == {"ref": "release/x"}
+
+
+@pytest.mark.parametrize(
+    "version,branding,expected",
+    [
+        ("1.1.0", {"environment": "production"}, "v1.1.0"),
+        ("10.20.30", {"environment": "production"}, "v10.20.30"),
+        ("1.1.0", {"environment": "preview"}, ""),
+        ("1.1.0", {"environment": "development"}, ""),
+        ("1.1.0", {}, ""),  # بدون environment → production نیست
+        (None, {"environment": "production"}, ""),
+        ("", {"environment": "production"}, ""),
+        ("1.1", {"environment": "production"}, ""),  # ناقص
+        ("v1.1.0", {"environment": "production"}, ""),  # پیشوند v مجاز نیست
+        ("1.1.0-rc.1", {"environment": "production"}, ""),  # پسوند مجاز نیست
+    ],
+)
+def test_release_tag_for_policy(version, branding, expected):
+    assert svc.release_tag_for(version=version, branding=branding) == expected
+
+
+def test_build_dispatch_body_mobile_release_tag_empty_cases():
+    # preview → تگ خالی: فقط workflow artifact، هیچ Releaseای لمس نمی‌شود
+    _, body = svc.build_dispatch_body(
+        platform="android", ref=None, version="1.1.0",
+        branding={"environment": "preview"}, request_id="r",
+    )
+    assert body["inputs"]["release_tag"] == ""
+    # production بدون نسخه → تگ خالی
+    _, body = svc.build_dispatch_body(
+        platform="ios", ref=None, version=None,
+        branding={"environment": "production"}, request_id="r",
+    )
+    assert body["inputs"]["release_tag"] == ""
+    # production با نسخهٔ نامعتبر → تگ خالی
+    _, body = svc.build_dispatch_body(
+        platform="android", ref=None, version="1.1",
+        branding={"environment": "production"}, request_id="r",
+    )
+    assert body["inputs"]["release_tag"] == ""
+
+
+def test_build_dispatch_body_desktop_sends_release_tag_only():
+    # desktop.yml فقط release_tag را تعریف کرده است — همان یکی، تنها
+    workflow, body = svc.build_dispatch_body(
+        platform="desktop", ref="main", version="1.2.3",
+        branding={"environment": "production"}, request_id="req-3",
+    )
+    assert workflow == "desktop.yml"
+    assert body == {"ref": "main", "inputs": {"release_tag": "v1.2.3"}}
+    # preview دسکتاپ → سیاست تگی نمی‌دهد → بدون inputs (قرارداد قبلی)
+    workflow, body = svc.build_dispatch_body(
+        platform="desktop", ref="main", version="1.2.3",
+        branding={"environment": "preview"}, request_id="req-4",
+    )
+    assert body == {"ref": "main"}
+
+
+def test_release_url_only_after_tagged_dispatch(gh_configured):
+    from app.models.models import BuildRequest
+
+    req = BuildRequest(
+        platform="android", version="1.1.0", status="queued",
+        branding={"environment": "production"},
+        created_at=datetime.now(UTC),
+    )
+    # هنوز dispatch نشده → لینکی ساخته نمی‌شود
+    assert svc._request_out(req)["release_url"] is None
+    req.dispatched_at = datetime.now(UTC)
+    assert svc._request_out(req)["release_url"] == (
+        "https://github.com/owner/repo/releases/tag/v1.1.0"
+    )
+    # preview با همان نسخه → سیاست تگی نمی‌دهد → بدون لینک
+    req2 = BuildRequest(
+        platform="android", version="1.1.0", status="running",
+        branding={"environment": "preview"},
+        dispatched_at=datetime.now(UTC), created_at=datetime.now(UTC),
+    )
+    assert svc._request_out(req2)["release_url"] is None
 
 
 @pytest.mark.parametrize(
@@ -274,6 +355,11 @@ async def test_dispatch_flow_matches_run_and_hides_token(tc, gh_configured):
     body = json.loads(dispatch.content)
     assert body["inputs"]["request_id"] == out["id"]
     assert body["inputs"]["profile"] == "production-apk"
+    # production + نسخهٔ 1.1.0 → تگ مقصد فرستاده و نشانی Release روی خروجی است
+    assert body["inputs"]["release_tag"] == "v1.1.0"
+    assert out["release_url"] == (
+        "https://github.com/owner/repo/releases/tag/v1.1.0"
+    )
 
     # توکن در هیچ خروجی/رکوردی نیست (§۱۴)
     assert TOKEN not in str(out)

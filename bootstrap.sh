@@ -4,7 +4,7 @@
 #   ./bootstrap.sh
 #
 # این اسکریپت همه‌چیز را آماده می‌کند:
-#   ۱) بررسی پیش‌نیازها (Python 3.11+ ، Node 20+ ، npm)
+#   ۱) بررسی پیش‌نیازها (Python 3.14 ، Node 20+ ، npm)
 #   ۲) ساخت venv و نصب وابستگی‌های API + اجرای migration + seed اولیه
 #   ۳) npm install برای وب و CRM (فقط اگر قبلاً نصب نشده باشند)
 #   ۴) اجرای هم‌زمان هر سه سرویس و نمایش آدرس‌ها
@@ -23,10 +23,12 @@ die()  { printf '\n\033[1;31mخطا: %s\033[0m\n' "$*"; exit 1; }
 # ---------- ۱) پیش‌نیازها ----------
 say "بررسی پیش‌نیازها…"
 
-command -v python3 >/dev/null || die "python3 پیدا نشد. لطفاً Python 3.11 یا جدیدتر نصب کنید: https://www.python.org/downloads/"
+# این پروژه به Python 3.14 نیاز دارد (Phase-1 v1.1.0: کل استک
+# requirements.txt روی 3.14 پین و راستی‌آزمایی شده است — مثل bootstrap.ps1).
+command -v python3 >/dev/null || die "python3 پیدا نشد. لطفاً Python 3.14 نصب کنید: https://www.python.org/downloads/"
 PYV="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' \
-  || die "نسخهٔ Python شما $PYV است؛ نسخهٔ 3.11 یا جدیدتر لازم است."
+python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 14) else 1)' \
+  || die "نسخهٔ Python شما $PYV است؛ این پروژه به Python 3.14 نیاز دارد: https://www.python.org/downloads/"
 
 command -v node >/dev/null || die "node پیدا نشد. لطفاً Node.js 20 یا جدیدتر نصب کنید: https://nodejs.org/"
 NODEV="$(node -p 'process.versions.node')"
@@ -48,7 +50,10 @@ if [ ! -f "$ROOT/apps/api/dev.db" ]; then
     bash "$ROOT/apps/api/setup.sh"
 else
   echo "  دیتابیس موجود است؛ فقط migrationهای جدید اجرا می‌شود."
-  bash "$ROOT/apps/api/setup.sh" >/dev/null 2>&1 || true
+  # صداقت وضعیت: شکست setup/migration نباید پنهان شود — بدون || true و
+  # بدون بلعیدن خروجی؛ خطا بوت‌استرپ را با پیام روشن متوقف می‌کند.
+  bash "$ROOT/apps/api/setup.sh" \
+    || die "اجرای setup (نصب وابستگی‌ها/migration/seed) ناموفق بود — خروجی بالا را بررسی کنید؛ بوت‌استرپ متوقف شد."
 fi
 
 # ---------- ۳) فرانت‌اندها ----------

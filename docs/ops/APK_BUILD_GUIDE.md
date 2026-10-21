@@ -51,15 +51,32 @@
 `platform` (android/ios/all) · `profile` (development/preview/production —
 برای دکمهٔ CRM به‌صورت خودکار map می‌شود: production → ‏`production-apk`)
 · `app_name` · `package_id` · `app_version` · `version_code` · `api_url` ·
-`environment` · `request_id`. این مقادیر در اکشن به‌صورت env به
-`app.config.js` می‌رسند (`EXPO_PUBLIC_API_URL`, `APP_NAME`,
+`environment` · `request_id` · `release_tag`. این مقادیر در اکشن به‌صورت
+env به `app.config.js` می‌رسند (`EXPO_PUBLIC_API_URL`, `APP_NAME`,
 `APP_PACKAGE_ID`, `APP_VERSION_NAME`, `APP_VERSION_CODE`).
 
-در خود اکشن: `eas build --no-wait` اجرا می‌شود — یعنی «موفقیت» run یعنی
-بیلد با موفقیت به EAS **تحویل** شده است؛ لینک نهایی APK داخل artifactای
-به نام `mobile-build-<request_id>` (فایل `build-info.json`) ذخیره می‌شود.
-تعمداً این‌طور مستند شده تا تحویل به EAS با «APK آماده» اشتباه گرفته
-نشود.
+**سیاست `release_tag` (سمت API، `release_tag_for` در builds_service):**
+تگ فقط وقتی ساخته و فرستاده می‌شود که محیط بیلد `production` باشد **و**
+نسخه شکل معتبر `digits.digits.digits` داشته باشد؛ آن‌وقت
+`release_tag = v<version>` است. در همهٔ حالت‌های دیگر (preview/development
+یا نسخهٔ خالی/نامعتبر) تگ خالی است و خروجی فقط workflow artifact می‌ماند —
+هیچ Releaseای لمس نمی‌شود. روی رکورد CRM، وقتی درخواست با تگ dispatch شده
+باشد `release_url` هم پر می‌شود:
+`https://github.com/<repo>/releases/tag/<tag>`.
+
+در خود اکشن: بیلد EAS ثبت و تا وضعیت نهایی **Poll** می‌شود؛ فقط بیلد
+`FINISHED` دانلود می‌شود و پیش از هر انتشاری بر اساس نوعش اعتبارسنجی
+می‌شود (APK: ‏`apksigner` + ‏`aapt`؛ ‏AAB: ‏`jarsigner` + ‏bundletool
+پین‌شده؛ IPA: ‏`plistlib` + وجود `mobileprovision` — و چون روی رانر
+لینوکسی `codesign` قابل راستی‌آزمایی نیست، در مانیفست همین ثبت می‌شود).
+خروجی معتبر + `build-manifest.json` (نوع دقیق، package/version استخراج‌شده
+از خود فایل، SHA-256، وضعیت امضا، commit، لینک run، و `install_test:
+NOT TESTED`) + `SHA256SUMS.txt` به Release پیش‌نویس همان نسخه وصل می‌شوند.
+گارد Release در workflow: به Release **منتشرشده** هرگز چیزی اضافه
+نمی‌شود؛ Tag موجودِ اشاره‌کننده به کامیت دیگر جابه‌جا نمی‌شود (فقط الصاق
+به Draftِ همان نسخه، با هشدار و ثبت `tag_commit` در مانیفست)؛ Release
+جدید همیشه Draft است و Tag جدید دقیقاً روی کامیت همان بیلد ساخته می‌شود.
+موفقیت بیلد به‌تنهایی اثبات نصب سالم نیست.
 
 ## ۴) پروفایل‌های EAS (`apps/mobile/eas.json`)
 
@@ -97,13 +114,21 @@ npx eas-cli credentials
 ```
 
 بعد از این ۴ گام: از CRM یک بیلد preview بگیرید؛ لینک اجرا در جدول
-درخواست‌ها می‌آید و APK از artifact ‏(`build-info.json` → ‏`buildUrl`)
-قابل دانلود است. برای iOS علاوه بر این‌ها حساب Apple Developer لازم
-است (خارج از اسکوپ این فاز).
+درخواست‌ها می‌آید و خروجی اعتبارسنجی‌شده در artifact همان run است. برای
+بیلد production (با نسخهٔ معتبر)، APK علاوه بر آن به Release پیش‌نویس
+همان نسخه وصل می‌شود و `release_url` روی رکورد CRM می‌آید — انتشار
+نهایی Release همیشه دستی است. برای iOS علاوه بر این‌ها حساب Apple
+Developer لازم است (خارج از اسکوپ این فاز).
 
 ## ۶) دسکتاپ از همان صفحه
 
-برای پلتفرم desktop، dispatch به `desktop.yml` می‌رود (بدون input —
-GitHub برای ورک‌فلو بدون input تعریف‌شده، body دارای inputs را 422
-می‌کند). خود باینری دسکتاپ پوستهٔ محلی ADR-0023 است و URL وب production
-را از `shell/config.js` می‌خواند — راهنما: `apps/desktop/README.md`.
+برای پلتفرم desktop، dispatch به `desktop.yml` می‌رود. آن workflow فقط
+یک input تعریف کرده است — `release_tag` — و API دقیقاً همان را (با همان
+سیاست §۳: فقط production + نسخهٔ معتبر) می‌فرستد؛ وقتی سیاست تگی ندهد،
+اصلاً `inputs` فرستاده نمی‌شود (GitHub برای input تعریف‌نشده 422
+می‌دهد). `desktop.yml` هم همان گارد Release موبایل را دارد و باندل‌های
+هر سه سیستم‌عامل را با مانیفست جدا (`build-manifest-<platform>.json` —
+فعلاً با وضعیت امضای صادقانهٔ `unsigned` و `install_test: NOT TESTED`)
+به همان Release پیش‌نویس وصل می‌کند. خود باینری دسکتاپ پوستهٔ محلی
+ADR-0023 است و URL وب production را از `shell/config.js` می‌خواند —
+راهنما: `apps/desktop/README.md`.
