@@ -49,6 +49,9 @@ export interface TokenPair {
   access_token: string;
   refresh_token: string;
   token_type: string;
+  /** Backend login flag (contract §2): privileged user without TOTP yet —
+   *  the issued pair carries the restricted `2fa_setup` scope. */
+  must_enroll_2fa?: boolean;
 }
 
 const ACCESS_KEY = "crm.access_token";

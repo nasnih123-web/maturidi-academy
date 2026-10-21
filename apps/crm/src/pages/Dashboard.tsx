@@ -86,6 +86,7 @@ const NAV_GROUPS: NavGroupDef[] = [
       { to: "/quran", labelKey: "nav.quran", icon: "M4 19.5A2.5 2.5 0 016.5 17H20M6.5 2A2.5 2.5 0 014 4.5v15A2.5 2.5 0 006.5 22H20V2H6.5zM9 7h7M9 11h5", superAdmin: true },
       { to: "/sync", labelKey: "nav.sync", icon: "M4 4v6h6M20 20v-6h-6M20 9a8 8 0 00-14.9-3M4 15a8 8 0 0014.9 3", superAdmin: true },
       { to: "/settings", labelKey: "nav.settings", icon: "M12 8a4 4 0 100 8 4 4 0 000-8zM3 12h3M18 12h3M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1", superAdmin: true },
+      { to: "/settings/security", labelKey: "nav.security", icon: "M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6zM9.5 12l2 2 3.5-4", superAdmin: false },
       { to: "/appearance", labelKey: "nav.appearance", icon: "M4 8h10M18 8h2M4 16h2M10 16h10M14 4v4M6 12v4", superAdmin: true },
       { to: "/branding", labelKey: "nav.branding", icon: "M12 3a9 9 0 100 18c1.4 0 2-.8 2-1.8 0-1.4-1.2-1.8-1.2-3 0-1.2 1-2.2 2.4-2.2H17a4.5 4.5 0 004.5-4.5C21.5 5.6 17.2 3 12 3zM7.5 12.5a1.3 1.3 0 100-2.6 1.3 1.3 0 000 2.6z", superAdmin: true },
       { to: "/users", labelKey: "nav.users", icon: "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75", superAdmin: true },

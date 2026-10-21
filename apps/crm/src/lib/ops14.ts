@@ -51,21 +51,31 @@ import { errText } from "./library";
  *       A bare JSON list (not an envelope). `signed` is honestly false when
  *       CI has no signing secrets — never invented.
  *
- *   POST /api/v1/admin/builds/rebuild
+ *   POST /api/v1/admin/builds/rebuild   (F-05 remediation: real dispatch)
  *     body: { platform: "android"|"ios"|"desktop",
- *             version?: str, ref?: str, note?: str }
- *     → { id, platform, version, ref, status, signing_ready: bool,
- *           missing_signing: [str], note, created_at }
- *     → writes an audit record (§14). Status is tracked via /requests.
+ *             version?: str, ref?: str, note?: str,
+ *             app_name?: str, package_id?: str, version_code?: int,
+ *             api_url?: str, environment?: "development"|"preview"|"production" }
+ *     → { id, platform, version, ref, status, branding, provider,
+ *           provider_run_id, provider_run_url, artifact_name,
+ *           signing_ready: bool, missing_signing: [str], note, created_at }
+ *     → 503 { error.code: "build_provider_not_configured" } when the API has
+ *       no GitHub dispatch provider configured — no fake "queued" row then.
+ *     → writes an audit record (§14). Status is synced from the real GitHub
+ *       workflow run and tracked via /requests.
  *
  *   GET  /api/v1/admin/builds/requests
- *     → [ { id, platform, version, ref, status, note,
- *             created_at, finished_at } ]   # bare list; status starts "queued"
+ *     → [ { id, platform, version, ref, status, note, branding, provider,
+ *             provider_run_id, provider_run_url, artifact_name,
+ *             created_at, finished_at } ]   # bare list
+ *       provider === null marks legacy Phase-14 rows that were never
+ *       dispatched — the UI labels them "not dispatched", never "queued".
  *
  *   GET  /api/v1/admin/builds/prereqs
  *     → { signing:  { <cert>: {present: bool, expires_at: str|null} },
  *           platforms: { <plat>: {required: [str], missing: [str],
- *                                 ready: bool} } }
+ *                                 ready: bool} },
+ *           provider: { configured: bool, provider: str|null, repo: str|null } }
  *     Until the backend implements it, the CRM renders the four signing
  *     requirements from the spec statically with an honest "unknown" state.
  *
@@ -161,6 +171,15 @@ export interface BuildRelease {
   created_at: string;
 }
 
+/** Branding carried by a build request (F-05 remediation). */
+export interface BuildBranding {
+  app_name?: string;
+  package_id?: string;
+  version_code?: number;
+  api_url?: string;
+  environment?: string;
+}
+
 export interface BuildRequest {
   id: string;
   platform: string;
@@ -168,6 +187,12 @@ export interface BuildRequest {
   ref: string | null;
   status: string;
   note: string | null;
+  branding: BuildBranding;
+  /** "github_actions" once actually dispatched; null = legacy, never sent. */
+  provider: string | null;
+  provider_run_id: string | null;
+  provider_run_url: string | null;
+  artifact_name: string | null;
   created_at: string;
   finished_at: string | null;
 }
@@ -180,7 +205,16 @@ export interface RebuildResult {
   signing_ready: boolean;
   missing_signing: string[];
   note: string;
+  provider: string | null;
+  provider_run_url: string | null;
   created_at: string;
+}
+
+/** Build-provider state from GET /prereqs (F-05 remediation). */
+export interface BuildProvider {
+  configured: boolean;
+  provider: string | null;
+  repo: string | null;
 }
 
 export interface PrereqCert {
@@ -197,6 +231,7 @@ export interface PrereqPlatform {
 export interface BuildPrereqs {
   signing: Record<string, PrereqCert>;
   platforms: Record<string, PrereqPlatform>;
+  provider: BuildProvider;
 }
 
 export interface TestConnectionResult {
@@ -312,6 +347,21 @@ function parseRelease(raw: unknown): BuildRelease {
   };
 }
 
+function parseBranding(raw: unknown): BuildBranding {
+  const b = asRec(raw);
+  const out: BuildBranding = {};
+  const appName = pickStr(b, "app_name");
+  if (appName) out.app_name = appName;
+  const pkg = pickStr(b, "package_id");
+  if (pkg) out.package_id = pkg;
+  if (typeof b["version_code"] === "number") out.version_code = b["version_code"] as number;
+  const apiUrl = pickStr(b, "api_url");
+  if (apiUrl) out.api_url = apiUrl;
+  const env = pickStr(b, "environment");
+  if (env) out.environment = env;
+  return out;
+}
+
 function parseBuildRequest(raw: unknown): BuildRequest {
   const r = asRec(raw);
   return {
@@ -321,6 +371,11 @@ function parseBuildRequest(raw: unknown): BuildRequest {
     ref: pickStr(r, "ref") || null,
     status: pickStr(r, "status", "queued"),
     note: pickStr(r, "note") || null,
+    branding: parseBranding(r["branding"]),
+    provider: pickStr(r, "provider") || null,
+    provider_run_id: pickStr(r, "provider_run_id") || null,
+    provider_run_url: pickStr(r, "provider_run_url") || null,
+    artifact_name: pickStr(r, "artifact_name") || null,
     created_at: pickStr(r, "created_at"),
     finished_at: pickStr(r, "finished_at") || null,
   };
@@ -339,6 +394,8 @@ function parseRebuildResult(raw: unknown): RebuildResult {
       ? missing.filter((x): x is string => typeof x === "string")
       : [],
     note: pickStr(r, "note"),
+    provider: pickStr(r, "provider") || null,
+    provider_run_url: pickStr(r, "provider_run_url") || null,
     created_at: pickStr(r, "created_at"),
   };
 }
@@ -366,7 +423,16 @@ function parsePrereqs(raw: unknown): BuildPrereqs {
       ready: pickBool(p, "ready"),
     };
   }
-  return { signing, platforms };
+  const prov = asRec(r["provider"]);
+  return {
+    signing,
+    platforms,
+    provider: {
+      configured: pickBool(prov, "configured"),
+      provider: pickStr(prov, "provider") || null,
+      repo: pickStr(prov, "repo") || null,
+    },
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -395,10 +461,11 @@ export function certExpiryInfo(expiresAt: string | null | undefined): CertExpiry
 
 /**
  * Rebuild-request statuses that are still in flight (keep polling).
- * The backend starts every request as "queued"; terminal values observed
- * are done/succeeded/failed/cancelled — anything else keeps polling.
+ * Terminal values: completed/failed (+ legacy done/succeeded/success/
+ * cancelled). Anything else keeps polling.
  */
 const TERMINAL_REQUEST_STATUSES = new Set([
+  "completed",
   "done",
   "succeeded",
   "success",
@@ -408,6 +475,16 @@ const TERMINAL_REQUEST_STATUSES = new Set([
 
 export function isRequestActive(status: string | undefined): boolean {
   return !!status && !TERMINAL_REQUEST_STATUSES.has(status);
+}
+
+/**
+ * A request is *live* only when it is non-terminal AND was actually
+ * dispatched (provider set). Legacy Phase-14 rows sit in "queued" with no
+ * provider — they were never sent anywhere, so polling for them (or
+ * presenting them as in-flight) would be a lie (F-05).
+ */
+export function requestIsLive(r: BuildRequest): boolean {
+  return isRequestActive(r.status) && r.provider !== null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -479,9 +556,10 @@ export function useBuildRequests() {
       return asList(raw).map(parseBuildRequest);
     },
     retry: false,
-    // Live tracking: keep polling while the newest request is in flight.
+    // Live tracking: poll only while a *dispatched* request is in flight —
+    // legacy un-dispatched "queued" rows must not poll (or imply) forever.
     refetchInterval: (query) =>
-      (query.state.data ?? []).some((r) => isRequestActive(r.status)) ? 10_000 : false,
+      (query.state.data ?? []).some((r) => requestIsLive(r)) ? 10_000 : false,
   });
 }
 
@@ -492,13 +570,20 @@ export function useRebuild() {
       platform: BuildTarget;
       version?: string;
       note?: string;
+      branding?: BuildBranding;
     }): Promise<RebuildResult> => {
+      const b = input.branding ?? {};
       const raw = await apiFetch<unknown>("/api/v1/admin/builds/rebuild", {
         method: "POST",
         body: {
           platform: input.platform,
           ...(input.version ? { version: input.version } : {}),
           ...(input.note ? { note: input.note } : {}),
+          ...(b.app_name ? { app_name: b.app_name } : {}),
+          ...(b.package_id ? { package_id: b.package_id } : {}),
+          ...(b.version_code ? { version_code: b.version_code } : {}),
+          ...(b.api_url ? { api_url: b.api_url } : {}),
+          ...(b.environment ? { environment: b.environment } : {}),
         },
       });
       return parseRebuildResult(raw);

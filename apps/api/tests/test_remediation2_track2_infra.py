@@ -93,11 +93,11 @@ def test_compose_dev_uses_service_names():
 def test_ci_semgrep_is_blocking():
     """ادعای pass-1: semgrep در CI مسدودکننده است (نه || true، نه continue-on-error).
 
-    به‌روزرسانی دامنه‌محور (نه تضعیف): تنها continue-on-error مجاز در کل
-    فایل، گام Typecheck (mypy) است — سازوکار شفاف UI برای بدهی تایپ مستند،
-    به‌جای || true خاموش قبلی. این تست حالا هر دو را pin می‌کند: Security
-    scan همچنان بدون continue-on-error و || true، و دقیقاً یک
-    continue-on-error در فایل هست و آن هم داخل گام Typecheck است.
+    به‌روزرسانی دامنه‌محور دوم (v1.1.0 — نه تضعیف، تقویت): بدهی تایپ mypy
+    صفر شد (docs/audit-v2/TYPE_DEBT_BURNDOWN.md) و استثنای Typecheck حذف
+    شد. حالا invariant سخت‌گیرانه‌تر pin می‌شود: هیچ continue-on-errorای
+    در کل فایل نیست و هر دو گام Security scan و Typecheck کاملاً
+    مسدودکننده‌اند (نه || true، نه continue-on-error).
     """
     content = _read(".github/workflows/ci.yml")
     # گام Security scan: مسدودکنندهٔ کامل — نه || true، نه continue-on-error
@@ -109,11 +109,17 @@ def test_ci_semgrep_is_blocking():
     ]
     assert run_lines, "no run: line in semgrep step"
     assert not any("|| true" in ln for ln in run_lines), "semgrep step is not blocking"
-    # تنها استثنای فایل: دقیقاً یک کلید continue-on-error، داخل گام Typecheck
+    # دیگر هیچ استثنایی نیست: صفر کلید continue-on-error در کل فایل
     coe_keys = re.findall(r"(?m)^\s*continue-on-error:", content)
-    assert len(coe_keys) == 1, f"expected exactly 1 continue-on-error step key, got {len(coe_keys)}"
+    assert len(coe_keys) == 0, f"expected no continue-on-error step keys, got {len(coe_keys)}"
+    # گام Typecheck هم مسدودکنندهٔ کامل است
     typecheck = content.split("Typecheck", 1)[1].split("- name:", 1)[0]
-    assert "continue-on-error:" in typecheck
+    assert "continue-on-error:" not in typecheck
+    tc_run_lines = [
+        ln for ln in typecheck.splitlines() if ln.strip().startswith("run:")
+    ]
+    assert tc_run_lines, "no run: line in Typecheck step"
+    assert not any("|| true" in ln for ln in tc_run_lines), "Typecheck step is not blocking"
 
 
 def test_backup_script_has_sha256_manifest():

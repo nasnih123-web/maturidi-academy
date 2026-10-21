@@ -1,6 +1,6 @@
 # فاز ۱۷ — Dockerfile production برای CRM (Vite SPA → nginx)
 # بیلد از ریشهٔ ریپو (context: .) چون به packages/ui-web نیاز دارد.
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app/crm
 # Track 2 / §۱۴ — وابستگی file: به @maturidi/ui-web: باید *قبل* از npm ci
 # در ایمیج باشد، وگرنه npm ci روی file:../../packages/ui-web فیل می‌کند.

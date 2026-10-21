@@ -269,6 +269,7 @@ def test_backup_script_bash_syntax():
     assert subprocess.run(
         ["bash", "-n", str(REPO / "infra" / "backup.sh")],
         capture_output=True,
+        check=False,  # returncode در همان assert بررسی می‌شود
     ).returncode == 0
 
 
@@ -287,7 +288,7 @@ def test_backup_script_requires_env_credentials():
         "MINIO_ROOT_PASSWORD",
         "S3_BUCKET",
     ):
-        assert ': "${%s:?' % var in text, f"{var} is not a required env var"
+        assert f': "${{{var}:?' in text, f"{var} is not a required env var"
     assert "POSTGRES_USER:-maturidi" not in text
     assert "POSTGRES_DB:-maturidi" not in text
 
@@ -411,7 +412,7 @@ def test_prod_rejects_placeholder_s3_settings(_isolated_settings, monkeypatch):
             "S3_ENDPOINT_PUBLIC": "",
         },
     }
-    for name, overrides in cases.items():
+    for overrides in cases.values():
         _prod_s3_env(monkeypatch, **overrides)
         with pytest.raises(RuntimeError):
             assert_production_secrets_ok()
