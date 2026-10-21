@@ -1,42 +1,53 @@
 # پین‌شده طبق فاز ۰ — نسخهٔ دقیق، نه latest
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.10.4
-pydantic-settings==2.7.0
-sqlalchemy==2.0.36
-alembic==1.14.0
-asyncpg==0.30.0
-aiosqlite==0.20.0
-redis==5.2.1
-arq==0.26.3
+# Phase-1 (v1.1.0 remediation): کل استک به Python 3.14 ارتقا یافت؛ fastapi از
+# 0.115.6 به 0.156.4 رفت تا starlette از 0.41.3 (دارای ۷ advisory) به 1.9.0
+# برسد و هر ۸ ignore بخش Dependency scan در CI حذف شود (pip-audit: ۰ یافته).
+fastapi==0.156.4
+uvicorn[standard]==0.54.0
+pydantic==2.14.1
+pydantic-settings==2.16.1
+sqlalchemy[asyncio]==2.1.5
+# greenlet وابستگی واقعی SQLAlchemy asyncio است؛ قبلاً به‌صورت transitive
+# می‌آمد و در استک جدید دیگر نمی‌آید — صریح پین شد.
+greenlet==3.5.6
+alembic==1.20.0
+asyncpg==0.32.0
+aiosqlite==0.22.1
+redis==5.3.1
+arq==0.28.0
 pyjwt==2.15.1
-argon2-cffi==23.1.0
-python-multipart==0.0.31
+argon2-cffi==25.1.0
+python-multipart==0.0.32
 httpx==0.28.1
-pyotp==2.9.0
-cryptography==50.0.0
-pytest==8.3.4
-pytest-asyncio==0.25.0
+pyotp==2.10.0
+cryptography==50.0.2
+pytest==9.1.1
+pytest-asyncio==1.4.0
 # لینتر CI — پین‌شده: شمارش خطاهای ruff به نسخه حساس است (از 0.16 قواعد
 # پیش‌فرض گسترش یافت)؛ baseline در tools/ruff_baseline.json فقط با همین
 # نسخه معنا دارد. کانفیگ: apps/api/ruff.toml
 ruff==0.17.1
-email-validator==2.2.0
+# تایپ‌چکر CI — پین‌شده به همان نسخه‌ای که بدهی تایپ با آن صفر شد
+# (mypy.ini در apps/api؛ گام Typecheck در CI blocking است).
+# types-reportlab: استاب‌های reportlab برای mypy (خود reportlab استاب ندارد).
+mypy==2.4.0
+types-reportlab==5.0.0.20261008
+email-validator==2.3.0
 # فاز ۴ — تقویم اسلامی (انتزاع تاریخ هجری در app/core/hijri.py)
-hijri-converter==2.3.0
+hijri-converter==2.3.2.post1
 # فاز ۸ — LMS: گواهی PDF سه‌زبانه (reportlab) + شکل‌دهی درست RTL (عربی/فارسی)
-reportlab==4.2.5
-arabic-reshaper==3.0.0
-python-bidi==0.6.6
+reportlab==5.0.1
+arabic-reshaper==3.0.1
+python-bidi==0.6.12
 # فاز ۱۱ — تلگرام دوطرفه (بات + Telethon)
-python-telegram-bot==21.9
-telethon==1.41.2
+python-telegram-bot==22.8
+telethon==1.45.0
 # فاز ۲ — رصدپذیری (init در main.py فقط وقتی env تنظیم شده باشد)
 sentry-sdk==2.72.0
 opentelemetry-sdk==1.45.1
 opentelemetry-exporter-otlp==1.45.1
 # Track 2 / §۱۲ — کلاینت S3-سازگار برای S3StorageProvider (MinIO)؛ ایمپورت lazy است
 # تا نصب‌نشدن آن در محیط dev/test کرش ندهد (فکتوری فقط با STORAGE_PROVIDER=s3 لازمش دارد)
-minio==7.2.16
+minio==7.2.20
 # remediation-pass-2 Track 1 (§۷) — فیک Redis برای تست‌های rate limiter (فقط تست)
 fakeredis==2.40.0

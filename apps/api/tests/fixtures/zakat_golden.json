@@ -1,0 +1,2080 @@
+{
+ "provenance": {
+  "source_url": "http://dl.ghadimyol.ir/calculator/zakat.html",
+  "source_sha256": "2a8e68cd4f3c3bada08511c8b93395e1b1ba01e87ececafe22e356d62addd4f8",
+  "fetched": "2026-10-21 via plain HTTP (HTTPS failed)",
+  "attributed_author": "مهران ساعدی (per user attribution; name appears in zakat.html)",
+  "license": "no explicit license text in source — rules re-implemented, code/prose not copied",
+  "generated_by": "tools/golden/generate_fixtures.py + tools/golden/harness.js (original page JS executed in Node vm)"
+ },
+ "cases": [
+  {
+   "id": "sheep_0",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "0"
+   },
+   "source_text": "زکات گوسفند های شما: زکات ندارد",
+   "expected": {
+    "due": []
+   }
+  },
+  {
+   "id": "sheep_39",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "39"
+   },
+   "source_text": "زکات گوسفند های شما: زکات ندارد",
+   "expected": {
+    "due": []
+   }
+  },
+  {
+   "id": "sheep_40",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "40"
+   },
+   "source_text": "زکات گوسفند های شما: ۱ گوسفند",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "sheep_41",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "41"
+   },
+   "source_text": "زکات گوسفند های شما: ۱ گوسفند",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "sheep_120",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "120"
+   },
+   "source_text": "زکات گوسفند های شما: ۱ گوسفند",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "sheep_121",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "121"
+   },
+   "source_text": "زکات گوسفند های شما: ۲ گوسفند",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "sheep_199",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "199"
+   },
+   "source_text": "زکات گوسفند های شما: ۲ گوسفند",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "sheep_200",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "200"
+   },
+   "source_text": "زکات گوسفند های شما: ۲ گوسفند",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "sheep_201",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "201"
+   },
+   "source_text": "زکات گوسفند های شما: ۳ گوسفند",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "sheep_399",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "399"
+   },
+   "source_text": "زکات گوسفند های شما: ۳ گوسفند",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "sheep_400",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "400"
+   },
+   "source_text": "زکات گوسفند های شما: 4 گوسفند",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 4
+     }
+    ]
+   }
+  },
+  {
+   "id": "sheep_401",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "401"
+   },
+   "source_text": "زکات گوسفند های شما: 4 گوسفند",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 4
+     }
+    ]
+   }
+  },
+  {
+   "id": "sheep_500",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "500"
+   },
+   "source_text": "زکات گوسفند های شما: 5 گوسفند",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 5
+     }
+    ]
+   }
+  },
+  {
+   "id": "sheep_999",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "999"
+   },
+   "source_text": "زکات گوسفند های شما: 9 گوسفند",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 9
+     }
+    ]
+   }
+  },
+  {
+   "id": "sheep_1000",
+   "calc": "sheep",
+   "inputs": {
+    "SheepInput": "1000"
+   },
+   "source_text": "زکات گوسفند های شما: 10 گوسفند",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 10
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_1",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "1"
+   },
+   "source_text": "زکات شترهای شما: زکات ندارد\n",
+   "expected": {
+    "due": []
+   }
+  },
+  {
+   "id": "camel_4",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "4"
+   },
+   "source_text": "زکات شترهای شما: زکات ندارد\n",
+   "expected": {
+    "due": []
+   }
+  },
+  {
+   "id": "camel_5",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "5"
+   },
+   "source_text": "زکات شترهای شما: یک گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_9",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "9"
+   },
+   "source_text": "زکات شترهای شما: یک گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_10",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "10"
+   },
+   "source_text": "زکات شترهای شما: دو گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_14",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "14"
+   },
+   "source_text": "زکات شترهای شما: دو گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_15",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "15"
+   },
+   "source_text": "زکات شترهای شما: سه گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_19",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "19"
+   },
+   "source_text": "زکات شترهای شما: سه گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_20",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "20"
+   },
+   "source_text": "زکات شترهای شما: چهار گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 4
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_24",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "24"
+   },
+   "source_text": "زکات شترهای شما: چهار گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "sheep",
+      "count": 4
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_25",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "25"
+   },
+   "source_text": "زکات شترهای شما: یک شتر ماده یک‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 1,
+      "age_years": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_35",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "35"
+   },
+   "source_text": "زکات شترهای شما: یک شتر ماده یک‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 1,
+      "age_years": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_36",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "36"
+   },
+   "source_text": "زکات شترهای شما: یک شتر ماده دو‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 1,
+      "age_years": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_45",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "45"
+   },
+   "source_text": "زکات شترهای شما: یک شتر ماده دو‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 1,
+      "age_years": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_46",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "46"
+   },
+   "source_text": "زکات شترهای شما: یک شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 1,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_60",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "60"
+   },
+   "source_text": "زکات شترهای شما: یک شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 1,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_61",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "61"
+   },
+   "source_text": "زکات شترهای شما: یک شتر ماده چهار‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 1,
+      "age_years": 4
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_75",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "75"
+   },
+   "source_text": "زکات شترهای شما: یک شتر ماده چهار‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 1,
+      "age_years": 4
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_76",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "76"
+   },
+   "source_text": "زکات شترهای شما: دو شتر ماده دو‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 2,
+      "age_years": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_90",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "90"
+   },
+   "source_text": "زکات شترهای شما: دو شتر ماده دو‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 2,
+      "age_years": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_91",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "91"
+   },
+   "source_text": "زکات شترهای شما: دو شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 2,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_120",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "120"
+   },
+   "source_text": "زکات شترهای شما: دو شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 2,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_121",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "121"
+   },
+   "source_text": "زکات شترهای شما: دو شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 2,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_124",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "124"
+   },
+   "source_text": "زکات شترهای شما: دو شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 2,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_125",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "125"
+   },
+   "source_text": "زکات شترهای شما: دو شتر ماده سه‌ساله + یک شتر ماده یک‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 2,
+      "age_years": 3
+     },
+     {
+      "kind": "camel_female",
+      "count": 1,
+      "age_years": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_149",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "149"
+   },
+   "source_text": "زکات شترهای شما: دو شتر ماده سه‌ساله + یک شتر ماده یک‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 2,
+      "age_years": 3
+     },
+     {
+      "kind": "camel_female",
+      "count": 1,
+      "age_years": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_150",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "150"
+   },
+   "source_text": "زکات شترهای شما: سه شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 3,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_151",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "151"
+   },
+   "source_text": "زکات شترهای شما: 3 شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 3,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_154",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "154"
+   },
+   "source_text": "زکات شترهای شما: 3 شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 3,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_155",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "155"
+   },
+   "source_text": "زکات شترهای شما: 3 شتر ماده سه‌ساله\nو یک گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 3,
+      "age_years": 3
+     },
+     {
+      "kind": "sheep",
+      "count": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_159",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "159"
+   },
+   "source_text": "زکات شترهای شما: 3 شتر ماده سه‌ساله\nو یک گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 3,
+      "age_years": 3
+     },
+     {
+      "kind": "sheep",
+      "count": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_160",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "160"
+   },
+   "source_text": "زکات شترهای شما: 3 شتر ماده سه‌ساله\nو دو گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 3,
+      "age_years": 3
+     },
+     {
+      "kind": "sheep",
+      "count": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_164",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "164"
+   },
+   "source_text": "زکات شترهای شما: 3 شتر ماده سه‌ساله\nو دو گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 3,
+      "age_years": 3
+     },
+     {
+      "kind": "sheep",
+      "count": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_165",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "165"
+   },
+   "source_text": "زکات شترهای شما: 3 شتر ماده سه‌ساله\nو سه گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 3,
+      "age_years": 3
+     },
+     {
+      "kind": "sheep",
+      "count": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_169",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "169"
+   },
+   "source_text": "زکات شترهای شما: 3 شتر ماده سه‌ساله\nو سه گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 3,
+      "age_years": 3
+     },
+     {
+      "kind": "sheep",
+      "count": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_170",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "170"
+   },
+   "source_text": "زکات شترهای شما: 3 شتر ماده سه‌ساله\nو چهار گوسفند\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 3,
+      "age_years": 3
+     },
+     {
+      "kind": "sheep",
+      "count": 4
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_175",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "175"
+   },
+   "source_text": "زکات شترهای شما: 3 شتر ماده سه‌ساله\nو یک شتر ماده یک‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 3,
+      "age_years": 3
+     },
+     {
+      "kind": "camel_female",
+      "count": 1,
+      "age_years": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_185",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "185"
+   },
+   "source_text": "زکات شترهای شما: 3 شتر ماده سه‌ساله\nو یک شتر ماده یک‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 3,
+      "age_years": 3
+     },
+     {
+      "kind": "camel_female",
+      "count": 1,
+      "age_years": 1
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_195",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "195"
+   },
+   "source_text": "زکات شترهای شما: 3 شتر ماده سه‌ساله\nو یک شتر ماده دو‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 3,
+      "age_years": 3
+     },
+     {
+      "kind": "camel_female",
+      "count": 1,
+      "age_years": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_196",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "196"
+   },
+   "source_text": "زکات شترهای شما: 3 شتر ماده سه‌ساله\nو یک شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 4,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_199",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "199"
+   },
+   "source_text": "زکات شترهای شما: 3 شتر ماده سه‌ساله\nو یک شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 4,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_200",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "200"
+   },
+   "source_text": "زکات شترهای شما: 4 شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 4,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_249",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "249"
+   },
+   "source_text": "زکات شترهای شما: 4 شتر ماده سه‌ساله\nو یک شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 5,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_250",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "250"
+   },
+   "source_text": "زکات شترهای شما: 5 شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 5,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "camel_300",
+   "calc": "camel",
+   "inputs": {
+    "CamelInput": "300"
+   },
+   "source_text": "زکات شترهای شما: 6 شتر ماده سه‌ساله\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "camel_female",
+      "count": 6,
+      "age_years": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "cow_0",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "0"
+   },
+   "source_text": "زکات ندارد",
+   "expected": {
+    "due": [],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_29",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "29"
+   },
+   "source_text": "زکات ندارد",
+   "expected": {
+    "due": [],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_30",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "30"
+   },
+   "source_text": "زکات گاو:\n\n۱ گاو یک‌ساله (تبيع)",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 1
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_35",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "35"
+   },
+   "source_text": "زکات گاو:\n\n۱ گاو یک‌ساله (تبيع)",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 1
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_39",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "39"
+   },
+   "source_text": "زکات گاو:\n\n۱ گاو یک‌ساله (تبيع)",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 1
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_40",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "40"
+   },
+   "source_text": "زکات گاو:\n\nیک گاو دو ساله (مسنّة)\n(فقط یک گاو دو ساله)",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_musinna",
+      "count": 1
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_41",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "41"
+   },
+   "source_text": "زکات گاو:\n\nیک گاو دو ساله (مسنّة) + 1 چهلم یک گاو دو ساله\nیعنی اگر قیمت گاو دو ساله ۴۰٬۰۰۰٬۰۰۰ تومان باشد، زکات شما یک گاو دو ساله با ۱٬۰۰۰٬۰۰۰ تومان پول است.",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_musinna",
+      "count": 1
+     }
+    ],
+    "musinna_fortieths": 1,
+    "extra_money_at_source_price": "1000000",
+    "source_price": "40000000"
+   }
+  },
+  {
+   "id": "cow_45",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "45"
+   },
+   "source_text": "زکات گاو:\n\nیک گاو دو ساله (مسنّة) + 5 چهلم یک گاو دو ساله\nیعنی اگر قیمت گاو دو ساله ۴۰٬۰۰۰٬۰۰۰ تومان باشد، زکات شما یک گاو دو ساله با ۵٬۰۰۰٬۰۰۰ تومان پول است.",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_musinna",
+      "count": 1
+     }
+    ],
+    "musinna_fortieths": 5,
+    "extra_money_at_source_price": "5000000",
+    "source_price": "40000000"
+   }
+  },
+  {
+   "id": "cow_50",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "50"
+   },
+   "source_text": "زکات گاو:\n\nیک گاو دو ساله (مسنّة) + 10 چهلم یک گاو دو ساله\nیعنی اگر قیمت گاو دو ساله ۴۰٬۰۰۰٬۰۰۰ تومان باشد، زکات شما یک گاو دو ساله با ۱۰٬۰۰۰٬۰۰۰ تومان پول است.",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_musinna",
+      "count": 1
+     }
+    ],
+    "musinna_fortieths": 10,
+    "extra_money_at_source_price": "10000000",
+    "source_price": "40000000"
+   }
+  },
+  {
+   "id": "cow_59",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "59"
+   },
+   "source_text": "زکات گاو:\n\nیک گاو دو ساله (مسنّة) + 19 چهلم یک گاو دو ساله\nیعنی اگر قیمت گاو دو ساله ۴۰٬۰۰۰٬۰۰۰ تومان باشد، زکات شما یک گاو دو ساله با ۱۹٬۰۰۰٬۰۰۰ تومان پول است.",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_musinna",
+      "count": 1
+     }
+    ],
+    "musinna_fortieths": 19,
+    "extra_money_at_source_price": "19000000",
+    "source_price": "40000000"
+   }
+  },
+  {
+   "id": "cow_60",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "60"
+   },
+   "source_text": "زکات گاو:\n\n۲ رأس گاو یک‌ساله (تبيع)",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 2
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_65",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "65"
+   },
+   "source_text": "زکات گاو:\n\n۲ رأس گاو یک‌ساله (تبيع)",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 2
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_69",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "69"
+   },
+   "source_text": "زکات گاو:\n\n۲ رأس گاو یک‌ساله (تبيع)",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 2
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_70",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "70"
+   },
+   "source_text": "زکات گاو های شما:\n\n1 گاو یک‌ساله (تبيع)\n1 گاو دو ساله (مسنّة)\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 1
+     },
+     {
+      "kind": "cow_musinna",
+      "count": 1
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_71",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "71"
+   },
+   "source_text": "زکات گاو های شما:\n\n1 گاو یک‌ساله (تبيع)\n1 گاو دو ساله (مسنّة)\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 1
+     },
+     {
+      "kind": "cow_musinna",
+      "count": 1
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_79",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "79"
+   },
+   "source_text": "زکات گاو های شما:\n\n1 گاو یک‌ساله (تبيع)\n1 گاو دو ساله (مسنّة)\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 1
+     },
+     {
+      "kind": "cow_musinna",
+      "count": 1
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_80",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "80"
+   },
+   "source_text": "زکات گاو های شما:\n\n2 گاو دو ساله (مسنّة)\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_musinna",
+      "count": 2
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_90",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "90"
+   },
+   "source_text": "زکات گاو های شما:\n\n3 گاو یک‌ساله (تبيع)\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 3
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_100",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "100"
+   },
+   "source_text": "زکات گاو های شما:\n\n2 گاو یک‌ساله (تبيع)\n1 گاو دو ساله (مسنّة)\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 2
+     },
+     {
+      "kind": "cow_musinna",
+      "count": 1
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_110",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "110"
+   },
+   "source_text": "زکات گاو های شما:\n\n1 گاو یک‌ساله (تبيع)\n2 گاو دو ساله (مسنّة)\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 1
+     },
+     {
+      "kind": "cow_musinna",
+      "count": 2
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_120",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "120"
+   },
+   "source_text": "زکات گاو های شما:\n\n3 گاو دو ساله (مسنّة)\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_musinna",
+      "count": 3
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_130",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "130"
+   },
+   "source_text": "زکات گاو های شما:\n\n3 گاو یک‌ساله (تبيع)\n1 گاو دو ساله (مسنّة)\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 3
+     },
+     {
+      "kind": "cow_musinna",
+      "count": 1
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_140",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "140"
+   },
+   "source_text": "زکات گاو های شما:\n\n2 گاو یک‌ساله (تبيع)\n2 گاو دو ساله (مسنّة)\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 2
+     },
+     {
+      "kind": "cow_musinna",
+      "count": 2
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_150",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "150"
+   },
+   "source_text": "زکات گاو های شما:\n\n1 گاو یک‌ساله (تبيع)\n3 گاو دو ساله (مسنّة)\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 1
+     },
+     {
+      "kind": "cow_musinna",
+      "count": 3
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_200",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "200"
+   },
+   "source_text": "زکات گاو های شما:\n\n4 گاو یک‌ساله (تبيع)\n2 گاو دو ساله (مسنّة)\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 4
+     },
+     {
+      "kind": "cow_musinna",
+      "count": 2
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "cow_300",
+   "calc": "cow",
+   "inputs": {
+    "CowInput": "300"
+   },
+   "source_text": "زکات گاو های شما:\n\n6 گاو یک‌ساله (تبيع)\n3 گاو دو ساله (مسنّة)\n",
+   "expected": {
+    "due": [
+     {
+      "kind": "cow_tabii",
+      "count": 6
+     },
+     {
+      "kind": "cow_musinna",
+      "count": 3
+     }
+    ],
+    "musinna_fortieths": 0
+   }
+  },
+  {
+   "id": "gold_50",
+   "calc": "gold",
+   "inputs": {
+    "talaInput": "50"
+   },
+   "source_text": "طلا به نصاب نرسیده است، زکات واجب نیست.",
+   "expected": {
+    "nisab_met": false,
+    "zakat_grams": "0"
+   }
+  },
+  {
+   "id": "gold_91.99",
+   "calc": "gold",
+   "inputs": {
+    "talaInput": "91.99"
+   },
+   "source_text": "طلا به نصاب نرسیده است، زکات واجب نیست.",
+   "expected": {
+    "nisab_met": false,
+    "zakat_grams": "0"
+   }
+  },
+  {
+   "id": "gold_92",
+   "calc": "gold",
+   "inputs": {
+    "talaInput": "92"
+   },
+   "source_text": "مقدار طلا: 92.00 گرم\nنصاب طلا: 92 گرم\nزکات نصاب اولیه: 2.3 گرم (نصف مثقال)\n\nمقدار مازاد: 0.00 گرم\nزکات هر 18.4 گرم مازاد = یک‌پنجم نیم مثقال\nتعداد یک‌پنجم‌های موجود: 0\nهر یک‌پنجم نیم مثقال = 0.46 گرم طلا که به زکات اضافه می‌شود\n\nزکات نهایی = 2.3 + (0 × 0.46)\nزکات واجب: 2.30 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "2.30"
+   }
+  },
+  {
+   "id": "gold_100",
+   "calc": "gold",
+   "inputs": {
+    "talaInput": "100"
+   },
+   "source_text": "مقدار طلا: 100.00 گرم\nنصاب طلا: 92 گرم\nزکات نصاب اولیه: 2.3 گرم (نصف مثقال)\n\nمقدار مازاد: 8.00 گرم\nزکات هر 18.4 گرم مازاد = یک‌پنجم نیم مثقال\nتعداد یک‌پنجم‌های موجود: 0\nهر یک‌پنجم نیم مثقال = 0.46 گرم طلا که به زکات اضافه می‌شود\n\nزکات نهایی = 2.3 + (0 × 0.46)\nزکات واجب: 2.30 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "2.30"
+   }
+  },
+  {
+   "id": "gold_110.39",
+   "calc": "gold",
+   "inputs": {
+    "talaInput": "110.39"
+   },
+   "source_text": "مقدار طلا: 110.39 گرم\nنصاب طلا: 92 گرم\nزکات نصاب اولیه: 2.3 گرم (نصف مثقال)\n\nمقدار مازاد: 18.39 گرم\nزکات هر 18.4 گرم مازاد = یک‌پنجم نیم مثقال\nتعداد یک‌پنجم‌های موجود: 0\nهر یک‌پنجم نیم مثقال = 0.46 گرم طلا که به زکات اضافه می‌شود\n\nزکات نهایی = 2.3 + (0 × 0.46)\nزکات واجب: 2.30 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "2.30"
+   }
+  },
+  {
+   "id": "gold_110.4",
+   "calc": "gold",
+   "inputs": {
+    "talaInput": "110.4"
+   },
+   "source_text": "مقدار طلا: 110.40 گرم\nنصاب طلا: 92 گرم\nزکات نصاب اولیه: 2.3 گرم (نصف مثقال)\n\nمقدار مازاد: 18.40 گرم\nزکات هر 18.4 گرم مازاد = یک‌پنجم نیم مثقال\nتعداد یک‌پنجم‌های موجود: 1\nهر یک‌پنجم نیم مثقال = 0.46 گرم طلا که به زکات اضافه می‌شود\n\nزکات نهایی = 2.3 + (1 × 0.46)\nزکات واجب: 2.76 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "2.76"
+   }
+  },
+  {
+   "id": "gold_110.41",
+   "calc": "gold",
+   "inputs": {
+    "talaInput": "110.41"
+   },
+   "source_text": "مقدار طلا: 110.41 گرم\nنصاب طلا: 92 گرم\nزکات نصاب اولیه: 2.3 گرم (نصف مثقال)\n\nمقدار مازاد: 18.41 گرم\nزکات هر 18.4 گرم مازاد = یک‌پنجم نیم مثقال\nتعداد یک‌پنجم‌های موجود: 1\nهر یک‌پنجم نیم مثقال = 0.46 گرم طلا که به زکات اضافه می‌شود\n\nزکات نهایی = 2.3 + (1 × 0.46)\nزکات واجب: 2.76 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "2.76"
+   }
+  },
+  {
+   "id": "gold_128.8",
+   "calc": "gold",
+   "inputs": {
+    "talaInput": "128.8"
+   },
+   "source_text": "مقدار طلا: 128.80 گرم\nنصاب طلا: 92 گرم\nزکات نصاب اولیه: 2.3 گرم (نصف مثقال)\n\nمقدار مازاد: 36.80 گرم\nزکات هر 18.4 گرم مازاد = یک‌پنجم نیم مثقال\nتعداد یک‌پنجم‌های موجود: 2\nهر یک‌پنجم نیم مثقال = 0.46 گرم طلا که به زکات اضافه می‌شود\n\nزکات نهایی = 2.3 + (2 × 0.46)\nزکات واجب: 3.22 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "3.22"
+   }
+  },
+  {
+   "id": "gold_147.2",
+   "calc": "gold",
+   "inputs": {
+    "talaInput": "147.2"
+   },
+   "source_text": "مقدار طلا: 147.20 گرم\nنصاب طلا: 92 گرم\nزکات نصاب اولیه: 2.3 گرم (نصف مثقال)\n\nمقدار مازاد: 55.20 گرم\nزکات هر 18.4 گرم مازاد = یک‌پنجم نیم مثقال\nتعداد یک‌پنجم‌های موجود: 2\nهر یک‌پنجم نیم مثقال = 0.46 گرم طلا که به زکات اضافه می‌شود\n\nزکات نهایی = 2.3 + (2 × 0.46)\nزکات واجب: 3.22 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "3.22"
+   },
+   "deviation": {
+    "kind": "source_float_artifact",
+    "correct_zakat_grams": "3.68",
+    "note": "147.2g = nisab(92) + exactly 3 steps(18.4); exact zakat 2.3 + 3*0.46 = 3.68 (= 147.2/40). The source's float division (147.2-92)/18.4 = 2.9999... floors to 2 steps and prints 3.22. Engine keeps the exact value."
+   }
+  },
+  {
+   "id": "gold_200",
+   "calc": "gold",
+   "inputs": {
+    "talaInput": "200"
+   },
+   "source_text": "مقدار طلا: 200.00 گرم\nنصاب طلا: 92 گرم\nزکات نصاب اولیه: 2.3 گرم (نصف مثقال)\n\nمقدار مازاد: 108.00 گرم\nزکات هر 18.4 گرم مازاد = یک‌پنجم نیم مثقال\nتعداد یک‌پنجم‌های موجود: 5\nهر یک‌پنجم نیم مثقال = 0.46 گرم طلا که به زکات اضافه می‌شود\n\nزکات نهایی = 2.3 + (5 × 0.46)\nزکات واجب: 4.60 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "4.60"
+   }
+  },
+  {
+   "id": "gold_220.8",
+   "calc": "gold",
+   "inputs": {
+    "talaInput": "220.8"
+   },
+   "source_text": "مقدار طلا: 220.80 گرم\nنصاب طلا: 92 گرم\nزکات نصاب اولیه: 2.3 گرم (نصف مثقال)\n\nمقدار مازاد: 128.80 گرم\nزکات هر 18.4 گرم مازاد = یک‌پنجم نیم مثقال\nتعداد یک‌پنجم‌های موجود: 7\nهر یک‌پنجم نیم مثقال = 0.46 گرم طلا که به زکات اضافه می‌شود\n\nزکات نهایی = 2.3 + (7 × 0.46)\nزکات واجب: 5.52 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "5.52"
+   }
+  },
+  {
+   "id": "gold_294.4",
+   "calc": "gold",
+   "inputs": {
+    "talaInput": "294.4"
+   },
+   "source_text": "مقدار طلا: 294.40 گرم\nنصاب طلا: 92 گرم\nزکات نصاب اولیه: 2.3 گرم (نصف مثقال)\n\nمقدار مازاد: 202.40 گرم\nزکات هر 18.4 گرم مازاد = یک‌پنجم نیم مثقال\nتعداد یک‌پنجم‌های موجود: 11\nهر یک‌پنجم نیم مثقال = 0.46 گرم طلا که به زکات اضافه می‌شود\n\nزکات نهایی = 2.3 + (11 × 0.46)\nزکات واجب: 7.36 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "7.36"
+   }
+  },
+  {
+   "id": "gold_500",
+   "calc": "gold",
+   "inputs": {
+    "talaInput": "500"
+   },
+   "source_text": "مقدار طلا: 500.00 گرم\nنصاب طلا: 92 گرم\nزکات نصاب اولیه: 2.3 گرم (نصف مثقال)\n\nمقدار مازاد: 408.00 گرم\nزکات هر 18.4 گرم مازاد = یک‌پنجم نیم مثقال\nتعداد یک‌پنجم‌های موجود: 22\nهر یک‌پنجم نیم مثقال = 0.46 گرم طلا که به زکات اضافه می‌شود\n\nزکات نهایی = 2.3 + (22 × 0.46)\nزکات واجب: 12.42 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "12.42"
+   }
+  },
+  {
+   "id": "gold_1000",
+   "calc": "gold",
+   "inputs": {
+    "talaInput": "1000"
+   },
+   "source_text": "مقدار طلا: 1000.00 گرم\nنصاب طلا: 92 گرم\nزکات نصاب اولیه: 2.3 گرم (نصف مثقال)\n\nمقدار مازاد: 908.00 گرم\nزکات هر 18.4 گرم مازاد = یک‌پنجم نیم مثقال\nتعداد یک‌پنجم‌های موجود: 49\nهر یک‌پنجم نیم مثقال = 0.46 گرم طلا که به زکات اضافه می‌شود\n\nزکات نهایی = 2.3 + (49 × 0.46)\nزکات واجب: 24.84 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "24.84"
+   }
+  },
+  {
+   "id": "silver_600",
+   "calc": "silver",
+   "inputs": {
+    "noghInput": "600"
+   },
+   "source_text": "نقره به نصاب نرسیده است، زکات واجب نیست.",
+   "expected": {
+    "nisab_met": false,
+    "zakat_grams": "0"
+   }
+  },
+  {
+   "id": "silver_643.9",
+   "calc": "silver",
+   "inputs": {
+    "noghInput": "643.9"
+   },
+   "source_text": "نقره به نصاب نرسیده است، زکات واجب نیست.",
+   "expected": {
+    "nisab_met": false,
+    "zakat_grams": "0"
+   }
+  },
+  {
+   "id": "silver_643.95",
+   "calc": "silver",
+   "inputs": {
+    "noghInput": "643.95"
+   },
+   "source_text": "مقدار نقره: 643.95 گرم\nنصاب نقره: 644 گرم\nزکات نصاب اولیه: 16.1 گرم (۲.۵٪ نصاب)\n\nمقدار مازاد: 0.00 گرم\nزکات هر 128.8 گرم مازاد = یک‌پنجم زکات نصاب اولیه\nتعداد یک‌پنجم‌های موجود: 0\nهر یک‌پنجم زکات نصاب اولیه = 3.22 گرم نقره که به زکات می‌شود\n\nزکات نهایی = 16.1 + (0 × 3.22)\nزکات واجب: 16.10 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "16.10"
+   }
+  },
+  {
+   "id": "silver_644",
+   "calc": "silver",
+   "inputs": {
+    "noghInput": "644"
+   },
+   "source_text": "مقدار نقره: 644.00 گرم\nنصاب نقره: 644 گرم\nزکات نصاب اولیه: 16.1 گرم (۲.۵٪ نصاب)\n\nمقدار مازاد: 0.00 گرم\nزکات هر 128.8 گرم مازاد = یک‌پنجم زکات نصاب اولیه\nتعداد یک‌پنجم‌های موجود: 0\nهر یک‌پنجم زکات نصاب اولیه = 3.22 گرم نقره که به زکات می‌شود\n\nزکات نهایی = 16.1 + (0 × 3.22)\nزکات واجب: 16.10 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "16.10"
+   }
+  },
+  {
+   "id": "silver_645",
+   "calc": "silver",
+   "inputs": {
+    "noghInput": "645"
+   },
+   "source_text": "مقدار نقره: 645.00 گرم\nنصاب نقره: 644 گرم\nزکات نصاب اولیه: 16.1 گرم (۲.۵٪ نصاب)\n\nمقدار مازاد: 1.00 گرم\nزکات هر 128.8 گرم مازاد = یک‌پنجم زکات نصاب اولیه\nتعداد یک‌پنجم‌های موجود: 0\nهر یک‌پنجم زکات نصاب اولیه = 3.22 گرم نقره که به زکات می‌شود\n\nزکات نهایی = 16.1 + (0 × 3.22)\nزکات واجب: 16.10 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "16.10"
+   }
+  },
+  {
+   "id": "silver_772.79",
+   "calc": "silver",
+   "inputs": {
+    "noghInput": "772.79"
+   },
+   "source_text": "مقدار نقره: 772.79 گرم\nنصاب نقره: 644 گرم\nزکات نصاب اولیه: 16.1 گرم (۲.۵٪ نصاب)\n\nمقدار مازاد: 128.80 گرم\nزکات هر 128.8 گرم مازاد = یک‌پنجم زکات نصاب اولیه\nتعداد یک‌پنجم‌های موجود: 1\nهر یک‌پنجم زکات نصاب اولیه = 3.22 گرم نقره که به زکات می‌شود\n\nزکات نهایی = 16.1 + (1 × 3.22)\nزکات واجب: 19.32 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "19.32"
+   }
+  },
+  {
+   "id": "silver_772.8",
+   "calc": "silver",
+   "inputs": {
+    "noghInput": "772.8"
+   },
+   "source_text": "مقدار نقره: 772.80 گرم\nنصاب نقره: 644 گرم\nزکات نصاب اولیه: 16.1 گرم (۲.۵٪ نصاب)\n\nمقدار مازاد: 128.80 گرم\nزکات هر 128.8 گرم مازاد = یک‌پنجم زکات نصاب اولیه\nتعداد یک‌پنجم‌های موجود: 1\nهر یک‌پنجم زکات نصاب اولیه = 3.22 گرم نقره که به زکات می‌شود\n\nزکات نهایی = 16.1 + (1 × 3.22)\nزکات واجب: 19.32 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "19.32"
+   }
+  },
+  {
+   "id": "silver_772.81",
+   "calc": "silver",
+   "inputs": {
+    "noghInput": "772.81"
+   },
+   "source_text": "مقدار نقره: 772.81 گرم\nنصاب نقره: 644 گرم\nزکات نصاب اولیه: 16.1 گرم (۲.۵٪ نصاب)\n\nمقدار مازاد: 128.80 گرم\nزکات هر 128.8 گرم مازاد = یک‌پنجم زکات نصاب اولیه\nتعداد یک‌پنجم‌های موجود: 1\nهر یک‌پنجم زکات نصاب اولیه = 3.22 گرم نقره که به زکات می‌شود\n\nزکات نهایی = 16.1 + (1 × 3.22)\nزکات واجب: 19.32 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "19.32"
+   }
+  },
+  {
+   "id": "silver_901.6",
+   "calc": "silver",
+   "inputs": {
+    "noghInput": "901.6"
+   },
+   "source_text": "مقدار نقره: 901.60 گرم\nنصاب نقره: 644 گرم\nزکات نصاب اولیه: 16.1 گرم (۲.۵٪ نصاب)\n\nمقدار مازاد: 257.60 گرم\nزکات هر 128.8 گرم مازاد = یک‌پنجم زکات نصاب اولیه\nتعداد یک‌پنجم‌های موجود: 2\nهر یک‌پنجم زکات نصاب اولیه = 3.22 گرم نقره که به زکات می‌شود\n\nزکات نهایی = 16.1 + (2 × 3.22)\nزکات واجب: 22.54 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "22.54"
+   }
+  },
+  {
+   "id": "silver_1288",
+   "calc": "silver",
+   "inputs": {
+    "noghInput": "1288"
+   },
+   "source_text": "مقدار نقره: 1288.00 گرم\nنصاب نقره: 644 گرم\nزکات نصاب اولیه: 16.1 گرم (۲.۵٪ نصاب)\n\nمقدار مازاد: 644.00 گرم\nزکات هر 128.8 گرم مازاد = یک‌پنجم زکات نصاب اولیه\nتعداد یک‌پنجم‌های موجود: 5\nهر یک‌پنجم زکات نصاب اولیه = 3.22 گرم نقره که به زکات می‌شود\n\nزکات نهایی = 16.1 + (5 × 3.22)\nزکات واجب: 32.20 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "32.20"
+   }
+  },
+  {
+   "id": "silver_5000",
+   "calc": "silver",
+   "inputs": {
+    "noghInput": "5000"
+   },
+   "source_text": "مقدار نقره: 5000.00 گرم\nنصاب نقره: 644 گرم\nزکات نصاب اولیه: 16.1 گرم (۲.۵٪ نصاب)\n\nمقدار مازاد: 4356.00 گرم\nزکات هر 128.8 گرم مازاد = یک‌پنجم زکات نصاب اولیه\nتعداد یک‌پنجم‌های موجود: 33\nهر یک‌پنجم زکات نصاب اولیه = 3.22 گرم نقره که به زکات می‌شود\n\nزکات نهایی = 16.1 + (33 × 3.22)\nزکات واجب: 122.36 گرم",
+   "expected": {
+    "nisab_met": true,
+    "zakat_grams": "122.36"
+   }
+  },
+  {
+   "id": "money_10000000_100000000",
+   "calc": "money",
+   "inputs": {
+    "amvalInput": "100000000",
+    "amval2Input": "10000000"
+   },
+   "source_text": "اموال شما به نصاب نرسیده است، زکات واجب نیست.",
+   "expected": {
+    "nisab_met": false,
+    "zakat_coins": "0",
+    "zakat_amount": "0"
+   }
+  },
+  {
+   "id": "money_10000000_104545450",
+   "calc": "money",
+   "inputs": {
+    "amvalInput": "104545450",
+    "amval2Input": "10000000"
+   },
+   "source_text": "اموال شما به نصاب نرسیده است، زکات واجب نیست.",
+   "expected": {
+    "nisab_met": false,
+    "zakat_coins": "0",
+    "zakat_amount": "0"
+   }
+  },
+  {
+   "id": "money_10000000_104545455",
+   "calc": "money",
+   "inputs": {
+    "amvalInput": "104545455",
+    "amval2Input": "10000000"
+   },
+   "source_text": "مقدار پول شما: 104,545,455 تومان\nقیمت هر سکه: 10,000,000 تومان\nنصاب اموال تجاری: 10.45 سکه بهار آزادی\nزکات نصاب اولیه: 0.2614 سکه\n\nمقدار مازاد: 0.00 سکه\nزکات هر 2.09 سکه مازاد = 0.0727 سکه\nتعداد پله‌های افزایشی: 0\n\nفرمول: 0.2614 + (0 × 0.0727)\nزکات نهایی: 0.2614 سکه\n\n---------------------------\nزکات واجب به تومان: 2,613,636 تومان",
+   "expected": {
+    "nisab_met": true,
+    "zakat_coins": "0.2614",
+    "zakat_amount": "2613636"
+   }
+  },
+  {
+   "id": "money_10000000_110000000",
+   "calc": "money",
+   "inputs": {
+    "amvalInput": "110000000",
+    "amval2Input": "10000000"
+   },
+   "source_text": "مقدار پول شما: 110,000,000 تومان\nقیمت هر سکه: 10,000,000 تومان\nنصاب اموال تجاری: 10.45 سکه بهار آزادی\nزکات نصاب اولیه: 0.2614 سکه\n\nمقدار مازاد: 0.55 سکه\nزکات هر 2.09 سکه مازاد = 0.0727 سکه\nتعداد پله‌های افزایشی: 0\n\nفرمول: 0.2614 + (0 × 0.0727)\nزکات نهایی: 0.2614 سکه\n\n---------------------------\nزکات واجب به تومان: 2,613,636 تومان",
+   "expected": {
+    "nisab_met": true,
+    "zakat_coins": "0.2614",
+    "zakat_amount": "2613636"
+   }
+  },
+  {
+   "id": "money_10000000_125454545",
+   "calc": "money",
+   "inputs": {
+    "amvalInput": "125454545",
+    "amval2Input": "10000000"
+   },
+   "source_text": "مقدار پول شما: 125,454,545 تومان\nقیمت هر سکه: 10,000,000 تومان\nنصاب اموال تجاری: 10.45 سکه بهار آزادی\nزکات نصاب اولیه: 0.2614 سکه\n\nمقدار مازاد: 2.09 سکه\nزکات هر 2.09 سکه مازاد = 0.0727 سکه\nتعداد پله‌های افزایشی: 0\n\nفرمول: 0.2614 + (0 × 0.0727)\nزکات نهایی: 0.2614 سکه\n\n---------------------------\nزکات واجب به تومان: 2,613,636 تومان",
+   "expected": {
+    "nisab_met": true,
+    "zakat_coins": "0.2614",
+    "zakat_amount": "2613636"
+   }
+  },
+  {
+   "id": "money_10000000_200000000",
+   "calc": "money",
+   "inputs": {
+    "amvalInput": "200000000",
+    "amval2Input": "10000000"
+   },
+   "source_text": "مقدار پول شما: 200,000,000 تومان\nقیمت هر سکه: 10,000,000 تومان\nنصاب اموال تجاری: 10.45 سکه بهار آزادی\nزکات نصاب اولیه: 0.2614 سکه\n\nمقدار مازاد: 9.55 سکه\nزکات هر 2.09 سکه مازاد = 0.0727 سکه\nتعداد پله‌های افزایشی: 4\n\nفرمول: 0.2614 + (4 × 0.0727)\nزکات نهایی: 0.5523 سکه\n\n---------------------------\nزکات واجب به تومان: 5,522,727 تومان",
+   "expected": {
+    "nisab_met": true,
+    "zakat_coins": "0.5523",
+    "zakat_amount": "5522727"
+   }
+  },
+  {
+   "id": "money_10000000_1000000000",
+   "calc": "money",
+   "inputs": {
+    "amvalInput": "1000000000",
+    "amval2Input": "10000000"
+   },
+   "source_text": "مقدار پول شما: 1,000,000,000 تومان\nقیمت هر سکه: 10,000,000 تومان\nنصاب اموال تجاری: 10.45 سکه بهار آزادی\nزکات نصاب اولیه: 0.2614 سکه\n\nمقدار مازاد: 89.55 سکه\nزکات هر 2.09 سکه مازاد = 0.0727 سکه\nتعداد پله‌های افزایشی: 42\n\nفرمول: 0.2614 + (42 × 0.0727)\nزکات نهایی: 3.3159 سکه\n\n---------------------------\nزکات واجب به تومان: 33,159,091 تومان",
+   "expected": {
+    "nisab_met": true,
+    "zakat_coins": "3.3159",
+    "zakat_amount": "33159091"
+   }
+  },
+  {
+   "id": "money_47500000_400000000",
+   "calc": "money",
+   "inputs": {
+    "amvalInput": "400000000",
+    "amval2Input": "47500000"
+   },
+   "source_text": "اموال شما به نصاب نرسیده است، زکات واجب نیست.",
+   "expected": {
+    "nisab_met": false,
+    "zakat_coins": "0",
+    "zakat_amount": "0"
+   }
+  },
+  {
+   "id": "money_47500000_500000000",
+   "calc": "money",
+   "inputs": {
+    "amvalInput": "500000000",
+    "amval2Input": "47500000"
+   },
+   "source_text": "مقدار پول شما: 500,000,000 تومان\nقیمت هر سکه: 47,500,000 تومان\nنصاب اموال تجاری: 10.45 سکه بهار آزادی\nزکات نصاب اولیه: 0.2614 سکه\n\nمقدار مازاد: 0.07 سکه\nزکات هر 2.09 سکه مازاد = 0.0727 سکه\nتعداد پله‌های افزایشی: 0\n\nفرمول: 0.2614 + (0 × 0.0727)\nزکات نهایی: 0.2614 سکه\n\n---------------------------\nزکات واجب به تومان: 12,414,773 تومان",
+   "expected": {
+    "nisab_met": true,
+    "zakat_coins": "0.2614",
+    "zakat_amount": "12414773"
+   }
+  },
+  {
+   "id": "money_47500000_1000000000",
+   "calc": "money",
+   "inputs": {
+    "amvalInput": "1000000000",
+    "amval2Input": "47500000"
+   },
+   "source_text": "مقدار پول شما: 1,000,000,000 تومان\nقیمت هر سکه: 47,500,000 تومان\nنصاب اموال تجاری: 10.45 سکه بهار آزادی\nزکات نصاب اولیه: 0.2614 سکه\n\nمقدار مازاد: 10.60 سکه\nزکات هر 2.09 سکه مازاد = 0.0727 سکه\nتعداد پله‌های افزایشی: 5\n\nفرمول: 0.2614 + (5 × 0.0727)\nزکات نهایی: 0.6250 سکه\n\n---------------------------\nزکات واجب به تومان: 29,687,500 تومان",
+   "expected": {
+    "nisab_met": true,
+    "zakat_coins": "0.6250",
+    "zakat_amount": "29687500"
+   }
+  },
+  {
+   "id": "oshr_dimi_1000",
+   "calc": "oshr",
+   "inputs": {
+    "oshrInput": "1000",
+    "irrigation": "dimi"
+   },
+   "source_text": "عشر دیمی (۱/۱۰): 100 کیلوگرم",
+   "expected": {
+    "oshr_kg": "100"
+   }
+  },
+  {
+   "id": "oshr_abi_1000",
+   "calc": "oshr",
+   "inputs": {
+    "oshrInput": "1000",
+    "irrigation": "abi"
+   },
+   "source_text": "عشر آبی (۱/۲۰): 50 کیلوگرم",
+   "expected": {
+    "oshr_kg": "50"
+   }
+  },
+  {
+   "id": "oshr_dimi_653",
+   "calc": "oshr",
+   "inputs": {
+    "oshrInput": "653",
+    "irrigation": "dimi"
+   },
+   "source_text": "عشر دیمی (۱/۱۰): 65.3 کیلوگرم",
+   "expected": {
+    "oshr_kg": "65.3"
+   }
+  },
+  {
+   "id": "oshr_abi_653",
+   "calc": "oshr",
+   "inputs": {
+    "oshrInput": "653",
+    "irrigation": "abi"
+   },
+   "source_text": "عشر آبی (۱/۲۰): 32.65 کیلوگرم",
+   "expected": {
+    "oshr_kg": "32.65"
+   }
+  },
+  {
+   "id": "oshr_dimi_7",
+   "calc": "oshr",
+   "inputs": {
+    "oshrInput": "7",
+    "irrigation": "dimi"
+   },
+   "source_text": "عشر دیمی (۱/۱۰): 0.7 کیلوگرم",
+   "expected": {
+    "oshr_kg": "0.7"
+   }
+  },
+  {
+   "id": "oshr_abi_250",
+   "calc": "oshr",
+   "inputs": {
+    "oshrInput": "250",
+    "irrigation": "abi"
+   },
+   "source_text": "عشر آبی (۱/۲۰): 12.5 کیلوگرم",
+   "expected": {
+    "oshr_kg": "12.5"
+   }
+  },
+  {
+   "id": "khoms_1000",
+   "calc": "khoms",
+   "inputs": {
+    "khomsInput": "1000"
+   },
+   "source_text": "خمس شما: 200",
+   "expected": {
+    "khoms": "200"
+   }
+  },
+  {
+   "id": "khoms_250",
+   "calc": "khoms",
+   "inputs": {
+    "khomsInput": "250"
+   },
+   "source_text": "خمس شما: 50",
+   "expected": {
+    "khoms": "50"
+   }
+  },
+  {
+   "id": "khoms_999",
+   "calc": "khoms",
+   "inputs": {
+    "khomsInput": "999"
+   },
+   "source_text": "خمس شما: 199.8",
+   "expected": {
+    "khoms": "199.8"
+   }
+  },
+  {
+   "id": "horse_note",
+   "calc": "horse",
+   "inputs": {
+    "count": 0
+   },
+   "expected": {
+    "rule_note": "dinar_or_fortieth_per_horse"
+   }
+  }
+ ]
+}

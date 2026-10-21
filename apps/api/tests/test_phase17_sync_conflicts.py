@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import itertools
 import uuid
 
 from sqlalchemy import func, select
@@ -268,7 +269,7 @@ async def test_pull_cursor_has_no_gaps(tc):
     assert len(p1["changes"]) == 3
     seqs = [c["seq"] for c in p1["changes"]]
     assert seqs == sorted(seqs)
-    assert all(b - a == 1 for a, b in zip(seqs, seqs[1:])), "seqها باید پیوسته باشند"
+    assert all(b - a == 1 for a, b in itertools.pairwise(seqs)), "seqها باید پیوسته باشند"
     cursor = p1["new_cursor"]
 
     # pull دوباره با کرسر جدید → خالی
@@ -290,7 +291,7 @@ async def test_pull_cursor_has_no_gaps(tc):
     assert len(p3["changes"]) == 2
     seqs3 = [c["seq"] for c in p3["changes"]]
     assert all(s > cursor for s in seqs3)
-    assert all(b - a == 1 for a, b in zip(seqs3, seqs3[1:]))
+    assert all(b - a == 1 for a, b in itertools.pairwise(seqs3))
     assert {c["op_type"] for c in p3["changes"]} == {"upsert", "delete"}
 
 

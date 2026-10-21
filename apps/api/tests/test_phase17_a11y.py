@@ -53,6 +53,7 @@ def test_axe_no_critical_violations(tmp_path):
     proc = subprocess.run(
         ["node", RUN_MJS, "--repo", REPO, "--out", str(out)],
         capture_output=True, text=True, timeout=900, env=env, cwd=WEB,
+        check=False,  # returncode دستی بررسی می‌شود (۳ = خطای زیرساخت)
     )
     print(proc.stdout[-4000:])
     if proc.returncode == 3:
