@@ -4,7 +4,7 @@
 #   ./bootstrap.sh
 #
 # این اسکریپت همه‌چیز را آماده می‌کند:
-#   ۱) بررسی پیش‌نیازها (Python 3.14 ، Node 20+ ، npm)
+#   ۱) بررسی پیش‌نیازها (Python 3.14 ، Node 24+ ، npm)
 #   ۲) ساخت venv و نصب وابستگی‌های API + اجرای migration + seed اولیه
 #   ۳) npm install برای وب و CRM (فقط اگر قبلاً نصب نشده باشند)
 #   ۴) اجرای هم‌زمان هر سه سرویس و نمایش آدرس‌ها
@@ -30,10 +30,12 @@ PYV="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_inf
 python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 14) else 1)' \
   || die "نسخهٔ Python شما $PYV است؛ این پروژه به Python 3.14 نیاز دارد: https://www.python.org/downloads/"
 
-command -v node >/dev/null || die "node پیدا نشد. لطفاً Node.js 20 یا جدیدتر نصب کنید: https://nodejs.org/"
+# خط مبنای Node نسخهٔ 24 است (.nvmrc) — سیاست یکسان با bootstrap.ps1:
+# نسخه‌های قدیمی‌تر از 24 رد می‌شوند.
+command -v node >/dev/null || die "node پیدا نشد. لطفاً Node.js 24 یا جدیدتر نصب کنید: https://nodejs.org/"
 NODEV="$(node -p 'process.versions.node')"
-node -e 'const [m]=process.versions.node.split(".").map(Number); if (m < 20) process.exit(1)' \
-  || die "نسخهٔ Node شما $NODEV است؛ نسخهٔ ۲۰ یا جدیدتر لازم است."
+node -e 'const [m]=process.versions.node.split(".").map(Number); if (m < 24) process.exit(1)' \
+  || die "نسخهٔ Node شما $NODEV است؛ این پروژه به Node 24 یا جدیدتر نیاز دارد (خط مبنای .nvmrc)."
 command -v npm >/dev/null || die "npm پیدا نشد (همراه Node.js نصب می‌شود)."
 
 echo "  Python $PYV  ✓    Node $NODEV  ✓"
