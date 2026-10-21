@@ -1,0 +1,473 @@
+name: Mobile builds (Expo EAS)
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Target platform"
+        required: true
+        default: "android"
+        type: choice
+        options: ["android", "ios"]
+      profile:
+        description: "EAS build profile (apps/mobile/eas.json)"
+        required: true
+        default: "preview"
+        type: choice
+        options: ["development", "preview", "production-apk", "production"]
+      app_name:
+        description: "Branding: app display name (empty = app.json default)"
+        required: false
+        default: ""
+      package_id:
+        description: "Branding: Android package / iOS bundle id (empty = default)"
+        required: false
+        default: ""
+      app_version:
+        description: "Branding: version name, e.g. 1.1.0 (empty = default)"
+        required: false
+        default: ""
+      version_code:
+        description: "Branding: Android versionCode (integer, empty = default)"
+        required: false
+        default: ""
+      api_url:
+        description: "API base URL baked into the build (required for preview/production)"
+        required: false
+        default: ""
+      environment:
+        description: "Build environment label (development | preview | production)"
+        required: false
+        default: "preview"
+      request_id:
+        description: "CRM BuildRequest id (tracking only — status sync matches on it)"
+        required: false
+        default: ""
+      release_tag:
+        description: "Attach the validated artifact to the GitHub Release with this tag (e.g. v1.1.0). Empty = workflow artifact only."
+        required: false
+        default: ""
+  push:
+    tags: ["mobile-v*"]
+
+# Default token stays read-only; only the release job below gets write.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      artifact_name: ${{ steps.meta.outputs.artifact_name }}
+      signing_status: ${{ steps.validate.outputs.signing_status }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+
+      # ── Preflight honesty gate ────────────────────────────────────────
+      # Without the owner's Expo token there is NO real build. Fail loudly
+      # (BLOCKED) instead of producing a fake success.
+      - name: Preflight — Expo account present?
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${EXPO_TOKEN:-}" ]; then
+            echo "::error title=BLOCKED::EXPO_TOKEN secret is not set — real EAS builds need the project owner's Expo account (MOBILE-EAS-01, docs/ops/APK_BUILD_GUIDE.md). Nothing was built or published."
+            exit 1
+          fi
+          # Resolve the config EXACTLY like Expo does: app.json's expo object
+          # is the base `config` handed to app.config.js. Passing {config:{}}
+          # would hide an easProjectId that lives only in app.json.
+          PID="$(node -e "const base=require('./app.json').expo; const c=require('./app.config.js'); const cfg=(typeof c==='function')?c({config:base}):base; process.stdout.write(String(cfg.extra?.easProjectId||''))" 2>/dev/null || true)"
+          if [ -z "$PID" ]; then
+            echo "::error title=BLOCKED::extra.easProjectId is empty — the project is not linked to an Expo account (run 'eas init' as the owner). Nothing was built or published."
+            exit 1
+          fi
+          echo "Expo project linked: $PID"
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Resolve build metadata
+        id: meta
+        env:
+          IN_VERSION: ${{ inputs.app_version }}
+          IN_PLATFORM: ${{ inputs.platform || 'android' }}
+          IN_PROFILE: ${{ inputs.profile || 'preview' }}
+        run: |
+          set -euo pipefail
+          VERSION="$IN_VERSION"
+          if [ -z "$VERSION" ]; then
+            if [[ "${GITHUB_REF:-}" == refs/tags/mobile-v* ]]; then
+              VERSION="${GITHUB_REF_NAME#mobile-v}"
+            else
+              VERSION="$(node -p "require('./package.json').version || '0.0.0'")"
+            fi
+          fi
+          EXT="apk"
+          if [ "$IN_PLATFORM" = "ios" ]; then EXT="ipa";
+          elif [ "$IN_PROFILE" = "production" ]; then EXT="aab"; fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=maturidi-academy-${IN_PLATFORM}-v${VERSION}.${EXT}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      # Branding/API inputs are forwarded as env: app.config.js reads them
+      # when eas-cli evaluates the project config locally (before upload),
+      # so they land in expo.extra / name / package / versionCode of the
+      # build. Production profiles fail loudly in app.config.js when
+      # EXPO_PUBLIC_API_URL is empty or localhost.
+      - name: Submit EAS build (wait for the real result)
+        id: eas
+        env:
+          BUILD_PLATFORM: ${{ inputs.platform || 'android' }}
+          BUILD_PROFILE: ${{ inputs.profile || 'preview' }}
+          EXPO_PUBLIC_API_URL: ${{ inputs.api_url }}
+          APP_ENVIRONMENT: ${{ inputs.environment || 'preview' }}
+          APP_NAME: ${{ inputs.app_name }}
+          APP_PACKAGE_ID: ${{ inputs.package_id }}
+          APP_VERSION_NAME: ${{ inputs.app_version }}
+          APP_VERSION_CODE: ${{ inputs.version_code }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          set -euo pipefail
+          # Submit WITHOUT --no-wait semantics: capture the build id, then
+          # poll eas build:view until the build reaches a final state.
+          eas build --platform "$BUILD_PLATFORM" --profile "$BUILD_PROFILE" \
+            --non-interactive --no-wait --json > submit.json 2>submit.log || {
+              echo "::error::EAS build submission failed"; cat submit.log; exit 1; }
+          BUILD_ID="$(node -pe "const a=require('./submit.json'); (Array.isArray(a)?a[0]:a).id")"
+          if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "undefined" ]; then
+            echo "::error::Could not parse EAS build id"; cat submit.log submit.json; exit 1
+          fi
+          echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
+          echo "Polling EAS build $BUILD_ID …"
+          STATUS=""
+          for i in $(seq 1 55); do
+            eas build:view "$BUILD_ID" --json > view.json 2>/dev/null || true
+            STATUS="$(node -pe "require('./view.json').status" 2>/dev/null || echo UNKNOWN)"
+            echo "  [$i] status: $STATUS"
+            case "$STATUS" in
+              FINISHED|ERRORED|CANCELED) break ;;
+            esac
+            sleep 60
+          done
+          if [ "$STATUS" != "FINISHED" ]; then
+            echo "::error title=BLOCKED::EAS build ended with status '$STATUS' — no artifact was validated or published."
+            exit 1
+          fi
+          ART_URL="$(node -pe "const v=require('./view.json'); v.artifacts?.applicationArchiveUrl || v.artifacts?.buildUrl || ''")"
+          if [ -z "$ART_URL" ]; then
+            echo "::error::EAS build finished but reports no artifact URL — nothing published."
+            exit 1
+          fi
+          echo "artifact_url=$ART_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Download the real artifact
+        env:
+          ART_URL: ${{ steps.eas.outputs.artifact_url }}
+          ART_NAME: ${{ steps.meta.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          curl -fL --retry 3 -o "release-assets/$ART_NAME" "$ART_URL"
+          ls -la release-assets/
+          SIZE=$(stat -c%s "release-assets/$ART_NAME")
+          if [ "$SIZE" -lt 1000000 ]; then
+            echo "::error::Downloaded artifact is suspiciously small ($SIZE bytes) — refusing to publish."
+            exit 1
+          fi
+
+      # ── Validation, split BY ARTIFACT TYPE ─────────────────────────────
+      # APK: apksigner (signature) + aapt2 badging (package/version).
+      # AAB: jarsigner (signature) + pinned bundletool (manifest metadata).
+      # IPA: plistlib on Info.plist + embedded.mobileprovision presence;
+      #      codesign CANNOT be verified on a Linux runner — recorded as such.
+      # Nothing reaches the manifest unless it was really extracted here.
+      - name: Validate artifact (type-specific)
+        id: validate
+        env:
+          ART_NAME: ${{ steps.meta.outputs.artifact_name }}
+          WANT_PKG: ${{ inputs.package_id }}
+          WANT_VC: ${{ inputs.version_code }}
+        run: |
+          set -euo pipefail
+          ART="release-assets/$ART_NAME"
+          PKG=""; VC=""; VN=""; SIGNING=""
+          case "$ART_NAME" in
+            *.apk)
+              TYPE="APK"
+              SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+              APKSIGNER="$(find "$SDK/build-tools" -name apksigner -type f | sort -V | tail -1)"
+              AAPT2="$(find "$SDK/build-tools" -name aapt2 -type f | sort -V | tail -1)"
+              echo "Using: $APKSIGNER / $AAPT2"
+              "$APKSIGNER" verify --print-certs "$ART" > certs.txt
+              grep -qi "certificate" certs.txt
+              SIGNING="eas-keystore-signed (apksigner verify OK)"
+              BADGE="$("$AAPT2" dump badging "$ART" | head -1)"
+              echo "badging: $BADGE"
+              PKG="$(sed -n "s/.*package: name='\([^']*\)'.*/\1/p" <<<"$BADGE")"
+              VC="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<<"$BADGE")"
+              VN="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"$BADGE")"
+              ;;
+            *.aab)
+              TYPE="AAB"
+              jarsigner -verify "$ART" > certs.txt
+              SIGNING="eas-upload-key-signed (jarsigner -verify OK)"
+              BT_URL="https://github.com/google/bundletool/releases/download/1.17.2/bundletool-all-1.17.2.jar"
+              BT_SHA="2d4ad908faea64047c1cc9cb747e6aa667c6ab192e09607bd16b67246a8cd6ae"
+              curl -fL --retry 3 -o bundletool.jar "$BT_URL"
+              echo "$BT_SHA  bundletool.jar" | sha256sum -c -
+              PKG="$(java -jar bundletool.jar dump manifest --bundle "$ART" --xpath /manifest/@package | tail -1)"
+              VC="$(java -jar bundletool.jar dump manifest --bundle "$ART" --xpath "/manifest/@android:versionCode" | tail -1 || true)"
+              VN="$(java -jar bundletool.jar dump manifest --bundle "$ART" --xpath "/manifest/@android:versionName" | tail -1 || true)"
+              if [ -z "$PKG" ] || [ -z "$VC" ]; then
+                # Fallback: dump the whole base-manifest and parse attributes.
+                java -jar bundletool.jar dump manifest --bundle "$ART" > aab-manifest.xml
+                PKG="${PKG:-$(sed -n 's/.*package="\([^"]*\)".*/\1/p' aab-manifest.xml | head -1)}"
+                VC="${VC:-$(sed -n 's/.*android:versionCode="\([^"]*\)".*/\1/p' aab-manifest.xml | head -1)}"
+                VN="${VN:-$(sed -n 's/.*android:versionName="\([^"]*\)".*/\1/p' aab-manifest.xml | head -1)}"
+              fi
+              ;;
+            *.ipa)
+              TYPE="IPA"
+              OUT="$(python3 - "$ART" <<'PYEOF'
+          import plistlib, sys, zipfile
+          path = sys.argv[1]
+          with zipfile.ZipFile(path) as z:
+              names = z.namelist()
+              plist_name = next(
+                  (n for n in names
+                   if n.startswith("Payload/") and n.endswith(".app/Info.plist")), None)
+              if plist_name is None:
+                  sys.exit("IPA has no Payload/*.app/Info.plist")
+              info = plistlib.loads(z.read(plist_name))
+              has_prov = any(
+                  n.endswith(".app/embedded.mobileprovision") for n in names)
+              print("bundle_id=" + str(info.get("CFBundleIdentifier", "")))
+              print("version_name=" + str(info.get("CFBundleShortVersionString", "")))
+              print("version_code=" + str(info.get("CFBundleVersion", "")))
+              print("has_mobileprovision=" + ("yes" if has_prov else "no"))
+          PYEOF
+          )"
+              PKG="$(sed -n 's/^bundle_id=//p' <<<"$OUT")"
+              VN="$(sed -n 's/^version_name=//p' <<<"$OUT")"
+              VC="$(sed -n 's/^version_code=//p' <<<"$OUT")"
+              grep -q '^has_mobileprovision=yes$' <<<"$OUT" || {
+                echo "::error::IPA carries no embedded.mobileprovision — refusing to publish as signed."
+                exit 1
+              }
+              SIGNING="apple-provisioned (embedded.mobileprovision present; codesign NOT verified — Linux runner)"
+              ;;
+            *)
+              echo "::error::Unknown artifact type for $ART_NAME — cannot validate."
+              exit 1
+              ;;
+          esac
+          [ -n "$PKG" ] || { echo "::error::$TYPE metadata extraction failed: no package/bundle id."; exit 1; }
+          if [ -n "$WANT_PKG" ] && [ "$PKG" != "$WANT_PKG" ]; then
+            echo "::error::$TYPE package/bundle mismatch: built '$PKG', requested '$WANT_PKG'."
+            exit 1
+          fi
+          if [ -n "$WANT_VC" ] && [ "$VC" != "$WANT_VC" ]; then
+            echo "::error::$TYPE versionCode mismatch: built '$VC', requested '$WANT_VC'."
+            exit 1
+          fi
+          {
+            echo "artifact_type=$TYPE"
+            echo "signing_status=$SIGNING"
+            echo "pkg_id=$PKG"
+            echo "version_code=$VC"
+            echo "version_name=$VN"
+          } >> "$GITHUB_OUTPUT"
+          echo "Validated $TYPE: package=$PKG versionName=$VN versionCode=$VC signing=$SIGNING"
+
+      - name: Build manifest + checksums
+        env:
+          ART_NAME: ${{ steps.meta.outputs.artifact_name }}
+          ART_TYPE: ${{ steps.validate.outputs.artifact_type }}
+          PKG_ID: ${{ steps.validate.outputs.pkg_id }}
+          V_NAME: ${{ steps.validate.outputs.version_name }}
+          V_CODE: ${{ steps.validate.outputs.version_code }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          PLATFORM: ${{ inputs.platform || 'android' }}
+          PROFILE: ${{ inputs.profile || 'preview' }}
+          SIGNING: ${{ steps.validate.outputs.signing_status || 'unknown' }}
+          BUILD_ID: ${{ steps.eas.outputs.build_id }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum "$ART_NAME" > SHA256SUMS.txt
+          SHA="$(cut -d' ' -f1 SHA256SUMS.txt)"
+          export SHA
+          node -e "
+            const fs=require('fs');
+            // artifact_type + package/version fields come ONLY from the
+            // validate step's real extraction (apksigner/aapt, bundletool,
+            // plist) — never from filenames or requested inputs.
+            const m={
+              product:'maturidi-academy', platform:process.env.PLATFORM,
+              artifact:process.env.ART_NAME, artifact_type:process.env.ART_TYPE,
+              package_or_bundle_id:process.env.PKG_ID,
+              version_name:process.env.V_NAME, version_code:process.env.V_CODE,
+              version:process.env.VERSION, profile:process.env.PROFILE,
+              commit_sha:process.env.GITHUB_SHA,
+              workflow_run:'https://github.com/'+process.env.GITHUB_REPOSITORY+'/actions/runs/'+process.env.GITHUB_RUN_ID,
+              eas_build_id:process.env.BUILD_ID, request_id:process.env.REQUEST_ID||null,
+              built_at_utc:new Date().toISOString(),
+              sha256:process.env.SHA, signing_status:process.env.SIGNING,
+              install_test:'NOT TESTED on a real device/emulator — install was not performed in CI; only signature + package metadata were verified'
+            };
+            fs.writeFileSync('build-manifest.json', JSON.stringify(m,null,2));
+          "
+          cat build-manifest.json
+          # Keep the legacy tracking file too (CRM status sync reads run state
+          # from the GitHub API; build-info stays a WORKFLOW artifact only).
+          mkdir -p ../build-info
+          node -e "
+            const fs=require('fs');
+            fs.writeFileSync('../build-info/build-info.json', JSON.stringify({
+              request_id:process.env.REQUEST_ID||null, platform:process.env.PLATFORM,
+              profile:process.env.PROFILE, eas_build_id:process.env.BUILD_ID,
+              artifact:process.env.ART_NAME, sha256:process.env.SHA,
+              signing_status:process.env.SIGNING, version:process.env.VERSION
+            }));
+          "
+
+      - name: Upload workflow artifacts (always, for traceability)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-build-${{ inputs.request_id || github.run_id }}
+          path: |
+            apps/mobile/release-assets/
+            apps/mobile/build-info/
+          retention-days: 90
+
+  # ── Release attach: only for a resolved tag, only after validation ────
+  release:
+    needs: build
+    if: ${{ startsWith(github.ref, 'refs/tags/mobile-v') || inputs.release_tag != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mobile-build-${{ inputs.request_id || github.run_id }}
+          path: dl
+      - name: Release guard — resolve or create the DRAFT release
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IN_TAG: ${{ inputs.release_tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          # ── Release guard (same rules as desktop.yml's resolve job) ────
+          # 1. A PUBLISHED release is never touched — automation adds
+          #    nothing to it, ever.
+          # 2. An existing tag pointing at a DIFFERENT commit is never
+          #    moved or silently reused: only attaching to that version's
+          #    still-DRAFT release is allowed, with ::warning + the tag
+          #    commit recorded in the manifest. Otherwise → BLOCKED abort.
+          # 3. A missing release is created as DRAFT; a missing tag is
+          #    created at exactly this build's commit (--target).
+          TAG="$IN_TAG"
+          if [ -z "$TAG" ]; then TAG="v$VERSION"; fi
+          BUILD_SHA="$GITHUB_SHA"
+          REPO="$GITHUB_REPOSITORY"
+          abort() { echo "::error title=BLOCKED::$1"; exit 1; }
+          TAG_COMMIT=""
+          if OBJ_SHA="$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq .object.sha 2>/dev/null)"; then
+            OBJ_TYPE="$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq .object.type)"
+            if [ "$OBJ_TYPE" = "tag" ]; then
+              TAG_COMMIT="$(gh api "repos/$REPO/git/tags/$OBJ_SHA" --jq .object.sha)"
+            else
+              TAG_COMMIT="$OBJ_SHA"
+            fi
+          fi
+          REL_DRAFT=""
+          if D="$(gh api "repos/$REPO/releases/tags/$TAG" --jq .draft 2>/dev/null)"; then
+            REL_DRAFT="$D"
+          fi
+          if [ "$REL_DRAFT" = "false" ]; then
+            abort "Release $TAG is already PUBLISHED — automation never adds assets to a published release."
+          fi
+          if [ -n "$TAG_COMMIT" ] && [ "$TAG_COMMIT" != "$BUILD_SHA" ]; then
+            if [ "$REL_DRAFT" = "true" ]; then
+              echo "::warning::Tag $TAG points at $TAG_COMMIT but this build is $BUILD_SHA — attaching to the existing DRAFT release only; the tag commit is recorded in build-manifest.json."
+            else
+              abort "Tag $TAG already exists at commit $TAG_COMMIT (this build is $BUILD_SHA) and no draft release exists for it — refusing to reuse or move an existing tag."
+            fi
+          fi
+          if [ -z "$REL_DRAFT" ]; then
+            ARGS=(release create "$TAG" --repo "$REPO" --draft
+                  --title "Maturidi Academy $TAG"
+                  --notes "Automated draft created by the mobile build workflow. Review build-manifest.json (signing status, SHA-256, install-test status) before publishing. Artifacts that failed validation are never attached.")
+            if [ -z "$TAG_COMMIT" ]; then ARGS+=(--target "$BUILD_SHA"); fi
+            gh "${ARGS[@]}"
+            STATE="created"
+            if [ -z "$TAG_COMMIT" ]; then TAG_COMMIT="$BUILD_SHA"; fi
+            echo "Created DRAFT release for $TAG at $TAG_COMMIT"
+          else
+            STATE="existing-draft"
+            echo "Found existing DRAFT release for $TAG (tag commit: $TAG_COMMIT)"
+          fi
+          {
+            echo "tag=$TAG"
+            echo "tag_commit=$TAG_COMMIT"
+            echo "release_state=$STATE"
+          } >> "$GITHUB_OUTPUT"
+      - name: Record release fields in the manifest
+        env:
+          TAG: ${{ steps.rel.outputs.tag }}
+          TAG_COMMIT: ${{ steps.rel.outputs.tag_commit }}
+          STATE: ${{ steps.rel.outputs.release_state }}
+        run: |
+          set -euo pipefail
+          node -e "
+            const fs=require('fs');
+            const p='dl/release-assets/build-manifest.json';
+            const m=JSON.parse(fs.readFileSync(p,'utf8'));
+            m.release_tag=process.env.TAG;
+            m.tag_commit=process.env.TAG_COMMIT;
+            m.release_state=process.env.STATE;
+            fs.writeFileSync(p, JSON.stringify(m,null,2));
+            console.log('manifest release fields:', m.release_tag, m.tag_commit, m.release_state);
+          "
+      - name: Attach validated artifact + manifest + checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.rel.outputs.tag }}
+        run: |
+          set -euo pipefail
+          ls -la dl/release-assets/
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" \
+            dl/release-assets/* --clobber
+
+# صداقت وضعیت:
+# - نبود EXPO_TOKEN یا خالی‌بودن easProjectId ⇒ گام Preflight با خطای BLOCKED
+#   متوقف می‌شود و هیچ خروجی‌ای ساخته یا منتشر نمی‌شود (MOBILE-EAS-01).
+#   easProjectId از کانفیگ Resolve‌شده خوانده می‌شود (app.json پایهٔ
+#   app.config.js است — دقیقاً مثل خود Expo).
+# - بیلد EAS تا وضعیت نهایی Poll می‌شود؛ فقط FINISHED دانلود می‌شود.
+# - اعتبارسنجی بر اساس نوع خروجی جداست: APK با apksigner+aapt، ‏AAB با
+#   jarsigner+bundletool (پین‌شده)، IPA با plistlib ‏(+ وجود
+#   mobileprovision؛ codesign روی رانر لینوکسی قابل راستی‌آزمایی نیست و
+#   همین در مانیفست ثبت می‌شود). package/version فقط از استخراج واقعی
+#   وارد مانیفست می‌شوند.
+# - گارد Release: به Release منتشرشده هرگز چیزی اضافه نمی‌شود؛ Tag موجودِ
+#   اشاره‌کننده به کامیت دیگر جابه‌جا/مصادره نمی‌شود (فقط الصاق به Draftِ
+#   همان نسخه، با هشدار و ثبت tag_commit در مانیفست)؛ Release جدید همیشه
+#   Draft است و Tag جدید دقیقاً روی کامیت همین بیلد ساخته می‌شود.
+# - تست نصب روی دستگاه/شبیه‌ساز در CI انجام نمی‌شود و در مانیفست صریحاً
+#   NOT TESTED ثبت می‌شود؛ موفقیت بیلد ≠ اثبات نصب سالم.
