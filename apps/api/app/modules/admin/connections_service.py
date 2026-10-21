@@ -11,6 +11,7 @@ from __future__ import annotations
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,7 +37,7 @@ def _utcnow() -> datetime:
 async def get_status(db: AsyncSession) -> dict:
     """وضعیت همهٔ وابستگی‌های بیرونی — بدون هیچ مقدار secret."""
     settings = get_settings()
-    out: dict[str, dict] = {}
+    out: dict[str, Any] = {}
 
     # AI — کلید هرگز برنمی‌گردد، فقط «پیکربندی شده؟»
     ai_key = await get_setting(db, "ai.claude_api_key")

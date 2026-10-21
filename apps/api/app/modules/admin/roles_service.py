@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import log_audit
@@ -114,7 +114,7 @@ async def _assign_permissions(
         perms.append(p)
     # بازنویسی کامل تخصیص‌ها
     await db.execute(
-        RolePermission.__table__.delete().where(RolePermission.role_id == role.id)
+        delete(RolePermission).where(RolePermission.role_id == role.id)
     )
     for p in perms:
         db.add(RolePermission(role_id=role.id, permission_id=p.id))
@@ -187,7 +187,7 @@ async def delete_role(
                        "نقش عضو دارد؛ ابتدا اعضا را منتقل کنید")
     perms = await _role_permissions(db, role.id)
     await db.execute(
-        RolePermission.__table__.delete().where(RolePermission.role_id == role.id)
+        delete(RolePermission).where(RolePermission.role_id == role.id)
     )
     await db.delete(role)
     await log_audit(

@@ -115,13 +115,12 @@ async def list_items(
         raise APIError(422, "bad_channel", f"کانال نامعتبر: {distribution_channel}")
 
     adapters = list_adapters(domain=domain, content_type=content_type)
-    if domain or content_type:
-        # اعتبارسنجی زودهنگام ترکیب نامعتبر
-        if not adapters:
-            raise APIError(
-                404, "adapter_not_found",
-                f"آداپتر محتوا یافت نشد: {domain}/{content_type}",
-            )
+    # اعتبارسنجی زودهنگام ترکیب نامعتبر
+    if (domain or content_type) and not adapters:
+        raise APIError(
+            404, "adapter_not_found",
+            f"آداپتر محتوا یافت نشد: {domain}/{content_type}",
+        )
 
     filters = ListFilters(
         q=q, status=status, author_id=author_id, visibility=visibility,
@@ -387,7 +386,7 @@ async def bulk_action(
             "ok": False,
         }
         try:
-            adapter = get_adapter(domain, content_type)
+            adapter = get_adapter(domain or "", content_type or "")
         except APIError as exc:
             entry["error"] = {"code": exc.code, "message": exc.message}
             results.append(entry)
@@ -406,7 +405,7 @@ async def bulk_action(
                 entry.update(await _bulk_distribution(
                     db, adapter, item_id, params, actor, ip, user_agent))
             elif action == "export":
-                detail = await adapter.get_fn(db, item_id)
+                detail = await adapter.get_fn(db, item_id or "")
                 if detail is None:
                     raise APIError(404, "not_found", "محتوا یافت نشد")
                 export_rows.append({
@@ -710,13 +709,11 @@ async def is_channel_allowed(
         )
     ).scalar_one_or_none()
     if row is not None:
-        if not row.enabled:
-            return False
-        if row.scheduled_at and ensure_aware(row.scheduled_at) > now:
-            return False
-        if row.until_at and ensure_aware(row.until_at) <= now:
-            return False
-        return True
+        return not (
+            not row.enabled
+            or (row.scheduled_at and ensure_aware(row.scheduled_at) > now)
+            or (row.until_at and ensure_aware(row.until_at) <= now)
+        )
     # fallback بومی
     try:
         adapter = get_adapter(domain, content_type)

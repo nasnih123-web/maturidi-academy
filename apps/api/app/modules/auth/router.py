@@ -23,8 +23,10 @@ from app.modules.auth.schemas import (
     RegisterIn,
     TokenPair,
     TwoFAEnableIn,
+    TwoFAReauthIn,
     TwoFARecoverIn,
     TwoFASetupOut,
+    TwoFAStatusOut,
     UserSummary,
     VerifyEmailIn,
     WsTicketOut,
@@ -159,6 +161,42 @@ async def twofa_recover(
     ip, _ = _client(request)
     await service.recover_2fa(db, data, ip)
     return MessageOut(message="احراز دوعاملی غیرفعال شد؛ لطفاً دوباره فعال کنید")
+
+
+@router.get("/2fa/status", response_model=TwoFAStatusOut)
+async def twofa_status(
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
+    """وضعیت فعلی 2FA (فاز ۲ — F-02) — برای توکن عامل-اول هم باز است تا
+    CRM در حالت ثبت‌نام اجباری بتواند وضعیت را نشان دهد."""
+    return await service.get_2fa_status(db, user)
+
+
+@router.post("/2fa/disable", response_model=MessageOut)
+async def twofa_disable(
+    data: TwoFAReauthIn,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """غیرفعال‌سازی 2FA با احراز مجدد (رمز + TOTP/کد بازیابی) — فاز ۲."""
+    ip, _ = _client(request)
+    session_id = getattr(request.state, "session_id", None)
+    await service.disable_2fa(db, user, data, ip, session_id)
+    return MessageOut(message="احراز دوعاملی غیرفعال شد")
+
+
+@router.post("/2fa/recovery/regenerate", response_model=RecoveryCodesOut)
+async def twofa_regenerate_recovery(
+    data: TwoFAReauthIn,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """صدور مجدد کدهای بازیابی با احراز مجدد — مجموعهٔ قبلی باطل می‌شود."""
+    ip, _ = _client(request)
+    codes = await service.regenerate_recovery_codes(db, user, data, ip)
+    return RecoveryCodesOut(recovery_codes=codes)
 
 
 @router.post("/ws-ticket", response_model=WsTicketOut)

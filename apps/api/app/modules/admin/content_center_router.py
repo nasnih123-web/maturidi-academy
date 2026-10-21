@@ -23,6 +23,7 @@ from app.modules.admin.control_schemas import (
     BulkActionOut,
     CalendarOut,
     ContentDetailOut,
+    ContentItemOut,
     ContentListOut,
     DistributionOut,
     DistributionPolicyIn,
@@ -95,7 +96,10 @@ async def get_items(
         date_from=_parse_dt(date_from), date_to=_parse_dt(date_to),
         cursor=cursor, limit=limit,
     )
-    return ContentListOut(items=items, next_cursor=next_cursor)
+    return ContentListOut(
+        items=[ContentItemOut.model_validate(i) for i in items],
+        next_cursor=next_cursor,
+    )
 
 
 @router.get("/items/{domain}/{content_type}/{item_id}",

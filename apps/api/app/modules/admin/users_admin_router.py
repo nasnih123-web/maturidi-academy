@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -86,7 +88,7 @@ async def patch_user_roles(
         if "super_admin" in cur and "super_admin" not in my_roles:
             raise APIError(422, "self_lockout", "نمی‌توانید نقش super_admin را از خود بگیرید")
     old = (await db.execute(select(UserRole.role_id).where(UserRole.user_id == user_id))).scalars().all()
-    await db.execute(UserRole.__table__.delete().where(UserRole.user_id == user_id))
+    await db.execute(delete(UserRole).where(UserRole.user_id == user_id))
     for rid in wanted_ids:
         db.add(UserRole(user_id=user_id, role_id=rid))
     # تغییر نقش = تغییر سطح دسترسی (§۵): همهٔ نشست‌ها و رفرش‌توکن‌های کاربر
@@ -124,8 +126,11 @@ async def post_revoke_sessions(
     target = await db.get(User, user_id)
     if target is None:
         raise APIError(404, "user_not_found", "کاربر یافت نشد")
-    sess = await db.execute(update(Session).where(
-        Session.user_id == user_id, Session.revoked.is_(False)).values(revoked=True))
+    sess = cast(
+        CursorResult[Any],
+        await db.execute(update(Session).where(
+            Session.user_id == user_id, Session.revoked.is_(False)).values(revoked=True)),
+    )
     await db.execute(update(RefreshToken).where(
         RefreshToken.user_id == user_id, RefreshToken.revoked.is_(False)).values(revoked=True))
     await log_audit(

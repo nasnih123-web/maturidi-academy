@@ -15,7 +15,7 @@ class ApiKeyCreate(BaseModel):
     rate_limit_per_min: int = Field(default=60, ge=1, le=10000)
     quota_monthly: int = Field(default=10000, ge=1, le=10000000)
 
-    def model_post_init(self, __context) -> None:
+    def model_post_init(self, context, /) -> None:
         unknown = [s for s in self.scopes if s not in WIDGET_SCOPES and s != "*"]
         if unknown:
             raise ValueError(f"unknown scopes: {unknown}")
@@ -29,7 +29,7 @@ class ApiKeyUpdate(BaseModel):
     is_active: bool | None = None
     abuse_flag: bool | None = None
 
-    def model_post_init(self, __context) -> None:
+    def model_post_init(self, context, /) -> None:
         if self.scopes is not None:
             unknown = [s for s in self.scopes if s not in WIDGET_SCOPES and s != "*"]
             if unknown:

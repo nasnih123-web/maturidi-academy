@@ -86,6 +86,25 @@ class RecoveryCodesOut(BaseModel):
     recovery_codes: list[str]
 
 
+class TwoFAStatusOut(BaseModel):
+    """وضعیت فعلی 2FA کاربر (فاز ۲ — F-02): مبنای نمایش صفحهٔ امنیت CRM."""
+
+    enabled: bool
+    enrolled_at: datetime | None = None
+    recovery_codes_remaining: int = 0
+
+
+class TwoFAReauthIn(BaseModel):
+    """احراز مجدد برای عملیات حساس 2FA (disable/regenerate — فاز ۲).
+
+    رمز عبور فعلی + یکی از: کد TOTP فعلی یا یک کد بازیابیِ مصرف‌نشده.
+    """
+
+    password: str = Field(min_length=1, max_length=128)
+    code: str | None = Field(default=None, max_length=16)
+    recovery_code: str | None = Field(default=None, max_length=32)
+
+
 class UserSummary(BaseModel):
     id: uuid.UUID
     full_name: str

@@ -53,11 +53,17 @@ async def post_rebuild(
     user: User = Depends(_perm),
     db: AsyncSession = Depends(get_db),
 ):
-    """«بازسازی اپ‌ها» — ثبت درخواست در صف؛ بیلد/امضای واقعی با CI."""
+    """«بازسازی اپ‌ها» — ساخت درخواست + dispatch واقعی به GitHub Actions.
+
+    بدون ارائه‌دهندهٔ پیکربندی‌شده: 503 build_provider_not_configured.
+    """
     ip, ua = _client(request)
     return await svc.request_rebuild(
         db, actor=user, platform=data.platform, version=data.version,
-        ref=data.ref, note=data.note, ip=ip, user_agent=ua,
+        ref=data.ref, note=data.note, app_name=data.app_name,
+        package_id=data.package_id, version_code=data.version_code,
+        api_url=data.api_url, environment=data.environment,
+        ip=ip, user_agent=ua,
     )
 
 
