@@ -34,6 +34,7 @@ from .schemas import (
     LibraryItemUpdateIn,
     ReprocessIn,
     RevertIn,
+    SearchHitOut,
     SearchOut,
     TransitionIn,
     VersionOut,
@@ -109,7 +110,9 @@ async def search_items(
     return SearchOut(
         query=result["query"],
         hits=[
-            {"item": _out(h["item"]), "score": h["score"], "matched_in": h["matched_in"]}
+            SearchHitOut(
+                item=_out(h["item"]), score=h["score"], matched_in=h["matched_in"]
+            )
             for h in result["hits"]
         ],
     )

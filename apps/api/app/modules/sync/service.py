@@ -190,7 +190,7 @@ async def _store_op(
     )
     db.add(record)
     await db.flush()
-    return dict(record.result)
+    return dict(record.result or {})
 
 
 async def _get_tombstone(
@@ -309,15 +309,17 @@ async def _upsert_note(
         return {"status": "applied", "version": 1}
 
     current_version = note.version or 1
-    incoming = {
+    incoming: dict[str, object] = {
         "note_text": str(payload.get("note_text", note.note_text)),
         "is_private": bool(payload.get("is_private", note.is_private)),
     }
+    incoming_text = str(incoming["note_text"])
+    incoming_private = bool(incoming["is_private"])
     if base_version >= current_version:
         # بدون ویرایش هم‌زمان (یا کلاینت جلوتر است — ناهنجاری، ولی محتوا صریحاً
         # از کاربر آمده پس اعمال می‌شود؛ نسخه یکنوا بالا می‌رود)
-        note.note_text = incoming["note_text"].strip()
-        note.is_private = incoming["is_private"]
+        note.note_text = incoming_text.strip()
+        note.is_private = incoming_private
         note.version = max(current_version, base_version) + 1
         note.updated_at = _utcnow()
         await db.flush()

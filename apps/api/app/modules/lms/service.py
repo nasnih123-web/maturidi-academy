@@ -11,6 +11,7 @@ import json
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -414,6 +415,8 @@ async def _maybe_issue_certificate(
         return None  # قبلاً صادر شده — idempotent
 
     course = await db.get(Course, course_id)
+    if course is None:
+        return None  # دوره وجود ندارد → گواهی صادر نمی‌شود (قرارداد None این تابع)
     code = await _unique_cert_code(db)
     cert = Certificate(
         user_id=user.id,
@@ -490,7 +493,8 @@ async def generate_lesson_quiz(
     data = await fatwa_service.quiz_generate(
         db, user, count=count, locale=user.locale or _DEFAULT_LOCALE, client_ip=client_ip
     )
-    attempt = await db.get(QuizAttempt, data["attempt_id"])
+    # attempt همین الان در quiz_generate ساخته شده؛ get هرگز None برنمی‌گرداند
+    attempt = cast(QuizAttempt, await db.get(QuizAttempt, data["attempt_id"]))
     attempt.lesson_id = lesson_id
     await db.commit()
     return data
@@ -516,9 +520,11 @@ async def submit_lesson_quiz(
 
 
 async def _course_lesson_ids(db: AsyncSession, course_id: uuid.UUID) -> list[uuid.UUID]:
-    return (
-        await db.execute(select(Lesson.id).where(Lesson.course_id == course_id))
-    ).scalars().all()
+    return list(
+        (await db.execute(select(Lesson.id).where(Lesson.course_id == course_id)))
+        .scalars()
+        .all()
+    )
 
 
 async def _quiz_stats(
@@ -569,15 +575,19 @@ async def study_report(db: AsyncSession, user: User) -> dict:
     lesson_ids = [p.lesson_id for p in progresses]
     course_ids: list[uuid.UUID] = []
     if lesson_ids:
-        course_ids = (
-            await db.execute(
-                select(Lesson.course_id)
-                .where(Lesson.id.in_(lesson_ids))
-                .distinct()
+        course_ids = list(
+            (
+                await db.execute(
+                    select(Lesson.course_id)
+                    .where(Lesson.id.in_(lesson_ids))
+                    .distinct()
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
-    courses_out = []
+    courses_out: list[dict[str, Any]] = []
     total_done = 0
     total_lessons = 0
     quiz_avgs: list[float] = []
@@ -1159,12 +1169,16 @@ async def admin_user_progress(db: AsyncSession, user_id: uuid.UUID) -> dict:
     lesson_ids = [p.lesson_id for p in progresses]
     course_ids: list[uuid.UUID] = []
     if lesson_ids:
-        course_ids = (
-            await db.execute(
-                select(Lesson.course_id).where(Lesson.id.in_(lesson_ids)).distinct()
+        course_ids = list(
+            (
+                await db.execute(
+                    select(Lesson.course_id).where(Lesson.id.in_(lesson_ids)).distinct()
+                )
             )
-        ).scalars().all()
-    courses_out = []
+            .scalars()
+            .all()
+        )
+    courses_out: list[dict[str, Any]] = []
     for cid in course_ids:
         course = await db.get(Course, cid)
         if course is None:

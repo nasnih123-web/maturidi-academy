@@ -156,7 +156,7 @@ async def list_groups(
                 and_(SocialGroup.created_at == ts, SocialGroup.id < lid),
             )
         )
-    rows = (await db.execute(stmt.limit(limit + 1))).scalars().all()
+    rows = list((await db.execute(stmt.limit(limit + 1))).scalars().all())
     next_cursor = None
     if len(rows) > limit:
         rows = rows[:limit]
@@ -323,7 +323,7 @@ async def list_feed(
                 and_(SocialPost.created_at == ts, SocialPost.id < lid),
             )
         )
-    rows = (await db.execute(stmt.limit(limit + 1))).scalars().all()
+    rows = list((await db.execute(stmt.limit(limit + 1))).scalars().all())
     next_cursor = None
     if len(rows) > limit:
         rows = rows[:limit]
@@ -365,7 +365,7 @@ async def list_comments(
                 and_(SocialComment.created_at == ts, SocialComment.id > lid),
             )
         )
-    rows = (await db.execute(stmt.limit(limit + 1))).scalars().all()
+    rows = list((await db.execute(stmt.limit(limit + 1))).scalars().all())
     next_cursor = None
     if len(rows) > limit:
         rows = rows[:limit]
@@ -482,7 +482,7 @@ async def list_reports(
                 and_(SocialReport.reported_at == ts, SocialReport.id < lid),
             )
         )
-    rows = (await db.execute(stmt.limit(limit + 1))).scalars().all()
+    rows = list((await db.execute(stmt.limit(limit + 1))).scalars().all())
     next_cursor = None
     if len(rows) > limit:
         rows = rows[:limit]
@@ -686,7 +686,7 @@ async def list_notifications(
                 and_(Notification.created_at == ts, Notification.id < lid),
             )
         )
-    rows = (await db.execute(stmt.limit(limit + 1))).scalars().all()
+    rows = list((await db.execute(stmt.limit(limit + 1))).scalars().all())
     next_cursor = None
     if len(rows) > limit:
         rows = rows[:limit]

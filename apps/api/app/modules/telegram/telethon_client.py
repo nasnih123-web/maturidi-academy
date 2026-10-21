@@ -48,6 +48,8 @@ class MtprotoMessage:
         self.mime_type = mime_type
         self.file_size = file_size
         self.media_bytes = media_bytes
+        # پیام خام telethon — بعد از ساخت توسط _wrap_message ست می‌شود (دانلود مدیا)
+        self._raw: Any = None
 
     @property
     def has_media(self) -> bool:

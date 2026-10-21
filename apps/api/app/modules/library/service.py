@@ -585,6 +585,7 @@ def _lexical_rank(query: str, item: LibraryItem) -> tuple[float, list[str]]:
     tags_b = blob(" ".join(item.topic_tags or []))
     text_b = blob(item.transcript, item.ocr_text)
 
+    transcript_lower = item.transcript.lower() if item.transcript else None
     for t in toks:
         if t in title_b:
             score += 3.0; matched.append("title")
@@ -594,7 +595,7 @@ def _lexical_rank(query: str, item: LibraryItem) -> tuple[float, list[str]]:
             score += 1.5; matched.append("description")
         if t in text_b:
             score += 1.0
-            in_transcript = bool(item.transcript) and t in item.transcript.lower()
+            in_transcript = transcript_lower is not None and t in transcript_lower
             matched.append("transcript" if in_transcript else "ocr")
     return score, sorted(set(matched))
 

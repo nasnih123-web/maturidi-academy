@@ -18,7 +18,9 @@ import os
 import subprocess
 import tempfile
 import wave
+from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import TypedDict
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -113,7 +115,20 @@ def _demo_cover(label: str) -> bytes:
     return buf.getvalue()
 
 
-_DEMO_SPECS = [
+class _DemoSpec(TypedDict):
+    """مشخصات یک آیتم نمایشی سید کتابخانه."""
+
+    kind: str
+    ext: str
+    mime: str
+    make: Callable[[], bytes]
+    title: dict[str, str]
+    description: dict[str, str]
+    tags: list[str]
+    transcript: str | None
+
+
+_DEMO_SPECS: list[_DemoSpec] = [
     {
         "kind": "pdf",
         "ext": ".pdf",

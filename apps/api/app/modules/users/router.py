@@ -36,8 +36,12 @@ def _client(request: Request) -> tuple[str | None, str | None]:
 
 
 @router.get("/users/me", response_model=UserOut)
-async def get_me(user: User = Depends(get_current_user)):
-    return user
+async def get_me(
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
+    # نقش‌ها/مجوزهای واقعی همراه پاسخ می‌آیند (فاز ۲) تا گیتینگ CRM روی
+    # دادهٔ واقعی RBAC باشد، نه stub.
+    return await service.build_user_out(db, user)
 
 
 @router.patch("/users/me", response_model=UserOut)
@@ -48,7 +52,8 @@ async def update_me(
     db: AsyncSession = Depends(get_db),
 ):
     ip, ua = _client(request)
-    return await service.update_me(db, user, data, ip, ua)
+    updated = await service.update_me(db, user, data, ip, ua)
+    return await service.build_user_out(db, updated)
 
 
 @router.get("/users/me/sessions", response_model=list[SessionOut])
@@ -106,7 +111,10 @@ async def admin_list_users(
 ):
     """لیست کاربران با صفحه‌بندی cursor-based (فاز ۰ §۱) — فقط super_admin/دارندگان مجوز."""
     items, next_cursor = await service.admin_list_users(db, cursor, limit)
-    return UsersPage(items=items, next_cursor=next_cursor)
+    return UsersPage(
+        items=await service.build_user_outs(db, items),
+        next_cursor=next_cursor,
+    )
 
 
 @router.post("/users/me/devices", response_model=DeviceRegisterOut)

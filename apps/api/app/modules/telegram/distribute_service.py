@@ -68,6 +68,21 @@ def _sign_nonce(nonce: str, op: str, content_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+from typing import Literal, overload
+
+
+@overload
+async def get_policy(
+    db: AsyncSession, content_type: str, *, create: Literal[True] = True
+) -> TelegramDistributionPolicy: ...
+
+
+@overload
+async def get_policy(
+    db: AsyncSession, content_type: str, *, create: Literal[False]
+) -> TelegramDistributionPolicy | None: ...
+
+
 async def get_policy(
     db: AsyncSession, content_type: str, *, create: bool = True
 ) -> TelegramDistributionPolicy | None:
