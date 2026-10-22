@@ -5,11 +5,13 @@
  * hooks/useAuth → services/auth. The navigator's auth gate reacts to the
  * session status — this screen never navigates itself.
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Button, Card, common, fontFamily, fontSize, Screen, spacing, TextField } from "@maturidi/ui-native";
+import { TurnstileWidget } from "../components/TurnstileWidget";
 import { useAuth, useEffectiveLocale } from "../hooks/useAuth";
 import { t } from "../i18n/strings";
+import { getTurnstileSiteKey } from "../services/settings";
 
 export function AuthScreen(): React.JSX.Element {
   const locale = useEffectiveLocale();
@@ -21,6 +23,23 @@ export function AuthScreen(): React.JSX.Element {
   const [fullName, setFullName] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  // کپچا (C-02): کلید عمومی از تنظیمات عمومی می‌آید؛ null یعنی ویجت لازم نیست
+  const [captchaSiteKey, setCaptchaSiteKey] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getTurnstileSiteKey()
+      .then((key) => {
+        if (!cancelled) setCaptchaSiteKey(key);
+      })
+      .catch(() => {
+        /* آفلاین/خطا: ویجت رندر نمی‌شود؛ سرور مرجع نهایی است */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const submit = async (): Promise<void> => {
     setFormError(null);    if (mode === "login") {
@@ -33,6 +52,7 @@ export function AuthScreen(): React.JSX.Element {
       if (!identifier.trim()) return setFormError(t("auth.needIdentifier", locale));
       if (!password) return setFormError(t("auth.needPassword", locale));
       if (!acceptTerms) return setFormError(t("auth.needTerms", locale));
+      if (captchaSiteKey && !captchaToken) return setFormError(t("auth.needCaptcha", locale));
       const isEmail = identifier.includes("@");
       const ok = await register({
         fullName,
@@ -40,6 +60,7 @@ export function AuthScreen(): React.JSX.Element {
         phone: isEmail ? undefined : identifier,
         password,
         locale,
+        captchaToken: captchaToken ?? undefined,
       });
       if (!ok) setFormError(t("auth.registerFailed", locale));
     }
@@ -95,6 +116,9 @@ export function AuthScreen(): React.JSX.Element {
             <View style={[styles.checkbox, acceptTerms && styles.checkboxOn]} />
             <Text style={styles.termsText}>{t("auth.acceptTerms", locale)}</Text>
           </TouchableOpacity>
+        ) : null}
+        {mode === "register" ? (
+          <TurnstileWidget siteKey={captchaSiteKey} onToken={setCaptchaToken} />
         ) : null}
         {formError ? <Text style={styles.error}>{formError}</Text> : null}
         <Button

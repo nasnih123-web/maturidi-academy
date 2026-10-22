@@ -55,14 +55,15 @@
   "productName": "Maturidi Academy",
   "version": "0.1.0",
   "updater": {
-    // Track 2 / §۱۶ — غیرفعال تا وقتی زیرساخت releases واقعی + کلید امضا آماده شود؛
-    // با endpoint placeholder (releases.example.com) فعال‌بودن یعنی اپ به دامنهٔ
-    // جعلی درخواست می‌زند. چک‌لیست انتشار: apps/desktop/README.md
+    // Track 2 / §۱۶ + C-05 (ADR-0031) — غیرفعال تا وقتی زیرساخت releases
+    // واقعی + کلید امضا آماده شود؛ فعال‌بودن با endpoint ساختگی یعنی اپ به
+    // دامنهٔ جعلی درخواست می‌زند. چک‌لیست انتشار: apps/desktop/README.md
     "active": false,
     "dialog": true,
-    "endpoints": [
-      "https://releases.example.com/desktop/{{target}}/{{arch}}/{{current_version}}"
-    ],
+    // C-05: تا وقتی هاست releases واقعی وجود ندارد endpoints خالی می‌ماند
+    // (هیچ نشانی ساختگی/placeholderای در کانفیگ نمی‌ماند)؛ فعال‌سازی فقط
+    // با endpoint واقعی + pubkey واقعی و تصمیم ثبت‌شده در ADR-0031.
+    "endpoints": [],
     "pubkey": ""
   }
 }

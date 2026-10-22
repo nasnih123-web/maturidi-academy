@@ -191,6 +191,27 @@ export default function Connections(): React.ReactElement {
               <TestButton connKey="ai" />
             </ServiceCard>
 
+            {/* Embedding / جست‌وجوی معنایی (M-07) — بدون دکمهٔ تست؛
+                وضعیت از provider مؤثر می‌آید و خاموشی‌اش صریح دیده می‌شود */}
+            <Card className="conn-card">
+              <CardHeader>
+                <CardTitle>{t("conn14.svc_embeddings")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p>
+                  <Badge tone={st.embeddings.semantic_enabled ? "success" : "danger"}>
+                    {st.embeddings.semantic_enabled
+                      ? t("conn14.semanticEnabled")
+                      : t("conn14.semanticDisabled")}
+                  </Badge>
+                </p>
+                <p className="hint" dir="ltr">{st.embeddings.provider}</p>
+                {!st.embeddings.semantic_enabled && st.embeddings.reason && (
+                  <p className="hint" dir="ltr">{st.embeddings.reason}</p>
+                )}
+              </CardContent>
+            </Card>
+
             {/* SMS */}
             <ServiceCard connKey="sms">
               <p>

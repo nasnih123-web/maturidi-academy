@@ -146,8 +146,15 @@ export interface SigningCert {
   expires_at: string | null;
 }
 
+export interface EmbeddingsConnection {
+  provider: string;
+  semantic_enabled: boolean;
+  reason: string | null;
+}
+
 export interface ConnectionsStatus {
   ai: AiConnection;
+  embeddings: EmbeddingsConnection;
   sms: SmsConnection;
   telegram: TelegramConnection;
   payment: PaymentConnection;
@@ -167,6 +174,11 @@ export interface BuildRelease {
   build_number: string | null;
   download_url: string | null;
   download_expires_at: string | null;
+  /** فایل واقعی بیلد در storage هست؟ (B-01 — callback سرویس CI) */
+  has_file?: boolean;
+  artifact_key?: string | null;
+  file_size_bytes?: number | null;
+  sha256?: string | null;
   signed: boolean;
   created_at: string;
 }
@@ -228,10 +240,31 @@ export interface PrereqPlatform {
   ready: boolean;
 }
 
+/** Pipeline readiness the API itself can see (C-05). */
+export interface PrereqPipeline {
+  callback_token_configured: boolean;
+  github_dispatch_configured: boolean;
+  github_repo: string | null;
+  api_base_url: string | null;
+  api_base_url_is_local: boolean;
+  expo_project_linked: boolean;
+  expo_project_id: string | null;
+}
+
+/** A prerequisite that lives in CI/GitHub — the API cannot see it (C-05). */
+export interface PrereqCiSide {
+  key: string;
+  where: string;
+  verified_by: string;
+  api_visible: boolean;
+}
+
 export interface BuildPrereqs {
   signing: Record<string, PrereqCert>;
   platforms: Record<string, PrereqPlatform>;
   provider: BuildProvider;
+  pipeline: PrereqPipeline;
+  ci_side: PrereqCiSide[];
 }
 
 export interface TestConnectionResult {
@@ -284,6 +317,7 @@ const SIGNING_CERT_NAMES = [
 function parseConnections(raw: unknown): ConnectionsStatus {
   const r = asRec(raw);
   const ai = asRec(r["ai"]);
+  const emb = asRec(r["embeddings"]);
   const sms = asRec(r["sms"]);
   const tg = asRec(r["telegram"]);
   const pay = asRec(r["payment"]);
@@ -300,6 +334,11 @@ function parseConnections(raw: unknown): ConnectionsStatus {
         is_fallback: pickBool(p, "is_fallback"),
       })),
       model: pickStr(ai, "model") || null,
+    },
+    embeddings: {
+      provider: pickStr(emb, "provider"),
+      semantic_enabled: pickBool(emb, "semantic_enabled"),
+      reason: pickStr(emb, "reason") || null,
     },
     sms: {
       configured: pickBool(sms, "configured"),
@@ -424,6 +463,8 @@ function parsePrereqs(raw: unknown): BuildPrereqs {
     };
   }
   const prov = asRec(r["provider"]);
+  const pipe = asRec(r["pipeline"]);
+  const ciSideRaw = Array.isArray(r["ci_side"]) ? r["ci_side"] : [];
   return {
     signing,
     platforms,
@@ -432,6 +473,24 @@ function parsePrereqs(raw: unknown): BuildPrereqs {
       provider: pickStr(prov, "provider") || null,
       repo: pickStr(prov, "repo") || null,
     },
+    pipeline: {
+      callback_token_configured: pickBool(pipe, "callback_token_configured"),
+      github_dispatch_configured: pickBool(pipe, "github_dispatch_configured"),
+      github_repo: pickStr(pipe, "github_repo") || null,
+      api_base_url: pickStr(pipe, "api_base_url") || null,
+      api_base_url_is_local: pickBool(pipe, "api_base_url_is_local"),
+      expo_project_linked: pickBool(pipe, "expo_project_linked"),
+      expo_project_id: pickStr(pipe, "expo_project_id") || null,
+    },
+    ci_side: ciSideRaw.map((v) => {
+      const item = asRec(v);
+      return {
+        key: pickStr(item, "key"),
+        where: pickStr(item, "where"),
+        verified_by: pickStr(item, "verified_by"),
+        api_visible: pickBool(item, "api_visible"),
+      };
+    }),
   };
 }
 

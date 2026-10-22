@@ -88,8 +88,9 @@ pages), so the production desktop bundle ships a small **local shell**
 
 ## Notes
 
-- Updater: **disabled** (`updater.active: false` — Track 2 / §۱۶). The
-  `endpoints` URL is still a placeholder (`releases.example.com`); enable
+- Updater: **disabled** (`updater.active: false` — Track 2 / §۱۶; decision
+  re-affirmed in ADR-0031 / C-05). The `endpoints` list is intentionally
+  **empty** — no placeholder URL ships in the config; enable
   auto-update only after pointing it at the real release feed AND injecting
   the real `updater.pubkey` (CI injects the key; the private key signs via
   `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` secrets).
@@ -102,13 +103,11 @@ pages), so the production desktop bundle ships a small **local shell**
   `icon.ico`, `icon.icns`. `bundle.icon` and the tray icon reference exactly
   these files. Regenerate with Pillow from the emblem (or `tauri icon` on a
   machine with the Tauri CLI) whenever the emblem changes.
-- **⚠ Root `apps/desktop/tauri.conf.json` is a STALE DIVERGENT copy (F-12).**
-  Tauri 2 reads only `src-tauri/tauri.conf.json`; the root file is not a
-  byte-copy — it has `updater.active: true` with an `example.com` endpoint,
-  `devUrl` on port 1420, `frontendDist: ../dist`, a different CSP, and no
-  tray/plugins config. It was **not** deleted in the v1.1.0 remediation
-  because it differs meaningfully (ADR-0023): owner action — review and
-  delete it; until then no tooling may reference it.
+- Root `apps/desktop/tauri.conf.json` **was** a stale divergent copy
+  (F-12: active updater with a placeholder endpoint, wrong ports/paths).
+  Per the post-197efa0 audit (C-05, ADR-0031) it is **deleted**; the only
+  Tauri config is `src-tauri/tauri.conf.json`. Nothing may reference the
+  root path.
 - `cargo check`/`cargo build` need a Rust toolchain — not run in this
   sandbox; CI compiles on the per-OS runners.
 
