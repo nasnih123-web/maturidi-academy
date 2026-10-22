@@ -174,33 +174,33 @@ environment — the query lists the two currently emitted.
 
 ## 5. Widget embed stats — آمار ویجت embed
 
-**Purpose:** how often Phase-11 embeddable widgets are rendered off-site.
+**Purpose:** how much Phase-11 embeddable widgets are used off-site.
 
-> **Prerequisite (honest gap):** no widget-impression table and no
-> `widget.rendered` domain event exist in the schema yet. The query below is
-> written against `domain_events` so it starts working the moment the backend
-> emits `widget.rendered` events with `payload = {"widget_id": …, "host": …,
-> "user_id": …}`. Until then this dashboard shows "no data" — do not fake it.
+**Current reality (updated — audit m-03, after C-06):** widget renders are
+counted per API key. Since C-06 the counter is a Redis/in-process buffered
+counter flushed periodically into `api_keys.used_this_month` (with
+`quota_period` = `YYYY-MM` and `last_used_at`) — no per-render event stream
+exists, so the honest dashboard is monthly usage per key, not per-day
+renders. The `widget.rendered` event design below remains a future option;
+until the backend emits it, do not present per-day render numbers.
 
 ```sql
--- Widget renders per widget/host per day (needs widget.rendered events)
+-- Widget/API-key usage this month (real signal, api_keys)
 SELECT
-  date_trunc('day', created_at)::date       AS day,
-  payload->>'widget_id'                     AS widget_id,
-  payload->>'host'                          AS host,
-  COUNT(*)                                  AS renders,
-  COUNT(DISTINCT (payload->>'user_id')) FILTER (WHERE payload ? 'user_id')
-                                            AS distinct_users
-FROM domain_events
-WHERE event_type = 'widget.rendered'
-  AND created_at >= {{start_date}} AND created_at < {{end_date}}
-GROUP BY 1, 2, 3
-ORDER BY 1, 4 DESC;
+  name,
+  key_prefix,
+  used_this_month,
+  quota_monthly,
+  ROUND(100.0 * used_this_month / NULLIF(quota_monthly, 0), 1) AS quota_pct,
+  last_used_at
+FROM api_keys
+WHERE is_active
+ORDER BY used_this_month DESC;
 ```
 
-**Setup:** create the question now (it will be empty); add the dashboard card
-anyway so the slot exists. Backend TODO: emit `widget.rendered` from the
-widget render path (Phase 11 widgets, `docs/adr/0008-phase11-telegram-widgets-backend.md`).
+**Setup:** table question sorted by usage; add a bar chart variant grouped
+by `quota_period` history if you snapshot monthly (the table keeps only the
+current period counter).
 
 ---
 
@@ -246,35 +246,95 @@ order above). Optional second question: per-course completion rate joining
 
 ## 7. Finance reports — گزارش مالی
 
-**Purpose:** donations and ledger overview.
+**Purpose:** donations, campaign revenue, and gateway health — Phase 15
+tables are **live** (this section was rewritten in audit m-03; the earlier
+"does not exist yet" draft is obsolete).
 
-> **Prerequisite (Phase 15):** the finance tables (`donations`,
-> `payment_intents`, `donation_campaigns`, `ledger_entries`) are specified in
-> the Phase 15 spec and do **not exist yet**. The draft SQL below follows the
-> Phase 15 contract (`donations.donor_id` nullable, `donations.gateway`,
-> `donations.gateway_reference`, `donations.status`, `donations.created_at`;
-> `payment_intents.status` ∈ pending/succeeded/failed). Create this dashboard
-> only after Phase 15 migrations land, and re-verify column names against
-> `models.py` at that time.
+Real schema (verified against `apps/api/app/models/models.py`):
+`donations(amount IRR, status ∈ succeeded|refunded|failed, gateway,
+gateway_reference, campaign_id, created_at)`,
+`payment_intents(amount, status, gateway, campaign_id)`,
+`donation_campaigns(title JSONB, goal_amount, raised_amount, status)`,
+`ledger_entries`.
 
 ```sql
--- Draft — enable after Phase 15
 -- Donations per day by gateway and status
--- SELECT
---   date_trunc('day', created_at)::date AS day,
---   gateway,
---   status,
---   COUNT(*) AS donations,
---   SUM(amount) AS total_amount
--- FROM donations
--- WHERE created_at >= {{start_date}} AND created_at < {{end_date}}
--- GROUP BY 1, 2, 3
--- ORDER BY 1, 2, 3;
+SELECT
+  date_trunc('day', created_at)::date AS day,
+  gateway,
+  status,
+  COUNT(*)                            AS donations,
+  SUM(amount)                         AS total_amount_irr
+FROM donations
+WHERE created_at >= {{start_date}} AND created_at < {{end_date}}
+GROUP BY 1, 2, 3
+ORDER BY 1, 2, 3;
 ```
 
-**Setup:** placeholder dashboard with this note; wire it up in Phase 15.
+```sql
+-- Revenue by campaign (succeeded donations only)
+SELECT
+  COALESCE(c.title->>'fa', 'بدون کمپین')  AS campaign,
+  COUNT(d.id)                             AS donations,
+  SUM(d.amount)                           AS revenue_irr,
+  c.goal_amount,
+  ROUND(100.0 * SUM(d.amount) / NULLIF(c.goal_amount, 0), 1) AS goal_pct
+FROM donations d
+LEFT JOIN donation_campaigns c ON c.id = d.campaign_id
+WHERE d.status = 'succeeded'
+  AND d.created_at >= {{start_date}} AND d.created_at < {{end_date}}
+GROUP BY c.id, c.title, c.goal_amount
+ORDER BY revenue_irr DESC;
+```
+
+```sql
+-- Payment funnel: intents by status (gateway health)
+SELECT
+  gateway,
+  status,
+  COUNT(*)      AS intents,
+  SUM(amount)   AS amount_irr
+FROM payment_intents
+WHERE created_at >= {{start_date}} AND created_at < {{end_date}}
+GROUP BY 1, 2
+ORDER BY 1, 2;
+```
+
+**Setup:** bar chart (donations per day, break out by gateway), table for
+revenue-by-campaign, number card for total succeeded revenue in range.
+This dashboard is also created by the automation script below.
 
 ---
+
+## Automation (m-03)
+
+`infra/metabase/seed_dashboards.py` creates the base set over the Metabase
+REST API — idempotently (existing questions/dashboards are matched by name
+and updated, not duplicated):
+
+- database connection `Maturidi Academy` (from `MB_PRODUCT_DB_*` env),
+- collection `Maturidi Academy`,
+- one native question per dashboard query in this file (dashboards 1–7,
+  including finance + revenue-by-campaign),
+- dashboards grouping those questions.
+
+Run it after the manual first-admin setup (the API needs an admin
+account — Metabase has no headless first-user creation without the setup
+token dance):
+
+```bash
+MB_URL=http://localhost:3001 \
+MB_ADMIN_EMAIL=admin@example.com MB_ADMIN_PASSWORD=... \
+MB_PRODUCT_DB_HOST=postgres MB_PRODUCT_DB_USER=... \
+MB_PRODUCT_DB_PASSWORD=... MB_PRODUCT_DB_NAME=maturidi \
+python3 infra/metabase/seed_dashboards.py
+```
+
+**Automated vs manual (honest split):** questions + dashboards + the
+database connection are automated. Still manual: the first Metabase admin
+account, dashboard *filters* wiring (date variables are created inside the
+questions; linking them as dashboard filters is a UI step), sharing /
+permissions, and subscriptions/alerts.
 
 ## General setup steps (all dashboards)
 
