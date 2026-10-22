@@ -17,10 +17,12 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.antivirus import scan_upload_or_reject
 from app.core.audit import log_audit
 from app.core.database import ensure_aware
 from app.core.errors import APIError
 from app.core.events import emit_event
+from app.core.key_rotation import reencrypt_all
 from app.core.platform_settings import (
     SETTING_DEFS,
     bump_settings_version,
@@ -75,6 +77,23 @@ async def upload_font(
     user_agent: str | None,
 ) -> dict:
     """اعتبارسنجی + ذخیرهٔ فونت و ثبت در fonts.<locale>."""
+    # اسکن ویروس آپلود CRM (C-01 — ADR-0028): آلوده → ممیزی + رد
+    try:
+        await scan_upload_or_reject(content, filename=filename)
+    except APIError as exc:
+        if exc.code == "file_infected":
+            await log_audit(
+                db, actor_id=user.id, actor_type="admin",
+                action="admin.font_upload_rejected_infected",
+                entity_type="platform_setting", entity_id=None,
+                new_values={
+                    "filename": filename,
+                    "signature": exc.details.get("signature"),
+                },
+                ip=ip, user_agent=user_agent,
+            )
+            await db.commit()
+        raise
     locale = (locale or "").strip().lower()
     if locale not in FONT_LOCALES:
         raise APIError(400, "invalid_locale", "لوکیل باید یکی از fa/ar/en باشد")
@@ -185,6 +204,32 @@ async def delete_font(
     await db.commit()
     version = bump_settings_version([key])
     return {"locale": locale, "family": None, "url": None, "version": version}
+
+
+async def reencrypt_secrets(
+    db: AsyncSession,
+    user: User,
+    ip: str | None,
+    user_agent: str | None,
+) -> dict:
+    """M-05: مهاجرت تدریجی envelopeها به نسخهٔ جاری کلید + audit.
+
+    خروجی فقط شمارنده‌هاست؛ هیچ plaintext یا کلیدی برنمی‌گردد (§۱۴).
+    """
+    result = await reencrypt_all(db)
+    await log_audit(
+        db,
+        actor_id=user.id,
+        actor_type="admin",
+        action="platform.key_rotation",
+        entity_type="platform_setting",
+        entity_id="*",
+        new_values=result,
+        ip=ip,
+        user_agent=user_agent,
+    )
+    await db.commit()
+    return result
 
 
 async def list_settings(db: AsyncSession) -> dict:

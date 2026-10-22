@@ -14,6 +14,8 @@ class RegisterIn(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     locale: str = Field(default="fa", max_length=8)
     accept_terms: bool = False
+    # توکن Cloudflare Turnstile (C-02) — وقتی کپچا active است الزامی
+    captcha_token: str | None = None
 
     @field_validator("email", "phone")
     @classmethod

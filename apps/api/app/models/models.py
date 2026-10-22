@@ -15,6 +15,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import JSON as SA_JSON
 from sqlalchemy import (
     BigInteger,
@@ -290,6 +291,12 @@ class DomainEvent(Base):
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # claim توزیع‌شدهٔ dispatcher (M-04 — ADR-0035): کدام worker و کی
+    # این رویداد را گرفته؛ claim کهنه‌تر از TTL قابل‌گرفتنِ مجدد است.
+    claimed_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
 
 
 class HomeSection(Base):
@@ -576,9 +583,12 @@ class DhikrDailyCount(Base):
 class FiqhKnowledgeChunk(Base):
     """واحد دانش فقهیِ chunkشده — ورودی RAG.
 
-    embedding: بردار به‌صورت JSON (SQLite/پیش‌فرض). روی Postgres وقتی
-    pgvector نصب باشد، embeddings.py می‌تواند ستون embedding_vec را
-    lazily بسازد — قرارداد ADR-0005.
+    embedding: بردار به‌صورت JSON — منبع سازگاری و مسیر SQLite (Backend B).
+    embedding_vec: ستون برداری واقعی روی PostgreSQL (B-03 — ADR-0026؛
+    مهاجرت d2e4… اکستنشن vector + بک‌فیل از JSON + ایندکس HNSW را
+    می‌سازد) — بازیابی معنایی روی PG کاملاً داخل دیتابیس انجام می‌شود
+    و ingestion هنگام نوشتن، هر دو ستون را پر می‌کند. بُعد ۲۵۶ =
+    EMBEDDING_DIM در modules/fatwa/embeddings.py.
     """
 
     __tablename__ = "fiqh_knowledge_chunks"
@@ -586,6 +596,7 @@ class FiqhKnowledgeChunk(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    embedding_vec: Mapped[list | None] = mapped_column(Vector(256), nullable=True)
     source_type: Mapped[str] = mapped_column(String(32), default="manual", index=True)
     source_ref: Mapped[dict | None] = mapped_column(
         JSONB, nullable=True
@@ -2059,6 +2070,12 @@ class BuildRelease(Base):
     download_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # فایل واقعی بیلد در StorageProvider (B-01 — ADR-0025): کلید آبجکت در
+    # باکت builds؛ download_url پاسخ از همین کلید، تازه و کوتاه‌عمر، با
+    # get_presigned_url ساخته می‌شود و در DB ذخیره نمی‌شود.
+    artifact_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     signed: Mapped[bool] = mapped_column(Boolean, default=False)
     build_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
     released_by: Mapped[uuid.UUID | None] = mapped_column(

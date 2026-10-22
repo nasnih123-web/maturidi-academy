@@ -178,6 +178,11 @@ class BuildReleaseOut(BaseModel):
     build_number: str | None = None
     download_url: str | None = None
     download_expires_at: str | None = None
+    # فایل واقعی بیلد در StorageProvider (B-01 — ADR-0025)
+    has_file: bool = False
+    artifact_key: str | None = None
+    file_size_bytes: int | None = None
+    sha256: str | None = None
     signed: bool
     build_metadata: dict[str, Any]
     created_at: str
@@ -241,6 +246,10 @@ class ReleaseCreateIn(BaseModel):
     download_expires_at: datetime | None = None
     signed: bool = False
     build_metadata: dict[str, Any] = {}
+    # فایل بیلدِ آپلودشده به باکت builds توسط workflow (B-01 — ADR-0025)
+    artifact_key: str | None = None
+    file_size_bytes: int | None = None
+    sha256: str | None = None
 
 
 class BuildPrereqsOut(BaseModel):

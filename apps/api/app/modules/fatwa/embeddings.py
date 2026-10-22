@@ -5,11 +5,15 @@
     chunk_index.search(db, query, top_k, filters) -> list[ScoredChunk]
 
 Backend A (pgvector): فقط وقتی DATABASE_URL روی postgres است و پکیج
-pgvector نصب شده. embeddingها در همان ستون JSON ذخیره می‌شوند؛ در اولین
-استفاده روی Postgres، index ستون `embedding_vec` را lazily می‌سازد و از
-JSON پر می‌کند، سپس فاصلهٔ کسینوسی `<=>` را در خودِ دیتابیس می‌زند.
+pgvector نصب شده. از B-03 (ADR-0026) ستون واقعی `embedding_vec`
+vector(256) با مهاجرت ساخته می‌شود (اکستنشن vector + بک‌فیل از JSON +
+ایندکس HNSW) و ingestion هر دو ستون را پر می‌کند؛ بازیابی کاملاً در
+دیتابیس انجام می‌شود: معنایی با فاصلهٔ کسینوسی `<=>` و واژگانی با
+pg_trgm (word_similarity روی ایندکس GIN تری‌گرام) — هیچ سقف اسکنی
+وجود ندارد و chunk قدیمیِ #۵۰۱ هم مثل بقیه قابل بازیابی است.
 
-Backend B (پیش‌فرض/SQLite): ستون JSON + cosine در پایتون.
+Backend B (پیش‌فرض/SQLite): ستون JSON + cosine در پایتون، بدون سقف
+اسکن (SQLite مسیر dev/test است؛ مقیاس production روی Backend A است).
 
 امتیاز هیبریدی (§۸): score = lexical + semantic.
 lexical = هم‌پوشانی trigram کاراکتری (۰..۱).
@@ -18,12 +22,15 @@ semantic = cosine similarity بردارها (۰..۱).
 providerهای embedding (صریح، مستند، بدون اختراع):
 - "hash": قطعی و تست‌پذیر — hashing trick روی trigramهای کلمه + نرمال‌سازی
   L2. این embedding معنایی واقعی نیست ولی قطعی و بدون وابستگی خارجی است؛
-  provider پیش‌فرض تا وقتی external/local پیکربندی شود.
+  **فقط dev/test** (M-07): در production اگر فعال باشد، جست‌وجوی معنایی
+  عملاً خاموش است و سیستم آن را با هشدار صریح «semantic search disabled»
+  در startup و داشبورد اتصالات CRM اعلام می‌کند — هرگز بی‌صدا.
 - "external_api": POST به endpoint قابل‌پیکربندی (settings
   ai.embedding_endpoint + ai.embedding_api_key)؛ پاسخ موردانتظار
   {"embeddings": [[...], ...]}.
-- "local_model": تنبل — فقط اگر sentence-transformers نصب بود؛ در غیر این
-  صورت با خطای صریح رد می‌شود (نه mock).
+- "local_model": مدل واقعی sentence-transformers (چندزبانه) — **پیش‌فرض
+  production وقتی setting صریحی نیست**؛ تنبل بارگذاری می‌شود و اگر پکیج
+  نصب نباشد با خطای صریح رد می‌شود (نه mock).
 """
 from __future__ import annotations
 
@@ -31,6 +38,7 @@ import hashlib
 import json
 import math
 import re
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -191,7 +199,7 @@ class ExternalAPIEmbeddingProvider(EmbeddingProvider):
                 raise EmbeddingProviderError(
                     "پاسخ embedding نامعتبر است (embeddings با طول ورودی)"
                 )
-            return [[float(x) for x in v] for v in vectors]
+            return [fit_dim([float(x) for x in v]) for v in vectors]
         except EmbeddingProviderError:
             raise
         except Exception as exc:  # noqa: BLE001 — بسته‌بندی برای لایهٔ بالاتر
@@ -226,17 +234,33 @@ class LocalModelEmbeddingProvider(EmbeddingProvider):
         vectors = await anyio.to_thread.run_sync(
             lambda: self._model.encode(texts, normalize_embeddings=True)
         )
-        return [list(map(float, v)) for v in vectors]
+        return [fit_dim(list(map(float, v))) for v in vectors]
 
 
 class EmbeddingProviderError(Exception):
     """خطای صریح provider — هرگز با دادهٔ ساختگی جایگزین نمی‌شود."""
 
 
+def fit_dim(vec: list[float]) -> list[float]:
+    """پروجکشن بردار به EMBEDDING_DIM — قرارداد ذخیره‌سازی (B-03).
+
+    ستون `embedding_vec` از نوع vector(256) است؛ مدل‌های واقعی ابعاد
+    دیگری می‌دهند (MiniLM: ۳۸۴، OpenAI: ۱۵۳۶). بردار بلندتر بریده و
+    دوباره L2-نرمال می‌شود (به سبک Matryoshka — ابعاد اول بیشترین
+    اطلاعات را نگه می‌دارند) و کوتاه‌تر با صفر pad می‌شود تا همهٔ
+    providerها خروجی هم‌بُعد بدهند.
+    """
+    out = [float(x) for x in vec[:EMBEDDING_DIM]]
+    if len(out) < EMBEDDING_DIM:
+        out.extend([0.0] * (EMBEDDING_DIM - len(out)))
+    norm = math.sqrt(sum(x * x for x in out))
+    return [x / norm for x in out] if norm else out
+
+
 def _decode_provider_name(raw: str) -> str:
     """تحمل مقدار JSON-codeشدهٔ setting.
 
-    ‏ai.embedding_provider از نوع json ذخیره می‌شود، پس get_setting رشتهٔ
+    ai.embedding_provider از نوع json ذخیره می‌شود، پس get_setting رشتهٔ
     «"hash"» (با گیومه) برمی‌گرداند نه «hash». هر دو شکل پذیرفته می‌شوند؛
     در صورت نامعتبر بودن، همان رشتهٔ خام برگردانده می‌شود تا خطای
     «provider ناشناخته» با مقدار واقعی گزارش شود.
@@ -252,14 +276,96 @@ def _decode_provider_name(raw: str) -> str:
     return text
 
 
+async def resolve_provider_name(db: AsyncSession) -> str:
+    """نام provider مؤثر (M-07).
+
+    اول setting صریح `ai.embedding_provider`؛ اگر تنظیم نشده باشد:
+    در production پیش‌فرض **local_model** (واقعی، بدون کلید خارجی) و
+    در dev/test پیش‌فرض hash (قطعی و سبک). انتخاب صریحِ hash در
+    production احترام گذاشته می‌شود ولی semantic_search_status آن را
+    «semantic search disabled» گزارش می‌کند.
+    """
+    from app.core.platform_settings import get_setting
+
+    raw = await get_setting(db, "ai.embedding_provider")
+    if raw:
+        return _decode_provider_name(raw)
+    return "hash" if get_settings().is_dev else "local_model"
+
+
+async def semantic_search_status(db: AsyncSession) -> dict:
+    """وضعیت صادقانهٔ جست‌وجوی معنایی — برای startup و داشبورد CRM.
+
+    semantic_enabled فقط وقتی True است که provider واقعی باشد و
+    پیش‌نیازش کامل باشد (external: endpoint؛ local: نصب بودن
+    sentence-transformers). در غیر این صورت reason دقیق برمی‌گردد.
+    """
+    from app.core.platform_settings import get_setting
+
+    provider = await resolve_provider_name(db)
+    if provider == "hash":
+        return {
+            "provider": "hash",
+            "semantic_enabled": False,
+            "reason": "semantic search disabled: hash provider is dev/test only",
+        }
+    if provider == "external_api":
+        endpoint = await get_setting(db, "ai.embedding_endpoint")
+        if not endpoint:
+            import os
+
+            endpoint = os.environ.get("AI_EMBEDDING_ENDPOINT")
+        if not endpoint:
+            return {
+                "provider": "external_api",
+                "semantic_enabled": False,
+                "reason": "semantic search disabled: ai.embedding_endpoint not configured",
+            }
+        return {
+            "provider": "external_api",
+            "semantic_enabled": True,
+            "reason": None,
+        }
+    if provider == "local_model":
+        try:
+            import sentence_transformers  # noqa: F401
+        except ImportError:
+            return {
+                "provider": "local_model",
+                "semantic_enabled": False,
+                "reason": "semantic search disabled: sentence-transformers not installed",
+            }
+        return {
+            "provider": "local_model",
+            "semantic_enabled": True,
+            "reason": None,
+        }
+    return {
+        "provider": provider,
+        "semantic_enabled": False,
+        "reason": f"semantic search disabled: unknown provider {provider}",
+    }
+
+
+async def log_semantic_search_status(db: AsyncSession) -> dict:
+    """هشدار startup (M-07): در production خاموشی معنایی = CRITICAL."""
+    from app.core.logging import logger
+
+    status = await semantic_search_status(db)
+    if status["semantic_enabled"]:
+        logger.info("semantic search: enabled (provider=%s)", status["provider"])
+    elif get_settings().is_dev:
+        logger.info("semantic search: %s", status["reason"])
+    else:
+        logger.critical("%s", status["reason"])
+    return status
+
+
 async def get_embedding_provider(
     db: AsyncSession, name: str | None = None
 ) -> EmbeddingProvider:
-    """انتخاب provider از setting ‏ai.embedding_provider (پیش‌فرض: hash)."""
-    from app.core.platform_settings import get_setting
-
-    raw = name or (await get_setting(db, "ai.embedding_provider")) or "hash"
-    selected = _decode_provider_name(raw)
+    """انتخاب provider — setting صریح، وگرنه پیش‌فرض محیطی (M-07)."""
+    selected = _decode_provider_name(name) if name else await resolve_provider_name(db)
     if selected == "hash":
         return HashEmbeddingProvider()
     if selected == "external_api":
@@ -300,6 +406,29 @@ def pgvector_available() -> bool:
     return True
 
 
+def _pg_filters(filters: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
+    """قطعه‌های WHERE امن برای کوئری‌های PG (معنایی + واژگانی).
+
+    یافتهٔ فاز ۱۷ (SEC-17-02): فقط کلیدهای شناخته‌شدهٔ فیلتر اعمال
+    می‌شوند؛ کلید ناشناس هرگز نمی‌تواند وارد ساختار SQL شود و همهٔ
+    مقادیر پویا پارامتر bound هستند (دفاع در عمق).
+    """
+    _SAFE_FILTER_KEYS = frozenset({"ai_scope", "topic_category", "madhab_scope"})
+    filters = {k: v for k, v in (filters or {}).items() if k in _SAFE_FILTER_KEYS}
+    where = ["workflow_status = ANY(:statuses)"]
+    params: dict[str, Any] = {"statuses": list(RAG_READABLE_STATUSES)}
+    if filters.get("ai_scope"):
+        where.append("ai_scopes::jsonb ? :scope")
+        params["scope"] = filters["ai_scope"]
+    if filters.get("topic_category"):
+        where.append("topic_category = :topic")
+        params["topic"] = filters["topic_category"]
+    if filters.get("madhab_scope"):
+        where.append("(madhab_scope IS NULL OR madhab_scope = :madhab)")
+        params["madhab"] = filters["madhab_scope"]
+    return where, params
+
+
 async def _pgvector_search(
     db: AsyncSession,
     query_vec: list[float],
@@ -308,47 +437,19 @@ async def _pgvector_search(
 ) -> list[dict[str, Any]] | None:
     """جست‌وجوی معنایی در دیتابیس با pgvector — None یعنی fallback به Backend B.
 
-    ستون embedding_vec lazily ساخته و از JSON پر می‌شود تا migration واحد
-    برای SQLite و Postgres کار کند.
+    ستون embedding_vec و ایندکس HNSW را مهاجرت B-03 می‌سازد (دیگر هیچ
+    DDL تنبلی در مسیر کوئری نیست)؛ اگر ستون/اکستنشن نباشد، کوئری خطا
+    می‌دهد و None برمی‌گردد تا Backend B نتیجهٔ درست بدهد.
     """
-    # یافتهٔ فاز ۱۷ (SEC-17-02): فقط کلیدهای شناخته‌شدهٔ فیلتر اعمال می‌شوند؛
-    # کلید ناشناس هرگز نمی‌تواند وارد ساختار SQL شود (دفاع در عمق).
-    _SAFE_FILTER_KEYS = frozenset({"ai_scope", "topic_category", "madhab_scope"})
-    filters = {k: v for k, v in (filters or {}).items() if k in _SAFE_FILTER_KEYS}
-    try:
-        await db.execute(
-            text(
-                "ALTER TABLE fiqh_knowledge_chunks "
-                "ADD COLUMN IF NOT EXISTS embedding_vec vector(:dim)"
-            ),
-            {"dim": EMBEDDING_DIM},
-        )
-        # پرکردن ستون vector از JSON برای ردیف‌هایی که هنوز nullاند
-        await db.execute(
-            text(
-                "UPDATE fiqh_knowledge_chunks SET embedding_vec = "
-                "(embedding::text)::vector(:dim) "
-                "WHERE embedding_vec IS NULL AND embedding IS NOT NULL"
-            ),
-            {"dim": EMBEDDING_DIM},
-        )
-        where = ["workflow_status = ANY(:statuses)", "embedding_vec IS NOT NULL"]
-        params: dict[str, Any] = {
-            "statuses": list(RAG_READABLE_STATUSES),
+    where, params = _pg_filters(filters)
+    where.append("embedding_vec IS NOT NULL")
+    params.update(
+        {
             "dim": EMBEDDING_DIM,
             "qvec": "[" + ",".join(repr(float(x)) for x in query_vec) + "]",
         }
-        if filters.get("ai_scope"):
-            where.append("ai_scopes::jsonb ? :scope")
-            params["scope"] = filters["ai_scope"]
-        if filters.get("topic_category"):
-            where.append("topic_category = :topic")
-            params["topic"] = filters["topic_category"]
-        if filters.get("madhab_scope"):
-            where.append(
-                "(madhab_scope IS NULL OR madhab_scope = :madhab)"
-            )
-            params["madhab"] = filters["madhab_scope"]
+    )
+    try:
         rows = (
             await db.execute(
                 # بررسی‌شدهٔ فاز ۱۷ (SEC-17-02): قطعه‌های WHERE همگی رشته‌های
@@ -368,6 +469,40 @@ async def _pgvector_search(
             {"id": r[0], "semantic": max(0.0, 1.0 - float(r[1]))} for r in rows
         ]
     except Exception:  # noqa: BLE001 — هر خطایی → fallback به Backend B
+        await db.rollback()
+        return None
+
+
+async def _pg_trgm_search(
+    db: AsyncSession,
+    query: str,
+    top_k: int,
+    filters: dict[str, Any],
+) -> list[dict[str, Any]] | None:
+    """نامزدهای واژگانی در دیتابیس با pg_trgm (B-03) — None یعنی ناموجود.
+
+    word_similarity بهترین زیررشتهٔ chunk را با کوئری می‌سنجد (مناسب
+    متن‌های بلند) و ایندکس GIN تری‌گرامِ مهاجرت آن را پشتیبانی می‌کند.
+    """
+    where, params = _pg_filters(filters)
+    where.append("word_similarity(:q, chunk_text) > 0.05")
+    # کوئری خام: chunk_text هم خام ذخیره شده و این فقط انتخاب نامزد است؛
+    # امتیاز واژگانی نهایی با lexical_score (نرمال‌ساز) حساب می‌شود.
+    params["q"] = query
+    try:
+        rows = (
+            await db.execute(
+                text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+                    "SELECT id, word_similarity(:q, chunk_text) AS sim "  # nosec B608 -- reviewed SEC-17-02 pattern (fixed fragments + bound params)
+                    "FROM fiqh_knowledge_chunks WHERE "
+                    + " AND ".join(where)
+                    + " ORDER BY sim DESC LIMIT :topk"
+                ),
+                {**params, "topk": top_k * 3},
+            )
+        ).all()
+        return [{"id": r[0], "lexical_db": float(r[1])} for r in rows]
+    except Exception:  # noqa: BLE001 — pg_trgm در دسترس نیست → فقط معنایی
         await db.rollback()
         return None
 
@@ -406,20 +541,43 @@ class ChunkIndex:
             "madhab_scope": madhab_scope,
         }
 
-        # مسیر pgvector (Backend A) — فقط semantic از دیتابیس
-        pg_semantic: dict[str, float] | None = None
+        # مسیر pgvector (Backend A — B-03): نامزدها کاملاً در دیتابیس
+        # انتخاب می‌شوند (معنایی با <=>، واژگانی با pg_trgm) و فقط
+        # همان ردیف‌ها برای امتیازدهی نهایی خوانده می‌شوند — هیچ سقف
+        # اسکنی نیست، پس chunk قدیمی هم قابل بازیابی است.
         if pgvector_available():
-            rows = await _pgvector_search(db, query_vec, top_k, filters)
-            if rows is not None:
-                pg_semantic = {str(r["id"]): r["semantic"] for r in rows}
+            sem_rows = await _pgvector_search(db, query_vec, top_k, filters)
+            if sem_rows is not None:
+                pg_semantic = {str(r["id"]): r["semantic"] for r in sem_rows}
+                candidate_ids = set(pg_semantic)
+                lex_rows = await _pg_trgm_search(db, query, top_k, filters)
+                if lex_rows:
+                    candidate_ids.update(str(r["id"]) for r in lex_rows)
+                if candidate_ids:
+                    rows = (
+                        await db.execute(
+                            select(FiqhKnowledgeChunk).where(
+                                FiqhKnowledgeChunk.id.in_(
+                                    [uuid.UUID(i) for i in candidate_ids]
+                                )
+                            )
+                        )
+                    ).scalars().all()
+                    scored_pg: list[ScoredChunk] = []
+                    for c in rows:
+                        s = self._score(c, query, query_vec, ai_scope, pg_semantic)
+                        if s is not None:
+                            scored_pg.append(s)
+                    scored_pg.sort(key=lambda s: s.score, reverse=True)
+                    return scored_pg[:top_k]
+                return []
 
-        stmt = (
-            select(FiqhKnowledgeChunk)
-            .where(
-                FiqhKnowledgeChunk.workflow_status.in_(RAG_READABLE_STATUSES)
-            )
-            .order_by(FiqhKnowledgeChunk.created_at.desc())
-            .limit(500)  # سقف اسکن برای Backend B؛ با pgvector بی‌اثر است
+        # Backend B (SQLite / fallback): اسکن کاملِ بدون سقف روی ستون
+        # JSON — سقف ۵۰۰تاییِ قبلی chunkهای قدیمی‌تر را برای همیشه
+        # نامرئی می‌کرد (یافتهٔ B-03). SQLite مسیر dev/test است و
+        # مقیاس production روی Backend A است.
+        stmt = select(FiqhKnowledgeChunk).where(
+            FiqhKnowledgeChunk.workflow_status.in_(RAG_READABLE_STATUSES)
         )
         if topic_category:
             stmt = stmt.where(
@@ -434,33 +592,42 @@ class ChunkIndex:
 
         scored: list[ScoredChunk] = []
         for c in candidates:
-            scopes = c.ai_scopes or []
-            if ai_scope not in scopes:
-                continue
-            lex = lexical_score(query, c.chunk_text)
-            if pg_semantic is not None and str(c.id) in pg_semantic:
-                sem = pg_semantic[str(c.id)]
-            else:
-                sem = (
-                    cosine_similarity(query_vec, c.embedding)
-                    if c.embedding
-                    else 0.0
-                )
-            scored.append(
-                ScoredChunk(
-                    chunk_id=c.id,
-                    chunk_text=c.chunk_text,
-                    source_citation=c.source_citation,
-                    topic_category=c.topic_category,
-                    madhab_scope=c.madhab_scope,
-                    score=lex + sem,
-                    lexical=lex,
-                    semantic=sem,
-                    matched_scopes=scopes,
-                )
-            )
+            s = self._score(c, query, query_vec, ai_scope, None)
+            if s is not None:
+                scored.append(s)
         scored.sort(key=lambda s: s.score, reverse=True)
         return scored[:top_k]
+
+    def _score(
+        self,
+        c: Any,
+        query: str,
+        query_vec: list[float],
+        ai_scope: str,
+        pg_semantic: dict[str, float] | None,
+    ) -> ScoredChunk | None:
+        """امتیاز هیبریدی یک chunk — None یعنی خارج از ai_scope خواسته‌شده."""
+        scopes = c.ai_scopes or []
+        if ai_scope not in scopes:
+            return None
+        lex = lexical_score(query, c.chunk_text)
+        if pg_semantic is not None and str(c.id) in pg_semantic:
+            sem = pg_semantic[str(c.id)]
+        else:
+            sem = (
+                cosine_similarity(query_vec, c.embedding) if c.embedding else 0.0
+            )
+        return ScoredChunk(
+            chunk_id=c.id,
+            chunk_text=c.chunk_text,
+            source_citation=c.source_citation,
+            topic_category=c.topic_category,
+            madhab_scope=c.madhab_scope,
+            score=lex + sem,
+            lexical=lex,
+            semantic=sem,
+            matched_scopes=scopes,
+        )
 
 
 # ---------------------------------------------------------------------------
