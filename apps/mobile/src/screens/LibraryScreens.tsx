@@ -74,7 +74,7 @@ export function LibraryListScreen({ navigation }: ListProps): React.JSX.Element 
         data={visible}
         keyExtractor={(i) => i.id}
         scrollEnabled={false}
-        ListEmptyComponent={!error ? <EmptyState title={t("library.noResults", locale)} /> : null}
+        ListEmptyComponent={!error ? <EmptyState title={t("library.noResults", locale)} /> : undefined}
         renderItem={({ item }) => (
           <TouchableOpacity onPress={() => navigation.navigate("Item", { itemId: item.id })} accessibilityRole="button">
             <Card style={styles.row}>

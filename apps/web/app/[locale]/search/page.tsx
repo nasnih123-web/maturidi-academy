@@ -27,12 +27,14 @@ export async function generateMetadata({
  * Linked from the header search and the hero mihrab search (form action),
  * so search works with and without JavaScript.
  */
+const SEARCH_TYPES = ["fatwa", "library", "course", "page", "section", "theme"] as const;
+
 export default async function SearchPage({
   params,
   searchParams: searchParamsPromise,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; type?: string }>;
 }) {
   const { locale } = await params;
   const searchParams = await searchParamsPromise;
@@ -40,6 +42,12 @@ export default async function SearchPage({
   const t = await getTranslations({ locale, namespace: "searchPage" });
   const tHome = await getTranslations({ locale, namespace: "home" });
   const q = (searchParams.q ?? "").trim();
+  // M-01: فیلتر نوع از URL خوانده و به API پاس داده می‌شود
+  // (searchApi از قبل type را پشتیبانی می‌کرد؛ این‌جا سیم‌کشی شد).
+  const typeParam = (searchParams.type ?? "").trim();
+  const activeType = (SEARCH_TYPES as readonly string[]).includes(typeParam)
+    ? typeParam
+    : null;
 
   if (!q) {
     return (
@@ -53,7 +61,7 @@ export default async function SearchPage({
   let results: { id: string; type: string; title: string; snippet: string; href: string | null }[] = [];
   let failed = false;
   try {
-    const res = await searchApi(q, { limit: 20 });
+    const res = await searchApi(q, { limit: 20, type: activeType ?? undefined });
     results = res.results.map((r) => ({
       id: `${r.type}:${r.id}`,
       type: r.type,
@@ -80,6 +88,23 @@ export default async function SearchPage({
       ) : (
         <>
           <p aria-live="polite">{t("resultsFor", { q })}</p>
+          <nav className="search-type-filters" aria-label={t("title")}>
+            <Link
+              className={!activeType ? "chip chip-active" : "chip"}
+              href={`/${locale}/search?q=${encodeURIComponent(q)}`}
+            >
+              {tHome("search.allTypes")}
+            </Link>
+            {SEARCH_TYPES.map((tp) => (
+              <Link
+                key={tp}
+                className={activeType === tp ? "chip chip-active" : "chip"}
+                href={`/${locale}/search?q=${encodeURIComponent(q)}&type=${tp}`}
+              >
+                {tHome(`search.types.${tp}` as never) as string}
+              </Link>
+            ))}
+          </nav>
           {results.length === 0 ? (
             <div className="empty-state" role="status">
               <h3>{t("noResults")}</h3>

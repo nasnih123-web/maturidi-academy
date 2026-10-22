@@ -1,3 +1,6 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import createNextIntlPlugin from 'next-intl/plugin';
 
 const withNextIntl = createNextIntlPlugin('./i18n.ts');
@@ -20,6 +23,14 @@ if (
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // M-06 (Next 16/Turbopack): پکیج لینک‌شدهٔ monorepo باید resolve شود؛
+  // بدون این، بیلد Turbopack ساب‌پث‌های CSS پکیج را پیدا نمی‌کند.
+  transpilePackages: ['@maturidi/design-tokens'],
+  turbopack: {
+    // ریشهٔ Turbopack = ریشهٔ monorepo تا پکیج سیم‌لینک‌شدهٔ
+    // packages/design-tokens داخل محدودهٔ مجاز فایل سیستم باشد.
+    root: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..'),
+  },
 };
 
 export default withNextIntl(nextConfig);

@@ -161,7 +161,8 @@
         "section": "Section",
         "theme": "Theme",
         "verse": "Verse"
-      }
+      },
+      "allTypes": "All"
     },
     "skipToContent": "Skip to main content",
     "status": {

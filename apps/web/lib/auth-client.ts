@@ -103,6 +103,54 @@ export async function login(
   return pair;
 }
 
+export interface RegisterInput {
+  fullName: string;
+  email?: string;
+  phone?: string;
+  password: string;
+  locale?: string;
+  /** Cloudflare Turnstile token (C-02) — required when CAPTCHA is active. */
+  captchaToken?: string;
+}
+
+/**
+ * Register a new account. Throws the API error on failure (403
+ * captcha_failed when CAPTCHA is active and the token is missing/bad).
+ * Note: the web app currently ships a login surface only; this client
+ * is the registration path used by embedded/partner surfaces and is
+ * ready for a register page — the server-side CAPTCHA gate applies
+ * to every client regardless.
+ */
+export async function register(input: RegisterInput): Promise<void> {
+  await postJson('/api/v1/auth/register', {
+    full_name: input.fullName,
+    ...(input.email ? { email: input.email } : {}),
+    ...(input.phone ? { phone: input.phone } : {}),
+    password: input.password,
+    locale: input.locale ?? 'fa',
+    accept_terms: true,
+    ...(input.captchaToken ? { captcha_token: input.captchaToken } : {}),
+  });
+}
+
+/**
+ * Public Turnstile site key from GET /api/v1/settings/public (C-02).
+ * null when CAPTCHA is not configured for clients — widgets render
+ * nothing in that case. Never throws.
+ */
+export async function fetchTurnstileSiteKey(): Promise<string | null> {
+  try {
+    const res = await fetch(`${apiBase()}/api/v1/settings/public`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { turnstile_site_key?: string | null };
+    return body.turnstile_site_key || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Sign out: revoke on the server (best-effort), then drop local tokens. */
 export async function logout(): Promise<void> {
   const refresh = getRefreshToken();
@@ -127,21 +175,57 @@ export async function logout(): Promise<void> {
 
 let refreshPromise: Promise<TokenPair> | null = null;
 
-/** Rotate the token pair via POST /api/v1/auth/refresh. Single-flight. */
+const REFRESH_LOCK_NAME = 'ma.auth.refresh';
+
+/**
+ * Cross-tab mutual exclusion for refresh (B-02).
+ *
+ * The server treats ANY second presentation of a rotated refresh token
+ * as theft and revokes the whole session (no grace window). Two tabs
+ * sharing localStorage must therefore never present the same token:
+ * the Web Locks API serializes refresh across tabs, and inside the
+ * lock the pair is re-read from storage — if another tab already
+ * rotated it, the stored pair is adopted instead of calling the
+ * server with the stale token. Where Web Locks is unavailable the
+ * in-tab single-flight promise is the fallback.
+ */
+async function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
+  const locks =
+    typeof navigator !== 'undefined'
+      ? (navigator as Navigator & { locks?: LockManager }).locks
+      : undefined;
+  if (locks && typeof locks.request === 'function') {
+    return locks.request(REFRESH_LOCK_NAME, fn) as Promise<T>;
+  }
+  return fn();
+}
+
+/** Rotate the token pair via POST /api/v1/auth/refresh. Single-flight, cross-tab locked. */
 export async function refreshTokens(): Promise<TokenPair> {
   if (refreshPromise) return refreshPromise;
-  const refresh = getRefreshToken();
-  if (!refresh) {
-    clearTokens();
-    throw new Error('no refresh token');
-  }
-  refreshPromise = postJson<TokenPair>('/api/v1/auth/refresh', {
-    refresh_token: refresh,
+  const staleAccess = getAccessToken();
+  refreshPromise = withRefreshLock(async () => {
+    // Inside the lock, storage is the source of truth: another tab may
+    // have rotated the pair while this tab waited for the lock.
+    const currentAccess = getAccessToken();
+    const currentRefresh = getRefreshToken();
+    if (currentAccess && currentRefresh && currentAccess !== staleAccess) {
+      return {
+        access_token: currentAccess,
+        refresh_token: currentRefresh,
+        token_type: 'bearer',
+      } as TokenPair;
+    }
+    if (!currentRefresh) {
+      clearTokens();
+      throw new Error('no refresh token');
+    }
+    const pair = await postJson<TokenPair>('/api/v1/auth/refresh', {
+      refresh_token: currentRefresh,
+    });
+    storePair(pair);
+    return pair;
   })
-    .then((pair) => {
-      storePair(pair);
-      return pair;
-    })
     .catch((err) => {
       clearTokens();
       throw err;
