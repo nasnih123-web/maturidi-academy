@@ -11,8 +11,20 @@ WORKDIR /code
 # فونت‌های سیستمی برای PDF گواهی/رسید (app/modules/lms/certificates.py):
 # Noto Sans Arabic (fa/ar) + DejaVu Sans (en) — بدون این‌ها تولید PDF در
 # production با RuntimeError می‌ترکد (در CI گیت‌هاب رویت شد: ۸ تست قرمز).
+# زنجیرهٔ ابزار رسانه (B-04 — ADR-0027): ffmpeg + tesseract (fas/ara/eng)
+# و poppler-utils برای صف media (STT/OCR/پردازش رسانه). نسخه‌ها روی
+# خانوادهٔ انتشارِ Debian trixie (ایمیج پایهٔ python:3.14-slim) پین
+# شده‌اند تا به‌روزرسانی نقطه‌ای archive بیلد را نشکند؛ نسخهٔ دقیق
+# فعلیِ archive (۲۰۲۶-۱۰): ffmpeg 7:7.1.5-0+deb13u1،
+# tesseract-ocr 5.5.0-1+b1، poppler-utils 25.03.0-5+deb13u4.
+# گیت آمادگی در startup ورکر media است (app/core/media_tools.py) و
+# CI وجود ابزارها را داخل ایمیج ساخته‌شده assert می‌کند.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends fonts-noto-core fonts-dejavu-core \
+    && apt-get install -y --no-install-recommends \
+        fonts-noto-core fonts-dejavu-core \
+        "ffmpeg=7:7.1.*" \
+        "tesseract-ocr=5.5.0-*" tesseract-ocr-fas tesseract-ocr-ara \
+        "poppler-utils=25.03.0-*" \
     && rm -rf /var/lib/apt/lists/*
 
 # کاربر غیرریشه برای runtime

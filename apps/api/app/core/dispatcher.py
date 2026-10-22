@@ -1,8 +1,11 @@
 """توزیع‌کنندهٔ رویدادهای دامنه — فاز ۲ (قرارداد §۴).
 
 - تسک پس‌زمینهٔ asyncio (در lifespan استارت می‌خورد): رویدادهای
-  `domain_events` با `processed_at IS NULL` را به‌ترتیب `created_at` می‌خواند،
-  روی bus منتشر می‌کند و `processed_at` را ثبت می‌کند.
+  `domain_events` با `processed_at IS NULL` را در batchهای حداکثر ۲۰۰تایی
+  با claim اتمیک می‌گیرد (M-04 — ADR-0035: FOR UPDATE SKIP LOCKED روی
+  PostgreSQL، UPDATE گارددار قابل‌حمل روی بقیه؛ claim منقضی قابل‌گرفتنِ
+  مجدد است)، روی bus منتشر می‌کند و `processed_at` را ثبت می‌کند؛ پس هر
+  رویداد دقیقاً توسط یک dispatcher منتشر می‌شود.
 - شکست: شمارندهٔ `retry_count` بالا می‌رود و تلاش بعدی با backoff نمایی
   (حداکثر ۵ دقیقه) انجام می‌شود؛ بعد از ۵ شکست، `failed_at` ثبت می‌شود —
   یعنی dead-letter که ادمین در `/api/v1/admin/events/dead-letter` می‌بیند.
@@ -150,27 +153,131 @@ def _backoff_eligible(event: DomainEvent, now: datetime) -> bool:
     return now >= ensure_aware(event.created_at) + timedelta(seconds=delay)
 
 
+#: سقف batch هر دور dispatcher (M-04)
+CLAIM_BATCH = 200
+#: عمر claim؛ dispatcher مرده رویداد را برای همیشه قفل نمی‌کند
+CLAIM_TTL_SECONDS = 120
+
+
+def _default_worker_id() -> str:
+    import os
+    import socket
+    import uuid
+
+    return f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+
+
+def _claim_predicate(now: datetime):
+    """رویدادِ قابل‌گرفتن: پردازش‌نشده، fail‌نشده، بی-claim یا claim منقضی."""
+    stale_before = now - timedelta(seconds=CLAIM_TTL_SECONDS)
+    return (
+        DomainEvent.processed_at.is_(None),
+        DomainEvent.failed_at.is_(None),
+        (DomainEvent.claimed_at.is_(None)) | (DomainEvent.claimed_at < stale_before),
+    )
+
+
+async def _claim_batch(
+    db: AsyncSession, worker_id: str, now: datetime
+) -> list[DomainEvent]:
+    """گرفتن اتمیک یک batch — PostgreSQL: FOR UPDATE SKIP LOCKED؛
+    بقیه (SQLite و…): UPDATE گارددار با همان predicate (قابل‌حمل).
+
+    روی مسیر قابل‌حمل، اگر نویسندهٔ رقیب قفل دیتابیس را گرفته باشد
+    (database is locked)، این دور خالی برمی‌گردد تا دور بعد دوباره
+    تلاش شود — semantics صادقانهٔ at-most-one-claim حفظ می‌شود چون
+    UPDATE فقط روی ردیف‌های هنوز-بی‌claim اثر می‌گذارد.
+    """
+    from sqlalchemy import update
+    from sqlalchemy.exc import OperationalError
+
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        stmt = (
+            select(DomainEvent)
+            .where(*_claim_predicate(now))
+            .order_by(DomainEvent.created_at.asc())
+            .limit(CLAIM_BATCH)
+            .with_for_update(skip_locked=True)
+        )
+        events = list((await db.execute(stmt)).scalars().all())
+        for event in events:
+            event.claimed_by = worker_id
+            event.claimed_at = now
+        await db.commit()
+        return events
+
+    candidate_ids = list(
+        (
+            await db.execute(
+                select(DomainEvent.event_id)
+                .where(*_claim_predicate(now))
+                .order_by(DomainEvent.created_at.asc())
+                .limit(CLAIM_BATCH)
+            )
+        ).scalars().all()
+    )
+    if not candidate_ids:
+        return []
+    try:
+        claimed_ids = list(
+            (
+                await db.execute(
+                    update(DomainEvent)
+                    .where(
+                        DomainEvent.event_id.in_(candidate_ids),
+                        *_claim_predicate(now),
+                    )
+                    .values(claimed_by=worker_id, claimed_at=now)
+                    .returning(DomainEvent.event_id)
+                )
+            ).scalars().all()
+        )
+        await db.commit()
+    except OperationalError:
+        await db.rollback()
+        logger.warning("dispatcher claim lost a lock race; retrying next cycle")
+        return []
+    if not claimed_ids:
+        return []
+    rows = (
+        await db.execute(
+            select(DomainEvent).where(DomainEvent.event_id.in_(claimed_ids))
+        )
+    ).scalars().all()
+    by_id = {e.event_id: e for e in rows}
+    return [by_id[i] for i in claimed_ids if i in by_id]
+
+
 async def dispatch_once(
     session_factory: async_sessionmaker[AsyncSession],
     bus: EventBus,
+    worker_id: str | None = None,
 ) -> int:
-    """یک دور polling — تعداد رویدادهای موفق را برمی‌گرداند (برای تست/مانیتور)."""
+    """یک دور polling با claim دسته‌ای — تعداد رویدادهای موفق (M-04).
+
+    هر رویداد را دقیقاً یک dispatcher می‌گیرد (claim اتمیک)؛ انتشار
+    خارج از تراکنش claim انجام می‌شود و processed_at + آزادسازی
+    claim به‌ازای هر رویداد commit می‌شود.
+    """
+    worker = worker_id or _default_worker_id()
     processed = 0
     async with session_factory() as db:
-        stmt = (
-            select(DomainEvent)
-            .where(DomainEvent.processed_at.is_(None), DomainEvent.failed_at.is_(None))
-            .order_by(DomainEvent.created_at.asc())
-        )
-        events = list((await db.execute(stmt)).scalars().all())
         now = _utcnow()
+        events = await _claim_batch(db, worker, now)
         for event in events:
             if not _backoff_eligible(event, now):
+                # هنوز نوبت retry نرسیده: claim را آزاد کن تا قفل نماند
+                event.claimed_by = None
+                event.claimed_at = None
+                await db.commit()
                 continue
             try:
                 await bus.publish(serialize_event(event))
             except Exception:
                 event.retry_count += 1
+                event.claimed_by = None
+                event.claimed_at = None
                 if event.retry_count >= MAX_RETRIES:
                     event.failed_at = now
                     logger.error(
@@ -185,9 +292,39 @@ async def dispatch_once(
                 await db.commit()
                 continue
             event.processed_at = now
+            event.claimed_by = None
+            event.claimed_at = None
             await db.commit()
             processed += 1
     return processed
+
+
+async def _refresh_outbox_metrics(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """تازه‌سازی gaugeهای outbox برای /metrics (m-02) — هر دور یک کوئری سبک."""
+    from sqlalchemy import func
+
+    from app.core.metrics import METRICS
+
+    async with session_factory() as db:
+        pending, oldest = (
+            await db.execute(
+                select(func.count(), func.min(DomainEvent.created_at)).where(
+                    DomainEvent.processed_at.is_(None),
+                    DomainEvent.failed_at.is_(None),
+                )
+            )
+        ).one()
+        dead = (
+            await db.execute(
+                select(func.count()).where(DomainEvent.failed_at.is_not(None))
+            )
+        ).scalar() or 0
+    age = 0.0
+    if oldest is not None:
+        age = max(0.0, (_utcnow() - ensure_aware(oldest)).total_seconds())
+    METRICS.set_outbox_stats(int(pending or 0), age, int(dead))
 
 
 async def run_dispatcher(
@@ -201,6 +338,7 @@ async def run_dispatcher(
     while not stop_event.is_set():
         try:
             await dispatch_once(session_factory, bus)
+            await _refresh_outbox_metrics(session_factory)
         except Exception:
             logger.exception("dispatcher cycle failed")
         try:

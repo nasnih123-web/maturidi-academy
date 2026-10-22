@@ -146,8 +146,28 @@ async def lifespan(app: FastAPI):
     await ensure_storage_ready(settings)
     _init_sentry()
     _init_otel()
+    # M-07: وضعیت جست‌وجوی معنایی در startup صریح اعلام می‌شود — در
+    # production اگر provider واقعی فعال نباشد CRITICAL لاگ می‌خورد
+    # («semantic search disabled»)؛ هرگز بی‌صدا hash نمی‌ماند.
+    try:
+        from app.core.database import SessionLocal
+        from app.modules.fatwa.embeddings import log_semantic_search_status
+
+        async with SessionLocal() as _db:
+            await log_semantic_search_status(_db)
+    except Exception:  # noqa: BLE001 — هشدار نباید بوت را بشکند
+        from app.core.logging import logger
+
+        logger.warning("semantic search status check failed at startup", exc_info=True)
     await start_realtime(app)
+    # C-06/F2: flush دوره‌ای شمارندهٔ مصرف ویجت‌ها به دیتابیس
+    import asyncio as _asyncio
+
+    from app.modules.api_keys.counter import run_usage_flush_loop
+
+    flush_task = _asyncio.create_task(run_usage_flush_loop())
     yield
+    flush_task.cancel()
     await stop_realtime(app)
 
 
@@ -250,7 +270,17 @@ async def health():
 
 @app.get("/api/v1/health")
 async def health_v1():
-    return {"status": "ok", "env": settings.app_env, "api": "v1"}
+    # media_tools (B-04): وضعیت زنجیرهٔ ابزار رسانه در health دیده
+    # می‌شود — ready=false یعنی صف media در این ایمیج کار نمی‌کند و
+    # ورکر media هم با همان گیت بالا نمی‌آید (fail loud در startup).
+    from app.core.media_tools import media_tools_status
+
+    return {
+        "status": "ok",
+        "env": settings.app_env,
+        "api": "v1",
+        "media_tools": media_tools_status(),
+    }
 
 
 @app.get("/metrics", include_in_schema=False)

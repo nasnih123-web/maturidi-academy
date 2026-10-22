@@ -91,6 +91,12 @@ SETTING_DEFS: dict[str, dict] = {
     "ai.embedding_endpoint": {"type": "json", "sensitive": False, "label": "endpoint سرویس embedding خارجی"},
     "ai.embedding_api_key": {"type": "secret", "sensitive": True, "label": "کلید سرویس embedding خارجی"},
     "ai.embedding_model": {"type": "json", "sensitive": False, "label": "نام مدل embedding خارجی"},
+    # --- TTS ابری (C-03 — ADR-0030): provider واقعی OpenAI-shaped ---
+    "voice.tts_cloud_endpoint": {"type": "string", "sensitive": False, "label": "endpoint سرویس TTS ابری (مسیر کامل speech)"},
+    "voice.tts_cloud_api_key": {"type": "secret", "sensitive": True, "label": "کلید API سرویس TTS ابری"},
+    "voice.tts_cloud_model": {"type": "string", "sensitive": False, "label": "نام مدل TTS ابری (مثل tts-1)"},
+    # --- بیلدها (C-05): شناسهٔ پروژهٔ Expo که مالک پس از eas init ثبت می‌کند ---
+    "builds.expo_project_id": {"type": "string", "sensitive": False, "label": "شناسهٔ پروژهٔ Expo (easProjectId)"},
     # --- فاز ۱۳ (Track 1): پوش — FCM برای موبایل، web_push جدا برای وب (ADR-0010) ---
     # staged و خالی: فقط در رجیستری ثبت‌اند؛ هیچ مقداری seed/hardcode نمی‌شود (§۱۵.۳).
     "push.fcm_server_key": {"type": "secret", "sensitive": True, "label": "کلید سرور FCM (پوش موبایل)"},
