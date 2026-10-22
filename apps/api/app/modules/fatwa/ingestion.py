@@ -109,10 +109,16 @@ async def run_ingestion(
 
         scopes = ai_scopes or []
         chunk_ids: list[str] = []
+        # روی Postgres ستون برداری واقعی هم پر می‌شود (B-03 — ADR-0026)؛
+        # روی SQLite نوع Vector مقدار list را نمی‌پذیرد و ستون خالی می‌ماند.
+        from app.modules.fatwa.embeddings import pgvector_available
+
+        on_pg = pgvector_available()
         for text_chunk, vec in zip(chunks, vectors):
             chunk = FiqhKnowledgeChunk(
                 chunk_text=text_chunk,
                 embedding=list(vec),
+                embedding_vec=list(vec) if on_pg else None,
                 source_type="ingested",
                 source_ref=source_ref,
                 source_citation=source_citation,

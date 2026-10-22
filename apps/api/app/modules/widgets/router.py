@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -42,11 +42,16 @@ async def prayer_times(
 @widgets_router.get("/ayah-of-day", response_model=schemas.AyahOfDayOut)
 async def ayah_of_day(
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     api_key: str | None = Query(default=None),
 ):
     await _require_key(request, db, "ayah-of-day", api_key)
-    return await service.ayah_of_day(db)
+    result = await service.ayah_of_day(db)
+    # C-06/F1: پاسخ روزانه است — کلاینت‌ها/CDN یک ساعت کش کنند تا
+    # رندرهای تکراری به سرور نرسند (سمت سرور هم کش روزانه دارد).
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return result
 
 
 @widgets_router.get("/latest-fatwa", response_model=schemas.LatestFatwaOut)

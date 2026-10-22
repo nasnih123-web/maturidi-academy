@@ -1,6 +1,7 @@
-"""جاب‌های صف media — فاز ۹ (قرارداد §۵).
+"""جاب‌های صف media — فاز ۹ (قرارداد §۵) + زنجیرهٔ ابزار B-04.
 
-transcribe_media: STT با Whisper — اگر باینری/مدل در دسترس نبود، وضعیت
+transcribe_media: STT با faster-whisper (مدل نام‌دار و پین‌شده در
+  app/core/media_tools.py) — اگر موتور/مدل در دسترس نبود، وضعیت
   transcript_status=failed با دلیل صریح ثبت می‌شود؛ هرگز transcript جعلی.
 ocr_pdf: OCR با Tesseract — رفتار graceful یکسان.
 
@@ -17,7 +18,6 @@ from pathlib import Path
 
 from app.core.queues import register_task
 
-WHISPER_BIN = "whisper"
 TESSERACT_BIN = "tesseract"
 PDFTOPPM_BIN = "pdftoppm"
 
@@ -48,8 +48,11 @@ async def _read_media_bytes(item) -> bytes:
 
 @register_task("media")
 async def transcribe_media(ctx: dict, item_id: str) -> dict:
-    """رونویسی صوت/ویدیو با Whisper (صف media)."""
+    """رونویسی صوت/ویدیو با faster-whisper (صف media — B-04)."""
     from app.core.database import SessionLocal
+    from app.core.errors import APIError
+    from app.core.media_tools import FASTER_WHISPER_MODEL, faster_whisper_installed
+    from app.modules.voice.stt import FasterWhisperSTT
 
     async with SessionLocal() as db:
         item = await _load_item(db, item_id)
@@ -57,10 +60,9 @@ async def transcribe_media(ctx: dict, item_id: str) -> dict:
         item.processing_error = None
         await db.commit()
 
-        whisper = shutil.which(WHISPER_BIN)
-        if whisper is None:
+        if not faster_whisper_installed():
             reason = (
-                "whisper_not_installed: باینری whisper در دسترس نیست؛ "
+                "stt_unavailable: پکیج faster-whisper نصب نیست؛ "
                 "رونویسی انجام نشد (transcript جعلی ساخته نشد)"
             )
             item.transcript_status = "failed"
@@ -77,47 +79,31 @@ async def transcribe_media(ctx: dict, item_id: str) -> dict:
             await db.commit()
             return {"ok": False, "reason": reason}
 
-        suffix = Path(item.media_key).suffix or ".bin"
-        with tempfile.TemporaryDirectory(prefix="lib-transcribe-") as tmp:
-            src = Path(tmp) / f"input{suffix}"
-            src.write_bytes(data)
-            proc = await asyncio.create_subprocess_exec(
-                whisper, str(src),
-                "--model", "tiny",
-                "--output_format", "txt",
-                "--output_dir", tmp,
-                "--language", "fa",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+        provider = FasterWhisperSTT(model_size=FASTER_WHISPER_MODEL)
+        try:
+            # فایل‌های کتابخانه بلندند (سخنرانی) — سقف ۱۵۰۰ ثانیه مثل قبل
+            out = await provider.transcribe(data, lang="fa", timeout_s=1500)
+        except APIError as exc:
+            reason = (
+                f"{exc.code}: موتور رونویسی در دسترس نیست یا مدل "
+                f"{FASTER_WHISPER_MODEL} بارگذاری نشد ({exc.message})"
             )
-            try:
-                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=1500)
-            except TimeoutError:
-                proc.kill()
-                reason = "whisper_timeout: رونویسی بیش از حد طول کشید"
-                item.transcript_status = "failed"
-                item.processing_error = reason
-                await db.commit()
-                return {"ok": False, "reason": reason}
-            if proc.returncode != 0:
-                reason = f"whisper_failed: کد خروج {proc.returncode}: {stderr.decode(errors='replace')[:500]}"
-                item.transcript_status = "failed"
-                item.processing_error = reason
-                await db.commit()
-                return {"ok": False, "reason": reason}
-            txt_files = list(Path(tmp).glob("*.txt"))
-            transcript = txt_files[0].read_text(encoding="utf-8").strip() if txt_files else ""
-            if not transcript:
-                reason = "whisper_empty: خروجی رونویسی خالی بود"
-                item.transcript_status = "failed"
-                item.processing_error = reason
-                await db.commit()
-                return {"ok": False, "reason": reason}
-            item.transcript = transcript
-            item.transcript_status = "done"
-            item.processing_error = None
+            item.transcript_status = "failed"
+            item.processing_error = reason
             await db.commit()
-            return {"ok": True, "chars": len(transcript)}
+            return {"ok": False, "reason": reason}
+        transcript = (out.get("text") or "").strip()
+        if not transcript:
+            reason = "stt_empty: خروجی رونویسی خالی بود"
+            item.transcript_status = "failed"
+            item.processing_error = reason
+            await db.commit()
+            return {"ok": False, "reason": reason}
+        item.transcript = transcript
+        item.transcript_status = "done"
+        item.processing_error = None
+        await db.commit()
+        return {"ok": True, "chars": len(transcript)}
 
 
 @register_task("media")

@@ -394,21 +394,49 @@ async def seed_pms_demo(db: AsyncSession, admin: User) -> str:
     return "ساخته شد"
 
 
+async def _find_any_super_admin(db: AsyncSession) -> User | None:
+    """هر کاربر دارای نقش super_admin (برای تشخیص «مدیر از قبل هست»)."""
+    return (
+        await db.execute(
+            select(User)
+            .join(UserRole, UserRole.user_id == User.id)
+            .join(Role, Role.id == UserRole.role_id)
+            .where(Role.name == "super_admin")
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
 async def main() -> None:
     email = os.environ.get("ADMIN_EMAIL", "").strip() or None
     phone = os.environ.get("ADMIN_PHONE", "").strip() or None
     password = os.environ.get("ADMIN_PASSWORD", "")
 
-    if not password or not (email or phone):
-        print(
-            "خطا: ADMIN_PASSWORD و یکی از ADMIN_EMAIL یا ADMIN_PHONE باید تنظیم شوند",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
     maker: async_sessionmaker[AsyncSession] = async_sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False
     )
+
+    # دروازهٔ مدیر (M-03): نبود ADMIN_* فقط وقتی خطای توقف است که هیچ
+    # super_adminای در دیتابیس نباشد. اجرای دوبارهٔ bootstrap بدون
+    # env مدیر باید موفق و بی‌خطر باشد (exit 0 + پیام روشن)، نه
+    # sys.exit(1)؛ بقیهٔ seed idempotent است و ادامه می‌یابد.
+    env_ok = bool(password) and bool(email or phone)
+    bootstrap_admin: User | None = None
+    if not env_ok:
+        async with maker() as db:
+            bootstrap_admin = await _find_any_super_admin(db)
+        if bootstrap_admin is None:
+            print(
+                "خطا: ADMIN_PASSWORD و یکی از ADMIN_EMAIL یا ADMIN_PHONE باید تنظیم شوند"
+                " (و هیچ super_adminای هم در دیتابیس وجود ندارد)",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print(
+            "ADMIN_* تنظیم نیست، اما super_admin از قبل وجود دارد — "
+            "seed بدون ساخت مدیر ادامه می‌یابد."
+        )
+
     async with maker() as db:
         roles: dict[str, Role] = {}
         for name, desc in BASE_ROLES:
@@ -454,12 +482,19 @@ async def main() -> None:
                 )
 
         # اولین super_admin
-        stmt = select(User)
-        if email:
-            stmt = stmt.where(User.email == email)
+        admin: User | None = None
+        if not env_ok:
+            # M-03: مدیر از قبل هست و envای برای ساخت/یافتنِ مشخص نیست
+            assert bootstrap_admin is not None  # در دروازهٔ بالا تضمین شد
+            admin = bootstrap_admin
+            print(f"super_admin از قبل وجود دارد: {admin.email or admin.phone}")
         else:
-            stmt = stmt.where(User.phone == phone)
-        admin = (await db.execute(stmt)).scalar_one_or_none()
+            stmt = select(User)
+            if email:
+                stmt = stmt.where(User.email == email)
+            else:
+                stmt = stmt.where(User.phone == phone)
+            admin = (await db.execute(stmt)).scalar_one_or_none()
         if not admin:
             admin = User(
                 full_name="مدیر ارشد",
@@ -474,7 +509,7 @@ async def main() -> None:
             await db.flush()
             db.add(UserRole(user_id=admin.id, role_id=roles["super_admin"].id))
             print(f"super_admin ساخته شد: {email or phone}")
-        else:
+        elif env_ok:
             print(f"super_admin از قبل وجود دارد: {email or phone}")
 
         # تنظیمات پیش‌فرض پلتفرم (مقادیر حساس رمزنگاری‌شده — فاز ۰ §۳)

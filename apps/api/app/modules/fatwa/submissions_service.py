@@ -34,7 +34,7 @@ from app.models.models import (
     User,
     UserRole,
 )
-from app.modules.fatwa.embeddings import get_embedding_provider
+from app.modules.fatwa.embeddings import get_embedding_provider, pgvector_available
 
 _TRANSITION_EVENTS = {
     "in_review": "fatwa.submission_submitted",
@@ -285,6 +285,8 @@ async def add_to_rag(
     chunk = FiqhKnowledgeChunk(
         chunk_text=chunk_text,
         embedding=embedding,
+        # ستون برداری واقعی روی Postgres (B-03 — ADR-0026)
+        embedding_vec=list(embedding) if pgvector_available() else None,
         source_type="fatwa_submission",
         source_ref={
             "type": "fatwa_submission",
