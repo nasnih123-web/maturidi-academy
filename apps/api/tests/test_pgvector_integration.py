@@ -17,6 +17,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -34,7 +35,12 @@ TARGET_TEXT = (
 FILLER_TEXT = "متن عمومی دربارهٔ احکام طهارت و نماز و روزه در فقه اسلامی"
 
 
-@pytest.fixture
+# loop_scope="function" الزامی است: پیش‌فرض پروژه session است
+# (pytest.ini) و engine این فیکسچر اگر در لوپ session ساخته شود،
+# بستن session در teardown تست روی لوپ دیگری می‌افتد و هر دو تست
+# با RuntimeError «attached to a different loop» قرمز می‌شوند
+# (یافتهٔ CI ممیزی 197efa0 — بدنهٔ تست‌ها سالم بود، teardown می‌مرد).
+@pytest_asyncio.fixture(loop_scope="function")
 async def pg_session():
     from app.core.config import get_settings
 

@@ -445,7 +445,6 @@ async def _pgvector_search(
     where.append("embedding_vec IS NOT NULL")
     params.update(
         {
-            "dim": EMBEDDING_DIM,
             "qvec": "[" + ",".join(repr(float(x)) for x in query_vec) + "]",
         }
     )
@@ -456,8 +455,13 @@ async def _pgvector_search(
                 # ثابت‌اند و همهٔ مقادیر پویا (scope/topic/madhab/qvec/topk)
                 # از طریق پارامترهای bound یا float() رد می‌شوند؛ تزریق SQL
                 # ممکن نیست. سرکوب اسکنر آگاهانه و مستند است.
+                # بُعد بردار در SQL عمداً لیترالِ ثابتِ ماژول است:
+                # PostgreSQL در prepared statement برای type modifier
+                # پارامتر قبول نمی‌کند («type modifiers must be simple
+                # constants») — یافتهٔ CI ممیزی 197efa0؛ EMBEDDING_DIM
+                # ثابتِ همین ماژول است، ورودی کاربر نیست.
                 text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
-                    "SELECT id, embedding_vec <=> (:qvec)::vector(:dim) AS dist "  # nosec B608 -- reviewed SEC-17-02
+                    f"SELECT id, embedding_vec <=> (:qvec)::vector({int(EMBEDDING_DIM)}) AS dist "  # nosec B608 -- reviewed SEC-17-02
                     "FROM fiqh_knowledge_chunks WHERE "
                     + " AND ".join(where)
                     + " ORDER BY dist ASC LIMIT :topk"
