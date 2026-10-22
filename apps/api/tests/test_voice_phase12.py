@@ -298,8 +298,16 @@ async def test_quran_unresolved_reference(db_session):
 # ---------------------------------------------------------------------------
 
 
-async def test_transcribe_unavailable_honest_503(tc):
-    """بدون faster-whisper → ۵۰۳ با کد stt_unavailable (نه رونویسی جعلی)."""
+async def test_transcribe_unavailable_honest_503(tc, monkeypatch):
+    """STT ناموجود → ۵۰۳ با کد stt_unavailable (نه رونویسی جعلی).
+
+    از B-04 (ADR-0027) faster-whisper وابستگی واقعیِ نصب‌شده است، پس
+    «ناموجود بودن» صریح شبیه‌سازی می‌شود (مدل در دسترس نیست) — قرارداد
+    رفتاری همان است: provider حل نشود، پاسخ صادقانهٔ ۵۰۳ می‌آید.
+    """
+    monkeypatch.setattr(
+        "app.modules.voice.stt.faster_whisper_available", lambda: False
+    )
     client = tc["client"]
     r = await client.post(
         f"{BASE}/voice/transcribe",

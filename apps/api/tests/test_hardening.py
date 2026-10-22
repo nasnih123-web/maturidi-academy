@@ -53,19 +53,11 @@ async def _login(client, identifier: str, password: str = "TestPass123") -> dict
 
 
 async def test_refresh_reuse_revokes_whole_session(tc):
-    """الگوی turbo + پنجرهٔ اغماض ADR-0020.
+    """الگوی turbo، سخت‌گیرانه (B-02 — ADR-0024، جانشین اغماض ADR-0020).
 
-    استفادهٔ مجددِ فوری از رفرش‌توکن چرخش‌خورده = race هم‌زمان مشروع
-    (دو تب) → در ۶۰ ثانیهٔ اول نشست باطل نمی‌شود؛ ولی reuse واقعی
-    (پس از پنجرهٔ اغماض) کل نشست را می‌کشد.
+    استفادهٔ مجدد از رفرش‌توکن چرخش‌خورده — حتی بلافاصله (≈ثانیهٔ ۱) —
+    سرقت است: 401 و کل نشست (از جمله جفت‌توکن تازه) باطل می‌شود.
     """
-    from datetime import datetime, timedelta
-
-    from sqlalchemy import update
-
-    from app.models.models import RefreshToken
-    from app.modules.auth import service as auth_service
-
     client = tc["client"]
     await _register(client, "reuse@example.com")
     tokens = await _login(client, "reuse@example.com")
@@ -76,27 +68,54 @@ async def test_refresh_reuse_revokes_whole_session(tc):
     assert r.status_code == 200
     fresh = r.json()
 
-    # replay فوری توکن قدیمی — در پنجرهٔ اغماض: 200، نشست زنده
+    # replay فوری توکن قدیمی (≈۱ ثانیه بعد از چرخش): بدون اغماض → 401
     r = await client.post(
         f"{BASE}/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
     )
-    assert r.status_code == 200, r.text
+    assert r.status_code == 401, r.text
+    assert r.json()["error"]["code"] == "invalid_token"
 
-    # شبیه‌سازی گذر زمان → حالا همان replay یعنی سرقت واقعی
+    # نشست باطل شده: توکن جدید همان نشست هم مرده است
+    r = await client.post(
+        f"{BASE}/auth/refresh", json={"refresh_token": fresh["refresh_token"]}
+    )
+    assert r.status_code == 401
+    r = await client.get(f"{BASE}/users/me", headers=_auth(fresh["access_token"]))
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "session_revoked"
+
+
+async def test_refresh_reuse_at_59_seconds_still_revokes(tc):
+    """B-02: reuse در ثانیهٔ ۵۹ (داخل پنجرهٔ اغماض قدیمی) هم سرقت است."""
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import update
+
+    from app.models.models import RefreshToken
+
+    client = tc["client"]
+    await _register(client, "reuse59@example.com")
+    tokens = await _login(client, "reuse59@example.com")
+
+    r = await client.post(
+        f"{BASE}/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert r.status_code == 200
+    fresh = r.json()
+
+    # شبیه‌سازی گذر ۵۹ ثانیه از چرخش (دقیقاً داخل پنجرهٔ اغماض حذف‌شده)
     async with tc["maker"]() as db:
-        past = datetime.now(UTC) - timedelta(
-            seconds=auth_service.REUSE_DETECTION_GRACE_SECONDS + 60
-        )
+        past = datetime.now(UTC) - timedelta(seconds=59)
         await db.execute(update(RefreshToken).values(created_at=past))
         await db.commit()
 
     r = await client.post(
         f"{BASE}/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
     )
-    assert r.status_code == 401
+    assert r.status_code == 401, r.text
     assert r.json()["error"]["code"] == "invalid_token"
 
-    # نشست باطل شده: توکن جدید همان نشست هم مرده است
+    # نشست مرده است
     r = await client.post(
         f"{BASE}/auth/refresh", json={"refresh_token": fresh["refresh_token"]}
     )

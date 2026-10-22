@@ -148,11 +148,13 @@ async def test_search_prefix_beats_substring(tc):
     body = r.json()
     assert set(body.keys()) == {"query", "results", "total"}
     assert body["query"] == "کتاب"
-    # s_alpha تطابق پیشوندی (امتیاز ۲) و s_beta تطابق درونی (امتیاز ۱)
-    assert body["results"][0]["id"] == "s_alpha"
-    assert body["results"][0]["score"] > body["results"][1]["score"]
-    assert body["results"][0]["type"] == "section"
-    assert body["results"][0]["title"]["fa"] == "کتابخانهٔ بزرگ"
+    # M-01 (ADR-0033): جست‌وجو حالا سراسری است و امتیاز ترکیبیِ بین‌منبعی
+    # دارد؛ نیت این تست «پیشوند > درون‌رشته در بخش‌ها»ست، پس روی
+    # نتایجِ نوع section داوری می‌شود (نه رتبهٔ مطلق در فهرست ترکیبی).
+    sections = [h for h in body["results"] if h["type"] == "section"]
+    assert sections[0]["id"] == "s_alpha"
+    assert sections[0]["score"] > sections[1]["score"]
+    assert sections[0]["title"]["fa"] == "کتابخانهٔ بزرگ"
     assert body["total"] >= 2
 
 
