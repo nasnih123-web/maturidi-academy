@@ -66,7 +66,6 @@ def upgrade() -> None:
     sa.Column('checksum', sa.String(length=128), nullable=True),
     sa.Column('visibility', sa.String(length=16), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['owner_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('permissions',
@@ -115,6 +114,23 @@ def upgrade() -> None:
     sa.UniqueConstraint('email'),
     sa.UniqueConstraint('phone')
     )
+    # چرخهٔ FK: media_assets.owner_id → users و users.avatar_media_id →
+    # media_assets. روی SQLite ترتیب ساخت مهم نبود، ولی PostgreSQL در زمان
+    # CREATE TABLE ارجاع را اعتبارسنجی می‌کند (یافتهٔ job پستگرس CI در
+    # ممیزی 197efa0) — پس FK مالکِ media_assets بعد از ساخته‌شدن هر دو
+    # جدول، جداگانه ساخته می‌شود (همان الگوی create_all خود SQLAlchemy؛
+    # روی SQLite با batch mode چون ALTER CONSTRAINT مستقیم ندارد).
+    if op.get_bind().dialect.name == 'postgresql':
+        op.create_foreign_key(
+            'fk_media_assets_owner_id_users', 'media_assets', 'users',
+            ['owner_id'], ['id'],
+        )
+    else:
+        with op.batch_alter_table('media_assets') as batch_op:
+            batch_op.create_foreign_key(
+                'fk_media_assets_owner_id_users', 'users',
+                ['owner_id'], ['id'],
+            )
     op.create_table('notification_preferences',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('user_id', sa.Uuid(), nullable=False),
@@ -237,6 +253,16 @@ def downgrade() -> None:
     op.drop_table('password_reset_tokens')
     op.drop_index(op.f('ix_notification_preferences_user_id'), table_name='notification_preferences')
     op.drop_table('notification_preferences')
+    if op.get_bind().dialect.name == 'postgresql':
+        op.drop_constraint(
+            'fk_media_assets_owner_id_users', 'media_assets',
+            type_='foreignkey',
+        )
+    else:
+        with op.batch_alter_table('media_assets') as batch_op:
+            batch_op.drop_constraint(
+                'fk_media_assets_owner_id_users', type_='foreignkey'
+            )
     op.drop_table('users')
     op.drop_table('themes')
     op.drop_table('roles')
