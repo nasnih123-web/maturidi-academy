@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector (B-03 — ADR-0026): ایمیج رسمی pgvector روی همان نسل PG16؛
+    # اکستنشن‌های vector و pg_trgm با مهاجرت e2b3c4d5f6a7 ساخته می‌شوند.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: maturidi
       POSTGRES_PASSWORD: maturidi
@@ -44,6 +46,20 @@ services:
       timeout: 5s
       retries: 5
 
+  # اسکن ویروس آپلودها (C-01 — ADR-0028): clamd روی پورت 3310 (INSTREAM).
+  # سیاست API fail-closed است: تا وقتی این سرویس healthy نشده، آپلودها
+  # 503 می‌گیرند — هرگز ردِّ بی‌صدا نداریم.
+  clamav:
+    image: clamav/clamav:1.4
+    volumes:
+      - clamavdata:/var/lib/clamav
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/3310; printf PING >&3; grep -q PONG <&3'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
   api:
     build: ./apps/api
     # Dockerfile CMD یووی‌کورن --timeout-graceful-shutdown 30 دارد؛ مهلت توقف
@@ -56,6 +72,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      clamav:
+        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -65,6 +83,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://maturidi:maturidi@postgres:5432/maturidi
       REDIS_URL: redis://redis:6379/0
       S3_ENDPOINT: http://minio:9000
+      CLAMAV_HOST: clamav
       APP_BASE_URL: http://localhost:8000
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
@@ -107,6 +126,7 @@ services:
 
 volumes:
   pgdata:
+  clamavdata:
   miniodata:
   promdata:
   grafanadata:

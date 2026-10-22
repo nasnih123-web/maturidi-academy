@@ -1,1 +1,32 @@
-{"dependencies":{"@maturidi/design-tokens":"file:../../packages/design-tokens","leaflet":"^1.9.4","next":"^15.5.28","next-intl":"^4.9.2","react":"18.3.1","react-dom":"18.3.1"},"devDependencies":{"@tailwindcss/postcss":"^4.1.4","@types/leaflet":"^1.9.22","@types/node":"22.9.0","@types/react":"18.3.12","@types/react-dom":"18.3.1","axe-core":"^4.10.2","tailwindcss":"^4.1.4","typescript":"5.6.3"},"name":"@maturidi/web","private":true,"scripts":{"build":"next build","dev":"next dev","lint":"next lint","start":"next start","typecheck":"tsc --noEmit"},"version":"0.1.0","overrides":{"postcss":"^8.5.31"}}
+{
+  "dependencies": {
+    "@maturidi/design-tokens": "file:../../packages/design-tokens",
+    "leaflet": "^1.9.4",
+    "next": "16.4.2",
+    "next-intl": "4.14.9",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.4",
+    "@types/leaflet": "^1.9.22",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "axe-core": "^4.10.2",
+    "tailwindcss": "^4.1.4",
+    "typescript": "5.9.3"
+  },
+  "name": "@maturidi/web",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "version": "0.1.0",
+  "overrides": {
+    "postcss": "^8.5.31"
+  }
+}

@@ -26,16 +26,20 @@ networks:
 
 volumes:
   pgdata:
+  clamavdata:
   redisdata:
   miniodata:
   promdata:
   grafanadata:
+  lokidata:
+  backupdata:
   metabase-pgdata:
 
 services:
   # ---------------------------------------------------------------- Postgres
   postgres:
-    image: postgres:16-alpine
+    # pgvector (B-03 — ADR-0026): همان نسل PG16، بدون پرش major.
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: "${POSTGRES_USER:?set POSTGRES_USER}"
@@ -93,6 +97,22 @@ services:
   # با چند replica از api دیگر race روی migration نیست؛ شکست migration یعنی
   # `migrate` با exit غیرصفر تمام می‌شود و api/workerها اصلاً بالا نمی‌آیند
   # (condition: service_completed_successfully) — یعنی deploy بلند فیل می‌کند.
+  # اسکن ویروس آپلودها (C-01 — ADR-0028): clamd روی 3310 (INSTREAM)؛
+  # API fail-closed است — clamav ناسالم یعنی آپلود 503، نه ردِّ بی‌صدا.
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    volumes:
+      - clamavdata:/var/lib/clamav
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/3310; printf PING >&3; grep -q PONG <&3'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - backend
+
   api:
     build: ./apps/api
     restart: unless-stopped
@@ -112,10 +132,12 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       minio: { condition: service_healthy }
+      clamav: { condition: service_healthy }
     env_file:
       - .env.prod
     environment:
       APP_ENV: production
+      CLAMAV_HOST: clamav
     expose:
       - "8000"
     # readiness روی /health (stdlib، بدون curl) — workerها هلث‌چک جدا ندارند
@@ -142,10 +164,12 @@ services:
       migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+      clamav: { condition: service_healthy }
     env_file:
       - .env.prod
     environment:
       APP_ENV: production
+      CLAMAV_HOST: clamav
     networks:
       - backend
 
@@ -268,6 +292,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
       - promdata:/prometheus
     expose:
       - "9090"
@@ -282,6 +307,8 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_PASSWORD:?set GRAFANA_PASSWORD}"
     volumes:
       - grafanadata:/var/lib/grafana
+      - ./infra/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
     depends_on:
       - prometheus
       - loki
@@ -295,7 +322,80 @@ services:
     image: grafana/loki:3.0.0
     restart: unless-stopped
     command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./infra/monitoring/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
+      - lokidata:/loki
     expose:
       - "3100"
+    networks:
+      - backend
+
+  # m-02: شیپر لاگ کانتینرها به Loki (داشبورد خطاها)
+  promtail:
+    image: grafana/promtail:3.0.0
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./infra/monitoring/promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - backend
+
+  # m-02: متریک‌های هاست (دیسک/حافظه) برای هشدار DiskSpaceLow
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+    volumes:
+      - /:/host:ro,rslave
+    expose:
+      - "9100"
+    networks:
+      - backend
+
+  # m-02: متریک‌های PostgreSQL برای داشبورد دیتابیس
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_URI: "postgres:5432/${POSTGRES_DB:-maturidi}?sslmode=disable"
+      DATA_SOURCE_USER: "${POSTGRES_USER:?set POSTGRES_USER}"
+      DATA_SOURCE_PASS: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}"
+    depends_on:
+      postgres: { condition: service_healthy }
+    expose:
+      - "9187"
+    networks:
+      - backend
+
+  # -------------------------------------------------------------------- Backup
+  # m-04: بکاپ زمان‌بندی‌شده به‌جای cron هاست — همان infra/backup.sh روی
+  # شبکهٔ استک، روزی یک‌بار (BACKUP_AT_UTC). خروجی در والیوم backupdata
+  # می‌نشیند؛ بازیابی آزمایشی از همین خروجی: docs/ops/dr-drill.md.
+  # COMPOSE_PROJECT_NAME باید با نام پروژهٔ استک اصلی یکی باشد (پیش‌فرض
+  # نام پوشهٔ ریپو است) تا سرویس‌های postgres/minio پیدا شوند.
+  backup:
+    image: docker:27.5.1-cli
+    restart: unless-stopped
+    entrypoint: ["sh", "/opt/maturidi/infra/backup/entrypoint.sh"]
+    environment:
+      COMPOSE_FILE: docker-compose.prod.yml
+      COMPOSE_PROJECT_NAME: "${COMPOSE_PROJECT_NAME:-maturidi}"
+      BACKUP_DIR: /backups
+      BACKUP_AT_UTC: "${BACKUP_AT_UTC:-02:00}"
+      BACKUP_RUN_ON_START: "${BACKUP_RUN_ON_START:-false}"
+      POSTGRES_USER: "${POSTGRES_USER:?set POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB:-maturidi}"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}"
+      S3_BUCKET: "${S3_BUCKET:?set S3_BUCKET}"
+    volumes:
+      - ./:/opt/maturidi
+      - /var/run/docker.sock:/var/run/docker.sock
+      - backupdata:/backups
     networks:
       - backend

@@ -37,8 +37,26 @@ NODEV="$(node -p 'process.versions.node')"
 node -e 'const [m]=process.versions.node.split(".").map(Number); if (m < 24) process.exit(1)' \
   || die "نسخهٔ Node شما $NODEV است؛ این پروژه به Node 24 یا جدیدتر نیاز دارد (خط مبنای .nvmrc)."
 command -v npm >/dev/null || die "npm پیدا نشد (همراه Node.js نصب می‌شود)."
+# curl برای health-check سرویس‌ها لازم است (M-03) — نبودش را همین‌جا
+# با پیام دقیق می‌گوییم، نه وسط اجرا با خطای گنگ command not found.
+command -v curl >/dev/null || die "curl پیدا نشد؛ برای بررسی سلامت سرویس‌ها لازم است. نصب کنید: https://curl.se/download.html (یا مدیر بستهٔ سیستم: apt install curl / brew install curl)."
 
 echo "  Python $PYV  ✓    Node $NODEV  ✓"
+
+# ---------- ۱٫۵) فایل‌های env ----------
+# ریشه: .env از روی .env.example (فقط اگر نیست) — برای compose و
+# ابزارهای ریشه؛ مقادیر نمونه برای dev محلی امن‌اند و برای production
+# باید عوض شوند (خود فایل هم همین را می‌گوید).
+if [ ! -f "$ROOT/.env" ]; then
+  cp "$ROOT/.env.example" "$ROOT/.env"
+  echo "  ساخت .env ریشه از .env.example ✓ (برای production مقادیر را عوض کنید)"
+fi
+# API: .env با CORS برای وب/CRM — همان رفتاری که bootstrap.ps1 دارد
+# (فقط اگر وجود ندارد؛ فایل موجود هرگز بازنویسی نمی‌شود).
+if [ ! -f "$ROOT/apps/api/.env" ]; then
+  printf 'CORS_ALLOW_ORIGINS=http://localhost:3000,http://localhost:5173\n' > "$ROOT/apps/api/.env"
+  echo "  ساخت apps/api/.env (CORS) ✓"
+fi
 
 # ---------- ۲) بک‌اند (API) ----------
 say "آماده‌سازی بک‌اند…"

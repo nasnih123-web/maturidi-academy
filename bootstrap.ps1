@@ -43,7 +43,18 @@ try {
   if (-not (Test-Version $nodev 24 0)) { Die "نسخهٔ Node شما $nodev است؛ این پروژه به Node 24 یا جدیدتر نیاز دارد (خط مبنای .nvmrc)." }
 
   try { npm --version | Out-Null } catch { Die "npm پیدا نشد (همراه Node.js نصب می‌شود)." }
+  # curl پیش‌نیاز اعلام‌شده است (M-03) — روی ویندوز ۱۰/۱۱ به‌صورت
+  # curl.exe همراه سیستم است؛ نبودش را همین‌جا با پیام دقیق می‌گوییم.
+  if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) { Die "curl پیدا نشد؛ پیش‌نیاز این پروژه است (روی ویندوز ۱۰/۱۱ همراه سیستم است: System32\curl.exe). از https://curl.se/windows/ بگیرید یا ویندوز را به‌روز کنید." }
   Write-Host "  Python $pyv  ✓    Node $nodev  ✓"
+
+  # فایل .env ریشه از روی .env.example (فقط اگر نیست) — برای compose؛
+  # مقادیر نمونه برای dev محلی‌اند و برای production باید عوض شوند.
+  $rootEnv = Join-Path $ROOT ".env"
+  if (-not (Test-Path $rootEnv)) {
+    Copy-Item (Join-Path $ROOT ".env.example") $rootEnv
+    Write-Host "  ساخت .env ریشه از .env.example ✓ (برای production مقادیر را عوض کنید)"
+  }
 
   # ---------- ۲) بک‌اند (API) ----------
   Say "آماده‌سازی بک‌اند…"
