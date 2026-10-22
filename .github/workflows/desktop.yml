@@ -227,6 +227,28 @@ jobs:
           path: apps/desktop/release-assets/
           retention-days: 90
 
+      # B-01 (ADR-0025): حلقهٔ بیلد بسته می‌شود — باندل‌ها به باکت builds
+      # در MinIO می‌روند و انتشار با توکن سرویس به API ثبت می‌شود تا CRM
+      # لینک دانلود امضاشده نشان دهد. نبود هرکدام از secretها = ردِّ
+      # صادقانه با هشدار داخل اسکریپت (بیلد جعلی «ثبت‌شده» گزارش نمی‌شود).
+      - name: Close the loop — MinIO upload + API release registration (B-01)
+        shell: bash
+        env:
+          CB_PLATFORM: desktop
+          CB_VERSION: ${{ needs.resolve.outputs.version }}
+          CB_BUILD_NUMBER: ${{ github.run_number }}-${{ matrix.platform }}
+          CB_ARTIFACT_DIR: release-assets
+          CB_MANIFEST: build-manifest-${{ matrix.platform }}.json
+          CB_SIGNED: "false"
+          BUILDS_API_BASE_URL: ${{ secrets.BUILDS_API_BASE_URL }}
+          BUILDS_SERVICE_TOKEN: ${{ secrets.BUILDS_SERVICE_TOKEN }}
+          BUILDS_S3_ENDPOINT: ${{ secrets.BUILDS_S3_ENDPOINT }}
+          BUILDS_S3_BUCKET: ${{ secrets.BUILDS_S3_BUCKET }}
+          BUILDS_S3_ACCESS_KEY: ${{ secrets.BUILDS_S3_ACCESS_KEY }}
+          BUILDS_S3_SECRET_KEY: ${{ secrets.BUILDS_S3_SECRET_KEY }}
+          BUILDS_S3_REGION: ${{ secrets.BUILDS_S3_REGION }}
+        run: bash "$GITHUB_WORKSPACE/tools/ci/build-callback.sh"
+
       - name: Attach bundles to the release (when resolved)
         if: needs.resolve.outputs.attach == 'true'
         shell: bash
