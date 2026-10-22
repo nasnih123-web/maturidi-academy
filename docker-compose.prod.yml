@@ -74,9 +74,12 @@ services:
 
   # -------------------------------------------------------------------- MinIO
   minio:
-    # Track B: ایمیج‌های minio/minio از Docker Hub حذف شده‌اند (سپتامبر ۲۰۲۶) —
-    # همان ایمیج با digest یکسان روی quay.io منتشر می‌شود؛ latest پین نیست.
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # Track B (اصلاحیهٔ ممیزی 197efa0 — ADR-0039): رجیستری عمومی MinIO
+    # (Hub و quay) برای pull ناشناس بسته است؛ ایمیج از باینری رسمیِ همان
+    # release ساخته می‌شود (infra/minio/Dockerfile، با sha256 رسمی).
+    build:
+      context: ./infra/minio
+    image: maturidi/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
