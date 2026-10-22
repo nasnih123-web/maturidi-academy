@@ -295,6 +295,19 @@ async def test_rebuild_unconfigured_is_503_and_creates_nothing(tc):
     pre = (await client.get(f"{BASE}/admin/builds/prereqs", headers=admin)).json()
     assert pre["provider"]["configured"] is False
     assert pre["provider"]["provider"] is None
+    # C-05: بخش pipeline کامل و صادقانه است — در محیط تست هیچ‌کدام از
+    # پیش‌نیازهای خط لوله برقرار نیست و endpoint نباید قول توخالی بدهد.
+    pipe = pre["pipeline"]
+    assert pipe["callback_token_configured"] is False
+    assert pipe["github_dispatch_configured"] is False
+    assert pipe["expo_project_linked"] is False
+    assert pipe["expo_project_id"] is None
+    assert pipe["api_base_url"]  # از config خوانده می‌شود (localhost تست)
+    assert pipe["api_base_url_is_local"] is True
+    ci_keys = {item["key"] for item in pre["ci_side"]}
+    assert "EXPO_TOKEN" in ci_keys
+    assert all(item["api_visible"] is False for item in pre["ci_side"])
+    assert all(item["where"] and item["verified_by"] for item in pre["ci_side"])
 
 
 async def test_rebuild_bad_package_id_is_422(tc, gh_configured):
@@ -466,3 +479,195 @@ async def test_sync_unconfigured_is_noop(tc):
     async with tc["maker"]() as db:
         out = await svc.sync_build_requests(db, client=_mock_client(lambda r: httpx.Response(500)))
     assert out == {"provider_configured": False, "checked": 0, "updated": 0}
+
+
+# ---------------------------------------------------------------------------
+# B-01 — callback سرویس CI: ثبت انتشار با فایل واقعی + URL امضاشده + pruning
+# ---------------------------------------------------------------------------
+
+SERVICE_TOKEN = "<MASKED_SECRET_002>"
+
+
+@pytest.fixture
+def svc_token_configured(monkeypatch):
+    s = get_settings()
+    monkeypatch.setattr(s, "builds_service_token", SERVICE_TOKEN)
+    return s
+
+
+def _release_payload(**over):
+    payload = {
+        "platform": "android",
+        "version": "1.1.0",
+        "build_number": "42",
+        "artifact_key": "builds/android/1.1.0/42/app.apk",
+        "file_size_bytes": 12345,
+        "sha256": "a" * 64,
+        "signed": True,
+        "build_metadata": {"filename": "app.apk"},
+    }
+    payload.update(over)
+    return payload
+
+
+async def test_ci_callback_registers_release_and_signs_url(tc, svc_token_configured):
+    """مسیر CI واقعی: توکن سرویس → ۲۰۱ + download_url تازه و امضاشده."""
+    from app.models.models import BuildRelease
+
+    client = tc["client"]
+    r = await client.post(
+        f"{BASE}/admin/builds/releases",
+        json=_release_payload(),
+        headers={"X-Build-Service-Token": SERVICE_TOKEN},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["has_file"] is True
+    assert body["artifact_key"] == "builds/android/1.1.0/42/app.apk"
+    assert body["file_size_bytes"] == 12345
+    assert body["sha256"] == "a" * 64
+    # URL از StorageProvider محلی: امضای HMAC روی کلید + انقضا دارد
+    assert body["download_url"] and "app.apk" in body["download_url"]
+    assert "sig=" in body["download_url"]
+    assert body["download_expires_at"]
+
+    async with tc["maker"]() as db:
+        row = (
+            await db.execute(
+                select(BuildRelease).where(
+                    BuildRelease.artifact_key == "builds/android/1.1.0/42/app.apk"
+                )
+            )
+        ).scalar_one()
+        # سرویس CI کاربر نیست — released_by خالی می‌ماند
+        assert row.released_by is None
+
+    # فهرست مدیر هم برای همین release URL امضاشده می‌دهد (دکمهٔ دانلود CRM)
+    admin = await _make_user(tc)
+    r2 = await client.get(
+        f"{BASE}/admin/builds/releases?platform=android", headers=admin
+    )
+    assert r2.status_code == 200, r2.text
+    mine = [
+        x for x in r2.json()
+        if x["artifact_key"] == "builds/android/1.1.0/42/app.apk"
+    ]
+    assert mine and mine[0]["has_file"] is True and mine[0]["download_url"]
+
+
+async def test_ci_callback_wrong_token_rejected(tc, svc_token_configured):
+    r = await tc["client"].post(
+        f"{BASE}/admin/builds/releases",
+        json=_release_payload(),
+        headers={"X-Build-Service-Token": "wrong-token"},
+    )
+    # توکن اشتباه → مسیر کاربر؛ بدون Bearer یعنی 401
+    assert r.status_code == 401, r.text
+
+
+async def test_ci_callback_inactive_when_token_unconfigured(tc):
+    """پیش‌فرض (BUILDS_SERVICE_TOKEN خالی): هدر هیچ اثری ندارد."""
+    r = await tc["client"].post(
+        f"{BASE}/admin/builds/releases",
+        json=_release_payload(),
+        headers={"X-Build-Service-Token": SERVICE_TOKEN},
+    )
+    assert r.status_code == 401, r.text
+
+
+async def test_ci_callback_bad_artifact_key_is_422(tc, svc_token_configured):
+    for bad in ("../evil.apk", "other/app.apk", "/builds/x.apk", "builds/../x.apk"):
+        r = await tc["client"].post(
+            f"{BASE}/admin/builds/releases",
+            json=_release_payload(artifact_key=bad),
+            headers={"X-Build-Service-Token": SERVICE_TOKEN},
+        )
+        assert r.status_code == 422, (bad, r.text)
+        assert r.json()["error"]["code"] == "bad_artifact_key"
+
+
+async def test_admin_user_path_still_works_for_releases(tc):
+    """مسیر قدیمی (کاربرِ دارای مجوز) دست‌نخورده مانده است."""
+    admin = await _make_user(tc)
+    r = await tc["client"].post(
+        f"{BASE}/admin/builds/releases",
+        json=_release_payload(version="9.9.9", artifact_key=None, signed=False),
+        headers=admin,
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["has_file"] is False
+    assert r.json()["download_url"] is None
+
+
+async def test_release_pruning_keeps_last_10_and_deletes_files(
+    tc, svc_token_configured, monkeypatch, tmp_path
+):
+    """نگهداری B-01: ۱۱ ثبت → ۱۰ رکورد آخر + حذف فایل قدیمی‌ترین از storage."""
+    import os
+
+    from app.core.storage import get_storage
+
+    s = get_settings()
+    monkeypatch.setattr(s, "storage_provider", "local")
+    monkeypatch.setattr(s, "storage_local_dir", str(tmp_path))
+    storage = get_storage()
+
+    client = tc["client"]
+    for i in range(11):
+        key = f"builds/desktop/1.0.{i}/1/app-{i}.bin"
+        await storage.put_object(key, b"x" * 10, "application/octet-stream")
+        r = await client.post(
+            f"{BASE}/admin/builds/releases",
+            json=_release_payload(
+                platform="desktop", version=f"1.0.{i}", build_number="1",
+                artifact_key=key, sha256="b" * 64, signed=False,
+            ),
+            headers={"X-Build-Service-Token": SERVICE_TOKEN},
+        )
+        assert r.status_code == 201, r.text
+
+    admin = await _make_user(tc)
+    r = await client.get(
+        f"{BASE}/admin/builds/releases?platform=desktop&limit=50", headers=admin
+    )
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    assert len(rows) == 10, [x["version"] for x in rows]
+    keys = {x["artifact_key"] for x in rows}
+    oldest = "builds/desktop/1.0.0/1/app-0.bin"
+    newest = "builds/desktop/1.0.10/1/app-10.bin"
+    assert oldest not in keys and newest in keys
+    # فایل قدیمی‌ترین از storage هم حذف شده است؛ تازه‌ترین سر جایش است
+    assert not os.path.exists(os.path.join(str(tmp_path), oldest))
+    assert os.path.exists(os.path.join(str(tmp_path), newest))
+
+
+async def test_prereqs_expo_project_linked_when_setting_present(tc):
+    """C-05: با ثبت builds.expo_project_id، prereqs لینک‌شدن Expo را نشان می‌دهد."""
+    from sqlalchemy import delete
+
+    from app.core.platform_settings import (
+        reset_settings_cache,
+        stage_setting,
+    )
+    from app.models.models import PlatformSetting
+
+    admin = await _make_user(tc)
+    async with tc["maker"]() as session:
+        try:
+            await stage_setting(session, "builds.expo_project_id", "expo-proj-123")
+            await session.commit()
+            reset_settings_cache()
+            pre = (
+                await tc["client"].get(f"{BASE}/admin/builds/prereqs", headers=admin)
+            ).json()
+            assert pre["pipeline"]["expo_project_linked"] is True
+            assert pre["pipeline"]["expo_project_id"] == "expo-proj-123"
+        finally:
+            await session.execute(
+                delete(PlatformSetting).where(
+                    PlatformSetting.key == "builds.expo_project_id"
+                )
+            )
+            await session.commit()
+            reset_settings_cache()
