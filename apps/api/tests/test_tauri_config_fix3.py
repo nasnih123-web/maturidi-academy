@@ -161,6 +161,45 @@ def test_tauri_conf_plugins_are_real_v2_plugins() -> None:
     assert not unknown, f"پلاگین ناشناخته در Tauri 2: {sorted(unknown)}"
 
 
+def test_tauri_conf_tray_icon_uses_v2_key() -> None:
+    """رگرسیون FIX3-01b: در Tauri 2 فیلد app.trayIcon «iconPath» است نه
+    «icon» (TrayIconConfig: required iconPath, additionalProperties
+    false). همین خطای اسکیما سه جاب verify-unsigned ران #8 را در گام
+    build در کمتر از ۱ ثانیه قرمز کرد — پس از حذف updater، دومین
+    تلهٔ v1 بود که گارد ساختاری (فقط top-level) از دست داد.
+    """
+    tray = (_load_conf().get("app") or {}).get("trayIcon")
+    if tray is None:
+        return
+    assert isinstance(tray, dict)
+    assert "icon" not in tray, "در Tauri 2 کلید app.trayIcon باید iconPath باشد نه icon"
+    assert tray.get("iconPath"), "app.trayIcon.iconPath الزامی است (Tauri 2)"
+
+
+def test_tauri_conf_validates_against_official_v2_schema() -> None:
+    """قفل نهایی FIX3-01: اعتبارسنجی کامل کانفیگ با اسکیمای رسمی Tauri 2.
+
+    اسکیما در apps/api/tests/fixtures/tauri-config-schema-v2.json
+    پین شده (منبع: https://schema.tauri.app/config/2 ، نسخهٔ $id همان
+    فایل) تا هر نقض آیندهٔ اسکیما — نه فقط top-levelها — در CI گرفته
+    شود، نه روی رانر.
+    """
+    import jsonschema
+
+    cfg = _load_conf()
+    schema = json.loads(
+        (Path(__file__).resolve().parent / "fixtures" / "tauri-config-schema-v2.json")
+        .read_text(encoding="utf-8")
+    )
+    errors = sorted(
+        jsonschema.Draft7Validator(schema).iter_errors(cfg),
+        key=lambda e: list(e.path),
+    )
+    assert not errors, "\n".join(
+        f"{'/'.join(map(str, e.path))}: {e.message[:160]}" for e in errors[:6]
+    )
+
+
 def test_tauri_conf_updater_plugin_if_present_uses_v2_keys() -> None:
     cfg = _load_conf()
     updater = (cfg.get("plugins") or {}).get("updater")

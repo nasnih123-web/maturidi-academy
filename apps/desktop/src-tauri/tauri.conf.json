@@ -5,7 +5,11 @@
       "csp": "default-src 'self'; connect-src 'self' http://localhost:* https://localhost:*; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     },
     "trayIcon": {
-      "icon": "icons/icon.png",
+      // FIX3-01b: در Tauri 2 کلید «icon» معتبر نیست؛ TrayIconConfig
+      // فیلد «iconPath» را می‌خواهد (additionalProperties: false) — همین
+      // خطای اسکیما، سه جاب verify-unsigned ران #8 را در گام build در
+      // کمتر از ۱ ثانیه قرمز کرد.
+      "iconPath": "icons/icon.png",
       "title": "Maturidi Academy",
       "tooltip": "Maturidi Academy"
     },
