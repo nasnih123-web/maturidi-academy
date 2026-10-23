@@ -73,6 +73,7 @@ CORS_ALLOW_ORIGINS=http://localhost:3000,http://localhost:5173
 
 # --- secretهای همین نصب (تصادفی ساخته شده‌اند؛ به‌اشتراک نگذارید) ---
 JWT_SECRET={jwt_value}
+STORAGE_SIGNING_SECRET={storage_value}
 ENCRYPTION_KEY={enc_value}
 ENCRYPTION_KEY_VERSION=1
 """
@@ -81,7 +82,12 @@ ENCRYPTION_KEY_VERSION=1
 def render_env() -> str:
     jwt_value = secrets.token_urlsafe(43)
     enc_value = secrets.token_urlsafe(32)
-    return _HEADER + _BODY.format(jwt_value=jwt_value, enc_value=enc_value)
+    # FIX3-02: راز اختصاصی امضای storage هم از همان روز اولِ dev جدا از
+    # JWT ساخته می‌شود تا محیط توسعه همان توپولوژی production را تمرین کند.
+    storage_value = secrets.token_urlsafe(43)
+    return _HEADER + _BODY.format(
+        jwt_value=jwt_value, enc_value=enc_value, storage_value=storage_value
+    )
 
 
 def write_if_missing(path: Path, content: str) -> bool:
