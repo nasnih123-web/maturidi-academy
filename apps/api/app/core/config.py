@@ -114,6 +114,22 @@ class Settings(BaseSettings):
     # ثبت می‌کنند. خالی = مسیر سرویس غیرفعال (فقط کاربرِ دارای مجوز).
     # مقدارش secret است: فقط از محیط خوانده می‌شود و هرگز چاپ/ذخیره نمی‌شود.
     builds_service_token: str = ""
+    # یکپارچگی باکت بیلدها (FIX2-02 — ADR-0041): کالبک CI فایل‌ها را با
+    # همین مقادیر (در GitHub Secrets با همان نام‌ها) در باکت builds
+    # می‌نویسد؛ سمت API هم دقیقاً باید همان باکت را بخواند تا URL دانلود
+    # و prune روی همان‌جا کار کنند. قرارداد «همه یا هیچ»:
+    # - هر چهار مقدار اصلی خالی → بیلدها از همان storage عمومی برنامه
+    #   (S3_*) استفاده می‌کنند؛ باکت واحد، بدون کانفیگ دوم.
+    # - هر چهار مقدار پر → StorageProvider اختصاصی بیلدها با همین‌ها.
+    # - حالت میانی (بعضی پر، بعضی خالی) = ناسازگاری خطرناک: در startup
+    #   با خطای واضح fail می‌شود (validate_builds_storage) — هرگز
+    #   دانلود/prune بی‌صدا روی باکت اشتباه نمی‌رود.
+    builds_s3_endpoint: str = ""
+    builds_s3_endpoint_public: str = ""
+    builds_s3_access_key: str = ""
+    builds_s3_secret_key: str = ""
+    builds_s3_bucket: str = ""
+    builds_s3_region: str = "us-east-1"
 
     @property
     def is_dev(self) -> bool:

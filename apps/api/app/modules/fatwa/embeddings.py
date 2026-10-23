@@ -38,8 +38,10 @@ import hashlib
 import json
 import math
 import re
+import threading
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -106,6 +108,9 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
 class EmbeddingProvider(ABC):
     name: str = "base"
+    # هویت مدل برای ثبت روی chunk هنگام ایندکس (FIX2-03)؛ providerی که
+    # مدلش از config می‌آید (external) آن را async resolve می‌کند.
+    model_name: str = ""
 
     @abstractmethod
     async def embed(self, texts: list[str]) -> list[list[float]]:
@@ -123,6 +128,7 @@ class HashEmbeddingProvider(EmbeddingProvider):
     """
 
     name = "hash"
+    model_name = "hash-trigram-v1"
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         out: list[list[float]] = []
@@ -166,6 +172,13 @@ class ExternalAPIEmbeddingProvider(EmbeddingProvider):
         import os
 
         return os.environ.get(env_name) or None
+
+    async def model_identity(self) -> str:
+        """نام مدل پیکربندی‌شده — برای ثبت روی chunk (FIX2-03)."""
+        return (
+            await self._config("ai.embedding_model", "AI_EMBEDDING_MODEL")
+            or "default"
+        )
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -214,6 +227,7 @@ class LocalModelEmbeddingProvider(EmbeddingProvider):
     """
 
     name = "local_model"
+    model_name = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
     def __init__(self) -> None:
         try:
@@ -223,8 +237,7 @@ class LocalModelEmbeddingProvider(EmbeddingProvider):
                 "sentence-transformers نصب نیست؛ ai.embedding_provider را "
                 "به hash یا external_api برگردانید"
             ) from exc
-        model_name = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-        self._model = SentenceTransformer(model_name)
+        self._model = SentenceTransformer(self.model_name)
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -245,14 +258,23 @@ def fit_dim(vec: list[float]) -> list[float]:
     """پروجکشن بردار به EMBEDDING_DIM — قرارداد ذخیره‌سازی (B-03).
 
     ستون `embedding_vec` از نوع vector(256) است؛ مدل‌های واقعی ابعاد
-    دیگری می‌دهند (MiniLM: ۳۸۴، OpenAI: ۱۵۳۶). بردار بلندتر بریده و
-    دوباره L2-نرمال می‌شود (به سبک Matryoshka — ابعاد اول بیشترین
-    اطلاعات را نگه می‌دارند) و کوتاه‌تر با صفر pad می‌شود تا همهٔ
-    providerها خروجی هم‌بُعد بدهند.
+    دیگری می‌دهند (MiniLM: ۳۸۴، OpenAI: ۱۵۳۶).
+
+    FIX2-03: روش «folding» (تا کردن دوره‌ای) جای برش سادهٔ ۲۵۶ مؤلفهٔ
+    اول را می‌گیرد — برش بقیهٔ بردار را بی‌صدا دور می‌ریخت. مؤلفهٔ j
+    به خانهٔ j % EMBEDDING_DIM اضافه می‌شود: برای بردار کوتاه‌تر
+    معادل pad با صفر است و برای بلندتر انرژی همهٔ مؤلفه‌ها به‌صورت
+    جمع دوره‌ای حفظ می‌شود، بعد L2-نرمال. کوئری و سند هر دو همین تابع
+    را می‌بینند پس رتبه‌بندی سازگار می‌ماند.
+
+    توجه: تغییر پروجکشن معنای بردارهای قبلاً ذخیره‌شده را عوض
+    می‌کند — reindex لازم است؛ از همین رو provider/model روی هر
+    chunk ثبت می‌شود و وضعیت reindex در semantic_search_status
+    expose می‌شود.
     """
-    out = [float(x) for x in vec[:EMBEDDING_DIM]]
-    if len(out) < EMBEDDING_DIM:
-        out.extend([0.0] * (EMBEDDING_DIM - len(out)))
+    out = [0.0] * EMBEDDING_DIM
+    for j, x in enumerate(vec):
+        out[j % EMBEDDING_DIM] += float(x)
     norm = math.sqrt(sum(x * x for x in out))
     return [x / norm for x in out] if norm else out
 
@@ -293,13 +315,8 @@ async def resolve_provider_name(db: AsyncSession) -> str:
     return "hash" if get_settings().is_dev else "local_model"
 
 
-async def semantic_search_status(db: AsyncSession) -> dict:
-    """وضعیت صادقانهٔ جست‌وجوی معنایی — برای startup و داشبورد CRM.
-
-    semantic_enabled فقط وقتی True است که provider واقعی باشد و
-    پیش‌نیازش کامل باشد (external: endpoint؛ local: نصب بودن
-    sentence-transformers). در غیر این صورت reason دقیق برمی‌گردد.
-    """
+async def _semantic_search_status_base(db: AsyncSession) -> dict:
+    """هستهٔ وضعیت جست‌وجوی معنایی (بدون آمار chunkها)."""
     from app.core.platform_settings import get_setting
 
     provider = await resolve_provider_name(db)
@@ -361,17 +378,115 @@ async def log_semantic_search_status(db: AsyncSession) -> dict:
     return status
 
 
+async def chunk_provider_stats(db: AsyncSession, provider_name: str) -> dict:
+    """آمار هویت امبدینگ chunkها نسبت به provider فعلی (FIX2-03).
+
+    - chunks_without_provider: ردیف‌های legacy که قبل از ثبت هویت
+      ساخته شده‌اند — موقع بازیابی خوانده می‌شوند ولی اینجا شمرده و
+      expose می‌شوند تا reindex آن‌ها تصمیم آگاهانه باشد، نه حدس.
+    - chunks_other_provider: با provider دیگری ایندکس شده‌اند —
+      بازیابی معنایی آن‌ها را قاطی نمی‌کند (نگهبان _score) و تنها
+      راه استفاده‌شان reindex با provider فعلی است.
+    """
+    from sqlalchemy import func, select
+
+    from app.models.models import FiqhKnowledgeChunk
+
+    async def _count(*criteria) -> int:
+        stmt = select(func.count()).select_from(FiqhKnowledgeChunk).where(*criteria)
+        return int((await db.execute(stmt)).scalar_one())
+
+    total = await _count(FiqhKnowledgeChunk.embedding.is_not(None))
+    without_provider = await _count(
+        FiqhKnowledgeChunk.embedding.is_not(None),
+        FiqhKnowledgeChunk.embedding_provider.is_(None),
+    )
+    other_provider = await _count(
+        FiqhKnowledgeChunk.embedding.is_not(None),
+        FiqhKnowledgeChunk.embedding_provider.is_not(None),
+        FiqhKnowledgeChunk.embedding_provider != provider_name,
+    )
+    return {
+        "chunks_total": total,
+        "chunks_without_provider": without_provider,
+        "chunks_other_provider": other_provider,
+        "reindex_recommended": (without_provider + other_provider) > 0,
+    }
+
+
+async def semantic_search_status(db: AsyncSession) -> dict:
+    """وضعیت صادقانهٔ جست‌وجوی معنایی — برای startup و داشبورد CRM.
+
+    semantic_enabled فقط وقتی True است که provider واقعی باشد و
+    پیش‌نیازش کامل باشد (external: endpoint؛ local: نصب بودن
+    sentence-transformers). در غیر این صورت reason دقیق برمی‌گردد.
+    روی آن، آمار هویت chunkها (FIX2-03) هم سوار می‌شود تا نیاز به
+    reindex در همان داشبورد دیده شود.
+    """
+    status = await _semantic_search_status_base(db)
+    status.update(await chunk_provider_stats(db, status["provider"]))
+    return status
+
+
+async def provider_identity(provider: EmbeddingProvider) -> tuple[str, str]:
+    """هویت (provider, model) برای ثبت روی chunk هنگام ایندکس (FIX2-03)."""
+    model = provider.model_name or ""
+    if isinstance(provider, ExternalAPIEmbeddingProvider):
+        model = await provider.model_identity()
+    return provider.name, model
+
+
+# ---------------------------------------------------------------------------
+# کش singleton تنبل و thread-safe برای providerها (FIX2-04)
+#
+# ساخت LocalModelEmbeddingProvider سنگین است (لود SentenceTransformer) و
+# پیش از این fix در هر فراخوانیِ get_embedding_provider از نو ساخته
+# می‌شد — یعنی عملاً در مسیر هر درخواست. providerهای بدون وضعیت
+# (hash/local_model) یک بار در هر پردازه ساخته و کش می‌شوند؛ دسترسی با
+# double-checked locking thread-safe است و ساخت تنبل می‌ماند (تا اولین
+# استفاده هیچ مدلی لود نمی‌شود).
+# ---------------------------------------------------------------------------
+
+_provider_cache: dict[str, EmbeddingProvider] = {}
+_provider_cache_lock = threading.Lock()
+
+
+def _cached_provider(
+    name: str, factory: Callable[[], EmbeddingProvider]
+) -> EmbeddingProvider:
+    inst = _provider_cache.get(name)
+    if inst is None:
+        with _provider_cache_lock:
+            inst = _provider_cache.get(name)
+            if inst is None:
+                inst = factory()
+                _provider_cache[name] = inst
+    return inst
+
+
+def reset_embedding_provider_cache() -> None:
+    """خالی‌کردن کش providerها — فقط برای تست‌ها."""
+    with _provider_cache_lock:
+        _provider_cache.clear()
+
+
 async def get_embedding_provider(
     db: AsyncSession, name: str | None = None
 ) -> EmbeddingProvider:
-    """انتخاب provider — setting صریح، وگرنه پیش‌فرض محیطی (M-07)."""
+    """انتخاب provider — setting صریح، وگرنه پیش‌فرض محیطی (M-07).
+
+    hash و local_model از کش singleton پردازه برمی‌گردند (FIX2-04).
+    external_api عمداً کش نمی‌شود: نمونه‌اش به AsyncSession زندهٔ همان
+    درخواست گره خورده (config را از دیتابیس می‌خواند) و کش‌کردنش نشستِ
+    بسته‌شده را به درخواست‌های بعدی نشت می‌دهد.
+    """
     selected = _decode_provider_name(name) if name else await resolve_provider_name(db)
     if selected == "hash":
-        return HashEmbeddingProvider()
+        return _cached_provider("hash", HashEmbeddingProvider)
     if selected == "external_api":
         return ExternalAPIEmbeddingProvider(db)
     if selected == "local_model":
-        return LocalModelEmbeddingProvider()
+        return _cached_provider("local_model", LocalModelEmbeddingProvider)
     raise EmbeddingProviderError(f"provider ناشناخته: {selected}")
 
 
@@ -610,12 +725,27 @@ class ChunkIndex:
         ai_scope: str,
         pg_semantic: dict[str, float] | None,
     ) -> ScoredChunk | None:
-        """امتیاز هیبریدی یک chunk — None یعنی خارج از ai_scope خواسته‌شده."""
+        """امتیاز هیبریدی یک chunk — None یعنی خارج از ai_scope خواسته‌شده.
+
+        FIX2-03: chunkی که provider ثبت‌شده‌اش با provider کوئری فرق
+        دارد هرگز امتیاز معنایی نمی‌گیرد — کسینوس بین فضای دو provider
+        بی‌معناست و قاطی‌کردن خاموش آن دقیقاً باگ گزارش‌شده بود. چنین
+        chunkی فقط با امتیاز واژگانی می‌ماند و در وضعیت
+        (chunks_other_provider) به‌عنوان نیازمند reindex شمرده می‌شود.
+        chunkهای legacy بدون provider ثبت‌شده فعلاً امتیاز معنایی
+        می‌گیرند ولی در همان وضعیت expose می‌شوند.
+        """
         scopes = c.ai_scopes or []
         if ai_scope not in scopes:
             return None
         lex = lexical_score(query, c.chunk_text)
-        if pg_semantic is not None and str(c.id) in pg_semantic:
+        recorded_provider = getattr(c, "embedding_provider", None)
+        provider_mismatch = bool(recorded_provider) and (
+            recorded_provider != self.provider.name
+        )
+        if provider_mismatch:
+            sem = 0.0
+        elif pg_semantic is not None and str(c.id) in pg_semantic:
             sem = pg_semantic[str(c.id)]
         else:
             sem = (

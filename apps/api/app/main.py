@@ -29,7 +29,7 @@ from app.core.middleware import (
     SecurityHeadersMiddleware,
 )
 from app.core.realtime import websocket_endpoint
-from app.core.storage import ensure_storage_ready
+from app.core.storage import ensure_storage_ready, validate_builds_storage
 from app.modules.admin.builds_router import router as admin_builds_router
 from app.modules.admin.connections_router import router as admin_connections_router
 from app.modules.admin.content_center_router import router as admin_content_router
@@ -144,6 +144,9 @@ async def lifespan(app: FastAPI):
     # startup؛ در production با config بد یا MinIOِ در دسترس‌نبودن، بوت با
     # خطای صریح فیل می‌شود (نه fallback خاموش).
     await ensure_storage_ready(settings)
+    # FIX2-02 (ADR-0041): ناسازگاری باکت بیلدها (BUILDS_S3_* ناقص) همین‌جا
+    # در startup با خطای واضح گرفته می‌شود — نه هنگام دانلود کاربر.
+    validate_builds_storage(settings)
     _init_sentry()
     _init_otel()
     # M-07: وضعیت جست‌وجوی معنایی در startup صریح اعلام می‌شود — در

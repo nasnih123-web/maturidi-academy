@@ -178,6 +178,8 @@ class BuildReleaseOut(BaseModel):
     build_number: str | None = None
     download_url: str | None = None
     download_expires_at: str | None = None
+    # لینک دستی منقضی شده و سرو نمی‌شود (FIX2-07)
+    download_expired: bool = False
     # فایل واقعی بیلد در StorageProvider (B-01 — ADR-0025)
     has_file: bool = False
     artifact_key: str | None = None

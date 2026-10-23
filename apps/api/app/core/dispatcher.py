@@ -10,7 +10,8 @@
   (حداکثر ۵ دقیقه) انجام می‌شود؛ بعد از ۵ شکست، `failed_at` ثبت می‌شود —
   یعنی dead-letter که ادمین در `/api/v1/admin/events/dead-letter` می‌بیند.
 - `EventBus` انتزاع است: `RedisBus` (pub/sub واقعی) یا `InMemoryBus`
-  (fallback خودکار وقتی Redis در دسترس نیست — با یک خط لاگ در startup).
+  (fallback فقط در dev/test وقتی Redis در دسترس نیست — با یک خط لاگ در
+  startup؛ در staging/production نبود Redis یعنی fail-fast — FIX2-05).
 - دروازهٔ WebSocket با `run_listener` روی bus مشترک می‌شود و هر پیام را به
   `realtime.broadcast_event` می‌دهد تا به کلاینت‌ها fan-out شود.
 - Consumerها باید idempotent باشند (چک `event_id`) — قرارداد §۴.
@@ -127,7 +128,14 @@ class RedisBus(EventBus):
 
 
 async def create_event_bus() -> EventBus:
-    """تلاش برای Redis؛ در صورت شکست، fallback حافظه‌ای با لاگ هشدار."""
+    """تلاش برای Redis؛ شکست آن بیرون از dev یعنی fail-fast (FIX2-05).
+
+    در dev/test fallback حافظه‌ای با لاگ هشدار می‌ماند. در staging و
+    production اما InMemoryBus ساکت یعنی رویدادها فقط در همان پردازه
+    fan-out می‌شوند و بقیهٔ workerها/سرویس‌ها هرگز نمی‌بینندشان — یک
+    degradation نامرئی. پس در startup raise می‌شود تا استقرار معیوب
+    همان لحظه معلوم شود، نه با گم‌شدن رویداد در عمل.
+    """
     settings = get_settings()
     try:
         import redis.asyncio as aioredis
@@ -137,6 +145,17 @@ async def create_event_bus() -> EventBus:
         logger.info("event bus: redis (%s)", settings.redis_url)
         return RedisBus(client)
     except Exception as exc:
+        if not settings.is_dev:
+            logger.critical(
+                "event bus: redis unavailable in env=%s (%s) — refusing to "
+                "start with a silent in-memory fallback",
+                settings.app_env,
+                exc,
+            )
+            raise RuntimeError(
+                f"event bus: redis unavailable in env={settings.app_env}; "
+                "in-memory fallback is dev-only (FIX2-05)"
+            ) from exc
         logger.warning(
             "event bus: redis unavailable (%s) — using in-memory bus (dev fallback); "
             "events remain durable in domain_events table",

@@ -597,6 +597,13 @@ class FiqhKnowledgeChunk(Base):
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     embedding_vec: Mapped[list | None] = mapped_column(Vector(256), nullable=True)
+    # هویت provider/model سازندهٔ بردار (FIX2-03 — ADR-0042)؛ NULL یعنی
+    # ردیف legacy پیش از ثبت هویت → در وضعیت جست‌وجو نیازمند reindex
+    # شمرده می‌شود. بازیابی، بردار provider دیگر را قاطی نمی‌کند.
+    embedding_provider: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, index=True
+    )
+    embedding_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     source_type: Mapped[str] = mapped_column(String(32), default="manual", index=True)
     source_ref: Mapped[dict | None] = mapped_column(
         JSONB, nullable=True
@@ -2085,10 +2092,17 @@ class BuildRelease(Base):
         DateTime(timezone=True), default=_utcnow, index=True
     )
 
+    # FIX2-11 (ADR-0046): قید یکتایی قدیمی (platform, version,
+    # build_number) با طراحی callback ناسازگار بود — callback برای هر
+    # فایل یک رکورد با همان سه‌تایی ثبت می‌کند، پس انتشار چندفایلی
+    # اصلاً ثبت نمی‌شد. یکتایی واقعی روی artifact_key است (یک رکورد
+    # برای هر فایل ذخیره‌شده؛ NULLها — انتشار دستی — آزادند) و گروه
+    # انتشار (platform, version, build_number) واحد نگهداری است.
     __table_args__ = (
-        UniqueConstraint(
-            "platform", "version", "build_number",
-            name="uq_build_releases_platform_version",
+        Index(
+            "uq_build_releases_artifact_key",
+            "artifact_key",
+            unique=True,
         ),
     )
 

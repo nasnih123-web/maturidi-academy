@@ -43,6 +43,7 @@ from .embeddings import (
     cosine_similarity,
     get_embedding_provider,
     pgvector_available,
+    provider_identity,
 )
 from .providers import (
     SAFETY_PROMPT,
@@ -751,11 +752,14 @@ async def chunk_create(
         raise APIError(422, "bad_ai_scopes", f"scope نامعتبر: {bad}")
     provider = await get_embedding_provider(db)
     vector = (await provider.embed([chunk_text]))[0]
+    prov_name, prov_model = await provider_identity(provider)
     chunk = FiqhKnowledgeChunk(
         chunk_text=chunk_text,
         embedding=list(vector),
         # ستون برداری واقعی روی Postgres (B-03 — ADR-0026)
         embedding_vec=list(vector) if pgvector_available() else None,
+        embedding_provider=prov_name,
+        embedding_model=prov_model,
         source_type=source_type,
         source_ref=source_ref,
         source_citation=source_citation,

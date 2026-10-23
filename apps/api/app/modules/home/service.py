@@ -493,7 +493,12 @@ async def search(
             )
 
     if want_themes:
-        themes = (await db.execute(select(Theme))).scalars().all()
+        # FIX2-12: فقط تم فعال (منتشرشده) — مثل همهٔ مصرف‌کننده‌های
+        # عمومی دیگر (meta/router، cms)؛ قبلاً همهٔ تم‌ها از جمله
+        # پیش‌نویس/غیرفعال در جست‌وجوی عمومی نشت می‌کردند.
+        themes = (
+            await db.execute(select(Theme).where(Theme.is_active.is_(True)))
+        ).scalars().all()
         for theme in themes:
             name = _as_localized(theme.name)
             if name is None:
