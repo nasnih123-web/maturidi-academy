@@ -128,6 +128,19 @@ def test_tauri_conf_parses_as_jsonc() -> None:
     assert isinstance(cfg, dict) and cfg
 
 
+def test_tauri_conf_is_strict_json_no_comments() -> None:
+    """رگرسیون FIX3-01c: اسکریپت بیلد Rust (tauri-build) کانفیگ را با
+    پارسر JSON سخت‌گیر می‌خواند، نه JSONC — هر کامنت // در فایل، بیلد
+    واقعی را بعد از ~۳ دقیقه کامپایل با خطای «key must be a string at
+    line 8 column 7» می‌کشد (اثبات زنده: verify-unsigned ران #11 روی هر
+    سه سیستم‌عامل؛ همان خط و ستون عیناً در parse سخت‌گیر محلی). توضیحات
+    FIX3-01/01b جایشان در همین فایل تست و ADR-0031 است، نه داخل کانفیگ.
+    """
+    raw = CONF.read_text(encoding="utf-8")
+    cfg = json.loads(raw)  # بدون حذف کامنت — همان قرارداد tauri-build
+    assert isinstance(cfg, dict) and cfg
+
+
 def test_tauri_conf_declares_v2_schema() -> None:
     cfg = _load_conf()
     assert str(cfg.get("$schema", "")).rstrip("/").endswith("/config/2")

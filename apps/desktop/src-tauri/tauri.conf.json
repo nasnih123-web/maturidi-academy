@@ -5,10 +5,6 @@
       "csp": "default-src 'self'; connect-src 'self' http://localhost:* https://localhost:*; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     },
     "trayIcon": {
-      // FIX3-01b: در Tauri 2 کلید «icon» معتبر نیست؛ TrayIconConfig
-      // فیلد «iconPath» را می‌خواهد (additionalProperties: false) — همین
-      // خطای اسکیما، سه جاب verify-unsigned ران #8 را در گام build در
-      // کمتر از ۱ ثانیه قرمز کرد.
       "iconPath": "icons/icon.png",
       "title": "Maturidi Academy",
       "tooltip": "Maturidi Academy"
@@ -58,13 +54,4 @@
   },
   "productName": "Maturidi Academy",
   "version": "0.1.0"
-  // FIX3-01: هیچ بلوک top-level «updater»ای در این فایل نیست و نباید
-  // برگردد — «updater» در سطح بالا سبک Tauri v1 است و اسکیمای v2 کل
-  // کانفیگ را رد می‌کند (خطای ران واقعی Desktop builds #5 مالک:
-  // «Additional properties are not allowed ('updater' was
-  // unexpected)»). نیت C-05 (ADR-0031) سر جایش است: آپدیتر تا وقتی
-  // زیرساخت releases واقعی + کلید امضا آماده شود غیرفعال می‌ماند —
-  // در Tauri 2 «غیرفعال» یعنی بلوک **غایب** باشد؛ فعال‌سازی فقط با
-  // افزودن plugins.updater (فرم v2) با endpoint و pubkey واقعی و
-  // تصمیم ثبت‌شده در ADR-0031. چک‌لیست انتشار: apps/desktop/README.md
 }
