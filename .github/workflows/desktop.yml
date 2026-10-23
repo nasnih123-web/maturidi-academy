@@ -26,7 +26,7 @@ jobs:
       tag_commit: ${{ steps.meta.outputs.tag_commit }}
       release_state: ${{ steps.meta.outputs.release_state }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Resolve version + release tag
         id: meta
         env:
@@ -125,7 +125,7 @@ jobs:
       run:
         working-directory: apps/desktop
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-node@v4
         with:
