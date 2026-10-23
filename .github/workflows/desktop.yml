@@ -6,8 +6,20 @@ on:
         description: "Attach bundles to the GitHub Release with this tag (e.g. v1.1.0). Empty = workflow artifacts only."
         required: false
         default: ""
+      unsigned_verify_only:
+        description: "Only run the unsigned build-verification job (no release, no callback, no secrets)."
+        required: false
+        type: boolean
+        default: false
   push:
     tags: ["desktop-v*"]
+  # FIX2-09: روی PRهایی که دسکتاپ را لمس می‌کنند فقط job راستی‌آزمایی
+  # بیلد بدون امضا اجرا می‌شود (پایین)؛ jobهای release/callback روی PR
+  # هرگز اجرا نمی‌شوند (با if صریح روی resolve/build).
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - ".github/workflows/desktop.yml"
 
 # Default token stays read-only; jobs that touch a Release opt in below.
 permissions:
@@ -16,6 +28,8 @@ permissions:
 jobs:
   # ── Resolve the target release ONCE (avoids matrix create-races) ──────
   resolve:
+    # روی PR و در حالت verify-only اجرا نمی‌شود (release ساخته نمی‌شود)
+    if: github.event_name != 'pull_request' && inputs.unsigned_verify_only != true
     runs-on: ubuntu-latest
     permissions:
       contents: write # only for `gh release create` of a DRAFT when missing
@@ -106,6 +120,7 @@ jobs:
 
   build:
     needs: resolve
+    if: github.event_name != 'pull_request' && inputs.unsigned_verify_only != true
     # نکتهٔ فاز ۲: Tauri روی هر سیستم‌عامل باید روی runner همان OS بیلد شود —
     # cross-compile از یک کانتینر لینوکسی ممکن نیست.
     strategy:
@@ -264,6 +279,63 @@ jobs:
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" release-assets/* --clobber
           echo "Attached ${PLATFORM} bundles to release $TAG"
           echo "::warning::Desktop bundles are UNSIGNED — the release must stay draft until the owner reviews build-manifest-${PLATFORM}.json."
+
+  # ── راستی‌آزمایی بیلد بدون امضا (FIX2-09) ─────────────────────────
+  # روی PRهای لمس‌کنندهٔ apps/desktop/** و با workflow_dispatch
+  # (unsigned_verify_only=true) اجرا می‌شود: همان بیلد واقعی Tauri
+  # روی runner هر سه OS، ولی بدون هیچ secret، بدون ساخت Release و
+  # بدون callback ثبت انتشار. قاعدهٔ صریح مالک: نبود secret امضا
+  # هرگز نباید جلوی بیلد بدون امضا را بگیرد — این job هیچ secreتی
+  # نمی‌خواند (در تست نگهبان CI هم assert شده است) و خروجی‌اش فقط
+  # workflow artifact کوتاه‌عمر است، نه انتشار.
+  verify-unsigned:
+    if: github.event_name == 'pull_request' || inputs.unsigned_verify_only == true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: macos-latest
+            platform: macos
+          - os: ubuntu-latest
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+      - name: Verify shell + icon assets (ADR-0023)
+        shell: bash
+        run: |
+          test -f shell/index.html
+          test -f shell/shell.js
+          test -f shell/config.js
+          test -f src-tauri/icons/32x32.png
+          test -f src-tauri/icons/128x128.png
+          test -f src-tauri/icons/icon.png
+          test -f src-tauri/icons/icon.ico
+          test -f src-tauri/icons/icon.icns
+          echo "desktop shell + icons present"
+      - name: Linux bundle prerequisites
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Build (unsigned — no signing secrets involved)
+        run: npm run tauri build
+      - name: Upload bundles (verification evidence only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-unsigned-${{ matrix.platform }}
+          path: apps/desktop/src-tauri/target/release/bundle/
+          retention-days: 14
 
 # صداقت وضعیت:
 # - هر پلتفرم روی runner خودش بیلد و خروجی واقعی همان پلتفرم (msi/exe ،dmg ،

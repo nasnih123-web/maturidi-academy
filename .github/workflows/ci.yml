@@ -105,6 +105,31 @@ jobs:
         env:
           VITE_API_URL: http://localhost:8000
 
+  mobile:
+    # FIX2-09: تا پیش از این هیچ پوشش CI برای apps/mobile نبود.
+    # npm ci از lockfile خود موبایل + typecheck + اعتبارسنجی headless
+    # کانفیگ Expo (expo config) — قطعی و بدون نیاز به اکانت/secret.
+    # بیلد واقعی EAS در mobile.yml است و owner-gated می‌ماند.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Expo config check (headless)
+        # کانفیگ نهایی اپ (app.json/app.config + پلاگین‌ها) باید بدون
+        # خطا resolve شود؛ خروجی به فایل می‌رود تا در لاگ قابل‌دید باشد.
+        run: |
+          npx expo config --json > /tmp/expo-config.json
+          node -e "const c=require('/tmp/expo-config.json'); if(!c.name) { console.error('expo config missing name'); process.exit(1); } console.log('expo config OK:', c.name, c.slug || '')"
+
   postgres:
     # B-03/C-04: مهاجرت + تست یکپارچهٔ pgvector روی PostgreSQL واقعی
     # (سرویس pgvector/pgvector:pg16 — همان ایمیج compose). اثبات می‌کند
@@ -169,6 +194,11 @@ jobs:
     # دود HTTP/WS. مقادیر .env.prod این job فقط CI هستند (اسرار واقعی
     # نیستند)؛ APP_ENV=production عمدی است تا fail-fast تولید هم ورزش شود.
     # اسکریپت دود داخل کانتینر api اجرا می‌شود (پورت هاست ندارد).
+    # دامنه (FIX2-10 — صریح): `up -d --build api` فقط api و closure
+    # وابستگی‌اش را بالا می‌آورد (postgres, redis, minio, clamav,
+    # migrate) — web/crm/workerها/monitoring این‌جا ساخته یا بررسی
+    # نمی‌شوند و سبز شدن این job ادعای سلامت آن‌ها نیست. دود شامل
+    # آپلود زندهٔ EICAR علیه ClamAV واقعی استک هم هست (FIX2-10).
     name: Compose smoke (prod stack)
     runs-on: ubuntu-latest
     needs: [backend, docker]

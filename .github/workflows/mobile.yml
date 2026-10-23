@@ -362,7 +362,7 @@ jobs:
           CB_PLATFORM: ${{ inputs.platform || 'android' }}
           CB_VERSION: ${{ steps.meta.outputs.version }}
           CB_BUILD_NUMBER: ${{ steps.validate.outputs.version_code || github.run_number }}
-          CB_ARTIFACT_DIR: apps/mobile/release-assets
+          CB_ARTIFACT_DIR: release-assets
           CB_MANIFEST: build-manifest.json
           SIGNING: ${{ steps.validate.outputs.signing_status }}
           BUILDS_API_BASE_URL: ${{ secrets.BUILDS_API_BASE_URL }}
@@ -377,7 +377,7 @@ jobs:
             verified*|apple-provisioned*) export CB_SIGNED=true ;;
             *) export CB_SIGNED=false ;;
           esac
-          bash tools/ci/build-callback.sh
+          bash "$GITHUB_WORKSPACE/tools/ci/build-callback.sh"
 
   # ── Release attach: only for a resolved tag, only after validation ────
   release:
