@@ -63,3 +63,10 @@ opentelemetry-exporter-otlp==1.45.1
 minio==7.2.20
 # remediation-pass-2 Track 1 (§۷) — فیک Redis برای تست‌های rate limiter (فقط تست)
 fakeredis==2.40.0
+# FIX3-01 — اعتبارسنجی کانفیگ Tauri با اسکیمای رسمی v2 در
+# tests/test_tauri_config_fix3.py (فقط تست). تا راند ۳ در requirements
+# نبود و فقط به‌صورت اتفاقی (transitive) روی ماشین توسعه حاضر بود؛
+# CI تمیز آن را ندارد و تست با ModuleNotFoundError قرمز شد (ران ۱۸۶:
+# ‏۱ failed / 810 passed). صریح پین شد تا محیط تست همان چیزی باشد که
+# توسعه می‌بیند.
+jsonschema==4.25.1
