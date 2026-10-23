@@ -352,6 +352,33 @@ jobs:
             apps/mobile/build-info/
           retention-days: 90
 
+      # B-01 (ADR-0025): حلقهٔ بیلد بسته می‌شود — آرتیفکت اعتبارسنجی‌شده
+      # به باکت builds در MinIO می‌رود و انتشار با توکن سرویس به API ثبت
+      # می‌شود تا CRM لینک دانلود امضاشده نشان دهد. نبود secretها = ردِّ
+      # صادقانه با هشدار داخل اسکریپت. signed فقط از وضعیت واقعی
+      # اعتبارسنجی می‌آید (apksigner/jarsigner verified یا provision اپل).
+      - name: Close the loop — MinIO upload + API release registration (B-01)
+        env:
+          CB_PLATFORM: ${{ inputs.platform || 'android' }}
+          CB_VERSION: ${{ steps.meta.outputs.version }}
+          CB_BUILD_NUMBER: ${{ steps.validate.outputs.version_code || github.run_number }}
+          CB_ARTIFACT_DIR: release-assets
+          CB_MANIFEST: build-manifest.json
+          SIGNING: ${{ steps.validate.outputs.signing_status }}
+          BUILDS_API_BASE_URL: ${{ secrets.BUILDS_API_BASE_URL }}
+          BUILDS_SERVICE_TOKEN: ${{ secrets.BUILDS_SERVICE_TOKEN }}
+          BUILDS_S3_ENDPOINT: ${{ secrets.BUILDS_S3_ENDPOINT }}
+          BUILDS_S3_BUCKET: ${{ secrets.BUILDS_S3_BUCKET }}
+          BUILDS_S3_ACCESS_KEY: ${{ secrets.BUILDS_S3_ACCESS_KEY }}
+          BUILDS_S3_SECRET_KEY: ${{ secrets.BUILDS_S3_SECRET_KEY }}
+          BUILDS_S3_REGION: ${{ secrets.BUILDS_S3_REGION }}
+        run: |
+          case "$SIGNING" in
+            verified*|apple-provisioned*) export CB_SIGNED=true ;;
+            *) export CB_SIGNED=false ;;
+          esac
+          bash "$GITHUB_WORKSPACE/tools/ci/build-callback.sh"
+
   # ── Release attach: only for a resolved tag, only after validation ────
   release:
     needs: build
