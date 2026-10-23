@@ -23,9 +23,10 @@ apps/desktop/
     config.js                  # MATURIDI_WEB_URL — set at packaging time
     icon.png                   # emblem shown on the state pages
   src-tauri/
-    tauri.conf.json            # window, tray, CSP, bundle, updater (moved here
+    tauri.conf.json            # window, tray, CSP, bundle (moved here
                                # from apps/desktop/ in Phase 13 — the Tauri 2
-                               # conventional location)
+                               # conventional location; NO updater block —
+                               # see Notes)
     Cargo.toml / build.rs / src/main.rs
     capabilities/default.json
     icons/                     # generated set: icon.png 512, 32/128/256,
@@ -80,19 +81,25 @@ pages), so the production desktop bundle ships a small **local shell**
     `tauri build`.
   - Windows: code-signing cert thumbprint in `bundle.windows.certificateThumbprint`
     (or `TAURI_SIGNING_PRIVATE_KEY` for the updater signature).
-  - Updater: `tauri.conf.json → updater.pubkey` stays **empty** here; CI
-    injects the real public key and the private key signs artifacts via the
-    `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` secrets.
+  - Updater: there is **no updater block at all** in `tauri.conf.json`
+    (see Notes). When the real release feed exists, CI adds a Tauri 2
+    `plugins.updater` block carrying the real `pubkey`; the private key
+    signs artifacts via the `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)`
+    secrets.
 - Phase-13 acceptance: signed installers for all three platforms are stored
   in MinIO (Phase 14 wires the upload step; the workflow comment tracks it).
 
 ## Notes
 
-- Updater: **disabled** (`updater.active: false` — Track 2 / §۱۶; decision
-  re-affirmed in ADR-0031 / C-05). The `endpoints` list is intentionally
-  **empty** — no placeholder URL ships in the config; enable
-  auto-update only after pointing it at the real release feed AND injecting
-  the real `updater.pubkey` (CI injects the key; the private key signs via
+- Updater: **disabled by absence** (Track 2 / §۱۶; decision re-affirmed
+  in ADR-0031 / C-05). There is no `updater` key anywhere in
+  `tauri.conf.json`: a top-level `updater` block is Tauri v1 style and
+  the v2 config schema rejects the whole file (owner's Desktop builds
+  run #5 failed on all three OSes with exactly that error — FIX3-01).
+  No placeholder endpoint/pubkey ships in the config. Enable
+  auto-update only by adding a Tauri 2 `plugins.updater` block with
+  `endpoints` pointing at the real release feed AND the real `pubkey`
+  (CI injects the key; the private key signs via
   `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` secrets).
 - CSP (`app.security.csp`): the shell page itself only loads local files
   (`script-src 'self'`); after navigation, the remote web origin's own
