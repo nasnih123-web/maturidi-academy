@@ -162,8 +162,13 @@ async def test_search_type_filter(tc):
     from app.models.models import Theme
 
     async with tc["maker"]() as db:
+        # FIX2-12: فقط تم فعال در جست‌وجوی عمومی می‌آید (نشت تم
+        # غیرفعال در test_search_global پوشش داده شده است)
         db.add(
-            Theme(name={"fa": "قالب آزمایشی جست‌وجو", "ar": "قالب", "en": "Search Theme"})
+            Theme(
+                name={"fa": "قالب آزمایشی جست‌وجو", "ar": "قالب", "en": "Search Theme"},
+                is_active=True,
+            )
         )
         await db.commit()
     client = tc["client"]

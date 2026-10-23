@@ -862,12 +862,15 @@ async def test_builds_prereqs_rebuild_releases(tc):
     assert r.json()["download_url"] is None  # امضانشده → لینک نمی‌دهد
     assert r.json()["signed"] is False
 
+    # FIX2-07: download_url دستی فقط روی میزبان شناخته‌شدهٔ پروژه
+    # (این‌جا localhost از APP_BASE_URL پیش‌فرض) پذیرفته می‌شود؛
+    # URL خارجی دلخواه در test_release_download_url_fix2 رد می‌شود.
     r = await client.post(f"{BASE}/admin/builds/releases", headers=admin,
                           json={"platform": "android", "version": "1.0.1",
                                 "build_number": "43", "signed": True,
-                                "download_url": "https://example.com/app-101.apk"})
+                                "download_url": "https://localhost:8000/builds/app-101.apk"})
     assert r.status_code == 201
-    assert r.json()["download_url"] == "https://example.com/app-101.apk"
+    assert r.json()["download_url"] == "https://localhost:8000/builds/app-101.apk"
 
     r = await client.get(f"{BASE}/admin/builds/releases",
                          params={"platform": "android"}, headers=admin)

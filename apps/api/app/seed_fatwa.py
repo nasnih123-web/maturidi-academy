@@ -123,6 +123,8 @@ async def seed_fatwa_demo(db: AsyncSession) -> dict[str, int]:
                 embedding=list(vector),
                 # ستون برداری واقعی روی Postgres (B-03 — ADR-0026)
                 embedding_vec=list(vector) if pgvector_available() else None,
+                embedding_provider=provider.name,
+                embedding_model=provider.model_name,
                 source_type="demo_seed",
                 source_ref={
                     "type": "seed",

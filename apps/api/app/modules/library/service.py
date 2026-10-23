@@ -288,9 +288,14 @@ async def _signed_url(key: str | None) -> str | None:
     """signed URL کوتاه‌مدت — هرگز کلید خام یا URL عمومی."""
     if not key or key.startswith("pending:"):
         return None
+    from app.core.storage import SIGNED_PURPOSE_LIBRARY
+
     storage = get_storage()
     return await storage.get_presigned_url(
-        key, expires_seconds=SIGNED_URL_EXPIRY_S, download_path=DOWNLOAD_PATH
+        key,
+        expires_seconds=SIGNED_URL_EXPIRY_S,
+        download_path=DOWNLOAD_PATH,
+        purpose=SIGNED_PURPOSE_LIBRARY,
     )
 
 

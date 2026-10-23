@@ -163,13 +163,25 @@ async def download_by_ref(
     key: str,
     exp: int,
     sig: str,
+    purpose: str = "",
     db: AsyncSession = Depends(get_db),
 ):
-    """دانلود با URL امضاشدهٔ کوتاه‌مدت (§۶) — امضا جای احراز هویت را می‌گیرد."""
+    """دانلود با URL امضاشدهٔ کوتاه‌مدت (§۶) — امضا جای احراز هویت را می‌گیرد.
+
+    FIX2-08: امضا باید هم‌منظور کتابخانه باشد؛ امضای صادرشده برای
+    مصرف دیگر (مثلاً گواهی LMS) این‌جا کار نمی‌کند.
+    """
+    from app.core.storage import SIGNED_PURPOSE_LIBRARY
+
     storage = get_storage()
     verify = getattr(storage, "verify_download_sig", None)
     read_bytes = getattr(storage, "read_bytes", None)
-    if verify is None or read_bytes is None or not verify(key, exp, sig):
+    if (
+        verify is None
+        or read_bytes is None
+        or purpose != SIGNED_PURPOSE_LIBRARY
+        or not verify(key, exp, sig, purpose)
+    ):
         raise APIError(403, "invalid_signature", "امضای دانلود نامعتبر یا منقضی است")
     _, mime = await service.resolve_download_key(db, key)
     data = await read_bytes(key)
