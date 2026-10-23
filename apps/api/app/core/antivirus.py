@@ -37,6 +37,30 @@ class ScanResult:
     signature: str | None = None
 
 
+async def _read_response(reader: asyncio.StreamReader, timeout: float) -> bytes:
+    """خواندن پاسخ clamd تا ترمیناتور پروتکل یا EOF.
+
+    فرمان ما `zINSTREAM` است (حالت z): پاسخ‌ها NUL-terminated هستند، نه
+    newline — `readline()` روی clamd واقعی یا تا EOF صبر می‌کند یا رشتهٔ
+    آلوده به `\\x00` برمی‌گرداند. این‌جا تا اولین `\\x00`/`\\n` یا EOF
+    می‌خوانیم؛ سقف زمانی همان timeout اسکن است.
+    """
+    buf = bytearray()
+
+    async def _pump() -> None:
+        while b"\x00" not in buf and b"\n" not in buf:
+            chunk = await reader.read(4096)
+            if not chunk:
+                break
+            buf.extend(chunk)
+
+    try:
+        await asyncio.wait_for(_pump(), timeout=timeout)
+    except TimeoutError as exc:
+        raise AntivirusUnavailable("clamd response timeout") from exc
+    return bytes(buf)
+
+
 async def scan_bytes(
     data: bytes,
     *,
@@ -62,17 +86,18 @@ async def scan_bytes(
             writer.write(struct.pack(">I", len(part)) + part)
         writer.write(struct.pack(">I", 0))
         await writer.drain()
-        try:
-            raw = await asyncio.wait_for(reader.readline(), timeout=timeout)
-        except TimeoutError as exc:
-            raise AntivirusUnavailable("clamd response timeout") from exc
+        raw = await _read_response(reader, timeout)
     except AntivirusUnavailable:
         raise
     except (OSError, ConnectionError) as exc:
         raise AntivirusUnavailable(f"instream: {exc}") from exc
     finally:
         writer.close()
-    response = raw.decode("utf-8", errors="replace").strip()
+    # پاسخ clamd در حالت z با NUL تمام می‌شود (حالت n با newline)؛ هر دو
+    # ترمیناتور پیش از قضاوت برداشته می‌شود — بدون این نرمال‌سازی، پاسخ
+    # پاکِ واقعی «stream: OK\x00» با endswith("OK") رد می‌شد (FIX2-10b:
+    # یافتهٔ زندهٔ CI ران ۱۷۷، اثبات‌شده علیه clamd واقعی).
+    response = raw.decode("utf-8", errors="replace").strip().rstrip("\x00").strip()
     if response.endswith("OK"):
         return ScanResult(clean=True)
     if "FOUND" in response:

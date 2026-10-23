@@ -18,8 +18,11 @@ class _StubClamd(threading.Thread):
     """سرور clamd آزمایشی — سوکت واقعی + پروتکل واقعی INSTREAM (C-01).
 
     دادهٔ پاک → `stream: OK`؛ دادهٔ حاوی نشان EICAR →
-    `stream: Eicar-Test-Signature FOUND`. فقط زیرساخت تست است؛ کد
-    production همیشه به clamd واقعی وصل می‌شود.
+    `stream: Eicar-Test-Signature FOUND`. پاسخ‌ها دقیقاً مثل clamd واقعی
+    در حالت z با ترمیناتور NUL بسته می‌شوند (نه newline) — همین تفاوت
+    فریمینگ، باگ واقعیِ «اسکن پاک همیشه 503» را تا پیش از تست زندهٔ
+    FIX2-10 پنهان کرده بود. فقط زیرساخت تست است؛ کد production همیشه
+    به clamd واقعی وصل می‌شود.
     """
 
     def __init__(self, port: int = 0) -> None:
@@ -67,9 +70,9 @@ class _StubClamd(threading.Thread):
                     infected = True
                 tail = window[-len(_EICAR_MARKER):]
             if infected:
-                conn.sendall(b"stream: Eicar-Test-Signature FOUND\n")
+                conn.sendall(b"stream: Eicar-Test-Signature FOUND\x00")
             else:
-                conn.sendall(b"stream: OK\n")
+                conn.sendall(b"stream: OK\x00")
         except (ConnectionError, OSError):
             pass
         finally:

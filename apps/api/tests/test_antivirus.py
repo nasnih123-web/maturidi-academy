@@ -39,6 +39,46 @@ async def test_scan_eicar_detected():
     assert result.signature and "Eicar" in result.signature
 
 
+async def test_scan_parses_real_clamd_zmode_framing():
+    """رگرسیون FIX2-10b (یافتهٔ زندهٔ CI ران ۱۷۷): clamd واقعی در حالت
+    z پاسخ را با ترمیناتور NUL می‌بندد (`stream: OK\\x00`)، نه newline.
+    پارسر قدیمی با readline + endswith("OK") هر اسکن پاکِ واقعی را
+    «unexpected response» می‌دید و آپلود پاک 503 می‌خورد — در حالی‌که
+    حکم FOUND (به‌خاطر جست‌وجوی زیررشته‌ای) سالم می‌ماند. این تست با
+    یک سوکت خامِ دقیقاً هم‌قابِ clamd واقعی، هر دو حکم را قفل می‌کند.
+    """
+    import asyncio
+    import struct
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        try:
+            await reader.readexactly(10)  # zINSTREAM\0
+            payload = bytearray()
+            while True:
+                (n,) = struct.unpack(">I", await reader.readexactly(4))
+                if n == 0:
+                    break
+                payload.extend(await reader.readexactly(n))
+            if b"EICAR-STANDARD" in payload:
+                writer.write(b"stream: Eicar-Test-Signature FOUND\x00")
+            else:
+                writer.write(b"stream: OK\x00")
+            await writer.drain()
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        clean = await antivirus.scan_bytes(b"perfectly clean", port=port)
+        assert clean.clean is True
+        infected = await antivirus.scan_bytes(b"x" + EICAR, port=port)
+        assert infected.clean is False
+        assert infected.signature and "Eicar" in infected.signature
+    finally:
+        server.close()
+
+
 async def test_scan_unavailable_raises(monkeypatch):
     s = get_settings()
     monkeypatch.setattr(s, "clamav_port", 1)  # پورت مرده
