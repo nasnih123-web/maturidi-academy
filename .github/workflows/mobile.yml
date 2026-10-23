@@ -64,7 +64,7 @@ jobs:
       artifact_name: ${{ steps.meta.outputs.artifact_name }}
       signing_status: ${{ steps.validate.outputs.signing_status }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
