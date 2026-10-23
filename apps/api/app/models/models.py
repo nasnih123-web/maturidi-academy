@@ -604,6 +604,13 @@ class FiqhKnowledgeChunk(Base):
         String(32), nullable=True, index=True
     )
     embedding_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # هویت پروجکشن سازندهٔ بردار (FIX3-04 — ADR-0051)؛ مثل
+    # «folding-v1» (fit_dim فعلی). NULL یعنی ردیف legacy پیش از ثبت
+    # پروجکشن → در گزارش سازگاری ناسازگار و نیازمند reindex شمرده
+    # می‌شود، چون بردارهای پیش از FIX2-03 با برش ساده ساخته شده‌اند.
+    embedding_projection: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
     source_type: Mapped[str] = mapped_column(String(32), default="manual", index=True)
     source_ref: Mapped[dict | None] = mapped_column(
         JSONB, nullable=True

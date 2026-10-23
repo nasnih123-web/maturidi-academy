@@ -28,6 +28,50 @@ SIGNED_PURPOSE_LIBRARY = "library"
 SIGNED_PURPOSE_CERTIFICATE = "lms-certificate"
 
 
+# ---------------------------------------------------------------------------
+# راز امضای URLهای storage — FIX3-02 / ADR-0049
+#
+# تا پیش از این fix ریشهٔ HMAC همان jwt_secret بود: نشت یکی از دو
+# راز، هر دو سامانه (نشست‌ها + دانلودهای امضاشده) را با هم می‌انداخت.
+# حالا کلید اختصاصی `storage_signing_secret` ریشهٔ امضاست:
+# - امضا همیشه با کلید جاری انجام می‌شود.
+# - راستی‌آزمایی کلید جاری و (در دورهٔ گذار چرخش) کلید قبلی
+#   (`storage_signing_secret_previous`) را می‌پذیرد تا URLهای زندهٔ
+#   صادرشده با کلید قبلی تا انقضای طبیعی‌شان (دقایق) نمی‌رند.
+# - در production/staging نبودِ کلید اختصاصی fail-fast است
+#   (assert_production_secrets_ok)؛ fallback به jwt_secret فقط
+#   dev/test است و با هشدارِ یک‌باره در لاگ مشخص می‌شود — هرگز سکوت.
+# ---------------------------------------------------------------------------
+
+_transitional_fallback_warned = False
+
+
+def storage_signing_keys(settings) -> list[str]:
+    """کلیدهای معتبر امضای storage به ترتیب اولویت: [جاری, قبلی؟]."""
+    global _transitional_fallback_warned
+    current = (settings.storage_signing_secret or "").strip()
+    keys: list[str] = []
+    if current:
+        keys.append(current)
+    else:
+        # fallback انتقالی — فقط dev/test به این‌جا می‌رسد؛ production
+        # در startup رد شده است. هشدار یک‌باره تا لاگ غرق نشود.
+        if not _transitional_fallback_warned:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "storage signing: STORAGE_SIGNING_SECRET is not set — "
+                "falling back to JWT_SECRET (transitional, dev/test only; "
+                "production refuses to boot without the dedicated secret)"
+            )
+            _transitional_fallback_warned = True
+        keys.append(settings.jwt_secret)
+    previous = (settings.storage_signing_secret_previous or "").strip()
+    if previous and previous not in keys:
+        keys.append(previous)
+    return keys
+
+
 class StorageProvider(ABC):
     @abstractmethod
     async def put_object(self, key: str, data: bytes, mime_type: str) -> None:
@@ -96,9 +140,9 @@ class LocalStorageProvider(StorageProvider):
     ) -> str:
         """برای provider محلی: URL دانلود امضاشدهٔ کوتاه‌مدت.
 
-        امضا با HMAC روی (purpose + key + exp) و کلید jwt_secret
-        انجام می‌شود (FIX2-08)؛ صحت آن در endpoint دانلودِ همان
-        منظور بررسی می‌شود.
+        امضا با HMAC روی (purpose + key + exp) و کلید اختصاصی storage
+        انجام می‌شود (FIX2-08 + FIX3-02)؛ صحت آن در endpoint دانلودِ
+        همان منظور بررسی می‌شود.
         """
         import hashlib
         import hmac
@@ -109,7 +153,9 @@ class LocalStorageProvider(StorageProvider):
         settings = get_settings()
         exp = int(time.time()) + expires_seconds
         msg = f"{purpose}:{key}:{exp}".encode()
-        sig = hmac.new(settings.jwt_secret.encode(), msg, hashlib.sha256).hexdigest()
+        sig = hmac.new(
+            storage_signing_keys(settings)[0].encode(), msg, hashlib.sha256
+        ).hexdigest()
         base = (settings.app_base_url or "").rstrip("/")
         path = download_path or "/api/v1/lms/certificates/download-by-ref"
         return f"{base}{path}?key={key}&exp={exp}&sig={sig}&purpose={purpose}"
@@ -130,7 +176,12 @@ class LocalStorageProvider(StorageProvider):
     def verify_download_sig(
         self, key: str, exp: int, sig: str, purpose: str = SIGNED_PURPOSE_GENERIC
     ) -> bool:
-        """بررسی امضا برای یک منظور مشخص (FIX2-08) — منظور اشتباه = رد."""
+        """بررسی امضا برای یک منظور مشخص (FIX2-08) — منظور اشتباه = رد.
+
+        کلید جاری و (در دورهٔ گذار چرخش) کلید قبلی پذیرفته می‌شوند
+        (FIX3-02)؛ امضای ساخته‌شده با jwt_secret دیگر معتبر نیست،
+        مگر وقتی کلید اختصاصی اصلاً تنظیم نشده باشد (dev/test).
+        """
         import hashlib
         import hmac
         import time
@@ -141,8 +192,12 @@ class LocalStorageProvider(StorageProvider):
             return False
         settings = get_settings()
         msg = f"{purpose}:{key}:{exp}".encode()
-        want = hmac.new(settings.jwt_secret.encode(), msg, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(want, sig)
+        return any(
+            hmac.compare_digest(
+                hmac.new(k.encode(), msg, hashlib.sha256).hexdigest(), sig
+            )
+            for k in storage_signing_keys(settings)
+        )
 
 
 class S3StorageProvider(StorageProvider):

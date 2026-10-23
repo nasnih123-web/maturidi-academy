@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.errors import APIError
-from app.core.security import rate_limiter
+from app.core.rate_limit import get_rate_limiter
 from app.core.storage import get_storage
 from app.models.models import Permission, RolePermission, User, UserRole
 from app.modules.auth.dependencies import get_current_user, require_permission
@@ -366,7 +366,12 @@ async def download_certificate_by_ref(
 
 async def _verify_impl(request: Request, code: str, db: AsyncSession) -> CertificateVerifyOut:
     ip = _ip(request) or "unknown"
-    if not rate_limiter.is_allowed(f"cert_verify:{ip}", limit=30, window_s=60):
+    # FIX3-03 (ADR-0050): استعلام عمومی گواهی روی limiter توزیع‌شده
+    # (Redis) است — سقف ۳۰/دقیقه سقفِ کل سیستم است، نه هر worker.
+    # auth=True: در production با Redisِ قطع fail-closed (429).
+    if not await get_rate_limiter().is_allowed(
+        f"cert_verify:{ip}", limit=30, window_s=60, auth=True
+    ):
         raise APIError(429, "rate_limited", "تعداد درخواست بیش از حد مجاز است")
     return CertificateVerifyOut(**await service.verify_certificate(db, code))
 

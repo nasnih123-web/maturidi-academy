@@ -52,6 +52,15 @@ from app.core.config import get_settings
 
 EMBEDDING_DIM = 256
 
+# هویت پروجکشن فعلی (FIX3-04 — ADR-0051): الگوریتم fit_dim یعنی
+# «folding دوره‌ای + نرمال‌سازی L2» با این نام روی هر chunk تازه
+# ثبت می‌شود (ستون embedding_projection). بردارهای پیش از FIX2-03
+# با برش سادهٔ ۲۵۶ مؤلفهٔ اول ساخته شده‌اند («slice-v0») ولی آن
+# زمان هیچ نشانی ثبت نمی‌شد — پس projection NULL یعنی «نامعلوم/
+# legacy» و در گزارش سازگاری ناسازگار شمرده و reindex می‌شود.
+# هر تغییر آینده در fit_dim باید نسخهٔ این ثابت را بالا ببرد.
+PROJECTION_ID = "folding-v1"
+
 # وضعیت‌های قابل‌خواندن توسط RAG (§۹، §۱۰) — هرگز draft.
 RAG_READABLE_STATUSES = ("approved", "published")
 
@@ -414,6 +423,135 @@ async def chunk_provider_stats(db: AsyncSession, provider_name: str) -> dict:
     }
 
 
+async def current_embedding_identity(db: AsyncSession) -> dict:
+    """هویت امبدینگ جاری (provider, model, projection, dim) — FIX3-04.
+
+    model بدون ساخت provider سنگین خوانده می‌شود: برای hash و
+    local_model از ثابت کلاس، برای external از همان configای که
+    model_identity می‌خواند (setting/env).
+    """
+    name = await resolve_provider_name(db)
+    if name == HashEmbeddingProvider.name:
+        model = HashEmbeddingProvider.model_name
+    elif name == LocalModelEmbeddingProvider.name:
+        model = LocalModelEmbeddingProvider.model_name
+    elif name == ExternalAPIEmbeddingProvider.name:
+        model = await ExternalAPIEmbeddingProvider(db).model_identity()
+    else:
+        model = ""
+    return {
+        "provider": name,
+        "model": model,
+        "projection": PROJECTION_ID,
+        "dim": EMBEDDING_DIM,
+    }
+
+
+async def _chunk_identity_rows(db: AsyncSession) -> list[tuple]:
+    """(id, provider, model, projection, dim) همهٔ chunkهای دارای بردار.
+
+    بُعد داخل SQL حساب می‌شود (jsonb_array_length روی PG /
+    json_array_length روی SQLite) تا خود بردارها برای یک گزارش
+    وضعیتی جابه‌جا نشوند؛ روی dialect ناشناخته به len پایتونی
+    برمی‌گردد.
+    """
+    from sqlalchemy import func, select
+
+    from app.models.models import FiqhKnowledgeChunk
+
+    dialect = ""
+    bind = getattr(db, "bind", None)
+    if bind is not None and getattr(bind, "dialect", None) is not None:
+        dialect = bind.dialect.name
+    dim_expr = None
+    if dialect == "postgresql":
+        dim_expr = func.jsonb_array_length(FiqhKnowledgeChunk.embedding)
+    elif dialect == "sqlite":
+        dim_expr = func.json_array_length(FiqhKnowledgeChunk.embedding)
+    if dim_expr is not None:
+        rows = (
+            await db.execute(
+                select(
+                    FiqhKnowledgeChunk.id,
+                    FiqhKnowledgeChunk.embedding_provider,
+                    FiqhKnowledgeChunk.embedding_model,
+                    FiqhKnowledgeChunk.embedding_projection,
+                    dim_expr,
+                ).where(FiqhKnowledgeChunk.embedding.is_not(None))
+            )
+        ).all()
+        return [(cid, prov, model, proj, int(dim or 0)) for cid, prov, model, proj, dim in rows]
+    rows = (
+        await db.execute(
+            select(
+                FiqhKnowledgeChunk.id,
+                FiqhKnowledgeChunk.embedding_provider,
+                FiqhKnowledgeChunk.embedding_model,
+                FiqhKnowledgeChunk.embedding_projection,
+                FiqhKnowledgeChunk.embedding,
+            ).where(FiqhKnowledgeChunk.embedding.is_not(None))
+        )
+    ).all()
+    return [
+        (cid, prov, model, proj, len(vec) if vec is not None else 0)
+        for cid, prov, model, proj, vec in rows
+    ]
+
+
+def _identity_matches(
+    prov: str | None, model: str | None, proj: str | None, dim: int, current: dict
+) -> bool:
+    return (
+        prov == current["provider"]
+        and (model or "") == current["model"]
+        and proj == current["projection"]
+        and dim == current["dim"]
+    )
+
+
+async def chunk_compatibility_report(db: AsyncSession) -> dict:
+    """گزارش سازگاری امبدینگ‌ها (FIX3-04 — ADR-0051).
+
+    chunkها بر اساس (provider, model, projection, dim) گروه‌بندی
+    می‌شوند و هر گروه صریحاً سازگار/ناسازگار با هویت جاری علامت
+    می‌خورد. ردیف‌های legacy (هویت NULL — پیش از FIX2-03/FIX3-04)
+    گروه خودشان را دارند و ناسازگارند: راه استفاده‌شان فقط
+    reindex است (ابزار: app.modules.fatwa.reindex).
+    """
+    current = await current_embedding_identity(db)
+    groups: dict[tuple, dict] = {}
+    total = 0
+    compatible = 0
+    for _cid, prov, model, proj, dim in await _chunk_identity_rows(db):
+        key = (prov, model, proj, dim)
+        group = groups.get(key)
+        if group is None:
+            group = {
+                "provider": prov,
+                "model": model,
+                "projection": proj,
+                "dim": dim,
+                "count": 0,
+                "compatible": _identity_matches(prov, model, proj, dim, current),
+            }
+            groups[key] = group
+        group["count"] += 1
+        total += 1
+        if group["compatible"]:
+            compatible += 1
+    return {
+        "current": current,
+        "groups": sorted(
+            groups.values(),
+            key=lambda g: (g["compatible"], -(g["count"])),
+        ),
+        "chunks_total": total,
+        "chunks_compatible": compatible,
+        "chunks_incompatible": total - compatible,
+        "reindex_recommended": (total - compatible) > 0,
+    }
+
+
 async def semantic_search_status(db: AsyncSession) -> dict:
     """وضعیت صادقانهٔ جست‌وجوی معنایی — برای startup و داشبورد CRM.
 
@@ -425,6 +563,9 @@ async def semantic_search_status(db: AsyncSession) -> dict:
     """
     status = await _semantic_search_status_base(db)
     status.update(await chunk_provider_stats(db, status["provider"]))
+    # FIX3-04: گزارش سازگاری کامل (گروه‌ها + شمار ناسازگارها) روی
+    # همان سطح وضعیت — داشبورد و ابزار reindex هر دو از همین می‌خوانند.
+    status["compatibility"] = await chunk_compatibility_report(db)
     return status
 
 

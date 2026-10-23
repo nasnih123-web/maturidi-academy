@@ -38,6 +38,7 @@ from app.models.models import (
 from . import ingestion as _ingestion  # noqa: F401 — ثبت جاب ARQ روی صف ai
 from .embeddings import (
     AI_SCOPES,
+    PROJECTION_ID,
     ChunkIndex,
     ScoredChunk,
     cosine_similarity,
@@ -760,6 +761,7 @@ async def chunk_create(
         embedding_vec=list(vector) if pgvector_available() else None,
         embedding_provider=prov_name,
         embedding_model=prov_model,
+        embedding_projection=PROJECTION_ID,
         source_type=source_type,
         source_ref=source_ref,
         source_citation=source_citation,

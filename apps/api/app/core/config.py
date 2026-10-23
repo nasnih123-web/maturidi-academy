@@ -22,6 +22,18 @@ class Settings(BaseSettings):
     jwt_secret: str = "CHANGE_ME"
     access_token_expire_minutes: int = 15
 
+    # راز اختصاصی امضای URLهای storage (FIX3-02 — ADR-0049): جدا از
+    # jwt_secret تا نشت یکی از این دو راز، سامانهٔ دیگر را نیندازد
+    # (امضاهای FIX2-08 به purpose مقیدند ولی ریشه‌شان jwt بود).
+    # در production/staging نبودن یا ضعیف‌بودنش fail-fast است
+    # (assert_production_secrets_ok)؛ در dev/test خالی یعنی fallback
+    # انتقالیِ لاگ‌دار به jwt_secret (فقط برای سبک‌ماندن توسعه).
+    # چرخش: storage_signing_secret_previous در دورهٔ گذار فقط برای
+    # راستی‌آزمایی پذیرفته می‌شود؛ امضا همیشه با کلید جاری است.
+    # ران‌بوک چرخش: docs/ops/storage.md
+    storage_signing_secret: str = ""
+    storage_signing_secret_previous: str = ""
+
     # محدودیت نرخ توزیع‌شده — remediation-pass-2 Track 1 (§۷)
     # در production اگر Redis در دسترس نباشد، endpointهای احرازهویتی
     # fail-closed می‌شوند (429)؛ در dev/test fallback حافظه‌ای.
@@ -212,6 +224,33 @@ def assert_production_secrets_ok(settings: Settings | None = None) -> None:
     bad: list[str] = []
     bad.extend(_secret_problems("jwt_secret", s.jwt_secret, s.encryption_key))
     bad.extend(_secret_problems("encryption_key", s.encryption_key))
+    # FIX3-02 (ADR-0049): راز امضای storage باید وجود داشته، قوی و از
+    # هر دو راز دیگر جدا باشد — وگرنه جداسازیِ منظور این fix از دست
+    # می‌رود. کلید قبلیِ دورهٔ گذار (اختیاری) هم اگر هست باید قوی و
+    # متفاوت از کلید جاری باشد.
+    bad.extend(
+        _secret_problems(
+            "storage_signing_secret", s.storage_signing_secret, s.encryption_key
+        )
+    )
+    _signing = (s.storage_signing_secret or "").strip()
+    if _signing and _signing == (s.jwt_secret or "").strip():
+        bad.append(
+            "storage_signing_secret: must not equal jwt_secret (secret reuse)"
+        )
+    _signing_prev = (s.storage_signing_secret_previous or "").strip()
+    if _signing_prev:
+        bad.extend(
+            _secret_problems(
+                "storage_signing_secret_previous",
+                s.storage_signing_secret_previous,
+            )
+        )
+        if _signing and _signing_prev == _signing:
+            bad.append(
+                "storage_signing_secret_previous: must differ from "
+                "storage_signing_secret"
+            )
     # M-05: اگر چرخش کلید فعال است (ENCRYPTION_KEYS)، هر کلیدِ داخل map
     # هم باید واقعی باشد و کلید نسخهٔ جاری باید در دسترس باشد (در map
     # یا همان encryption_key) — وگرنه بوت production بی‌صدا خراب است.

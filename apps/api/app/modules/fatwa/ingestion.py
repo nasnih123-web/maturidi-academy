@@ -74,6 +74,7 @@ async def run_ingestion(
     from app.models.models import FiqhKnowledgeChunk, IngestionRun
 
     from .embeddings import (
+        PROJECTION_ID,
         chunk_text_paragraphs,
         get_embedding_provider,
         provider_identity,
@@ -133,6 +134,7 @@ async def run_ingestion(
                 embedding_vec=list(vec) if on_pg else None,
                 embedding_provider=prov_name,
                 embedding_model=prov_model,
+                embedding_projection=PROJECTION_ID,
                 source_type="ingested",
                 source_ref=source_ref,
                 source_citation=source_citation,

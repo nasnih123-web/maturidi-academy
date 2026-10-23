@@ -35,6 +35,7 @@ from app.models.models import (
     UserRole,
 )
 from app.modules.fatwa.embeddings import (
+    PROJECTION_ID,
     get_embedding_provider,
     pgvector_available,
     provider_identity,
@@ -294,6 +295,7 @@ async def add_to_rag(
         embedding_vec=list(embedding) if pgvector_available() else None,
         embedding_provider=prov_name,
         embedding_model=prov_model,
+        embedding_projection=PROJECTION_ID,
         source_type="fatwa_submission",
         source_ref={
             "type": "fatwa_submission",
