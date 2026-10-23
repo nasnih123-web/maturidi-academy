@@ -48,24 +48,19 @@ try {
   if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) { Die "curl پیدا نشد؛ پیش‌نیاز این پروژه است (روی ویندوز ۱۰/۱۱ همراه سیستم است: System32\curl.exe). از https://curl.se/windows/ بگیرید یا ویندوز را به‌روز کنید." }
   Write-Host "  Python $pyv  ✓    Node $nodev  ✓"
 
-  # فایل .env ریشه از روی .env.example (فقط اگر نیست) — برای compose؛
-  # مقادیر نمونه برای dev محلی‌اند و برای production باید عوض شوند.
-  $rootEnv = Join-Path $ROOT ".env"
-  if (-not (Test-Path $rootEnv)) {
-    Copy-Item (Join-Path $ROOT ".env.example") $rootEnv
-    Write-Host "  ساخت .env ریشه از .env.example ✓ (برای production مقادیر را عوض کنید)"
-  }
+  # env صریحِ توسعهٔ محلی (FIX2-06) — اسکریپت مشترک با bootstrap.sh:
+  # هر دو فایل .env (ریشه + apps\api) را با مقادیر dev محلی می‌سازد
+  # (CAPTCHA_ENABLED=false و بای‌پس ناامنِ فقط-dev ClamAV، هر دو صریح
+  # و با هشدار داخل فایل؛ production از این مسیر ساخته نمی‌شود).
+  # فایل موجود هرگز بازنویسی نمی‌شود.
+  & $pyExe @pyPre (Join-Path $ROOT "tools\dev\write_dev_env.py")
+  if ($LASTEXITCODE -ne 0) { Die "ساخت فایل‌های env توسعه ناموفق بود." }
 
   # ---------- ۲) بک‌اند (API) ----------
   Say "آماده‌سازی بک‌اند…"
   $apiDir = Join-Path $ROOT "apps\api"
-  # فایل .env برای API (فقط اگر وجود ندارد) — فعال‌سازی CORS برای وب و CRM؛
-  # بدون این، مرورگر درخواست‌های فرانت‌اند به API را بلاک می‌کند و لاگین شکست می‌خورد.
-  $envFile = Join-Path $apiDir ".env"
-  if (-not (Test-Path $envFile)) {
-    Write-Host "  ساخت .env برای API (CORS)…"
-    [System.IO.File]::WriteAllText($envFile, "CORS_ALLOW_ORIGINS=http://localhost:3000,http://localhost:5173`r`n")
-  }
+  # فایل .env API (شامل CORS وب/CRM) در بخش پیش‌نیازها توسط
+  # write_dev_env.py ساخته شده است (FIX2-06).
   if (-not (Test-Path (Join-Path $apiDir ".venv"))) {
     Write-Host "  ساخت venv…"
     & $pyExe @pyPre -m venv (Join-Path $apiDir ".venv")
@@ -132,6 +127,13 @@ try {
   if ($notReady.Count -gt 0) {
     Die ("این سرویس‌ها بالا نیامدند: " + ($notReady -join "، ") + " — نصب/اجرا کامل نیست. پنجرهٔ سرویس ناموفق را بررسی کنید؛ پیام موفقیت نمایش داده نمی‌شود.")
   }
+
+  # چک‌لیست سلامت واقعی (FIX2-06): بالا آمدن پورت کافی نیست —
+  # health، ثبت‌نام واقعی و آپلود+اسکن باید روی سرویس زنده پاس
+  # شوند، وگرنه پیام موفقیت چاپ نمی‌شود.
+  Say "چک‌لیست سلامت (health + ثبت‌نام + آپلود/اسکن)…"
+  & (Join-Path $apiDir ".venv\Scripts\python.exe") (Join-Path $ROOT "tools\dev\bootstrap_check.py") --base-url "http://127.0.0.1:8000"
+  if ($LASTEXITCODE -ne 0) { Die "چک‌لیست سلامت شکست خورد — خروجی بالا را بررسی کنید؛ نصب کامل نیست." }
 
   Say "همه‌چیز آماده است 🎉"
   Write-Host @"

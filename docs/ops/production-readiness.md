@@ -12,7 +12,18 @@
 | migration روی PostgreSQL واقعی + تست یکپارچگی pgvector ‏(B-03) | `postgres` | ✅ در CI (سرویس pgvector/pgvector:pg16؛ ‏alembic upgrade head + تست chunk ‏#501) |
 | build تولیدی وب و CRM + typecheck | `web` / `crm` | ✅ در CI |
 | build ایمیج API + حضور زنجیرهٔ ابزار رسانه ‏(B-04) | `docker` | ✅ در CI |
-| **بالا آمدن کل استک تولید** (compose prod با env آزمایشی، migration، دود health/auth/home/WS) | `compose-smoke` | ✅ در CI — اسکریپت: ‏tools/ci/compose_smoke.py |
+| typecheck موبایل + اعتبارسنجی کانفیگ Expo ‏(FIX2-09) | `mobile` | ✅ در CI |
+| **بالا آمدن استک تولید** (compose prod با env آزمایشی، migration، دود health/auth/home/WS + ‏EICAR زنده) | `compose-smoke` | ✅ در CI — اسکریپت: ‏tools/ci/compose_smoke.py |
+
+> **دامنهٔ compose-smoke (FIX2-10 — صریح):** دستور `up -d --build api`
+> فقط سرویس api و closure وابستگی‌اش را بالا می‌آورد: postgres،
+> redis، minio، clamav و گام migrate. سرویس‌های web، crm، workerها
+> و monitoring در این job ساخته یا بررسی **نمی‌شوند**؛ سبز شدن آن
+> هیچ ادعایی دربارهٔ سلامت آن‌ها نیست (web/crm در jobهای جدا build
+> می‌شوند؛ worker و monitoring پوشش CI جدا ندارند). از FIX2-10 دود
+> شامل آپلود زندهٔ EICAR از مسیر واقعی آپلود (C-01) علیه ClamAV
+> واقعی استک هم هست: EICAR باید با `422 file_infected` رد شود و
+> فایل تمیز باید از گیت اسکن رد شود.
 
 ## ب) اجرای یک‌باره روی زیرساخت واقعی — ⚠️ NOT RUN (زیرساخت مالک)
 

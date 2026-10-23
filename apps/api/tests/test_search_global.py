@@ -19,6 +19,7 @@ from app.models.models import (
     FatwaSubmission,
     LibraryItem,
     Page,
+    Theme,
     User,
 )
 from app.modules.home import service
@@ -152,6 +153,25 @@ async def test_drafts_and_private_never_surface(db_session):
     assert out.results == []
     out2 = await service.search(db_session, q="خصوصی", limit=50)
     assert all(r.type != "library" for r in out2.results)
+
+
+async def test_inactive_theme_never_surfaces(db_session):
+    """FIX2-12: تم غیرفعال (منتشرنشده) نباید در جست‌وجوی عمومی بیاید.
+
+    قبل از fix، select(Theme) بدون فیلتر بود و همهٔ تم‌ها — از جمله
+    پیش‌نویس‌های فعال‌نشده — نشت می‌کردند؛ بقیهٔ مصرف‌کننده‌های عمومی
+    (meta/cms) فقط is_active را می‌خوانند.
+    """
+    term = f"تمیونیک{uuid.uuid4().hex[:6]}"
+    active = Theme(name=_loc(f"{term} فعال"), is_active=True)
+    inactive = Theme(name=_loc(f"{term} مخفی"), is_active=False)
+    db_session.add_all([active, inactive])
+    await db_session.flush()
+
+    out = await service.search(db_session, q=term, result_type="theme", limit=50)
+    ids = {r.id for r in out.results}
+    assert str(active.id) in ids
+    assert str(inactive.id) not in ids
 
 
 async def test_type_filter_restricts_source(db_session):
