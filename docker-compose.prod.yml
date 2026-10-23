@@ -131,10 +131,18 @@ services:
     # --proxy-headers: چون TLS در reverse proxy خارجی terminate می‌شود (§۱۵)؛
     # فقط امن است چون api:8000 فقط از شبکهٔ داخلی در دسترس است و پروکسی لبه
     # هدرهای X-Forwarded-* جعلی را strip می‌کند (docs/ops/deployment.md §۱۵).
-    command: >
-      uvicorn app.main:app --host 0.0.0.0 --port 8000
-      --workers $${UVICORN_WORKERS:-4} --proxy-headers --forwarded-allow-ips='*'
-      --timeout-graceful-shutdown 30
+    # چرا sh -c؟ فرم رشته‌ایِ command در compose بدون شل exec می‌شود و
+    # $${UVICORN_WORKERS:-4} هیچ‌وقت باز نمی‌شد؛ uvicorn همان رشتهٔ
+    # خام را می‌گرفت، خطای Usage می‌داد و کانتینر در Restarting (2)
+    # می‌ماند (شاهد: CI run 168/169 روی PR #16 — api هیچ‌وقت بالا
+    # نیامد و گام دود روی کانتینر در حال ری‌استارت 137 می‌خورد).
+    command:
+      - sh
+      - -c
+      - >-
+        uvicorn app.main:app --host 0.0.0.0 --port 8000
+        --workers $${UVICORN_WORKERS:-4} --proxy-headers
+        --forwarded-allow-ips '*' --timeout-graceful-shutdown 30
     # graceful shutdown: uvicorn فرصت تخلیهٔ درخواست‌های جاری را دارد و
     # stop_grace_period باید از آن بزرگ‌تر باشد تا SIGKILL زودتر نرسد.
     stop_grace_period: 40s
