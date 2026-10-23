@@ -215,7 +215,11 @@ jobs:
         run: docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api python - < tools/ci/compose_smoke.py
       - name: Dump api logs on failure
         if: failure()
-        run: docker compose -f docker-compose.prod.yml --env-file .env.prod logs --tail 200 api migrate || true
+        run: |
+          docker compose -f docker-compose.prod.yml --env-file .env.prod ps || true
+          docker compose -f docker-compose.prod.yml --env-file .env.prod logs --tail 200 api migrate || true
+          echo "===== clamav logs (diagnosis, audit 197efa0) ====="
+          docker compose -f docker-compose.prod.yml --env-file .env.prod logs --tail 300 clamav || true
       - name: Teardown
         if: always()
         run: docker compose -f docker-compose.prod.yml --env-file .env.prod down -v || true
