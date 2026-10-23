@@ -103,12 +103,7 @@ services:
   # اسکن ویروس آپلودها (C-01 — ADR-0028): clamd روی 3310 (INSTREAM)؛
   # API fail-closed است — clamav ناسالم یعنی آپلود 503، نه ردِّ بی‌صدا.
   clamav:
-    # دیتابیس امضا در build گرفته می‌شود (infra/clamav — ADR-0040)؛
-    # ایمیج رسمیِ خام در بوت اول به‌علت throttle ‏CDN روی آی‌پی CI
-    # به‌موقع healthy نمی‌شد و استک را می‌خواباند.
-    build:
-      context: ./infra/clamav
-    image: maturidi/clamav:1.4
+    image: clamav/clamav:1.4
     restart: unless-stopped
     volumes:
       - clamavdata:/var/lib/clamav
