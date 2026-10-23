@@ -200,6 +200,9 @@ jobs:
           ENCRYPTION_KEY_VERSION=1
           CORS_ALLOW_ORIGINS=http://localhost:3000,http://localhost:5173
           CAPTCHA_ENABLED=false
+          # smoke on the 7GB CI runner: 1 worker is enough (official compose knob;
+          # real production sizes itself). 4 workers + clamd OOM-killed the smoke step (exit 137, run 168).
+          UVICORN_WORKERS=1
           WEB_API_URL=http://localhost:8000
           CRM_API_URL=http://localhost:8000
           GRAFANA_PASSWORD=ci-smoke-grafana
@@ -217,6 +220,9 @@ jobs:
         if: failure()
         run: |
           docker compose -f docker-compose.prod.yml --env-file .env.prod ps || true
+          echo "===== host memory / container stats (diagnosis) ====="
+          free -m || true
+          docker stats --no-stream || true
           docker compose -f docker-compose.prod.yml --env-file .env.prod logs --tail 200 api migrate || true
           echo "===== clamav logs (diagnosis, audit 197efa0) ====="
           docker compose -f docker-compose.prod.yml --env-file .env.prod logs --tail 300 clamav || true
