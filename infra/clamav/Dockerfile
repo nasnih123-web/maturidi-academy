@@ -14,14 +14,20 @@
 # فوراً لود می‌کند و freshclam پس‌زمینه داخل کانتینر طبق روال عادی
 # آپدیت می‌گیرد. اگر دانلود در build ممکن نباشد، build با صدای بلند
 # fail می‌شود — نه این‌که استک بی‌صدا unhealthy بماند.
+#
+# نکتهٔ اجرایی: freshclam عمداً به‌صورت root اجرا می‌شود — دقیقاً
+# مثل entrypoint خود ایمیج رسمی؛ ‏DatabaseOwner در freshclam.conf
+# مالکیت فایل‌ها را به کاربر clamav می‌دهد و chown پایانی هم برای
+# اطمینان است. (تلاش اول با runuser بود؛ ایمیج پایه Alpine است و
+# runuser ندارد — شکست build در اجرای ۱۶۱ ‏CI.)
 FROM clamav/clamav:1.4
 
 RUN mkdir -p /var/lib/clamav \
- && chown clamav:clamav /var/lib/clamav \
  && for i in 1 2 3; do \
-      runuser -u clamav -- freshclam --datadir=/var/lib/clamav && break; \
+      freshclam --datadir=/var/lib/clamav && break; \
       echo "freshclam attempt $i failed — retrying" >&2; sleep 10; \
     done \
+ && chown -R clamav:clamav /var/lib/clamav \
  && (ls /var/lib/clamav/main.cvd /var/lib/clamav/main.cld >/dev/null 2>&1 \
      || ls /var/lib/clamav/daily.cvd /var/lib/clamav/daily.cld >/dev/null) \
  && echo "ClamAV signature DB baked:" && ls -la /var/lib/clamav
