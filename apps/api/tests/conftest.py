@@ -131,7 +131,14 @@ async def tc():
     if os.path.exists(TEST_DB):
         os.remove(TEST_DB)
     engine = create_async_engine(
-        f"sqlite+aiosqlite:///{TEST_DB}", connect_args={"check_same_thread": False}
+        f"sqlite+aiosqlite:///{TEST_DB}",
+        # timeout=30: سقف پیش‌فرض sqlite برای «database is locked» پنج
+        # ثانیه است؛ روی رانر شلوغ CI یک قفل نوشتاریِ پس‌زمینه (مثل
+        # فلاش شمارندهٔ C-06) از آن رد شد و ۴۴ تست با یک امضای واحد
+        # مردند (CI run 167 روی PR #16 — همان درخت محلی ۷۲۷ سبز بود).
+        # این فقط صبرِ هارنس تست است؛ هیچ assertion یا کد production
+        # دست نخورده.
+        connect_args={"check_same_thread": False, "timeout": 30},
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
