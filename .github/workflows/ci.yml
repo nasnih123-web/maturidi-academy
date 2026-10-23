@@ -226,6 +226,7 @@ jobs:
           STORAGE_PROVIDER=s3
           APP_BASE_URL=https://ci.maturidi.invalid
           JWT_SECRET=ci-smoke-jwt-secret-not-for-production-0123456789
+          STORAGE_SIGNING_SECRET=ci-smoke-storage-signing-secret-5f2a9c1e
           ENCRYPTION_KEY=U3gqnk6dzSGJxfCvPp4Ix0FnNdEoFcoTunvFm8ImjvQ=
           ENCRYPTION_KEY_VERSION=1
           CORS_ALLOW_ORIGINS=http://localhost:3000,http://localhost:5173

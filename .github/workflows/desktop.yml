@@ -306,6 +306,54 @@ jobs:
         working-directory: apps/desktop
     steps:
       - uses: actions/checkout@v4
+      # FIX3-01: گارد سریع اسکیمای Tauri 2 — پیش از دانلود toolchain، تا
+      # رگرسیون سبک v1 (مثل بلوک top-level «updater» که ران #5 مالک را
+      # روی هر سه OS کشت) در چند ثانیه و با پیام روشن fail شود، نه بعد
+      # از چند دقیقه وسط tauri build. همان قرارداد تست نگهبان pytest
+      # (apps/api/tests/test_tauri_config_fix3.py).
+      - name: Validate tauri.conf.json (Tauri 2 schema keys)
+        shell: bash
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" - <<'PYEOF'
+          import json, sys
+          raw = open("src-tauri/tauri.conf.json", encoding="utf-8").read()
+          out, i, n, in_str = [], 0, len(raw), False
+          while i < n:
+              ch = raw[i]
+              if in_str:
+                  out.append(ch)
+                  if ch == "\\" and i + 1 < n:
+                      out.append(raw[i + 1]); i += 2; continue
+                  if ch == '"':
+                      in_str = False
+                  i += 1; continue
+              if ch == '"':
+                  in_str = True; out.append(ch); i += 1; continue
+              if ch == "/" and i + 1 < n and raw[i + 1] == "/":
+                  while i < n and raw[i] != "\n":
+                      i += 1
+                  continue
+              out.append(ch); i += 1
+          cfg = json.loads("".join(out))
+          allowed = {"$schema", "productName", "version", "identifier",
+                     "build", "app", "bundle", "plugins"}
+          errors = []
+          if "updater" in cfg:
+              errors.append("top-level 'updater' is Tauri v1 style (FIX3-01)")
+          extra = set(cfg) - allowed
+          if extra:
+              errors.append("unknown top-level keys for Tauri 2: %s" % sorted(extra))
+          upd = (cfg.get("plugins") or {}).get("updater")
+          if isinstance(upd, dict) and (set(upd) & {"active", "dialog"}):
+              errors.append("plugins.updater uses v1-only keys (active/dialog)")
+          if errors:
+              print("tauri.conf.json schema guard FAILED:")
+              for e in errors:
+                  print(" -", e)
+              sys.exit(1)
+          print("tauri.conf.json: Tauri 2 schema keys OK")
+          PYEOF
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-node@v4
         with:
