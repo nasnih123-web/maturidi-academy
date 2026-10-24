@@ -83,12 +83,25 @@ async def test_pgvector_schema_from_migration(pg_session):
 
 
 async def test_chunk_501_retrievable_via_pgvector(pg_session):
-    """chunk قدیمیِ #۵۰۱ (بیرون از سقف قدیمی) با جست‌وجوی واقعی پیدا می‌شود."""
+    """chunk قدیمیِ #۵۰۱ (بیرون از سقف قدیمی) با جست‌وجوی واقعی پیدا می‌شود.
+
+    Pass 4 / C2: بذرها هویت جاریِ فضای برداری را دارند (provider +
+    model + projection) — مسیر pgvector فقط ردیف‌های هم‌هویت را نامزد
+    می‌کند، پس بذرِ بدون هویت (شکل قدیمیِ پیش از C2) دیگر امتیاز
+    معنایی نمی‌گیرد. یک ردیف legacy هم بذر می‌شود تا همان سیاست روی
+    PostgreSQL واقعی اثبات شود: فقط واژگانی می‌ماند (semantic == 0.0).
+    """
     from app.models.models import FiqhKnowledgeChunk
-    from app.modules.fatwa.embeddings import ChunkIndex, HashEmbeddingProvider
+    from app.modules.fatwa.embeddings import (
+        PROJECTION_ID,
+        ChunkIndex,
+        HashEmbeddingProvider,
+        provider_identity,
+    )
 
     db = pg_session
     provider = HashEmbeddingProvider()
+    q_prov, q_model = await provider_identity(provider)
     marker = uuid.uuid4().hex[:8]
     target_text = f"{TARGET_TEXT} {marker}"
     filler_text = f"{FILLER_TEXT} {marker}"
@@ -103,6 +116,9 @@ async def test_chunk_501_retrievable_via_pgvector(pg_session):
         chunk_text=target_text,
         embedding=target_vec,
         embedding_vec=target_vec,
+        embedding_provider=q_prov,
+        embedding_model=q_model,
+        embedding_projection=PROJECTION_ID,
         source_type="integration_test",
         workflow_status="approved",
         ai_scopes=["fatwa"],
@@ -118,11 +134,27 @@ async def test_chunk_501_retrievable_via_pgvector(pg_session):
                 chunk_text=filler_text,
                 embedding=filler_vec,
                 embedding_vec=filler_vec,
+                embedding_provider=q_prov,
+                embedding_model=q_model,
+                embedding_projection=PROJECTION_ID,
                 source_type="integration_test",
                 workflow_status="approved",
                 ai_scopes=["fatwa"],
             )
         )
+    # ردیف legacy: همان متن و بردار هدف، اما هویت NULL — باید فقط
+    # از مسیر واژگانی برگردد و امتیاز معنایی‌اش صفر بماند.
+    legacy = FiqhKnowledgeChunk(
+        chunk_text=target_text,
+        embedding=target_vec,
+        embedding_vec=target_vec,
+        source_type="integration_test",
+        workflow_status="approved",
+        ai_scopes=["fatwa"],
+    )
+    db.add(legacy)
+    await db.flush()
+    legacy_id = legacy.id
     await db.commit()
 
     index = ChunkIndex(provider)
@@ -132,3 +164,6 @@ async def test_chunk_501_retrievable_via_pgvector(pg_session):
     # هدف باید رتبهٔ اول باشد: lexical و semantic هر دو ۱٫۰
     assert ids[0] == str(target_id)
     assert results[0].semantic > 0.99
+    legacy_rows = [r for r in results if str(r.chunk_id) == str(legacy_id)]
+    assert legacy_rows, "ردیف legacy باید از مسیر واژگانی برگردد"
+    assert legacy_rows[0].semantic == 0.0
