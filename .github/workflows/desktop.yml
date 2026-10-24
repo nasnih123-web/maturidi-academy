@@ -40,7 +40,7 @@ jobs:
       tag_commit: ${{ steps.meta.outputs.tag_commit }}
       release_state: ${{ steps.meta.outputs.release_state }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Resolve version + release tag
         id: meta
         env:
@@ -158,7 +158,7 @@ jobs:
       run:
         working-directory: apps/desktop
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-node@v4
         with:
@@ -323,7 +323,7 @@ jobs:
       run:
         working-directory: apps/desktop
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # FIX3-01: گارد سریع اسکیمای Tauri 2 — پیش از دانلود toolchain، تا
       # رگرسیون سبک v1 (مثل بلوک top-level «updater» که ران #5 مالک را
       # روی هر سه OS کشت) در چند ثانیه و با پیام روشن fail شود، نه بعد
