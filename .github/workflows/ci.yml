@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
       - name: Runtime evidence
@@ -156,7 +156,7 @@ jobs:
       PG_INTEGRATION_DATABASE_URL: postgresql+asyncpg://maturidi:maturidi@localhost:5432/maturidi_test
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
       - run: pip install -r apps/api/requirements.txt
