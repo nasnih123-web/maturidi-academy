@@ -239,6 +239,11 @@ services:
       dockerfile: ./apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: "${WEB_API_URL:?set WEB_API_URL (e.g. https://api.example.com)}"
+        # Build-time API_URL (Pass 4 follow-up, run 40102129767): بیلد وب
+        # در collect-page-data روت‌هندلرها را اجرا می‌کند و lib/api.ts در
+        # production بدون API_URL صریح throw می‌کند؛ مقدار زمان build در
+        # باندل bake نمی‌شود و رانتایم از environment سرویس (پایین) می‌آید.
+        API_URL: http://api:8000
     restart: unless-stopped
     depends_on:
       - api

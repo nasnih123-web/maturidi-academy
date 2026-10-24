@@ -88,6 +88,19 @@ def test_b3_ci_docker_job_builds_all_three_images():
     assert "NEXT_PUBLIC_API_URL=" in runs
     assert "docker build -f apps/crm/Dockerfile" in runs
     assert "VITE_API_URL=" in runs
+    # Pass 4 follow-up (docker web build failure on CI run 40102129767):
+    # بیلد وب در collect-page-data روت‌هندلرها را اجرا می‌کند و lib/api.ts
+    # در production بدون API_URL صریح throw می‌کند — job وب در CI هر دو
+    # متغیر را می‌گذارد، پس بیلد داکر هم باید API_URL را بدهد و Dockerfile
+    # باید آن را به‌عنوان ARG اعلام کند.
+    web_build = next(
+        s for s in _steps(docker) if "apps/web/Dockerfile" in (s.get("run") or "")
+    )
+    assert "API_URL=" in web_build["run"], "docker web build must pass API_URL"
+    dockerfile = (REPO / "apps" / "web" / "Dockerfile").read_text(encoding="utf-8")
+    assert re.search(r"^ARG API_URL$", dockerfile, re.MULTILINE), (
+        "web Dockerfile must declare ARG API_URL"
+    )
 
 
 # ---------------------------------------------------------------- B5

@@ -182,6 +182,17 @@ def test_prod_api_readiness_depends_on_db_health():
     assert "/health" not in hc
 
 
+def test_prod_web_build_passes_api_url():
+    """Pass 4 follow-up (docker web build failure on CI run 40102129767):
+    بیلد وب در collect-page-data روت‌هندلرها را اجرا می‌کند و lib/api.ts
+    در production بدون API_URL صریح throw می‌کند — پس build args سرویس
+    وب در compose prod هم باید API_URL را بدهد (مقدار زمان build در
+    باندل bake نمی‌شود و رانتایم از environment سرویس می‌آید)."""
+    args = _prod_compose()["services"]["web"]["build"]["args"]
+    assert "API_URL" in args, "prod compose web build must pass API_URL"
+    assert args["API_URL"] == "http://api:8000"
+
+
 def test_prod_no_published_db_ports():
     """§۱۱: پورت‌های DB/Redis/MinIO در production به هاست/اینترنت باز نیستند."""
     services = _prod_compose()["services"]

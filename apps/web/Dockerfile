@@ -18,6 +18,14 @@ COPY apps/web/ ./
 # docker-compose.prod.yml → build.args.NEXT_PUBLIC_API_URL (WEB_API_URL اجباری).
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# API_URL سروری هم در زمان build لازم است: `next build` هنگام
+# collect-page-data روت‌هندلرها را اجرا می‌کند و آن‌ها lib/api.ts را
+# import می‌کنند که در production بدون API_URL صریح throw می‌کند
+# (Track 3 — همان دلیلی که job وب در CI هر دو متغیر را می‌گذارد).
+# مقدار زمان build در باندل bake نمی‌شود (فقط NEXT_PUBLIC_*ها inline
+# می‌شوند)؛ رانتایم از environment سرویس می‌آید (compose: http://api:8000).
+ARG API_URL
+ENV API_URL=$API_URL
 RUN npm run build
 
 FROM node:24-alpine AS runner
