@@ -8,7 +8,7 @@ dockerfilePath = "Dockerfile"
 [deploy]
 # $PORT is injected by Railway. Single uvicorn process per replica here;
 # scale with Railway replicas instead of --workers.
-startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --timeout-graceful-shutdown 30"
+startCommand = "sh start.sh"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
