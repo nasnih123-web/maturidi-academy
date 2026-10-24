@@ -18,6 +18,7 @@ from app.core.config import Settings, assert_production_secrets_ok
 
 STRONG_JWT = "a" * 64
 STRONG_ENC = "b" * 64
+STRONG_STORAGE_SIGNING = "c" * 64
 
 
 def _prod(**kw):
@@ -25,6 +26,8 @@ def _prod(**kw):
         "app_env": "production",
         "jwt_secret": STRONG_JWT,
         "encryption_key": STRONG_ENC,
+        # FIX3-02: راز اختصاصی امضای storage هم در production الزامی شد
+        "storage_signing_secret": STRONG_STORAGE_SIGNING,
         "app_base_url": "https://api.example.org",
     }
     base.update(kw)

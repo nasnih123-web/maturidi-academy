@@ -29,7 +29,7 @@ from app.core.middleware import (
     SecurityHeadersMiddleware,
 )
 from app.core.realtime import websocket_endpoint
-from app.core.storage import ensure_storage_ready
+from app.core.storage import ensure_storage_ready, validate_builds_storage
 from app.modules.admin.builds_router import router as admin_builds_router
 from app.modules.admin.connections_router import router as admin_connections_router
 from app.modules.admin.content_center_router import router as admin_content_router
@@ -144,10 +144,33 @@ async def lifespan(app: FastAPI):
     # startup؛ در production با config بد یا MinIOِ در دسترس‌نبودن، بوت با
     # خطای صریح فیل می‌شود (نه fallback خاموش).
     await ensure_storage_ready(settings)
+    # FIX2-02 (ADR-0041): ناسازگاری باکت بیلدها (BUILDS_S3_* ناقص) همین‌جا
+    # در startup با خطای واضح گرفته می‌شود — نه هنگام دانلود کاربر.
+    validate_builds_storage(settings)
     _init_sentry()
     _init_otel()
+    # M-07: وضعیت جست‌وجوی معنایی در startup صریح اعلام می‌شود — در
+    # production اگر provider واقعی فعال نباشد CRITICAL لاگ می‌خورد
+    # («semantic search disabled»)؛ هرگز بی‌صدا hash نمی‌ماند.
+    try:
+        from app.core.database import SessionLocal
+        from app.modules.fatwa.embeddings import log_semantic_search_status
+
+        async with SessionLocal() as _db:
+            await log_semantic_search_status(_db)
+    except Exception:  # noqa: BLE001 — هشدار نباید بوت را بشکند
+        from app.core.logging import logger
+
+        logger.warning("semantic search status check failed at startup", exc_info=True)
     await start_realtime(app)
+    # C-06/F2: flush دوره‌ای شمارندهٔ مصرف ویجت‌ها به دیتابیس
+    import asyncio as _asyncio
+
+    from app.modules.api_keys.counter import run_usage_flush_loop
+
+    flush_task = _asyncio.create_task(run_usage_flush_loop())
     yield
+    flush_task.cancel()
     await stop_realtime(app)
 
 
@@ -245,12 +268,84 @@ async def ws_events(websocket: WebSocket, db: AsyncSession = Depends(get_db)):
 
 @app.get("/health")
 async def health():
+    """Liveness خالص — فقط یعنی پردازه زنده است، نه این‌که آمادهٔ
+    سرویس‌دهی است. برای readiness به /ready نگاه کنید (Pass 4 / C6)."""
     return {"status": "ok", "env": settings.app_env}
+
+
+@app.get("/ready")
+async def ready():
+    """Readiness — Pass 4 / C6.
+
+    /health پیش از این بدون هیچ بررسی وابستگی «ok» برمی‌گرداند،
+    در حالی که healthcheck در docker-compose.prod.yml آن را
+    readiness می‌خواند: کانتینری که DBاش پس از startup می‌مرد،
+    همچنان healthy/readiness گزارش می‌شد. حالا:
+    - DB با timeout صریحِ ۳ ثانیه probe می‌شود؛ خطا → 503.
+    - Redis فقط گزارش می‌شود (ok/unavailable) و readiness را
+      خراب نمی‌کند: API بدون Redis هم سرویس می‌دهد (degraded) و
+      رویدادها در outboxِ DB durable می‌مانند؛ کشتن پردازه به‌خاطر
+      Redis، readiness را به liveness گره می‌زد.
+    """
+    import asyncio
+
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import text
+
+    from app.core.database import SessionLocal
+
+    db_ok = False
+    try:
+        async with SessionLocal() as db:
+            await asyncio.wait_for(db.execute(text("SELECT 1")), timeout=3)
+        db_ok = True
+    except Exception:  # noqa: BLE001 — هر خطای DB یعنی not-ready
+        db_ok = False
+    redis_status = "unknown"
+    try:
+        import redis.asyncio as aioredis
+
+        client = aioredis.from_url(
+            settings.redis_url, socket_connect_timeout=2
+        )
+        try:
+            await asyncio.wait_for(client.ping(), timeout=2)
+            redis_status = "ok"
+        finally:
+            await client.aclose()
+    except Exception:  # noqa: BLE001 — Redis فقط گزارشی است
+        redis_status = "unavailable"
+    if not db_ok:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "env": settings.app_env,
+                "db": "unavailable",
+                "redis": redis_status,
+            },
+        )
+    return {
+        "status": "ready",
+        "env": settings.app_env,
+        "db": "ok",
+        "redis": redis_status,
+    }
 
 
 @app.get("/api/v1/health")
 async def health_v1():
-    return {"status": "ok", "env": settings.app_env, "api": "v1"}
+    # media_tools (B-04): وضعیت زنجیرهٔ ابزار رسانه در health دیده
+    # می‌شود — ready=false یعنی صف media در این ایمیج کار نمی‌کند و
+    # ورکر media هم با همان گیت بالا نمی‌آید (fail loud در startup).
+    from app.core.media_tools import media_tools_status
+
+    return {
+        "status": "ok",
+        "env": settings.app_env,
+        "api": "v1",
+        "media_tools": media_tools_status(),
+    }
 
 
 @app.get("/metrics", include_in_schema=False)

@@ -37,8 +37,20 @@ NODEV="$(node -p 'process.versions.node')"
 node -e 'const [m]=process.versions.node.split(".").map(Number); if (m < 24) process.exit(1)' \
   || die "نسخهٔ Node شما $NODEV است؛ این پروژه به Node 24 یا جدیدتر نیاز دارد (خط مبنای .nvmrc)."
 command -v npm >/dev/null || die "npm پیدا نشد (همراه Node.js نصب می‌شود)."
+# curl برای health-check سرویس‌ها لازم است (M-03) — نبودش را همین‌جا
+# با پیام دقیق می‌گوییم، نه وسط اجرا با خطای گنگ command not found.
+command -v curl >/dev/null || die "curl پیدا نشد؛ برای بررسی سلامت سرویس‌ها لازم است. نصب کنید: https://curl.se/download.html (یا مدیر بستهٔ سیستم: apt install curl / brew install curl)."
 
 echo "  Python $PYV  ✓    Node $NODEV  ✓"
+
+# ---------- ۱٫۵) فایل‌های env ----------
+# env صریحِ توسعهٔ محلی (FIX2-06): به‌جای کپی .env.example (که قالب
+# production/staging است)، اسکریپت مشترک write_dev_env.py هر دو فایل
+# .env ریشه و apps/api/.env را با مقادیر dev محلی می‌سازد —
+# CAPTCHA_ENABLED=false و بای‌پس ناامنِ فقط-dev ClamAV، هر دو صریح و
+# با هشدار داخل خود فایل؛ production از این مسیر ساخته نمی‌شود.
+# فایل موجود هرگز بازنویسی نمی‌شود. رفتار یکسان با bootstrap.ps1.
+python3 "$ROOT/tools/dev/write_dev_env.py"
 
 # ---------- ۲) بک‌اند (API) ----------
 say "آماده‌سازی بک‌اند…"
@@ -109,9 +121,19 @@ wait_for() { # wait_for <name> <url> <timeout_s>
   echo " ✓"
 }
 
-wait_for "API" "http://127.0.0.1:8000/health" 90
-wait_for "CRM" "http://127.0.0.1:5173/" 120
-wait_for "WEB" "http://127.0.0.1:3000/fa" 240
+NOT_READY=""
+wait_for "API" "http://127.0.0.1:8000/health" 90 || NOT_READY="$NOT_READY API"
+wait_for "CRM" "http://127.0.0.1:5173/" 120 || NOT_READY="$NOT_READY CRM"
+wait_for "WEB" "http://127.0.0.1:3000/fa" 240 || NOT_READY="$NOT_READY WEB"
+[ -z "$NOT_READY" ] || die "این سرویس‌ها بالا نیامدند:$NOT_READY — نصب/اجرا کامل نیست؛ پیام موفقیت نمایش داده نمی‌شود."
+
+# چک‌لیست سلامت واقعی (FIX2-06): بالا آمدن پورت کافی نیست — health،
+# ثبت‌نام واقعی و آپلود+اسکن باید روی سرویس زنده پاس شوند، وگرنه
+# بوت‌استرپ با خطا تمام می‌شود و بنر موفقیت چاپ نمی‌شود.
+say "چک‌لیست سلامت (health + ثبت‌نام + آپلود/اسکن)…"
+"$ROOT/apps/api/.venv/bin/python" "$ROOT/tools/dev/bootstrap_check.py" \
+  --base-url "http://127.0.0.1:8000" \
+  || die "چک‌لیست سلامت شکست خورد — خروجی بالا را بررسی کنید؛ نصب کامل نیست."
 
 say "همه‌چیز آماده است 🎉"
 cat <<'EOF'

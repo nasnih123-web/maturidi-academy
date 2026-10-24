@@ -22,7 +22,12 @@ settings = get_settings()
 
 _connect_args: dict = {}
 if settings.database_url.startswith("sqlite"):
-    _connect_args = {"check_same_thread": False}
+    # timeout=30 (ثانیهٔ صبر روی قفل نوشتاری): پیش‌فرض sqlite پنج ثانیه
+    # است و روی ماشین/رانر شلوغ، قفلِ یک تسک پس‌زمینه خطای
+    # «database is locked» آبشاری می‌سازد (شاهد: CI run 167 روی
+    # PR #16). sqlite فقط مسیر dev/test است (production روی
+    # PostgreSQL است)؛ این سقف رفتار را فقط صبورتر می‌کند.
+    _connect_args = {"check_same_thread": False, "timeout": 30}
 
 engine = create_async_engine(
     settings.database_url,

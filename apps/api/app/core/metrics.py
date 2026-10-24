@@ -30,6 +30,17 @@ class _Metrics:
         self.total_duration_ms = 0.0
         self.started_at = time.time()
 
+    # وضعیت outbox (m-02): dispatcher هر دور این‌ها را تازه می‌کند تا
+    # داشبورد صف‌ها و هشدار queue-lag روی دادهٔ واقعی سوار شوند.
+    outbox_pending: int = 0
+    outbox_oldest_age_s: float = 0.0
+    outbox_dead_letter: int = 0
+
+    def set_outbox_stats(self, pending: int, oldest_age_s: float, dead: int) -> None:
+        self.outbox_pending = pending
+        self.outbox_oldest_age_s = oldest_age_s
+        self.outbox_dead_letter = dead
+
     def record(self, method: str, path: str, status: int, duration_ms: float) -> None:
         self.counts[(method, normalize_path(path), status)] += 1
         self.total_duration_ms += duration_ms
@@ -52,6 +63,15 @@ class _Metrics:
             "# HELP process_uptime_seconds Process uptime in seconds",
             "# TYPE process_uptime_seconds gauge",
             f"process_uptime_seconds {round(time.time() - self.started_at, 1)}",
+            "# HELP outbox_pending_events Domain events waiting for dispatch",
+            "# TYPE outbox_pending_events gauge",
+            f"outbox_pending_events {self.outbox_pending}",
+            "# HELP outbox_oldest_pending_age_seconds Age of the oldest undispatched event",
+            "# TYPE outbox_oldest_pending_age_seconds gauge",
+            f"outbox_oldest_pending_age_seconds {round(self.outbox_oldest_age_s, 1)}",
+            "# HELP outbox_dead_letter_events Events that exhausted retries",
+            "# TYPE outbox_dead_letter_events gauge",
+            f"outbox_dead_letter_events {self.outbox_dead_letter}",
         ]
         return "\n".join(lines) + "\n"
 

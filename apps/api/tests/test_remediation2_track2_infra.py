@@ -170,12 +170,103 @@ def test_prod_api_command_has_no_inline_migration():
 
 
 def test_prod_api_readiness_depends_on_db_health():
-    """§۱۰: readiness واقعی — service_healthy برای postgres/redis/minio + هلث‌چک /health."""
+    """§۱۰: readiness واقعی — service_healthy برای postgres/redis/minio + هلث‌چک /ready.
+    Pass 4 / C6: /health فقط liveness است و وابستگی‌ها را چک
+    نمی‌کند؛ هلث‌چک compose باید /ready را بزند (DB probe با
+    timeout) و نباید /health باشد."""
     api = _prod_compose()["services"]["api"]
     for dep in ("postgres", "redis", "minio"):
         assert api["depends_on"][dep].get("condition") == "service_healthy", dep
     hc = " ".join(api["healthcheck"]["test"])
-    assert "/health" in hc
+    assert "/ready" in hc
+    assert "/health" not in hc
+
+
+def test_prod_web_build_passes_api_url():
+    """Pass 4 follow-up (docker web build failure on CI run 40102129767):
+    بیلد وب در collect-page-data روت‌هندلرها را اجرا می‌کند و lib/api.ts
+    در production بدون API_URL صریح throw می‌کند — پس build args سرویس
+    وب در compose prod هم باید API_URL را بدهد (مقدار زمان build در
+    باندل bake نمی‌شود و رانتایم از environment سرویس می‌آید)."""
+    args = _prod_compose()["services"]["web"]["build"]["args"]
+    assert "API_URL" in args, "prod compose web build must pass API_URL"
+    assert args["API_URL"] == "http://api:8000"
+
+
+def _dockerfile_file_link_layout(docker_rel: str) -> tuple:
+    """Parse a Dockerfile, returning (WORKDIR at `npm ci`, resolved
+    packages COPY dests). COPY dests are resolved against the WORKDIR in
+    effect at that line (absolute dests stay as-is)."""
+    workdir = None
+    npm_ci_workdir = None
+    pkg_dests: list[str] = []
+    for raw in _read(docker_rel).splitlines():
+        line = raw.strip()
+        if line.startswith("WORKDIR "):
+            workdir = line.split(None, 1)[1].strip()
+        elif line.startswith("RUN ") and "npm ci" in line and npm_ci_workdir is None:
+            npm_ci_workdir = workdir
+        elif line.startswith("COPY "):
+            tokens = [t for t in line.split() if not t.startswith("--")]
+            dest = tokens[-1]
+            if workdir is None:
+                continue
+            resolved = dest if os.path.isabs(dest) else os.path.normpath(
+                os.path.join(workdir, dest)
+            )
+            if resolved.endswith("/packages") or "/packages/" in resolved:
+                pkg_dests.append(resolved)
+    return npm_ci_workdir, pkg_dests
+
+
+def test_dockerfiles_mirror_repo_layout_for_file_deps():
+    """Pass 4 follow-up (docker failure on CI run 40106371026 — log
+    screenshot: "Module not found: Can't resolve
+    '@maturidi/design-tokens/...'"): npm `file:` deps land in node_modules
+    as RELATIVE symlinks (lockfile "link": true; e.g.
+    @maturidi/design-tokens -> ../../../../packages/design-tokens — four
+    levels up from node_modules/@maturidi, verified from the repo's own
+    node_modules). The Dockerfile layout must therefore mirror the repo
+    layout (app in <root>/apps/<app>, package in <root>/packages): the
+    symlink math is fixed by the repo depth, so a shallower image layout
+    (old web: /app/web + /app/packages) leaves the link dangling at
+    /packages/... and the build dies at module resolution — before any
+    API_URL issue is even reached. This test recomputes the symlink target
+    from the real Dockerfile WORKDIR at `npm ci` and asserts every
+    packages COPY in the file lands exactly on it."""
+    import json
+
+    cases = [
+        ("apps/web/package.json", "apps/web/package-lock.json",
+         "apps/web/Dockerfile", "@maturidi/design-tokens", "design-tokens"),
+        ("apps/crm/package.json", "apps/crm/package-lock.json",
+         "apps/crm/Dockerfile", "@maturidi/ui-web", "ui-web"),
+    ]
+    for pkg_rel, lock_rel, docker_rel, dep, pkg_dir in cases:
+        pkg = json.loads(_read(pkg_rel))
+        file_dep = next(
+            (ver for section in ("dependencies", "devDependencies")
+             for name, ver in pkg.get(section, {}).items()
+             if name == dep and str(ver).startswith("file:")),
+            None,
+        )
+        assert file_dep, f"{dep} must stay a file: dep in {pkg_rel}"
+        lock = json.loads(_read(lock_rel))
+        assert lock["packages"].get(f"node_modules/{dep}", {}).get("link") is True, \
+            f"{dep} must be a link dep in {lock_rel}"
+        npm_ci_workdir, pkg_dests = _dockerfile_file_link_layout(docker_rel)
+        assert npm_ci_workdir, f"{docker_rel}: no npm ci step found"
+        assert pkg_dests, f"{docker_rel}: no packages COPY found (test vacuous)"
+        scope = dep.split("/")[0]
+        target = os.path.normpath(os.path.join(
+            npm_ci_workdir, "node_modules", scope,
+            "../../../../packages", pkg_dir))
+        for dest in pkg_dests:
+            pkg_copy = dest if dest.endswith(f"/{pkg_dir}") else os.path.join(dest, pkg_dir)
+            assert target == pkg_copy, (
+                f"{docker_rel}: file: link for {dep} resolves to {target}, "
+                f"but a packages COPY lands at {pkg_copy} — dangling link"
+            )
 
 
 def test_prod_no_published_db_ports():
@@ -424,7 +515,12 @@ def test_prod_compose_crm_gets_api_url_arg():
 def test_prod_api_uses_proxy_headers_behind_tls_terminating_proxy():
     """§۱۵: uvicorn با --proxy-headers (لاگ audit باید IP واقعی ببیند)."""
     cmd = _prod_compose()["services"]["api"]["command"]
-    assert "--proxy-headers" in cmd
+    # command از فیکس C-04 فرم ["sh", "-c", <script>] دارد تا
+    # $${UVICORN_WORKERS:-4} داخل کانتینر باز شود؛ پرچم‌ها داخل
+    # همان اسکریپت‌اند، پس برای چکِ «وجود پرچم در دستور api» فرم
+    # تخت‌شده ملاک است (معنای assertion عوض نشده).
+    flat = cmd if isinstance(cmd, str) else " ".join(str(part) for part in cmd)
+    assert "--proxy-headers" in flat
 
 
 def test_body_size_limit_middleware():

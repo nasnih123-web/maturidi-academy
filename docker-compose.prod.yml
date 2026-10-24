@@ -26,16 +26,20 @@ networks:
 
 volumes:
   pgdata:
+  clamavdata:
   redisdata:
   miniodata:
   promdata:
   grafanadata:
+  lokidata:
+  backupdata:
   metabase-pgdata:
 
 services:
   # ---------------------------------------------------------------- Postgres
   postgres:
-    image: postgres:16-alpine
+    # pgvector (B-03 — ADR-0026): همان نسل PG16، بدون پرش major.
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: "${POSTGRES_USER:?set POSTGRES_USER}"
@@ -70,9 +74,12 @@ services:
 
   # -------------------------------------------------------------------- MinIO
   minio:
-    # Track B: ایمیج‌های minio/minio از Docker Hub حذف شده‌اند (سپتامبر ۲۰۲۶) —
-    # همان ایمیج با digest یکسان روی quay.io منتشر می‌شود؛ latest پین نیست.
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # Track B (اصلاحیهٔ ممیزی 197efa0 — ADR-0039): رجیستری عمومی MinIO
+    # (Hub و quay) برای pull ناشناس بسته است؛ ایمیج از باینری رسمیِ همان
+    # release ساخته می‌شود (infra/minio/Dockerfile، با sha256 رسمی).
+    build:
+      context: ./infra/minio
+    image: maturidi/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -93,6 +100,30 @@ services:
   # با چند replica از api دیگر race روی migration نیست؛ شکست migration یعنی
   # `migrate` با exit غیرصفر تمام می‌شود و api/workerها اصلاً بالا نمی‌آیند
   # (condition: service_completed_successfully) — یعنی deploy بلند فیل می‌کند.
+  # اسکن ویروس آپلودها (C-01 — ADR-0028): clamd روی 3310 (INSTREAM)؛
+  # API fail-closed است — clamav ناسالم یعنی آپلود 503، نه ردِّ بی‌صدا.
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    volumes:
+      - clamavdata:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/clamdcheck.sh"]
+      # چک سلامت = اسکریپت رسمی خود ایمیج (clamdcheck.sh): ‏PING را با
+      # newline می‌فرستد و PONG را چک می‌کند. چک دست‌نویس قبلی با
+      # ‏printf بدون newline هیچ‌وقت جواب نمی‌گرفت و کانتینر برای همیشه
+      # unhealthy می‌ماند — در حالی که clamd طبق لاگ CI در ~۸ ثانیه
+      # بالا آمده بود (شکست‌های compose-smoke در PR #16، ممیزی 197efa0؛
+      # ایمیج رسمی دیتابیس امضا را baked دارد و دانلود بوت اول فقط
+      # آپدیت روزانهٔ کوچک است). پنجرهٔ زمانی پهن فقط headroom است؛
+      # گیت C-01 دست نخورده: api فقط با clamav سالم بالا می‌آید.
+      interval: 15s
+      timeout: 5s
+      retries: 24
+      start_period: 120s
+    networks:
+      - backend
+
   api:
     build: ./apps/api
     restart: unless-stopped
@@ -100,10 +131,18 @@ services:
     # --proxy-headers: چون TLS در reverse proxy خارجی terminate می‌شود (§۱۵)؛
     # فقط امن است چون api:8000 فقط از شبکهٔ داخلی در دسترس است و پروکسی لبه
     # هدرهای X-Forwarded-* جعلی را strip می‌کند (docs/ops/deployment.md §۱۵).
-    command: >
-      uvicorn app.main:app --host 0.0.0.0 --port 8000
-      --workers $${UVICORN_WORKERS:-4} --proxy-headers --forwarded-allow-ips='*'
-      --timeout-graceful-shutdown 30
+    # چرا sh -c؟ فرم رشته‌ایِ command در compose بدون شل exec می‌شود و
+    # $${UVICORN_WORKERS:-4} هیچ‌وقت باز نمی‌شد؛ uvicorn همان رشتهٔ
+    # خام را می‌گرفت، خطای Usage می‌داد و کانتینر در Restarting (2)
+    # می‌ماند (شاهد: CI run 168/169 روی PR #16 — api هیچ‌وقت بالا
+    # نیامد و گام دود روی کانتینر در حال ری‌استارت 137 می‌خورد).
+    command:
+      - sh
+      - -c
+      - >-
+        uvicorn app.main:app --host 0.0.0.0 --port 8000
+        --workers $${UVICORN_WORKERS:-4} --proxy-headers
+        --forwarded-allow-ips '*' --timeout-graceful-shutdown 30
     # graceful shutdown: uvicorn فرصت تخلیهٔ درخواست‌های جاری را دارد و
     # stop_grace_period باید از آن بزرگ‌تر باشد تا SIGKILL زودتر نرسد.
     stop_grace_period: 40s
@@ -112,15 +151,19 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       minio: { condition: service_healthy }
+      clamav: { condition: service_healthy }
     env_file:
       - .env.prod
     environment:
       APP_ENV: production
+      CLAMAV_HOST: clamav
     expose:
       - "8000"
-    # readiness روی /health (stdlib، بدون curl) — workerها هلث‌چک جدا ندارند
+    # readiness روی /ready (stdlib، بدون curl) — /health فقط liveness
+    # است و وابستگی‌ها را چک نمی‌کند (Pass 4 / C6).
+    # workerها هلث‌چک جدا ندارند
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=4)"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -142,10 +185,12 @@ services:
       migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+      clamav: { condition: service_healthy }
     env_file:
       - .env.prod
     environment:
       APP_ENV: production
+      CLAMAV_HOST: clamav
     networks:
       - backend
 
@@ -194,6 +239,11 @@ services:
       dockerfile: ./apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: "${WEB_API_URL:?set WEB_API_URL (e.g. https://api.example.com)}"
+        # Build-time API_URL (Pass 4 follow-up, run 40102129767): بیلد وب
+        # در collect-page-data روت‌هندلرها را اجرا می‌کند و lib/api.ts در
+        # production بدون API_URL صریح throw می‌کند؛ مقدار زمان build در
+        # باندل bake نمی‌شود و رانتایم از environment سرویس (پایین) می‌آید.
+        API_URL: http://api:8000
     restart: unless-stopped
     depends_on:
       - api
@@ -268,6 +318,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
       - promdata:/prometheus
     expose:
       - "9090"
@@ -282,6 +333,8 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_PASSWORD:?set GRAFANA_PASSWORD}"
     volumes:
       - grafanadata:/var/lib/grafana
+      - ./infra/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
     depends_on:
       - prometheus
       - loki
@@ -295,7 +348,80 @@ services:
     image: grafana/loki:3.0.0
     restart: unless-stopped
     command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./infra/monitoring/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
+      - lokidata:/loki
     expose:
       - "3100"
+    networks:
+      - backend
+
+  # m-02: شیپر لاگ کانتینرها به Loki (داشبورد خطاها)
+  promtail:
+    image: grafana/promtail:3.0.0
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./infra/monitoring/promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - backend
+
+  # m-02: متریک‌های هاست (دیسک/حافظه) برای هشدار DiskSpaceLow
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+    volumes:
+      - /:/host:ro,rslave
+    expose:
+      - "9100"
+    networks:
+      - backend
+
+  # m-02: متریک‌های PostgreSQL برای داشبورد دیتابیس
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_URI: "postgres:5432/${POSTGRES_DB:-maturidi}?sslmode=disable"
+      DATA_SOURCE_USER: "${POSTGRES_USER:?set POSTGRES_USER}"
+      DATA_SOURCE_PASS: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}"
+    depends_on:
+      postgres: { condition: service_healthy }
+    expose:
+      - "9187"
+    networks:
+      - backend
+
+  # -------------------------------------------------------------------- Backup
+  # m-04: بکاپ زمان‌بندی‌شده به‌جای cron هاست — همان infra/backup.sh روی
+  # شبکهٔ استک، روزی یک‌بار (BACKUP_AT_UTC). خروجی در والیوم backupdata
+  # می‌نشیند؛ بازیابی آزمایشی از همین خروجی: docs/ops/dr-drill.md.
+  # COMPOSE_PROJECT_NAME باید با نام پروژهٔ استک اصلی یکی باشد (پیش‌فرض
+  # نام پوشهٔ ریپو است) تا سرویس‌های postgres/minio پیدا شوند.
+  backup:
+    image: docker:27.5.1-cli
+    restart: unless-stopped
+    entrypoint: ["sh", "/opt/maturidi/infra/backup/entrypoint.sh"]
+    environment:
+      COMPOSE_FILE: docker-compose.prod.yml
+      COMPOSE_PROJECT_NAME: "${COMPOSE_PROJECT_NAME:-maturidi}"
+      BACKUP_DIR: /backups
+      BACKUP_AT_UTC: "${BACKUP_AT_UTC:-02:00}"
+      BACKUP_RUN_ON_START: "${BACKUP_RUN_ON_START:-false}"
+      POSTGRES_USER: "${POSTGRES_USER:?set POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB:-maturidi}"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}"
+      S3_BUCKET: "${S3_BUCKET:?set S3_BUCKET}"
+    volumes:
+      - ./:/opt/maturidi
+      - /var/run/docker.sock:/var/run/docker.sock
+      - backupdata:/backups
     networks:
       - backend

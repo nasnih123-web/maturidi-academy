@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import log_audit
 from app.core.database import get_db
 from app.core.errors import APIError
-from app.core.security import rate_limiter
+from app.core.rate_limit import get_rate_limiter
 from app.core.storage import get_storage
 from app.models.models import User
 from app.modules.auth.dependencies import get_current_user, require_permission
@@ -127,7 +127,13 @@ async def stream_item(
 ):
     """استریم — 302 به signed URL کوتاه‌مدت؛ visibility اعمال و دسترسی لاگ می‌شود."""
     ip, ua = _client(request)
-    if not rate_limiter.is_allowed(f"library_stream:{ip or 'unknown'}", limit=60, window_s=60):
+    # FIX3-03 (ADR-0050): سقف دانلود روی limiter توزیع‌شده (Redis) است،
+    # نه حافظهٔ همین پردازه — با چند worker سقف واقعی ۶۰ می‌ماند، نه
+    # ۶۰×worker. auth=True یعنی مسیر حساس: در production با Redisِ
+    # قطع fail-closed (429)، در dev/test fallback حافظه‌ای.
+    if not await get_rate_limiter().is_allowed(
+        f"library_stream:{ip or 'unknown'}", limit=60, window_s=60, auth=True
+    ):
         raise APIError(429, "rate_limited", "تعداد درخواست بیش از حد مجاز است")
     detail = await service.get_item_detail(db, item_id, user)
     media_url = detail["media_url"]
@@ -163,13 +169,25 @@ async def download_by_ref(
     key: str,
     exp: int,
     sig: str,
+    purpose: str = "",
     db: AsyncSession = Depends(get_db),
 ):
-    """دانلود با URL امضاشدهٔ کوتاه‌مدت (§۶) — امضا جای احراز هویت را می‌گیرد."""
+    """دانلود با URL امضاشدهٔ کوتاه‌مدت (§۶) — امضا جای احراز هویت را می‌گیرد.
+
+    FIX2-08: امضا باید هم‌منظور کتابخانه باشد؛ امضای صادرشده برای
+    مصرف دیگر (مثلاً گواهی LMS) این‌جا کار نمی‌کند.
+    """
+    from app.core.storage import SIGNED_PURPOSE_LIBRARY
+
     storage = get_storage()
     verify = getattr(storage, "verify_download_sig", None)
     read_bytes = getattr(storage, "read_bytes", None)
-    if verify is None or read_bytes is None or not verify(key, exp, sig):
+    if (
+        verify is None
+        or read_bytes is None
+        or purpose != SIGNED_PURPOSE_LIBRARY
+        or not verify(key, exp, sig, purpose)
+    ):
         raise APIError(403, "invalid_signature", "امضای دانلود نامعتبر یا منقضی است")
     _, mime = await service.resolve_download_key(db, key)
     data = await read_bytes(key)

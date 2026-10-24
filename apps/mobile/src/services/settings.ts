@@ -58,6 +58,13 @@ export async function setPushEnabled(enabled: boolean): Promise<void> {
   await kvSet(PUSH_KEY, enabled ? "1" : "0");
 }
 
+/** کلید عمومی Turnstile از تنظیمات عمومی (C-02) — null یعنی ویجت لازم نیست. */
+export async function getTurnstileSiteKey(): Promise<string | null> {
+  const body = await getPublicSettings();
+  const key = body["turnstile_site_key"];
+  return typeof key === "string" && key ? key : null;
+}
+
 export async function getPublicSettings(): Promise<Record<string, unknown>> {
   try {
     return await api.get<Record<string, unknown>>("/api/v1/settings/public", { auth: false });

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -23,6 +24,7 @@ from app.core.platform_settings import (
     get_typed_setting,
     stage_setting,
 )
+from app.core.storage import get_storage
 from app.models.models import User, VoiceSession, VoiceUsageLog
 from app.modules.fatwa import service as fatwa_service
 from app.modules.quran import service as quran_service
@@ -42,6 +44,8 @@ DEFAULTS: dict[str, object] = {
     "voice.tts_voice_fa": "default",
     "voice.tts_voice_ar": "default",
     "voice.tts_cloud_endpoint": "",
+    "voice.tts_cloud_api_key": "",  # secret — در platform_settings رمزنگاری می‌شود
+    "voice.tts_cloud_model": "tts-1",
 }
 
 SETTING_KEYS = tuple(DEFAULTS)
@@ -62,6 +66,55 @@ async def _int_setting(db: AsyncSession, key: str) -> int:
 async def max_audio_bytes(db: AsyncSession) -> int:
     """سقف حجم ورودی صوتی به بایت — برای خواندن جریانیِ محدود در روتر (§۷)."""
     return await _int_setting(db, "voice.max_audio_mb") * 1024 * 1024
+
+
+logger = logging.getLogger("app.voice")
+
+
+async def _synthesize_answer_audio(
+    db: AsyncSession, session_id: uuid.UUID, answer: str, lang: str
+) -> tuple[str | None, str | None, str | None, str | None, str | None]:
+    """سنتز پاسخ + ذخیره در StorageProvider + URL امضاشده (C-03 — ADR-0030).
+
+    -> (audio_url, audio_base64, audio_mime, provider_name, notice)
+    URL مسیر اصلی است (وب audio_url را ترجیح می‌دهد)؛ اگر ذخیره‌سازی
+    خطا داد، صادقانه به base64 برمی‌گردیم تا پاسخ شنیداری از دست نرود.
+    notice فقط وقتی است که هیچ صوتی ساخته نشد.
+    """
+    voice_name = str(await _voice_setting(db, f"voice.tts_voice_{lang}"))
+    configured_tts = str(await _voice_setting(db, "voice.tts_provider"))
+    raw, mime, notice = await tts.synthesize_or_degrade(
+        answer,
+        lang=lang,
+        voice=voice_name,
+        configured_provider=configured_tts,
+        cloud_endpoint=str(await _voice_setting(db, "voice.tts_cloud_endpoint")),
+        cloud_api_key=str(await _voice_setting(db, "voice.tts_cloud_api_key")),
+        cloud_model=str(await _voice_setting(db, "voice.tts_cloud_model")),
+    )
+    if raw is None:
+        return None, None, None, None, notice
+    mime = mime or "audio/mpeg"
+    ext = "mp3" if ("mpeg" in mime or "mp3" in mime) else "bin"
+    key = f"voice/tts/{session_id}.{ext}"
+    try:
+        from app.core.storage import SIGNED_PURPOSE_VOICE_TTS
+
+        storage = get_storage()
+        await storage.put_object(key, raw, mime)
+        # Pass 4 / A3: مسیر دانلودِ خودِ صوت، با منظور voice-tts —
+        # دیگر پیش‌فرضِ مسیر/منظور گواهی LMS را به ارث نمی‌برد.
+        # روی S3، get_presigned_url مستقیم MinIO است و این پارامترها
+        # بی‌اثرند؛ روی local، URL به endpoint زیر می‌رسد.
+        url = await storage.get_presigned_url(
+            key,
+            download_path="/api/v1/voice/tts-audio-by-ref",
+            purpose=SIGNED_PURPOSE_VOICE_TTS,
+        )
+        return url, None, mime, configured_tts, None
+    except Exception:
+        logger.warning("TTS audio storage failed; falling back to base64", exc_info=True)
+        return None, base64.b64encode(raw).decode(), mime, configured_tts, None
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +213,11 @@ def validate_audio_upload(content: bytes, filename: str | None, max_mb: int) -> 
 async def transcribe(
     db: AsyncSession, *, content: bytes, filename: str | None, lang: str | None
 ) -> dict:
+    # اسکن ویروس فایل صوتیِ آپلودی پیش از هر پردازش (C-01 — ADR-0028):
+    # هر دو مسیر /voice/transcribe و /voice/ask از همین تابع می‌گذرند.
+    from app.core.antivirus import scan_upload_or_reject
+
+    await scan_upload_or_reject(content, filename=filename)
     max_mb = await _int_setting(db, "voice.max_audio_mb")
     validate_audio_upload(content, filename, max_mb)
     configured = str(await _voice_setting(db, "voice.stt_provider"))
@@ -319,41 +377,29 @@ async def answer_text(
         answer = result["answer"]
         citations = result.get("citations") or []
         answer_status = result.get("status")
-        voice_name = str(await _voice_setting(db, f"voice.tts_voice_{lang}"))
-        configured_tts = str(await _voice_setting(db, "voice.tts_provider"))
-        cloud_endpoint = str(await _voice_setting(db, "voice.tts_cloud_endpoint"))
-        raw, mime, tts_notice = await tts.synthesize_or_degrade(
-            answer,
-            lang=lang,
-            voice=voice_name,
-            configured_provider=configured_tts,
-            cloud_endpoint=cloud_endpoint,
+        url, b64, mime2, provider_name, tts_notice = await _synthesize_answer_audio(
+            db, session.id, answer, lang
         )
-        if raw is not None:
+        if url is not None or b64 is not None:
             audio_kind = "tts"
-            audio_base64 = base64.b64encode(raw).decode()
-            audio_mime = mime
-            tts_provider_name = configured_tts
+            audio_url = url
+            audio_base64 = b64
+            audio_mime = mime2
+            tts_provider_name = provider_name
         else:
             notice = tts_notice  # "tts_unavailable" — صادقانه، با متن کامل
             answer = f"{_msg('voice.tts_unavailable', lang)}\n{answer}"
     else:
         answer = _msg("voice.general_ack", lang)
-        voice_name = str(await _voice_setting(db, f"voice.tts_voice_{lang}"))
-        configured_tts = str(await _voice_setting(db, "voice.tts_provider"))
-        cloud_endpoint = str(await _voice_setting(db, "voice.tts_cloud_endpoint"))
-        raw, mime, tts_notice = await tts.synthesize_or_degrade(
-            answer,
-            lang=lang,
-            voice=voice_name,
-            configured_provider=configured_tts,
-            cloud_endpoint=cloud_endpoint,
+        url, b64, mime2, provider_name, tts_notice = await _synthesize_answer_audio(
+            db, session.id, answer, lang
         )
-        if raw is not None:
+        if url is not None or b64 is not None:
             audio_kind = "tts"
-            audio_base64 = base64.b64encode(raw).decode()
-            audio_mime = mime
-            tts_provider_name = configured_tts
+            audio_url = url
+            audio_base64 = b64
+            audio_mime = mime2
+            tts_provider_name = provider_name
         else:
             notice = tts_notice
 

@@ -6,8 +6,20 @@ on:
         description: "Attach bundles to the GitHub Release with this tag (e.g. v1.1.0). Empty = workflow artifacts only."
         required: false
         default: ""
+      unsigned_verify_only:
+        description: "Only run the unsigned build-verification job (no release, no callback, no secrets)."
+        required: false
+        type: boolean
+        default: false
   push:
     tags: ["desktop-v*"]
+  # FIX2-09: روی PRهایی که دسکتاپ را لمس می‌کنند فقط job راستی‌آزمایی
+  # بیلد بدون امضا اجرا می‌شود (پایین)؛ jobهای release/callback روی PR
+  # هرگز اجرا نمی‌شوند (با if صریح روی resolve/build).
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - ".github/workflows/desktop.yml"
 
 # Default token stays read-only; jobs that touch a Release opt in below.
 permissions:
@@ -16,6 +28,8 @@ permissions:
 jobs:
   # ── Resolve the target release ONCE (avoids matrix create-races) ──────
   resolve:
+    # روی PR و در حالت verify-only اجرا نمی‌شود (release ساخته نمی‌شود)
+    if: github.event_name != 'pull_request' && inputs.unsigned_verify_only != true
     runs-on: ubuntu-latest
     permissions:
       contents: write # only for `gh release create` of a DRAFT when missing
@@ -39,13 +53,31 @@ jobs:
           # comments string-safely. NOTE: this resolve step was verified
           # locally with the verbatim command (a real GitHub Actions run
           # is only possible after the owner uploads this workflow).
-          VERSION="$(node tools/ci/tauri-version.mjs apps/desktop/src-tauri/tauri.conf.json)"
+          META_VERSION="$(node tools/ci/tauri-version.mjs apps/desktop/src-tauri/tauri.conf.json)"
+          VERSION="$META_VERSION"
           TAG=""
           if [[ "${GITHUB_REF:-}" == refs/tags/desktop-v* ]]; then
-            VERSION="${GITHUB_REF_NAME#desktop-v}"
-            TAG="v$VERSION"
+            TAG="v${GITHUB_REF_NAME#desktop-v}"
           elif [ -n "$IN_TAG" ]; then
             TAG="$IN_TAG"
+          fi
+          # Pass 4 / B8: توافق نسخه — tauri build نسخه را از
+          # tauri.conf.json می‌خواند (META_VERSION)، نه از tag؛
+          # پیش از این resolve، VERSION را از روی tag بازنویسی
+          # می‌کرد و باندلِ نسخهٔ 0.1.0 زیر tag v1.1.0 الصاق می‌شد.
+          # حالا: tag (با/بدون v) باید دقیقاً META_VERSION باشد،
+          # وگرنه fail-fast؛ VERSION هم همیشه META_VERSION می‌ماند
+          # تا نام فایل‌ها با نسخهٔ تعبیه‌شده یکی باشد.
+          if [ -n "$TAG" ]; then
+            TAG_VERSION="${TAG#v}"
+            if ! [[ "$TAG_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::release tag '$TAG' is malformed — expected vX.Y.Z."
+              exit 1
+            fi
+            if [ "$TAG_VERSION" != "$META_VERSION" ]; then
+              echo "::error::release tag '$TAG' (version $TAG_VERSION) does not match embedded tauri.conf.json version $META_VERSION — the bundle would ship version $META_VERSION under tag $TAG."
+              exit 1
+            fi
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
@@ -106,6 +138,7 @@ jobs:
 
   build:
     needs: resolve
+    if: github.event_name != 'pull_request' && inputs.unsigned_verify_only != true
     # نکتهٔ فاز ۲: Tauri روی هر سیستم‌عامل باید روی runner همان OS بیلد شود —
     # cross-compile از یک کانتینر لینوکسی ممکن نیست.
     strategy:
@@ -227,6 +260,28 @@ jobs:
           path: apps/desktop/release-assets/
           retention-days: 90
 
+      # B-01 (ADR-0025): حلقهٔ بیلد بسته می‌شود — باندل‌ها به باکت builds
+      # در MinIO می‌روند و انتشار با توکن سرویس به API ثبت می‌شود تا CRM
+      # لینک دانلود امضاشده نشان دهد. نبود هرکدام از secretها = ردِّ
+      # صادقانه با هشدار داخل اسکریپت (بیلد جعلی «ثبت‌شده» گزارش نمی‌شود).
+      - name: Close the loop — MinIO upload + API release registration (B-01)
+        shell: bash
+        env:
+          CB_PLATFORM: desktop
+          CB_VERSION: ${{ needs.resolve.outputs.version }}
+          CB_BUILD_NUMBER: ${{ github.run_number }}-${{ matrix.platform }}
+          CB_ARTIFACT_DIR: release-assets
+          CB_MANIFEST: build-manifest-${{ matrix.platform }}.json
+          CB_SIGNED: "false"
+          BUILDS_API_BASE_URL: ${{ secrets.BUILDS_API_BASE_URL }}
+          BUILDS_SERVICE_TOKEN: ${{ secrets.BUILDS_SERVICE_TOKEN }}
+          BUILDS_S3_ENDPOINT: ${{ secrets.BUILDS_S3_ENDPOINT }}
+          BUILDS_S3_BUCKET: ${{ secrets.BUILDS_S3_BUCKET }}
+          BUILDS_S3_ACCESS_KEY: ${{ secrets.BUILDS_S3_ACCESS_KEY }}
+          BUILDS_S3_SECRET_KEY: ${{ secrets.BUILDS_S3_SECRET_KEY }}
+          BUILDS_S3_REGION: ${{ secrets.BUILDS_S3_REGION }}
+        run: bash "$GITHUB_WORKSPACE/tools/ci/build-callback.sh"
+
       - name: Attach bundles to the release (when resolved)
         if: needs.resolve.outputs.attach == 'true'
         shell: bash
@@ -242,6 +297,111 @@ jobs:
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" release-assets/* --clobber
           echo "Attached ${PLATFORM} bundles to release $TAG"
           echo "::warning::Desktop bundles are UNSIGNED — the release must stay draft until the owner reviews build-manifest-${PLATFORM}.json."
+
+  # ── راستی‌آزمایی بیلد بدون امضا (FIX2-09) ─────────────────────────
+  # روی PRهای لمس‌کنندهٔ apps/desktop/** و با workflow_dispatch
+  # (unsigned_verify_only=true) اجرا می‌شود: همان بیلد واقعی Tauri
+  # روی runner هر سه OS، ولی بدون هیچ secret، بدون ساخت Release و
+  # بدون callback ثبت انتشار. قاعدهٔ صریح مالک: نبود secret امضا
+  # هرگز نباید جلوی بیلد بدون امضا را بگیرد — این job هیچ secreتی
+  # نمی‌خواند (در تست نگهبان CI هم assert شده است) و خروجی‌اش فقط
+  # workflow artifact کوتاه‌عمر است، نه انتشار.
+  verify-unsigned:
+    if: github.event_name == 'pull_request' || inputs.unsigned_verify_only == true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: macos-latest
+            platform: macos
+          - os: ubuntu-latest
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      # FIX3-01: گارد سریع اسکیمای Tauri 2 — پیش از دانلود toolchain، تا
+      # رگرسیون سبک v1 (مثل بلوک top-level «updater» که ران #5 مالک را
+      # روی هر سه OS کشت) در چند ثانیه و با پیام روشن fail شود، نه بعد
+      # از چند دقیقه وسط tauri build. همان قرارداد تست نگهبان pytest
+      # (apps/api/tests/test_tauri_config_fix3.py).
+      - name: Validate tauri.conf.json (Tauri 2 schema keys)
+        shell: bash
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" - <<'PYEOF'
+          import json, sys
+          raw = open("src-tauri/tauri.conf.json", encoding="utf-8").read()
+          out, i, n, in_str = [], 0, len(raw), False
+          while i < n:
+              ch = raw[i]
+              if in_str:
+                  out.append(ch)
+                  if ch == "\\" and i + 1 < n:
+                      out.append(raw[i + 1]); i += 2; continue
+                  if ch == '"':
+                      in_str = False
+                  i += 1; continue
+              if ch == '"':
+                  in_str = True; out.append(ch); i += 1; continue
+              if ch == "/" and i + 1 < n and raw[i + 1] == "/":
+                  while i < n and raw[i] != "\n":
+                      i += 1
+                  continue
+              out.append(ch); i += 1
+          cfg = json.loads("".join(out))
+          allowed = {"$schema", "productName", "version", "identifier",
+                     "build", "app", "bundle", "plugins"}
+          errors = []
+          if "updater" in cfg:
+              errors.append("top-level 'updater' is Tauri v1 style (FIX3-01)")
+          extra = set(cfg) - allowed
+          if extra:
+              errors.append("unknown top-level keys for Tauri 2: %s" % sorted(extra))
+          upd = (cfg.get("plugins") or {}).get("updater")
+          if isinstance(upd, dict) and (set(upd) & {"active", "dialog"}):
+              errors.append("plugins.updater uses v1-only keys (active/dialog)")
+          if errors:
+              print("tauri.conf.json schema guard FAILED:")
+              for e in errors:
+                  print(" -", e)
+              sys.exit(1)
+          print("tauri.conf.json: Tauri 2 schema keys OK")
+          PYEOF
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+      - name: Verify shell + icon assets (ADR-0023)
+        shell: bash
+        run: |
+          test -f shell/index.html
+          test -f shell/shell.js
+          test -f shell/config.js
+          test -f src-tauri/icons/32x32.png
+          test -f src-tauri/icons/128x128.png
+          test -f src-tauri/icons/icon.png
+          test -f src-tauri/icons/icon.ico
+          test -f src-tauri/icons/icon.icns
+          echo "desktop shell + icons present"
+      - name: Linux bundle prerequisites
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Build (unsigned — no signing secrets involved)
+        run: npm run tauri build
+      - name: Upload bundles (verification evidence only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-unsigned-${{ matrix.platform }}
+          path: apps/desktop/src-tauri/target/release/bundle/
+          retention-days: 14
 
 # صداقت وضعیت:
 # - هر پلتفرم روی runner خودش بیلد و خروجی واقعی همان پلتفرم (msi/exe ،dmg ،

@@ -31,7 +31,11 @@ from app.modules.content.legal import (
     PRIVACY_BLOCKS,
     TERMS_BLOCKS,
 )
-from app.modules.fatwa.embeddings import HashEmbeddingProvider
+from app.modules.fatwa.embeddings import (
+    PROJECTION_ID,
+    HashEmbeddingProvider,
+    pgvector_available,
+)
 
 TERMS_CITATION = {
     "fa": f"شرایط استفاده از آکادمی ماتریدی (نسخهٔ {LEGAL_TEXT_VERSION})",
@@ -121,6 +125,11 @@ async def seed_fatwa_demo(db: AsyncSession) -> dict[str, int]:
             FiqhKnowledgeChunk(
                 chunk_text=text_value,
                 embedding=list(vector),
+                # ستون برداری واقعی روی Postgres (B-03 — ADR-0026)
+                embedding_vec=list(vector) if pgvector_available() else None,
+                embedding_provider=provider.name,
+                embedding_model=provider.model_name,
+                embedding_projection=PROJECTION_ID,
                 source_type="demo_seed",
                 source_ref={
                     "type": "seed",

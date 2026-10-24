@@ -31,6 +31,18 @@ from app.modules.projects import due_cron as _pms_due_cron  # noqa: F401
 from app.modules.telegram import jobs as _telegram_jobs  # noqa: F401
 
 
+async def _media_startup(ctx: dict) -> None:
+    """گیت آمادگی زنجیرهٔ ابزار رسانه (B-04 — ADR-0027).
+
+    ورکر media بدون ffmpeg/tesseract/poppler/faster-whisper هیچ کار
+    مفیدی نمی‌کند؛ ابزار غایب = CRITICAL + RuntimeError و ورکر اصلاً
+    بالا نمی‌آید (fail loud) — نه صفِ پر از تسکِ ساکت‌سوخته.
+    """
+    from app.core.media_tools import assert_media_tools_ready
+
+    assert_media_tools_ready()
+
+
 def _make_settings_class(queue_name: str) -> type:
     cfg = worker_settings_for(queue_name)
 
@@ -42,6 +54,9 @@ def _make_settings_class(queue_name: str) -> type:
         max_jobs = cfg["max_jobs"]
         max_tries = cfg["max_tries"]
         job_timeout = cfg["job_timeout"]
+
+    if queue_name == "media":
+        WorkerSettings.on_startup = staticmethod(_media_startup)  # type: ignore[attr-defined]
 
     WorkerSettings.__name__ = f"{queue_name.capitalize()}WorkerSettings"
     return WorkerSettings

@@ -1,6 +1,11 @@
 """سرویس مرکز بیلدها — فاز ۱۴ + dispatch واقعی (F-05 remediation).
 
 - GET /releases: نسخه‌های منتشرشدهٔ هر پلتفرم با download URL (امضاشده).
+- POST /releases: ثبت انتشار — یا کاربرِ دارای مجوز builds.manage یا
+  callback سرویس CI با توکن اختصاصی (B-01 — ADR-0025): workflow فایل را
+  به باکت builds در MinIO می‌فرستد و کلید آبجکت را ثبت می‌کند؛ پاسخ
+  download_url تازه و کوتاه‌عمر از StorageProvider می‌سازد و نگهداری
+  «۱۰ گروه انتشار آخر هر پلتفرم» (FIX2-11) همین‌جا اعمال می‌شود.
 - POST /rebuild: ساخت درخواست + dispatch واقعی به GitHub Actions
   (workflow_dispatch روی mobile.yml / desktop.yml). اگر ارائه‌دهندهٔ بیلد
   پیکربندی نشده باشد (GITHUB_DISPATCH_TOKEN/GITHUB_REPO خالی)، صادقانه
@@ -18,6 +23,8 @@
 """
 from __future__ import annotations
 
+import hmac
+import logging
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -30,9 +37,111 @@ from app.core.audit import log_audit
 from app.core.config import get_settings
 from app.core.errors import APIError
 from app.core.platform_settings import get_setting
+from app.core.storage import StorageProvider, get_builds_storage
 from app.models.models import BuildRelease, BuildRequest, User
 
+logger = logging.getLogger(__name__)
+
 PLATFORMS = ("android", "ios", "desktop")
+
+# ---------------------------------------------------------------------------
+# Callback بیلدها از CI (B-01 — ADR-0025)
+# ---------------------------------------------------------------------------
+
+#: توکن سرویس CI فقط وقتی معتبر است که در محیط API تنظیم شده باشد؛
+#: مقایسه ثابت-زمان است و توکن هرگز لاگ/ذخیره نمی‌شود.
+SERVICE_TOKEN_HEADER = "x-build-service-token"
+
+#: نگهداری انتشارها: فقط ۱۰ گروه انتشار آخر هر پلتفرم می‌ماند
+#: (گروه = (version, build_number) با همهٔ فایل‌هایش — FIX2-11).
+RELEASE_RETENTION_PER_PLATFORM = 10
+
+#: عمر URL دانلود امضاشده‌ای که برای هر release تازه ساخته می‌شود.
+RELEASE_DOWNLOAD_TTL_SECONDS = 900
+
+# کلید آبجکت فایل بیلد: همیشه زیر پیشوند builds/ و بدون traversal
+_ARTIFACT_KEY_RE = re.compile(r"^builds/[A-Za-z0-9][A-Za-z0-9._\-/]*$")
+_SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+
+
+def service_token_ok(token: str | None) -> bool:
+    """اعتبارسنجی توکن سرویس CI — فقط وقتی در محیط تنظیم شده باشد."""
+    expected = get_settings().builds_service_token.strip()
+    if not expected or not token:
+        return False
+    return hmac.compare_digest(token.strip(), expected)
+
+
+def validate_artifact_key(key: str | None) -> str | None:
+    """کلید آبجکت فایل بیلد — زیر builds/، بدون .. و بدون اسلش آغازین."""
+    if key is None:
+        return None
+    k = key.strip()
+    if not _ARTIFACT_KEY_RE.match(k) or ".." in k.split("/"):
+        raise APIError(
+            422, "bad_artifact_key",
+            "artifact_key باید زیر پیشوند builds/ باشد و شامل .. نباشد",
+        )
+    return k
+
+
+def _download_url_allowed_hosts() -> set[str]:
+    """نام‌میزبان‌های شناخته‌شدهٔ پروژه برای download_url دستی (FIX2-07).
+
+    فقط میزبان‌هایی که خود پروژه از config می‌شناسد: endpoint عمومی
+    storage (S3_ENDPOINT_PUBLIC)، endpoint عمومی باکت builds
+    (BUILDS_S3_ENDPOINT_PUBLIC) و APP_BASE_URL (دانلودهای app-hosted).
+    """
+    from urllib.parse import urlparse
+
+    settings = get_settings()
+    hosts: set[str] = set()
+    for raw in (
+        settings.s3_endpoint_public,
+        settings.builds_s3_endpoint_public,
+        settings.app_base_url,
+    ):
+        if raw and raw.strip():
+            host = urlparse(raw.strip()).hostname
+            if host:
+                hosts.add(host.lower())
+    return hosts
+
+
+def validate_download_url(url: str | None) -> str | None:
+    """اعتبارسنجی download_url ثبت دستی (FIX2-07 — ADR-0045).
+
+    این لینک در CRM به‌عنوان دانلود رسمیِ بیلد امضاشده نمایش داده
+    می‌شود؛ URL خارجی دلخواه (حتی https) یعنی هر کس با دسترسی ثبت
+    release می‌تواند لینک فیشینگ/بدافزار را جای دانلود رسمی بنشاند.
+    قرارداد: فقط https (http فقط برای localhost توسعه) و فقط روی
+    میزبان‌های شناخته‌شدهٔ پروژه. اگر هیچ میزبان عمومی‌ای پیکربندی
+    نشده باشد، هر download_url دستی رد می‌شود — مسیر درست در آن
+    حالت artifact_key (آپلود به باکت builds) است.
+    """
+    if url is None:
+        return None
+    from urllib.parse import urlparse
+
+    u = url.strip()
+    parsed = urlparse(u)
+    host = (parsed.hostname or "").lower()
+    bad = APIError(
+        422,
+        "bad_download_url",
+        "download_url باید https و روی میزبان عمومی شناخته‌شدهٔ پروژه "
+        "(S3_ENDPOINT_PUBLIC / BUILDS_S3_ENDPOINT_PUBLIC / APP_BASE_URL) "
+        "باشد؛ برای فایل روی باکت builds از artifact_key استفاده کنید",
+    )
+    if not u or any(ch.isspace() for ch in u) or parsed.username or parsed.password:
+        raise bad
+    if parsed.scheme == "http" and host in ("localhost", "127.0.0.1"):
+        pass  # توسعهٔ محلی — همان استثنای localhost در گارد production
+    elif parsed.scheme != "https":
+        raise bad
+    if not host or host not in _download_url_allowed_hosts():
+        raise bad
+    return u
 
 # ---------------------------------------------------------------------------
 # ارائه‌دهندهٔ بیلد (GitHub Actions) — F-05 remediation
@@ -401,17 +510,55 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def _release_out(r: BuildRelease) -> dict:
+async def _release_out(
+    r: BuildRelease, *, storage: StorageProvider | None = None
+) -> dict:
+    """خروجی release — download_url برای فایل واقعی، تازه و کوتاه‌عمر.
+
+    اگر فایل بیلد در StorageProvider باشد (artifact_key)، URL از
+    get_presigned_url با TTL کوتاه ساخته می‌شود (هرگز در DB ذخیره
+    نمی‌شود)؛ این endpoint فقط برای مدیرِ دارای مجوز است، پس بیلد
+    امضانشدهٔ داخلی هم قابل دانلود است و پرچم `signed` وضعیت امضا را
+    صادقانه جدا نشان می‌دهد (برچسب «امضانشده» در CRM — C-05).
+    مسیر قدیمیِ ثبت دستی (download_url ذخیره‌شده) فقط برای بیلد امضاشده
+    برگردانده می‌شود — مثل قبل، لینک حدسی ساخته نمی‌شود.
+    """
+    url: str | None = None
+    expires: str | None = None
+    download_expired = False
+    if r.artifact_key:
+        st = storage or get_builds_storage()
+        url = await st.get_presigned_url(
+            r.artifact_key, expires_seconds=RELEASE_DOWNLOAD_TTL_SECONDS
+        )
+        expires = (
+            _utcnow() + timedelta(seconds=RELEASE_DOWNLOAD_TTL_SECONDS)
+        ).isoformat()
+    elif r.signed and r.download_url:
+        # FIX2-07: انقضای ثبت‌شده روی مسیر سرو اعمال می‌شود — لینک
+        # منقضی دیگر داده نمی‌شود (قبلاً فقط نمایش داده می‌شد).
+        if r.download_expires_at is not None:
+            from app.core.database import ensure_aware
+
+            expires = r.download_expires_at.isoformat()
+            if ensure_aware(r.download_expires_at) <= _utcnow():
+                download_expired = True
+            else:
+                url = r.download_url
+        else:
+            url = r.download_url
     return {
         "id": str(r.id),
         "platform": r.platform,
         "version": r.version,
         "build_number": r.build_number,
-        # URL دانلود فقط وقتی معتبر است که بیلد امضاشده و منقضی نشده باشد —
-        # در غیر این صورت null صادقانه، نه لینک خراب.
-        "download_url": r.download_url if (r.signed and r.download_url) else None,
-        "download_expires_at": r.download_expires_at.isoformat()
-        if r.download_expires_at else None,
+        "download_url": url,
+        "download_expires_at": expires,
+        "download_expired": download_expired,
+        "has_file": bool(r.artifact_key),
+        "artifact_key": r.artifact_key,
+        "file_size_bytes": r.file_size_bytes,
+        "sha256": r.sha256,
         "signed": r.signed,
         "build_metadata": r.build_metadata or {},
         "created_at": r.created_at.isoformat(),
@@ -427,11 +574,85 @@ async def list_releases(
     if platform:
         stmt = stmt.where(BuildRelease.platform == platform)
     rows = (await db.execute(stmt.limit(min(limit, 200)))).scalars().all()
-    return [_release_out(r) for r in rows]
+    return [await _release_out(r) for r in rows]
+
+
+async def prune_releases(
+    db: AsyncSession,
+    *,
+    platform: str,
+    keep: int = RELEASE_RETENTION_PER_PLATFORM,
+    storage: StorageProvider | None = None,
+) -> int:
+    """نگهداری انتشارها (B-01): فقط `keep` گروه انتشار آخر هر پلتفرم می‌ماند.
+
+    FIX2-11: واحد نگهداری «گروه انتشار» است — (version, build_number)
+    — نه تک‌رکورد. یک انتشار desktop سه فایل دارد (نصب‌کننده + امضا +
+    مانیفست) و هر فایل یک رکورد است؛ شمارش رکوردی یعنی انتشار چندفایلی
+    چند سهمیه می‌سوزاند و ناعادلانه زودتر پاک می‌شود. حالا ۱۰ گروه آخر
+    با همهٔ فایل‌هایشان می‌مانند و بقیهٔ گروه‌ها کامل حذف می‌شوند.
+
+    رکوردهای اضافه حذف و فایلشان از StorageProvider هم پاک می‌شود
+    (حذف فایل best-effort است: خطای storage جلوی حذف رکورد را نمی‌گیرد
+    ولی لاگ می‌شود). خروجی: تعداد رکورد حذف‌شده.
+    """
+    rows = (
+        await db.execute(
+            select(BuildRelease)
+            .where(BuildRelease.platform == platform)
+            .order_by(BuildRelease.created_at.desc(), BuildRelease.id.desc())
+        )
+    ).scalars().all()
+    groups: dict[tuple[str, str | None], list[BuildRelease]] = {}
+    group_order: list[tuple[str, str | None]] = []
+    for r in rows:  # rows از تازه‌ترین مرتب است؛ ترتیب گروه = اولین ظهور
+        gkey = (r.version, r.build_number)
+        if gkey not in groups:
+            groups[gkey] = []
+            group_order.append(gkey)
+        groups[gkey].append(r)
+    excess = [r for gkey in group_order[keep:] for r in groups[gkey]]
+    if not excess:
+        return 0
+    keys = [r.artifact_key for r in excess if r.artifact_key]
+    for r in excess:
+        await db.delete(r)
+    await db.commit()
+    if keys:
+        st = storage or get_builds_storage()
+        for storage_key in keys:
+            try:
+                await st.delete_object(storage_key)
+            except Exception:  # best-effort؛ رکورد حذف شده است
+                logger.warning(
+                    "builds prune: storage delete failed for %s",
+                    storage_key,
+                    exc_info=True,
+                )
+    return len(excess)
+
+
+#: پیش‌نیازهایی که در سمت CI/GitHub زندگی می‌کنند و API به آن‌ها دید
+#: ندارد — صادقانه با api_visible=false گزارش می‌شوند تا CRM دقیقاً
+#: نشان دهد چه چیزی کجاست و کجا راستی‌آزمایی می‌شود (C-05).
+_CI_SIDE_PREREQS: tuple[dict, ...] = (
+    {"key": "EXPO_TOKEN", "where": "GitHub Secrets", "verified_by": "mobile.yml preflight", "api_visible": False},
+    {"key": "BUILDS_API_URL", "where": "GitHub Secrets", "verified_by": "build callback step (B-01)", "api_visible": False},
+    {"key": "BUILDS_SERVICE_TOKEN (GitHub Secrets)", "where": "GitHub Secrets", "verified_by": "build callback step (B-01)", "api_visible": False},
+    {"key": "BUILDS_S3_ACCESS_KEY / BUILDS_S3_SECRET_KEY / BUILDS_S3_BUCKET / BUILDS_S3_ENDPOINT", "where": "GitHub Secrets", "verified_by": "build callback step (B-01)", "api_visible": False},
+    {"key": "Android keystore (EAS managed credentials)", "where": "Expo / EAS", "verified_by": "mobile.yml validate step", "api_visible": False},
+    {"key": "Apple distribution certificate + provisioning profile", "where": "Expo / EAS + App Store Connect", "verified_by": "mobile.yml validate step", "api_visible": False},
+    {"key": "TAURI_SIGNING_PRIVATE_KEY", "where": "GitHub Secrets", "verified_by": "desktop.yml", "api_visible": False},
+)
 
 
 async def get_prereqs(db: AsyncSession) -> dict:
-    """پیش‌نیازهای امضا + وضعیت ارائه‌دهندهٔ بیلد — صادقانه."""
+    """پیش‌نیازهای امضا + وضعیت ارائه‌دهندهٔ بیلد + خط لوله — صادقانه (C-05).
+
+    بخش pipeline فقط چیزهایی را گزارش می‌کند که خود API می‌تواند
+    ببیند؛ پیش‌نیازهای سمت CI در ci_side با api_visible=false می‌آیند
+    تا CRM «قول توخالی» نشان ندهد.
+    """
     signing: dict[str, dict] = {}
     for name, (key, expiry_key) in _SIGNING_KEYS.items():
         value = await get_setting(db, key)
@@ -447,7 +668,26 @@ async def get_prereqs(db: AsyncSession) -> dict:
             "missing": missing,
             "ready": not missing,
         }
-    return {"signing": signing, "platforms": platforms, "provider": provider_status()}
+    provider = provider_status()
+    settings = get_settings()
+    expo_project_id = (await get_setting(db, "builds.expo_project_id")) or ""
+    base_url = (settings.app_base_url or "").strip()
+    pipeline = {
+        "callback_token_configured": bool(settings.builds_service_token.strip()),
+        "github_dispatch_configured": provider["configured"],
+        "github_repo": provider["repo"],
+        "api_base_url": base_url or None,
+        "api_base_url_is_local": ("localhost" in base_url or "127.0.0.1" in base_url),
+        "expo_project_linked": bool(expo_project_id.strip()),
+        "expo_project_id": expo_project_id.strip() or None,
+    }
+    return {
+        "signing": signing,
+        "platforms": platforms,
+        "provider": provider,
+        "pipeline": pipeline,
+        "ci_side": [dict(item) for item in _CI_SIDE_PREREQS],
+    }
 
 
 def _release_url(r: BuildRequest) -> str | None:
@@ -613,10 +853,59 @@ async def list_requests(
     return [_request_out(r) for r in rows]
 
 
+async def _existing_release_for_artifact(
+    db: AsyncSession,
+    *,
+    artifact_key: str,
+    platform: str,
+    version: str,
+    build_number: str | None,
+    sha256: str | None,
+    file_size_bytes: int | None,
+    signed: bool,
+) -> BuildRelease:
+    """Idempotencyِ POST /releases (Pass 4 / B2) — رکورد موجود برای
+    artifact_key را برمی‌گرداند، یا روی متادیتای متعارض 409 می‌دهد.
+
+    فقط هویت + محتوای فایل مقایسه می‌شود (platform, version,
+    build_number, sha256, file_size_bytes, signed). download_url و
+    build_metadata عمداً مقایسه نمی‌شوند: آن‌ها مقادیرِ هر run
+    هستند (URL امضاشده با انقضا، شناسهٔ run) و مقایسه‌شان، replay
+    سالمِ یک callback را به‌اشتباه conflict می‌کرد. بازگشتِ رکورد
+    موجود هیچ side-effect ندارد: نه audit تازه، نه prune تازه.
+    """
+    existing = (
+        await db.execute(
+            select(BuildRelease).where(BuildRelease.artifact_key == artifact_key)
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        raise LookupError(artifact_key)
+    diffs = []
+    for field, new_value in (
+        ("platform", platform),
+        ("version", version),
+        ("build_number", build_number),
+        ("sha256", sha256),
+        ("file_size_bytes", file_size_bytes),
+        ("signed", signed),
+    ):
+        if getattr(existing, field) != new_value:
+            diffs.append(field)
+    if diffs:
+        raise APIError(
+            409,
+            "release_conflict",
+            "artifact_key تکراری با متادیتای متفاوت ثبت شده است",
+            details={"artifact_key": artifact_key, "existing_id": str(existing.id), "differing_fields": diffs},
+        )
+    return existing
+
+
 async def create_release(
     db: AsyncSession,
     *,
-    actor: User,
+    actor: User | None,
     platform: str,
     version: str,
     build_number: str | None = None,
@@ -624,33 +913,109 @@ async def create_release(
     download_expires_at: datetime | None = None,
     signed: bool = False,
     build_metadata: dict | None = None,
+    artifact_key: str | None = None,
+    file_size_bytes: int | None = None,
+    sha256: str | None = None,
     ip: str | None = None,
     user_agent: str | None = None,
+    storage: StorageProvider | None = None,
 ) -> dict:
     """ثبت نسخهٔ منتشرشده — معمولاً توسط CI صدا زده می‌شود، نه دستی.
 
+    مسیر CI (B-01): actor=None و احراز با توکن سرویس انجام شده است؛
+    فایل قبلاً توسط workflow به باکت builds فرستاده شده و این‌جا فقط
+    کلید/اندازه/sha256 آن ثبت می‌شود. پس از ثبت، نگهداری انتشارها
+    (۱۰ گروه انتشار آخر هر پلتفرم — FIX2-11) اعمال می‌شود.
     signed فقط وقتی true می‌شود که بیلد واقعاً امضاشده باشد (§۱۵.۹).
     """
     if platform not in PLATFORMS:
         raise APIError(422, "bad_platform", f"پلتفرم نامعتبر: {platform}")
     if not version:
         raise APIError(422, "missing_version", "version الزامی است")
+    artifact_key = validate_artifact_key(artifact_key)
+    # FIX2-07: download_url فقط وقتی اعتبارسنجی می‌شود که واقعاً ذخیره
+    # و سرو شود (signed)؛ برای بیلد امضانشده مثل قبل دور ریخته می‌شود.
+    if signed:
+        download_url = validate_download_url(download_url)
+    if sha256 is not None and not _SHA256_RE.match(sha256.strip()):
+        raise APIError(422, "bad_sha256", "sha256 باید ۶۴ نویسهٔ hex باشد")
+    if file_size_bytes is not None and file_size_bytes < 0:
+        raise APIError(422, "bad_file_size", "file_size_bytes نمی‌تواند منفی باشد")
+    new_sha = sha256.strip().lower() if sha256 else None
+    if artifact_key is not None:
+        try:
+            existing = await _existing_release_for_artifact(
+                db,
+                artifact_key=artifact_key,
+                platform=platform,
+                version=version,
+                build_number=build_number,
+                sha256=new_sha,
+                file_size_bytes=file_size_bytes,
+                signed=signed,
+            )
+        except LookupError:
+            existing = None
+        if existing is not None:
+            logger.info(
+                "builds.release.create: duplicate artifact_key replay — "
+                "returning existing release %s",
+                existing.id,
+            )
+            return await _release_out(existing, storage=storage)
     rel = BuildRelease(
         platform=platform, version=version, build_number=build_number,
         download_url=download_url if signed else None,
         download_expires_at=download_expires_at,
+        artifact_key=artifact_key,
+        file_size_bytes=file_size_bytes,
+        sha256=sha256.strip().lower() if sha256 else None,
         signed=signed, build_metadata=build_metadata or {},
-        released_by=actor.id,
+        released_by=actor.id if actor is not None else None,
     )
     db.add(rel)
-    await db.flush()
+    try:
+        await db.flush()
+    except Exception as exc:  # مسابقهٔ دو callback هم‌زمان
+        from sqlalchemy.exc import IntegrityError as _IntegrityError
+
+        if not isinstance(exc, _IntegrityError):
+            raise
+        await db.rollback()
+        if artifact_key is not None:
+            try:
+                existing = await _existing_release_for_artifact(
+                    db,
+                    artifact_key=artifact_key,
+                    platform=platform,
+                    version=version,
+                    build_number=build_number,
+                    sha256=new_sha,
+                    file_size_bytes=file_size_bytes,
+                    signed=signed,
+                )
+            except LookupError:
+                raise exc from None
+            logger.info(
+                "builds.release.create: concurrent duplicate artifact_key "
+                "— returning existing release %s",
+                existing.id,
+            )
+            return await _release_out(existing, storage=storage)
+        raise
     await log_audit(
-        db, actor_id=actor.id, actor_type="admin", action="builds.release.create",
+        db,
+        actor_id=actor.id if actor is not None else None,
+        actor_type="admin" if actor is not None else "service",
+        action="builds.release.create",
         entity_type="build_release", entity_id=str(rel.id),
         new_values={"platform": platform, "version": version,
-                    "build_number": build_number, "signed": signed},
+                    "build_number": build_number, "signed": signed,
+                    "has_file": bool(artifact_key)},
         ip=ip, user_agent=user_agent,
     )
     await db.commit()
+    # نگهداری: فقط ۱۰ گروه انتشار آخر این پلتفرم می‌ماند (FIX2-11)
+    await prune_releases(db, platform=platform, storage=storage)
     await db.refresh(rel)
-    return _release_out(rel)
+    return await _release_out(rel, storage=storage)

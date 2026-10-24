@@ -12,6 +12,7 @@ approval: chunkهای ساخته‌شده با workflow_status=draft می‌ما
 """
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -71,10 +72,15 @@ async def run_ingestion(
     created_by=None,
 ) -> dict[str, Any]:
     """اجرای کامل pipeline برای یک run — تست‌پذیر و بدون ARQ هم صدا زدنی."""
-    from app.core.platform_settings import get_setting
     from app.models.models import FiqhKnowledgeChunk, IngestionRun
 
-    from .embeddings import chunk_text_paragraphs, get_embedding_provider
+    from .embeddings import (
+        PROJECTION_ID,
+        chunk_text_paragraphs,
+        get_embedding_provider,
+        provider_identity,
+        resolve_provider_name,
+    )
 
     run = await db.get(IngestionRun, run_id)
     if run is None:
@@ -84,6 +90,7 @@ async def run_ingestion(
     await db.flush()
 
     stats: dict[str, Any] = {"stages": {}}
+    created_chunks: list = []
     try:
         raw = extract_source(source_type, payload)
         stats["stages"]["extract"] = {"chars": len(raw)}
@@ -102,17 +109,34 @@ async def run_ingestion(
         chunks = chunk_text_paragraphs(normalized)
         stats["stages"]["chunk"] = {"count": len(chunks)}
 
-        provider_name = await get_setting(db, "ai.embedding_provider") or "hash"
+        # FIX2-03: همان resolve_provider_name واحدِ مسیر بازیابی —
+        # پیش‌فرض قدیمیِ «or "hash"» در production بی‌صدا دانش را با
+        # hash ایندکس می‌کرد در حالی که بازیابی با local_model بود.
+        provider_name = await resolve_provider_name(db)
         provider = await get_embedding_provider(db, provider_name)
         vectors = await provider.embed(chunks)
-        stats["stages"]["embed"] = {"provider": provider.name, "count": len(vectors)}
+        prov_name, prov_model = await provider_identity(provider)
+        stats["stages"]["embed"] = {
+            "provider": prov_name,
+            "model": prov_model,
+            "count": len(vectors),
+        }
 
         scopes = ai_scopes or []
         chunk_ids: list[str] = []
+        # روی Postgres ستون برداری واقعی هم پر می‌شود (B-03 — ADR-0026)؛
+        # روی SQLite نوع Vector مقدار list را نمی‌پذیرد و ستون خالی می‌ماند.
+        from app.modules.fatwa.embeddings import pgvector_available
+
+        on_pg = pgvector_available()
         for text_chunk, vec in zip(chunks, vectors):
             chunk = FiqhKnowledgeChunk(
                 chunk_text=text_chunk,
                 embedding=list(vec),
+                embedding_vec=list(vec) if on_pg else None,
+                embedding_provider=prov_name,
+                embedding_model=prov_model,
+                embedding_projection=PROJECTION_ID,
                 source_type="ingested",
                 source_ref=source_ref,
                 source_citation=source_citation,
@@ -123,19 +147,38 @@ async def run_ingestion(
             )
             db.add(chunk)
             await db.flush()
+            created_chunks.append(chunk)
             chunk_ids.append(str(chunk.id))
         stats["stages"]["index"] = {"chunk_ids": chunk_ids}
 
         run.status = "done"
         run.stats = stats
-    except Exception as exc:
-        run.status = "failed"
-        stats["error"] = str(exc)
-        run.stats = stats
-        raise
-    finally:
         run.finished_at = datetime.now(UTC)
-        await db.flush()
+    except Exception as exc:
+        # Pass 4 / C4: شکست باید در دیتابیس بماند، نه این‌که با
+        # rollbackِ خروج از session محو شود. پیش از این، این‌جا فقط
+        # flush می‌شد و تنها commitِ caller (ingest_knowledge_run)
+        # بعد از return موفق بود — روی شکست، آن commit هرگز نمی‌رسید
+        # و پس از ۳ retryِ ARQ ردیف برای همیشه «queued» می‌ماند، بدون
+        # هیچ خطایی. پس وضعیت failed + خلاصهٔ خطا همین‌جا commit
+        # می‌شود، پیش از re-raise. chunkهای ناقصِ همین run (draft،
+        # هنوز approve نشده) هم حذف می‌شوند تا runِ ناموفق دادهٔ
+        # نصفه به‌جا نگذارد؛ اگر commitِ شکست خودش خطا بدهد، rollback
+        # می‌شود و خطای اصلی (نه خطای commit) بالا می‌رود.
+        run.status = "failed"
+        stats["error"] = f"{type(exc).__name__}: {exc}"
+        run.stats = stats
+        run.finished_at = datetime.now(UTC)
+        for chunk in created_chunks:
+            try:
+                await db.delete(chunk)
+            except Exception:  # noqa: BLE001 — پاکسازی best-effort
+                logger.debug("ingestion failure cleanup: chunk delete skipped")
+        try:
+            await db.commit()
+        except Exception:  # noqa: BLE001 — خطای اصلی مهم‌تر است
+            await db.rollback()
+        raise
     return stats
 
 
@@ -166,3 +209,5 @@ async def ingest_knowledge_run(ctx: dict, run_id: str) -> dict:
         )
         await db.commit()
         return {"ok": True, "stats": stats}
+
+logger = logging.getLogger(__name__)

@@ -1,0 +1,56 @@
+# قوانین هشدار بحرانی — Prometheus (m-02)
+# در prometheus.yml با rule_files وصل شده‌اند. گیرنده (Alertmanager)
+# هنوز در compose نیست؛ firingها در Prometheus و Grafana دیده می‌شوند
+# و مسیر اتصال Alertmanager در README همین پوشه مستند است.
+groups:
+  - name: maturidi-critical
+    interval: 30s
+    rules:
+      - alert: High5xxRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "نرخ خطای 5xx بالای ۵٪ است (۵ دقیقه)"
+          description: "بیش از ۵٪ درخواست‌های API در ۵ دقیقهٔ گذشته 5xx گرفته‌اند."
+
+      - alert: OutboxQueueLag
+        expr: outbox_oldest_pending_age_seconds > 300
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "عقب‌ماندگی صف outbox: قدیمی‌ترین رویداد بیش از ۵ دقیقه منتظر است"
+          description: "dispatcher عقب افتاده یا مرده است؛ outbox_oldest_pending_age_seconds از ۳۰۰ ثانیه گذشته."
+
+      - alert: OutboxDeadLetterGrowing
+        expr: increase(outbox_dead_letter_events[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "رویداد dead-letter تازه ثبت شده است"
+          description: "در ۱۵ دقیقهٔ گذشته رویدادی پس از ۵ تلاش به dead-letter رفته؛ در CRM (events/dead-letter) بررسی شود."
+
+      - alert: DiskSpaceLow
+        expr: |
+          node_filesystem_avail_bytes{mountpoint="/", fstype!="rootfs"}
+            / node_filesystem_size_bytes{mountpoint="/"} < 0.15
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "فضای دیسک ریشه کمتر از ۱۵٪ مانده است"
+          description: "node-exporter گزارش می‌کند دیسک در آستانهٔ پرشدن است (بکاپ/لاگ/MinIO را بررسی کنید)."
+
+      - alert: ApiDown
+        expr: up{job="maturidi-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API از دسترس scrape خارج شده است"
+          description: "Prometheus دو دقیقه است نمی‌تواند /metrics را از API بگیرد."

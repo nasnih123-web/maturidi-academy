@@ -67,10 +67,12 @@ PHONE_CODE_EXPIRE_MINUTES = 5
 RESET_TOKEN_EXPIRE_HOURS = 1
 # بلیط وب‌سوکت: کوتاه‌مدت و یک‌بارمصرف — جایگزین JWT در query string
 WS_TICKET_EXPIRE_SECONDS = 60
-# پنجرهٔ اغماض تشخیص استفادهٔ مجدد: اگر توکنِ چرخش‌یافته در این چند ثانیهٔ
-# اخیر دوباره ارائه شود، به‌احتمال زیاد رفرش هم‌زمانِ مشروع (دو تب/تلاش مجدد
-# شبکه) است، نه سرقت — پس نشست باطل نمی‌شود، فقط جفت‌توکن تازه صادر می‌شود.
-# بیرون از این پنجره، ارائهٔ توکن باطل‌شده = سرقت واقعی → ابطال نشست.
+# تشخیص استفادهٔ مجدد از رفرش‌توکن سخت‌گیرانه است (B-02 — ADR-0024،
+# جانشین تصمیم ۲ ADR-0020): هیچ پنجرهٔ اغماضی وجود ندارد. هر ارائهٔ
+# توکنِ باطل‌شده — حتی یک ثانیه بعد از چرخش — سرقت تلقی می‌شود: ابطال
+# فوری کل نشست + رویداد token.reuse_detected + audit + پاسخ 401.
+# race مشروعِ دو تب با قفل رفرش سمت کلاینت (Web Locks + single-flight
+# در کلاینت‌های وب/CRM) حل می‌شود، نه با تضعیف سرور.
 
 
 # ---------- ابزارهای Track 1 (§۵/§۷/§۸/§۹) ----------
@@ -143,7 +145,6 @@ async def _consume_single_use_token(
     )
     if res.rowcount != 1:
         raise error
-REUSE_DETECTION_GRACE_SECONDS = 60
 
 
 def _utcnow() -> datetime:
@@ -216,6 +217,11 @@ async def must_enroll_2fa(db: AsyncSession, user: User) -> bool:
 async def register(
     db: AsyncSession, data: RegisterIn, ip: str | None, user_agent: str | None
 ) -> User:
+    # گیت کپچا (C-02 — ADR-0029): پیش از هر کاری، طبق ماشین وضعیت
+    # app/core/captcha.py — active یعنی توکن معتبر Turnstile الزامی.
+    from app.core.captcha import enforce_captcha
+
+    await enforce_captcha(data.captcha_token, ip)
     if not data.accept_terms:
         raise APIError(422, "terms_required", "پذیرش قوانین و حریم‌خصوصی الزامی است")
     if not data.email and not data.phone:
@@ -381,13 +387,47 @@ async def create_session_pair(
     )
 
 
+async def _handle_token_reuse(db: AsyncSession, row: RefreshToken) -> None:
+    """پاسخ سخت‌گیرانه به ارائهٔ توکن باطل‌شده (B-02 — ADR-0024).
+
+    همیشه با APIError(401) خاتمه می‌یابد: کل نشست (و برای توکن‌های
+    بی‌نشست قدیمی، همهٔ نشست‌ها/توکن‌های کاربر) باطل می‌شود، رویداد
+    `token.reuse_detected` در outbox و audit log ثبت و commit می‌شود —
+    بدون هیچ پنجرهٔ اغماض زمانی.
+    """
+    if row.session_id is not None:
+        await _revoke_session(db, row.session_id)
+    else:
+        await _revoke_user_tokens(db, row.user_id)
+    await emit_event(
+        db,
+        aggregate_type="user",
+        aggregate_id=str(row.user_id),
+        event_type="token.reuse_detected",
+        payload={"session_id": str(row.session_id) if row.session_id else None},
+    )
+    await log_audit(
+        db,
+        actor_id=row.user_id,
+        actor_type="user",
+        action="token.reuse_detected",
+        entity_type="refresh_token",
+        entity_id=str(row.id),
+        new_values={"session_revoked": True},
+    )
+    await db.commit()
+    raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
+
+
 async def _rotate_token(db: AsyncSession, row: RefreshToken) -> tuple[str, str]:
     """چرخش استاندارد: توکن فعلی باطل، توکن جدید صادر می‌شود (فاز ۰ §۲).
 
     ادعای اتمیک (§۹): `UPDATE ... WHERE revoked=FALSE` تضمین می‌کند در
-    رفرشِ واقعاً هم‌زمان فقط یک رشته برنده شود؛ بازنده به‌جای خطای کاذب
-    (false logout)، روی تازه‌ترین توکن زندهٔ همان نشست می‌چرخد — همان
-    رفتار پنجرهٔ اغماض، ولی بدون تکیه بر زمان. حداکثر چند تلاش، بعد خطا.
+    رفرشِ هم‌زمان فقط یک رشته برنده شود. بازنده یعنی همان توکن برای
+    بار دوم ارائه شده است — طبق B-02/ADR-0024 بدون اغماض «استفادهٔ
+    مجدد» است و کل نشست باطل می‌شود؛ کلاینت‌های مشروع با قفل رفرش
+    سمت کلاینت (single-flight + Web Locks بین تب‌ها) هرگز توکنی را
+    دوبار ارائه نمی‌کنند.
 
     دامنهٔ access token هم‌زمان با وضعیت TOTP کاربر تعیین می‌شود تا
     ارتقای غیرمجاز از توکن محدود به کامل ممکن نباشد.
@@ -396,30 +436,18 @@ async def _rotate_token(db: AsyncSession, row: RefreshToken) -> tuple[str, str]:
     if not user or not user.is_active:
         raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر است")
 
-    for _ in range(3):
-        # دروازهٔ اتمیک: فقط اگر هنوز باطل نشده بود علامت بزن. دو رفرش
-        # هم‌زمان روی یک سطر → فقط یکی rowcount=1 می‌گیرد.
-        claim = cast(
-            CursorResult[Any],
-            await db.execute(
-                update(RefreshToken)
-                .where(RefreshToken.id == row.id, RefreshToken.revoked.is_(False))
-                .values(revoked=True)
-            ),
-        )
-        if claim.rowcount == 1:
-            break
-        # بازندهٔ race: روی تازه‌ترین توکن زندهٔ همان نشست بچرخ
-        next_row = (
-            await _latest_live_session_token(db, row.session_id)
-            if row.session_id
-            else None
-        )
-        if next_row is None:
-            raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
-        row = next_row
-    else:
-        raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
+    # دروازهٔ اتمیک: فقط اگر هنوز باطل نشده بود علامت بزن. دو رفرش
+    # هم‌زمان روی یک سطر → فقط یکی rowcount=1 می‌گیرد؛ دومی reuse است.
+    claim = cast(
+        CursorResult[Any],
+        await db.execute(
+            update(RefreshToken)
+            .where(RefreshToken.id == row.id, RefreshToken.revoked.is_(False))
+            .values(revoked=True)
+        ),
+    )
+    if claim.rowcount != 1:
+        await _handle_token_reuse(db, row)
     row.revoked = True  # همگام‌سازی شیء ORM با UPDATE مشروط بالا
 
     new_plain = generate_refresh_token()
@@ -459,24 +487,6 @@ async def _rotate_token(db: AsyncSession, row: RefreshToken) -> tuple[str, str]:
     return create_access_token(str(user.id), extra=extra, scope=scope), new_plain
 
 
-async def _latest_live_session_token(
-    db: AsyncSession, session_id: uuid.UUID
-) -> RefreshToken | None:
-    """تازه‌ترین رفرش‌توکن زندهٔ یک نشست (برای مسیر اغماض race هم‌زمان)."""
-    return (
-        await db.execute(
-            select(RefreshToken)
-            .where(
-                RefreshToken.session_id == session_id,
-                RefreshToken.revoked.is_(False),
-                RefreshToken.expires_at > _utcnow(),
-            )
-            .order_by(RefreshToken.created_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-
-
 async def refresh_pair(db: AsyncSession, refresh_token: str) -> tuple[str, str]:
     row = (
         await db.execute(
@@ -487,44 +497,9 @@ async def refresh_pair(db: AsyncSession, refresh_token: str) -> tuple[str, str]:
         raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
 
     if row.revoked:
-        # تشخیص استفادهٔ مجدد (reuse detection — الگوی turbo):
-        # اگر این توکن با rotation جایگزین شده (جانشین دارد) و دوباره ارائه شود،
-        # یا سرقت واقعی است یا رفرش هم‌زمانِ مشروع (دو تب/تلاش مجدد شبکه).
-        # تفکیک با پنجرهٔ اغماض: جانشینِ تازه (≤۶۰ ثانیه) یعنی race هم‌زمان —
-        # نشست باطل نمی‌شود، فقط از تازه‌ترین توکن زنده چرخش می‌شود.
-        successor = (
-            await db.execute(
-                select(RefreshToken)
-                .where(RefreshToken.rotated_from == row.id)
-                .order_by(RefreshToken.created_at.desc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        if successor is not None and row.session_id is not None:
-            age_s = (_utcnow() - ensure_aware(successor.created_at)).total_seconds()
-            if age_s <= REUSE_DETECTION_GRACE_SECONDS:
-                live = await _latest_live_session_token(db, row.session_id)
-                if live is not None:
-                    return await _rotate_token(db, live)
-            await _revoke_session(db, row.session_id)
-            await emit_event(
-                db,
-                aggregate_type="user",
-                aggregate_id=str(row.user_id),
-                event_type="token.reuse_detected",
-                payload={"session_id": str(row.session_id)},
-            )
-            await log_audit(
-                db,
-                actor_id=row.user_id,
-                actor_type="user",
-                action="token.reuse_detected",
-                entity_type="refresh_token",
-                entity_id=str(row.id),
-                new_values={"session_revoked": True},
-            )
-            await db.commit()
-        raise APIError(401, "invalid_token", "رفرش‌توکن نامعتبر یا منقضی است")
+        # تشخیص استفادهٔ مجدد — سخت‌گیرانه و بدون پنجرهٔ اغماض
+        # (B-02 — ADR-0024): هر ارائهٔ توکن باطل‌شده سرقت تلقی می‌شود.
+        await _handle_token_reuse(db, row)
 
     return await _rotate_token(db, row)
 

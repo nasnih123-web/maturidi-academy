@@ -47,11 +47,12 @@ def _register_resource(
         locale: str | None = Query(default=None, description="فیلتر locale"),
         limit: int = Query(default=50, ge=1, le=200),
         offset: int = Query(default=0, ge=0),
+        cursor: str | None = Query(default=None, description="کرسر صفحه‌بندی (m-01) — بر offset مقدم است"),
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
         """لیست مدیریتی منبع — همهٔ وضعیت‌ها؛ فیلتر workflow_status/placement/locale."""
-        items, total = await service.list_items(
+        items, total, next_cursor = await service.list_items(
             db,
             resource,
             workflow_status=workflow_status,
@@ -59,8 +60,9 @@ def _register_resource(
             locale=locale,
             limit=limit,
             offset=offset,
+            cursor=cursor,
         )
-        return S.ItemsOut(items=items, total=total)
+        return S.ItemsOut(items=items, total=total, next_cursor=next_cursor)
 
     @router.post(f"/{resource}", operation_id=f"cms_create_{resource}", status_code=201)
     async def create_resource(

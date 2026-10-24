@@ -63,6 +63,8 @@ def test_production_failfast_on_placeholder_secrets():
         app_env="production",
         jwt_secret="j" * 64,
         encryption_key="k" * 64,
+        # FIX3-02: راز اختصاصی امضای storage در production الزامی است
+        storage_signing_secret="t" * 64,
         app_base_url="https://api.example.org",
     )
     assert_production_secrets_ok(s)

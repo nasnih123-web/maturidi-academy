@@ -548,3 +548,71 @@ async def test_ask_stream_sse_terminates(tc):
     assert final, f"رویداد final نیامد: {events}"
     assert "citations" in final[0] and "ai_label" in final[0]
     assert final[0]["status"] in ("answered", "llm_unavailable", "no_sources")
+
+
+async def test_search_beyond_500_scan_cap_backend_b(tc):
+    """رگرسیون B-03 (Backend B/SQLite): chunk قدیمیِ #۵۰۱ هم پیدا می‌شود.
+
+    پیش از رفع، ChunkIndex روی ۵۰۰ chunk تازه‌تر limit می‌زد و هدفِ
+    قدیمی — با وجود تطابق کامل — هرگز وارد اسکن نمی‌شد.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from app.models.models import FiqhKnowledgeChunk
+    from app.modules.fatwa.embeddings import ChunkIndex, HashEmbeddingProvider
+
+    provider = HashEmbeddingProvider()
+    marker = uuid.uuid4().hex[:8]
+    target_text = (
+        "حکم وضو با آب مستعمل در مذهب حنفی چیست و دلیل آن از کتاب "
+        f"الهدایه چگونه استنباط می شود {marker}"
+    )
+    filler_text = f"متن عمومی دربارهٔ احکام طهارت و نماز و روزه {marker}"
+    target_vec = (await provider.embed([target_text]))[0]
+    filler_vec = (await provider.embed([filler_text]))[0]
+    old = datetime.now(UTC) - timedelta(days=30)
+
+    async with tc["maker"]() as db:
+        target = FiqhKnowledgeChunk(
+            chunk_text=target_text,
+            embedding=target_vec,
+            source_type="cap_regression",
+            workflow_status="approved",
+            ai_scopes=["fatwa"],
+            created_at=old,
+            updated_at=old,
+        )
+        db.add(target)
+        await db.flush()
+        target_id = target.id
+        for _ in range(599):
+            db.add(
+                FiqhKnowledgeChunk(
+                    chunk_text=filler_text,
+                    embedding=filler_vec,
+                    source_type="cap_regression",
+                    workflow_status="approved",
+                    ai_scopes=["fatwa"],
+                )
+            )
+        await db.commit()
+
+    async with tc["maker"]() as db:
+        results = await ChunkIndex(provider).search(
+            db, target_text, top_k=5, ai_scope="fatwa"
+        )
+    ids = [str(r.chunk_id) for r in results]
+    assert str(target_id) in ids, f"chunk #501 (قدیمی‌ترین) پیدا نشد: {ids[:3]}"
+    assert ids[0] == str(target_id)
+
+    # پاک‌سازی: DB نشست بین فایل‌های تست مشترک است — این ۶۰۰ ردیف نباید
+    # به تست‌های دیگر نشت کند.
+    from sqlalchemy import delete
+
+    async with tc["maker"]() as db:
+        await db.execute(
+            delete(FiqhKnowledgeChunk).where(
+                FiqhKnowledgeChunk.source_type == "cap_regression"
+            )
+        )
+        await db.commit()

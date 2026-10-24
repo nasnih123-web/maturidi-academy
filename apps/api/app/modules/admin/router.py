@@ -52,6 +52,21 @@ async def put_settings(
     return await service.update_settings(db, user, data.settings, ip, ua)
 
 
+@router.post("/settings/reencrypt")
+async def post_reencrypt_secrets(
+    request: Request,
+    user: User = Depends(require_permission("platform.settings")),
+    db: AsyncSession = Depends(get_db),
+):
+    """M-05: چرخش تدریجی envelopeهای ذخیره‌شده به نسخهٔ جاری کلید.
+
+    پاسخ فقط شمارنده‌هاست (چند setting/totp مهاجرت کردند) — هیچ
+    مقدار یا کلیدی برنمی‌گردد.
+    """
+    ip, ua = _client(request)
+    return await service.reencrypt_secrets(db, user, ip, ua)
+
+
 @router.get("/events/dead-letter", response_model=DeadLetterPage)
 async def get_dead_letter(
     limit: int = Query(default=50, ge=1, le=200),

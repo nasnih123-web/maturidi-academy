@@ -2,17 +2,24 @@
 
 امنیت:
 - فقط هش SHA-256 کلید در DB است؛ کلید خام فقط لحظهٔ ساخت دیده می‌شود.
-- احراز هویت ویجت با هدر X-API-Key یا ?api_key= — بدون کوکی/credential.
-- rate limit: token-bucket درون‌حافظه‌ای (per key, per minute) + شمارندهٔ
-  سهمیهٔ ماهانه در DB (دورهٔ YYYY-MM).
+- احراز هویت ویجت فقط با هدر X-API-Key، یا با توکن embed امضاشده
+  (Pass 4 / A5: کلید خام هرگز در query string نمی‌آید).
+- rate limit: محدودکنندهٔ توزیع‌شده (Redis، Pass 4 / A1) per key,
+  per minute + شمارندهٔ سهمیهٔ ماهانه (دورهٔ YYYY-MM). وقتی Redis
+  در دسترس نباشد، limiter به fallback حافظه‌ایِ محدود (نه نامحدود)
+  می‌رود و هشدار لاگ می‌کند — در آن حالت، سقف، سقفِ هر پردازه است
+  و ادعای توزیع‌شده ندارد.
 - scope: نام ویجت باید در scopes کلید باشد (یا "*").
 """
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import html
+import json
+import logging
 import secrets
-import threading
 import time
 import uuid
 from datetime import UTC, datetime
@@ -27,10 +34,17 @@ from app.models.models import ApiKey, User
 
 from .schemas import WIDGET_SCOPES
 
-# token-bucket درون‌حافظه‌ای: key_hash → [شروع پنجره، شمارش]
-# (تک‌نمونه‌ای؛ در استقرار چندنمونه‌ای، حدِ هر نمونه اعمال می‌شود — در ADR ثبت شد)
-_rate_buckets: dict[str, list[float]] = {}
-_rate_lock = threading.Lock()
+# Pass 4 / A1: limiter قابل تزریق برای تست (دو نمونه روی یک بک‌اند
+# مشترک). None یعنی limiter سراسری (Redis در صورت پیکربندی).
+_rate_limiter_for_test = None
+
+logger = logging.getLogger(__name__)
+
+
+
+def set_rate_limiter_for_test(limiter) -> None:
+    global _rate_limiter_for_test
+    _rate_limiter_for_test = limiter
 
 
 def _utcnow() -> datetime:
@@ -46,26 +60,102 @@ def _period_now() -> str:
     return f"{now.year:04d}-{now.month:02d}"
 
 
-def _check_rate_limit(key_hash: str, per_min: int) -> None:
-    now = time.monotonic()
-    with _rate_lock:
-        bucket = _rate_buckets.get(key_hash)
-        if bucket is None or now - bucket[0] >= 60.0:
-            _rate_buckets[key_hash] = [now, 1.0]
-            return
-        if bucket[1] >= per_min:
-            raise APIError(
-                429, "rate_limited",
-                "سقف درخواست در دقیقه برای این کلید تمام شده است",
-                details={"retry_after": int(60 - (now - bucket[0]))},
-            )
-        bucket[1] += 1.0
+async def _check_rate_limit(key_hash: str, per_min: int) -> None:
+    """Pass 4 / A1: سقف دقیقه‌ای روی limiter توزیع‌شده.
+
+    کلید limiter با hash کلید ساخته می‌شود (نه کلید خام — در لاگ/
+    Redis نشت نمی‌کند). در صورت نبود Redis، limiter خودش به
+    fallback حافظه‌ایِ محدود می‌رود (با لاگ warning) — هرگز نامحدود
+    نیست، ولی در آن حالت توزیع‌شده هم نیست.
+    """
+    from app.core.rate_limit import get_rate_limiter
+
+    limiter = _rate_limiter_for_test or get_rate_limiter()
+    allowed = await limiter.is_allowed(
+        f"api_key_per_min:{key_hash}", per_min, 60, auth=False
+    )
+    if not allowed:
+        raise APIError(
+            429, "rate_limited",
+            "سقف درخواست در دقیقه برای این کلید تمام شده است",
+            details={"retry_after": 60},
+        )
 
 
 def reset_rate_limits() -> None:
-    """فقط برای تست."""
-    with _rate_lock:
-        _rate_buckets.clear()
+    """فقط برای تست: حالت limiter تزریق‌شده و سراسری را پاک کن."""
+    if _rate_limiter_for_test is not None:
+        _rate_limiter_for_test.reset_for_tests()
+    try:
+        from app.core.rate_limit import reset_rate_limiter_for_tests
+
+        reset_rate_limiter_for_tests()
+    except Exception:  # noqa: BLE001 — reset تست نباید تست را بکشد
+        logger.debug("reset_rate_limits: global limiter reset skipped")
+
+
+# ---------------------------------------------------------------------------
+# توکن embed امضاشده (Pass 4 / A5)
+# ---------------------------------------------------------------------------
+# چرا: iframe نمی‌تواند هدر سفارشی بفرستد، پس حذفِ ?api_key= بدون
+# جایگزین، همهٔ embedها را می‌شکست. جایگزین، توکنِ امضاشدهٔ
+# تک‌ویجتی است — نه کلید خام:
+# - payload: {kid: شناسهٔ عمومی کلید, w: ویجت, exp: انقضا}
+# - امضا: HMAC با کلید امضای storage (همان ریشهٔ signed URLها،
+#   نه JWT) — چرخش کلید، توکن‌های قدیمی را با همان مکانیزم
+#   previous-key می‌پذیرد تا انقضایشان.
+# - لغو: با revoke کلید، توکن هم می‌میرد (lookup روی ردیف ApiKey).
+# - دامنه: فقط همان یک ویجت؛ توکن یک ویجت روی ویجت دیگر کار نمی‌کند.
+# - انقضا: پیش‌فرض ۳۶۵ روز (snippet استاتیک است)؛ پس از انقضا باید
+#   از endpoint embed-snippet توکن تازه گرفت.
+EMBED_TOKEN_TTL_DAYS = 365
+
+
+def issue_embed_token(key_id: uuid.UUID, widget: str, *, days: int = EMBED_TOKEN_TTL_DAYS) -> str:
+    from app.core.config import get_settings
+    from app.core.storage import storage_signing_keys
+
+    payload = {
+        "kid": str(key_id),
+        "w": widget,
+        "exp": int(time.time()) + days * 86400,
+    }
+    raw = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":")).encode()
+    ).decode().rstrip("=")
+    sig = hmac.new(
+        storage_signing_keys(get_settings())[0].encode(),
+        raw.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{raw}.{sig}"
+
+
+def verify_embed_token(token: str, widget: str) -> uuid.UUID | None:
+    """توکن معتبر → شناسهٔ کلید؛ در غیر این صورت None (بدون افشای دلیل)."""
+    try:
+        raw, sig = token.rsplit(".", 1)
+        from app.core.config import get_settings
+        from app.core.storage import storage_signing_keys
+
+        keys = storage_signing_keys(get_settings())
+        if not any(
+            hmac.compare_digest(
+                hmac.new(k.encode(), raw.encode(), hashlib.sha256).hexdigest(), sig
+            )
+            for k in keys
+        ):
+            return None
+        payload = json.loads(
+            base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+        )
+        if payload.get("w") != widget:
+            return None
+        if int(payload.get("exp", 0)) <= int(time.time()):
+            return None
+        return uuid.UUID(str(payload["kid"]))
+    except Exception:  # noqa: BLE001 - توکن بدشکل = نامعتبر، بدون نشت دلیل
+        return None
 
 
 def _out(key: ApiKey) -> dict:
@@ -238,21 +328,60 @@ async def validate_key(
             f"این کلید به ویجت «{scope}» دسترسی ندارد",
             details={"scope": scope},
         )
-    _check_rate_limit(key.key_hash, key.rate_limit_per_min or 60)
+    await _apply_rate_and_quota(db, key)
+    return key
+
+
+async def validate_embed_token(
+    db: AsyncSession, token: str | None, *, scope: str
+) -> ApiKey:
+    """اعتبارسنجی توکن embed (Pass 4 / A5) — همان scope/rate/quota
+    کلید خام، ولی بدون این‌که کلید خام در URL باشد."""
+    if not token:
+        raise APIError(401, "api_key_required", "کلید API لازم است")
+    key_id = verify_embed_token(token, scope)
+    if key_id is None:
+        raise APIError(401, "api_key_invalid", "کلید API نامعتبر است")
+    key = await db.get(ApiKey, key_id)
+    if key is None or not key.is_active or key.revoked_at is not None:
+        raise APIError(401, "api_key_invalid", "کلید API نامعتبر است")
+    if key.abuse_flag:
+        raise APIError(403, "api_key_abused", "این کلید به‌دلیل سوءاستفاده مسدود شده است")
+    scopes = key.scopes or []
+    if scope not in scopes and "*" not in scopes:
+        raise APIError(
+            403, "api_key_scope_denied",
+            f"این کلید به ویجت «{scope}» دسترسی ندارد",
+            details={"scope": scope},
+        )
+    await _apply_rate_and_quota(db, key)
+    return key
+
+
+async def _apply_rate_and_quota(db: AsyncSession, key: ApiKey) -> None:
+    await _check_rate_limit(key.key_hash, key.rate_limit_per_min or 60)
+
+    # C-06/F2: شمارش مصرف دیگر write-per-render روی دیتابیس نیست —
+    # شمارندهٔ Redis (یا fallback درون‌پروسه‌ای) با flush دوره‌ای.
+    # سهمیه از شمارندهٔ زنده چک می‌شود؛ hit ردشده refund می‌شود.
+    # Pass 4 / A6: مرگ Redis در میانهٔ hit دیگر ۵۰۰ نمی‌دهد —
+    # به fallback درون‌پروسه‌ایِ محدود (با بهبودی در flush بعدی) می‌رویم.
+    from .counter import get_usage_counter, switch_to_inprocess_after_redis_failure
 
     period = _period_now()
-    if key.quota_period != period:
-        key.quota_period = period
-        key.used_this_month = 0
-    if (key.used_this_month or 0) >= (key.quota_monthly or 0):
+    seed = (key.used_this_month or 0) if key.quota_period == period else 0
+    counter = await get_usage_counter()
+    try:
+        total = await counter.hit(key.key_hash, period, seed=seed)
+    except Exception:  # noqa: BLE001 - مرگ Redis در میانهٔ hit = fallback
+        counter = await switch_to_inprocess_after_redis_failure()
+        total = await counter.hit(key.key_hash, period, seed=seed)
+    if total > (key.quota_monthly or 0):
+        await counter.refund(key.key_hash, period)
         raise APIError(
             429, "quota_exceeded", "سهمیهٔ ماهانهٔ این کلید تمام شده است",
             details={"quota_monthly": key.quota_monthly},
         )
-    key.used_this_month = (key.used_this_month or 0) + 1
-    key.last_used_at = _utcnow()
-    await db.commit()
-    return key
 
 
 # ---------------------------------------------------------------------------
@@ -287,8 +416,15 @@ def _safe_base_url(base_url: str) -> str:
     return html.escape(base, quote=True)
 
 
-def build_embed_snippet(widget: str, raw_key: str, *, base_url: str = "") -> str:
-    """کد HTML جاسازی ویجت — iframe بدون نیاز به JS (ساده و امن)."""
+def build_embed_snippet(widget: str, embed_token: str, *, base_url: str = "") -> str:
+    """کد HTML جاسازی ویجت — iframe بدون نیاز به JS (ساده و امن).
+
+    Pass 4 / A5: پارامتر دوم دیگر کلید خام نیست، توکن embed
+    امضاشده است (`?embed_token=`) — کلید خام هرگز در snippet/URL
+    قرار نمی‌گیرد. برای سازگاری با تست‌های قدیمی، مقدار
+    `"__API_KEY__"` (placeholder) همان‌طور که هست در URL می‌ماند
+    و صاحب سایت باید آن را با توکن واقعی جایگزین کند.
+    """
     if widget not in WIDGET_SCOPES:
         raise APIError(422, "unknown_widget", f"ویجت ناشناخته: {widget}")
     title = _WIDGET_TITLES[widget]
@@ -296,12 +432,12 @@ def build_embed_snippet(widget: str, raw_key: str, *, base_url: str = "") -> str
     if widget == "prayer-times":
         # مختصات را صاحب سایت در src می‌گذارد
         src = (
-            f"{base}/api/v1/widgets/prayer-times?api_key={raw_key}"
+            f"{base}/api/v1/widgets/prayer-times?embed_token={embed_token}"
             "&lat={LAT}&lng={LNG}"
         )
         extra = "<!-- به‌جای {LAT} و {LNG} مختصات شهر را بگذارید، مثلاً lat=35.72&lng=51.33 -->"
     else:
-        src = f"{base}/api/v1/widgets/{widget}?api_key={raw_key}"
+        src = f"{base}/api/v1/widgets/{widget}?embed_token={embed_token}"
         extra = ""
     return (
         f"<!-- ویجت آکادمی ماتریدی — {title} -->\n"

@@ -161,7 +161,8 @@
         "section": "قسم",
         "theme": "سمة",
         "verse": "آية"
-      }
+      },
+      "allTypes": "الكل"
     },
     "skipToContent": "تجاوز إلى المحتوى",
     "status": {

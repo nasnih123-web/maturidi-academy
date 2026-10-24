@@ -27,6 +27,53 @@ _PENDING = {"status": "pending_scholar_entry"}
 _PENDING_SOURCE = "pending scholar entry"
 _MADHABS = ("hanafi", "maliki", "shafii", "hanbali")
 
+# ---------------------------------------------------------------------------
+# M-02 (ADR-0034): ساختار پیکربندی سه مذهب دیگر — فقط اسکلت قرارداد
+# rule_data (ADR-0006) با مقادیر خالی/pending و منابع کلاسیکِ نام‌برده
+# که عالم جداول را از آن‌ها پر می‌کند. هیچ مقدار فقهی‌ای این‌جا
+# ساخته نمی‌شود؛ shares عمداً {} است و awl/radd نامشخص (None).
+# ---------------------------------------------------------------------------
+
+_MADHHAB_SOURCES: dict[str, dict] = {
+    "maliki": {
+        "works": [
+            "المدونة الكبرى — سحنون عن ابن القاسم عن الإمام مالك",
+            "مختصر خليل — خليل بن إسحاق، مع الشرح الكبير للدردير وحاشية الدسوقي",
+            "الرسالة — ابن أبي زيد القيرواني",
+        ],
+        "faraid_section": "كتاب الفرائض في المدونة ومختصر خليل",
+    },
+    "shafii": {
+        "works": [
+            "الأم — الإمام الشافعي",
+            "منهاج الطالبين — النووي، مع مغني المحتاج للخطيب الشربيني",
+            "الرحبية في علم الفرائض — الرحبي، وشروحها",
+        ],
+        "faraid_section": "كتاب الفرائض في الأم والمنهاج",
+    },
+    "hanbali": {
+        "works": [
+            "المغني — ابن قدامة",
+            "الإنصاف — المرداوي",
+            "كشاف القناع — البهوتي، والروض المربع — البهوتي",
+        ],
+        "faraid_section": "كتاب الفرائض في المغني",
+    },
+}
+
+
+def _inheritance_structure(madhab: str) -> dict:
+    """اسکلت rule_data ارث برای یک مذهب — ساختار کامل، مقادیر خالی."""
+    return {
+        "status": "pending_scholar_entry",
+        "structure": "inheritance_rule_data_v1",
+        "shares": {},
+        "awl": {"enabled": None},
+        "radd": {"enabled": None, "excluded": []},
+        "asaba_priority": [],
+        "scholarly_sources": _MADHHAB_SOURCES[madhab],
+    }
+
 # فرادادهٔ منشأ قواعد فاز ۴ (در rule_data نسخه‌های v2 ثبت می‌شود)
 _SOURCE_PROVENANCE = {
     "origin": "dl.ghadimyol.ir — calculator/zakat.html + calculator/miras.html",
@@ -138,6 +185,40 @@ async def seed_calculator_rules(db: AsyncSession) -> dict:
             )
         )
         seeded.append("inheritance:hanafi:v2-source")
+
+    # --- M-02: نسخه‌های v2 ساختاری برای سه مذهب دیگر (فقط ارث) ---
+    # اسکلت قرارداد + منابع نام‌برده؛ status=draft و shares خالی، پس
+    # گیت rules_not_approved دقیقاً مثل حنفیِ در انتظار تأیید می‌ماند.
+    for madhab in ("maliki", "shafii", "hanbali"):
+        struct_exists = (
+            await db.execute(
+                select(InheritanceRuleConfig).where(
+                    InheritanceRuleConfig.madhab == madhab,
+                    InheritanceRuleConfig.version == 2,
+                )
+            )
+        ).scalar_one_or_none()
+        if struct_exists is None:
+            works = _MADHHAB_SOURCES[madhab]["works"]
+            db.add(
+                InheritanceRuleConfig(
+                    madhab=madhab,
+                    source="; ".join(works),
+                    version=2,
+                    effective_from=now,
+                    effective_to=None,
+                    approved_by=None,
+                    approved_at=None,
+                    change_reason=(
+                        "M-02 — ساختار پیکربندی ارث (اسکلت ADR-0006) با "
+                        "منابع کلاسیک نام‌برده؛ جداول در انتظار ورود و "
+                        "تأیید عالم — هیچ مقداری ساخته نشده است"
+                    ),
+                    rule_data=_inheritance_structure(madhab),
+                    status="draft",
+                )
+            )
+            seeded.append(f"inheritance:{madhab}:v2-structure")
 
     zakat_v2_exists = (
         await db.execute(

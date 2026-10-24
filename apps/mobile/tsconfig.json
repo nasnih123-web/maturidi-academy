@@ -10,6 +10,9 @@
     ],
     "module": "esnext",
     "moduleResolution": "bundler",
+    "customConditions": [
+      "react-native"
+    ],
     "noEmit": true,
     "noUncheckedIndexedAccess": true,
     "paths": {
@@ -26,7 +29,10 @@
         "./node_modules/@types/react"
       ],
       "react-native": [
-        "./node_modules/react-native"
+        "./node_modules/react-native/types_generated/index.d.ts"
+      ],
+      "react-native/*": [
+        "./node_modules/react-native/*"
       ],
       "react-native-safe-area-context": [
         "./node_modules/react-native-safe-area-context"

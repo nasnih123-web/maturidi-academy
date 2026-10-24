@@ -5,7 +5,7 @@
 
 بخش‌ها:
   A) اجرای سمت-سرور TOTP برای ادمین (قرارداد فاز ۰ §۲)
-  B) رفرش‌توکن: race هم‌زمان (false logout) در برابر reuse واقعی
+  B) رفرش‌توکن: تشخیص سخت‌گیرانهٔ reuse (B-02/ADR-0024 — بدون اغماض)
   C) اعتبارسنجی claimهای JWT (دست‌کاری، الگوریتم، type-confusion)
   D) آپلود کتابخانه: سقف حجم پیش از بار کامل RAM
 """
@@ -248,7 +248,7 @@ async def test_regular_user_without_totp_keeps_full_access(tc):
 
 
 # ===========================================================================
-# B) رفرش‌توکن: race هم‌زمان در برابر reuse واقعی
+# B) رفرش‌توکن: تشخیص سخت‌گیرانهٔ reuse (B-02/ADR-0024 — بدون اغماض)
 # ===========================================================================
 
 
@@ -258,8 +258,14 @@ async def _login_pair(client, email):
     return r.json()["access_token"], r.json()["refresh_token"]
 
 
-async def test_concurrent_refresh_does_not_log_user_out(tc):
-    """دو رفرش هم‌زمان با یک توکن (دو تب) → هیچ‌کدام نباید نشست را باطل کند."""
+async def test_second_presentation_of_rotated_token_revokes_session(tc):
+    """B-02/ADR-0024: ارائهٔ دومِ همان توکن (سناریوی خام دو تب بدون قفل
+    کلاینت) دیگر اغماض نمی‌شود — سرقت تلقی و کل نشست باطل می‌شود.
+
+    race مشروع دو تب با قفل رفرش سمت کلاینت (single-flight + Web Locks)
+    حل می‌شود؛ کلاینتی که توکن چرخش‌خورده را دوباره بفرستد، نشست را
+    از دست می‌دهد — دقیقاً همان چیزی که تشخیص سرقت باید تضمین کند.
+    """
     client = tc["client"]
     email = f"race-{_uid()}@example.com"
     await _register(client, email)
@@ -268,30 +274,29 @@ async def test_concurrent_refresh_does_not_log_user_out(tc):
     # رفرش اول موفق
     r1 = await client.post(f"{BASE}/auth/refresh", json={"refresh_token": refresh})
     assert r1.status_code == 200, r1.text
-    t1 = r1.json()["refresh_token"]
 
-    # رفرش دوم با همان توکن قدیمی، بلافاصله بعد از اولی (سناریوی دو تب):
-    # نباید به‌عنوان سرقت تلقی و نشست باطل شود.
+    # رفرش دوم با همان توکن قدیمی، بلافاصله بعد از اولی → 401 (reuse)
     r2 = await client.post(f"{BASE}/auth/refresh", json={"refresh_token": refresh})
-    assert r2.status_code == 200, r2.text
+    assert r2.status_code == 401, r2.text
+    assert r2.json()["error"]["code"] == "invalid_token"
 
-    # نشست زنده است: access token قدیمی هنوز معتبر است
+    # نشست مرده است: access token اولیه هم دیگر معتبر نیست
     r3 = await client.get(
         f"{BASE}/users/me", headers={"Authorization": f"Bearer {access}"}
     )
-    assert r3.status_code == 200, r3.text
+    assert r3.status_code == 401, r3.text
+    assert r3.json()["error"]["code"] == "session_revoked"
 
-    # جفت‌توکن جدید هم کار می‌کند
+    # و جفت‌توکن تازهٔ صادرشده از رفرش اول هم مرده است
     r4 = await client.post(
-        f"{BASE}/auth/refresh", json={"refresh_token": r2.json()["refresh_token"]}
+        f"{BASE}/auth/refresh", json={"refresh_token": r1.json()["refresh_token"]}
     )
-    assert r4.status_code == 200, r4.text
+    assert r4.status_code == 401, r4.text
 
 
 async def test_real_reuse_detection_still_revokes_session(tc):
-    """استفادهٔ مجدد واقعی (پس از پنجرهٔ grace) → نشست باطل می‌شود."""
+    """استفادهٔ مجدد با فاصلهٔ زمانی (سرقت واقعی) → نشست باطل می‌شود."""
     from app.models.models import RefreshToken
-    from app.modules.auth import service as auth_service
 
     client = tc["client"]
     email = f"reuse-{_uid()}@example.com"
@@ -301,15 +306,13 @@ async def test_real_reuse_detection_still_revokes_session(tc):
     r1 = await client.post(f"{BASE}/auth/refresh", json={"refresh_token": refresh})
     assert r1.status_code == 200, r1.text
 
-    # شبیه‌سازی گذر زمان: همهٔ توکن‌ها را قدیمی می‌کنیم تا از پنجرهٔ grace بیرون بروند
+    # شبیه‌سازی گذر زمان: همهٔ توکن‌ها را یک ساعت قدیمی می‌کنیم
     async with tc["maker"]() as db:
-        past = datetime.now(UTC) - timedelta(
-            seconds=auth_service.REUSE_DETECTION_GRACE_SECONDS + 60
-        )
+        past = datetime.now(UTC) - timedelta(seconds=3600)
         await db.execute(update(RefreshToken).values(created_at=past))
         await db.commit()
 
-    # حالا ارائهٔ دوبارهٔ توکن قدیمی = سرقت واقعی → 401 و ابطال نشست
+    # ارائهٔ دوبارهٔ توکن قدیمی = سرقت واقعی → 401 و ابطال نشست
     r2 = await client.post(f"{BASE}/auth/refresh", json={"refresh_token": refresh})
     assert r2.status_code == 401, r2.text
 

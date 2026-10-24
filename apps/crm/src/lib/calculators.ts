@@ -35,6 +35,24 @@ export type RuleType = "inheritance" | "zakat";
 
 export const RULE_TYPES: RuleType[] = ["inheritance", "zakat"];
 
+/**
+ * Latest inheritance config per madhab (M-02): the scholar-review
+ * strip shows, per madhab, whether an approved config exists or the
+ * madhab is still awaiting scholar approval — never a fake "ready".
+ */
+export function latestPerMadhab(
+  rules: RuleConfig[],
+): Record<string, RuleConfig | null> {
+  const out: Record<string, RuleConfig | null> = {};
+  for (const m of MADHABS) out[m] = null;
+  for (const r of rules) {
+    if (r.rule_type !== "inheritance") continue;
+    const cur = out[r.madhab];
+    if (!cur || r.version > cur.version) out[r.madhab] = r;
+  }
+  return out;
+}
+
 export type RuleStatus = "draft" | "pending_review" | "approved" | "rejected";
 
 export const RULE_STATUSES: RuleStatus[] = [

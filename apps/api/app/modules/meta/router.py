@@ -57,7 +57,16 @@ async def settings_public(db: AsyncSession = Depends(get_db)):
     settings = {}
     for key in _PUBLIC_SETTING_KEYS:
         settings[key] = await get_typed_setting(db, key, _PUBLIC_DEFAULTS[key])
-    return {"settings": settings, "version": get_settings_version()}
+    # کلید عمومی Turnstile (C-02): از env می‌آید (جفتِ secret سروری)؛
+    # خالی یعنی ویجت روی کلاینت‌ها رندر نمی‌شود. secret هرگز این‌جا نیست.
+    from app.core.config import get_settings as _get_app_settings
+
+    site_key = _get_app_settings().turnstile_site_key.strip()
+    return {
+        "settings": settings,
+        "version": get_settings_version(),
+        "turnstile_site_key": site_key or None,
+    }
 
 
 @router.get("/i18n/detect")

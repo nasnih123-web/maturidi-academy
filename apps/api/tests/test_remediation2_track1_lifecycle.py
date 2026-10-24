@@ -1,7 +1,7 @@
 """remediation-pass-2 Track 1 — §۹: چرخهٔ حیات توکن.
 
-- رفرش واقعاً هم‌زمان (threadها + HTTP واقعی): هیچ‌کدام false logout نمی‌خورند،
-  زنجیرهٔ چرخش تکی می‌ماند (ادعای اتمیک در سطح DB).
+- رفرش واقعاً هم‌زمان (threadها + HTTP واقعی): دقیقاً یک برنده با ادعای
+  اتمیک در سطح DB؛ بقیه reuse سخت‌گیرانه (B-02/ADR-0024) و نشست باطل.
 - reset رمز عبور → همهٔ نشست‌ها/رفرش‌توکن‌ها باطل (قبلاً بود — نگهبان رگرسیون).
 - مصرف هم‌زمان یک کد بازیابی → فقط یکی موفق (UPDATE مشروط اتمیک).
 - مصرف هم‌زمان یک توکن reset → فقط یکی موفق.
@@ -36,12 +36,14 @@ async def _register(client, email, password="Str0ng!Pass1"):
     return r.json()
 
 
-async def test_concurrent_refresh_threads_single_chain(tc):
-    """۸ thread هم‌زمان با یک رفرش‌توکن → هر ۸ جفت‌توکن معتبر می‌گیرند.
+async def test_concurrent_refresh_threads_strict_reuse(tc):
+    """۸ thread هم‌زمان با یک رفرش‌توکن → دقیقاً یک برنده؛ بقیه reuse.
 
-    پیش از رفع، دو رفرشِ واقعاً هم‌زمان روی یک سطر می‌توانستند هر دو بچرخند
-    (دو زنجیرهٔ موازی) یا بازنده 401 کاذب بگیرد؛ حالا ادعای اتمیک
-    (UPDATE ... WHERE revoked=FALSE) یک زنجیرهٔ خطی تضمین می‌کند.
+    قرارداد جدید (B-02 — ADR-0024، جانشین رفتار اغماض قبلی): ارائهٔ
+    چندبارهٔ یک توکن — حتی واقعاً هم‌زمان — قابل اغماض نیست؛ ادعای
+    اتمیک (UPDATE ... WHERE revoked=FALSE) فقط یک برنده می‌سازد و هر
+    ارائهٔ دیگر «استفادهٔ مجدد» است: 401 + ابطال کل نشست. race مشروع
+    با قفل رفرش سمت کلاینت حل می‌شود، نه در سرور.
     """
     import httpx
     from httpx import ASGITransport
@@ -81,11 +83,12 @@ async def test_concurrent_refresh_threads_single_chain(tc):
         t.join(timeout=60)
 
     assert len(results) == 8, results
-    statuses = [s for s, _ in results]
-    assert statuses == [200] * 8, statuses
+    statuses = sorted(s for s, _ in results)
+    # دقیقاً یک برندهٔ چرخش؛ هفت ارائهٔ دیگر = reuse سخت‌گیرانه
+    assert statuses == [200] + [401] * 7, statuses
 
-    # زنجیرهٔ تکی *برای همین نشست*: دقیقاً یک توکن زنده، بقیه باطل —
-    # و نشست زنده است (DB بین فایل‌های تست مشترک است؛ پس per-session می‌شماریم)
+    # پیامد reuse: کل نشست مرده است — صفر توکن زنده و نشست باطل
+    # (DB بین فایل‌های تست مشترک است؛ پس per-session می‌شماریم)
     from app.models.models import User as _User
 
     async with tc["maker"]() as db:
@@ -105,16 +108,22 @@ async def test_concurrent_refresh_threads_single_chain(tc):
                 )
             )
         ).scalar()
-        assert live == 1, f"expected single live token chain, got {live}"
+        assert live == 0, f"expected dead session after reuse, got {live} live"
         sess = await db.get(Session, my_session_id)
-        assert sess is not None and not sess.revoked, "session must NOT be revoked"
+        assert sess is not None and sess.revoked, "session must be revoked"
 
-    # آخرین access token صادرشده باید کار کند (هیچ false logout)
-    last_access = results[-1][1]["access_token"]
-    r2 = await client.get(
-        f"{BASE}/users/me", headers={"Authorization": f"Bearer {last_access}"}
+    # حتی جفت‌توکن برنده هم مرده است (نشست باطل شده)
+    winner = next(body for s, body in results if s == 200)
+    r2 = await client.post(
+        f"{BASE}/auth/refresh", json={"refresh_token": winner["refresh_token"]}
     )
-    assert r2.status_code == 200, r2.text
+    assert r2.status_code == 401, r2.text
+    r3 = await client.get(
+        f"{BASE}/users/me",
+        headers={"Authorization": f"Bearer {winner['access_token']}"},
+    )
+    assert r3.status_code == 401, r3.text
+    assert r3.json()["error"]["code"] == "session_revoked"
 
 
 async def test_password_reset_revokes_all_sessions(tc):

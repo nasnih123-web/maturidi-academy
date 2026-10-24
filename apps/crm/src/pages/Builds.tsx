@@ -274,8 +274,22 @@ function PrereqCertList() {
 
   // Live data from the backend.
   if (prereqsQ.isSuccess) {
-    const { signing, platforms } = prereqsQ.data;
+    const { signing, platforms, pipeline, ci_side } = prereqsQ.data;
     const certNames = Object.keys(signing);
+    const pipeRows: { label: string; ok: boolean; hint?: string }[] = [
+      { label: t("builds14.pipeCallback"), ok: pipeline.callback_token_configured },
+      { label: t("builds14.pipeDispatch"), ok: pipeline.github_dispatch_configured },
+      {
+        label: t("builds14.pipeExpo"),
+        ok: pipeline.expo_project_linked,
+        hint: pipeline.expo_project_id ?? undefined,
+      },
+      {
+        label: t("builds14.pipeApiUrl"),
+        ok: Boolean(pipeline.api_base_url) && !pipeline.api_base_url_is_local,
+        hint: pipeline.api_base_url ?? undefined,
+      },
+    ];
     return (
       <>
         {Object.keys(platforms).length > 0 && (
@@ -327,6 +341,43 @@ function PrereqCertList() {
             );
           })}
         </ul>
+        <h4 style={{ marginTop: "1.25rem" }}>{t("builds14.pipelineTitle")}</h4>
+        <ul className="build-prereqs">
+          {pipeRows.map((row) => (
+            <li key={row.label} className={row.ok ? "" : "missing"}>
+              <span className="build-prereq-head">
+                <Badge tone={row.ok ? "success" : "danger"}>
+                  {row.ok ? t("builds14.prereqPresent") : t("builds14.prereqMissing")}
+                </Badge>
+                <strong>{row.label}</strong>
+              </span>
+              {row.hint && (
+                <span className="hint">
+                  <span dir="ltr">{row.hint}</span>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+        {ci_side.length > 0 && (
+          <>
+            <h4 style={{ marginTop: "1.25rem" }}>{t("builds14.ciSideTitle")}</h4>
+            <p className="hint">{t("builds14.ciSideNote")}</p>
+            <ul className="build-prereqs">
+              {ci_side.map((item) => (
+                <li key={item.key}>
+                  <span className="build-prereq-head">
+                    <Badge tone="info">{item.where}</Badge>
+                    <strong dir="ltr">{item.key}</strong>
+                  </span>
+                  <span className="hint">
+                    {t("builds14.verifiedBy")}: <span dir="ltr">{item.verified_by}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </>
     );
   }
@@ -454,6 +505,22 @@ export default function Builds(): React.ReactElement {
                               <span className="hint">
                                 {" "}
                                 ({t("builds14.urlExpires")}: {formatDate(r.download_expires_at)})
+                              </span>
+                            )}
+                            {r.has_file && (
+                              <span className="hint">
+                                {" "}
+                                ({t("builds14.fileSize")}:{" "}
+                                {r.file_size_bytes != null
+                                  ? `${(r.file_size_bytes / 1048576).toFixed(1)} MB`
+                                  : "—"}
+                                {r.sha256 && (
+                                  <>
+                                    {" · sha256 "}
+                                    <code dir="ltr">{r.sha256.slice(0, 12)}…</code>
+                                  </>
+                                )}
+                                )
                               </span>
                             )}
                           </>

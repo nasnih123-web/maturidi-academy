@@ -145,9 +145,14 @@ def generate_recovery_codes(n: int = 10) -> list[str]:
 class RateLimiter:
     """پنجرهٔ لغزان ساده + قفل موقت بعد از عبور از سقف.
 
-    نگه‌داشته‌شده برای سازگاری (lms/library)؛ endpointهای حساس احراز هویت
-    از `app.core.rate_limit.DistributedRateLimiter` (پشتوانهٔ Redis، §۷)
-    استفاده می‌کنند — حافظهٔ درون‌فرایندی بین instanceها مشترک نیست.
+    **LEGACY — هیچ مسیر productionی از آن استفاده نمی‌کند (FIX3-03،
+    ADR-0050).** همهٔ مسیرهای حساس (احراز هویت، دانلود کتابخانه،
+    استعلام گواهی، عملیات ادمین و endpointهای AI/voice) روی
+    `app.core.rate_limit.DistributedRateLimiter` (پشتوانهٔ Redis، §۷)
+    هستند، چون حافظهٔ درون‌فرایندی بین workerها مشترک نیست و سقف
+    واقعی را چندبرابر می‌کرد. این کلاس فقط برای سازگاری نگه داشته
+    شده: چند تست قدیمی هنوز singleton آن را برای reset صدا می‌زنند؛
+    کد تازه هرگز نباید از آن استفاده کند.
     """
 
     def __init__(self) -> None:

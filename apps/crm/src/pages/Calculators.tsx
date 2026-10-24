@@ -10,6 +10,7 @@ import {
   RuleType,
   UpdateRuleBody,
   errText,
+  latestPerMadhab,
   statusLabel,
   useCalculatorAudit,
   useCreateRule,
@@ -463,6 +464,30 @@ function RulesTab({ type }: { type: RuleType }): React.ReactElement {
           </p>
         </div>
       </section>
+
+      {type === "inheritance" && rules.data ? (
+        <section className="panel" style={{ marginBottom: "0.75rem" }} aria-label={t("calc.madhabStatusTitle")}>
+          <div className="panel-head">
+            <h2>{t("calc.madhabStatusTitle")}</h2>
+          </div>
+          <ul className="build-prereqs">
+            {Object.entries(latestPerMadhab(rules.data)).map(([madhab, cfg]) => {
+              const approved = cfg?.status === "approved";
+              return (
+                <li key={madhab} className={approved ? "" : "missing"}>
+                  <span className="build-prereq-head">
+                    <Badge tone={approved ? "success" : "warning"}>
+                      {approved ? statusLabel(t, "approved") : t("calc.awaitingScholar")}
+                    </Badge>
+                    <strong>{madhabLabel(t, madhab)}</strong>
+                    {cfg ? <span className="hint">v{cfg.version}</span> : null}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       {editing ? (
         <section className="panel" style={{ marginBottom: "0.75rem" }} aria-label={t("calc.editorTitle")}>
