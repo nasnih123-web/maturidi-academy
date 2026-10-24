@@ -53,13 +53,31 @@ jobs:
           # comments string-safely. NOTE: this resolve step was verified
           # locally with the verbatim command (a real GitHub Actions run
           # is only possible after the owner uploads this workflow).
-          VERSION="$(node tools/ci/tauri-version.mjs apps/desktop/src-tauri/tauri.conf.json)"
+          META_VERSION="$(node tools/ci/tauri-version.mjs apps/desktop/src-tauri/tauri.conf.json)"
+          VERSION="$META_VERSION"
           TAG=""
           if [[ "${GITHUB_REF:-}" == refs/tags/desktop-v* ]]; then
-            VERSION="${GITHUB_REF_NAME#desktop-v}"
-            TAG="v$VERSION"
+            TAG="v${GITHUB_REF_NAME#desktop-v}"
           elif [ -n "$IN_TAG" ]; then
             TAG="$IN_TAG"
+          fi
+          # Pass 4 / B8: توافق نسخه — tauri build نسخه را از
+          # tauri.conf.json می‌خواند (META_VERSION)، نه از tag؛
+          # پیش از این resolve، VERSION را از روی tag بازنویسی
+          # می‌کرد و باندلِ نسخهٔ 0.1.0 زیر tag v1.1.0 الصاق می‌شد.
+          # حالا: tag (با/بدون v) باید دقیقاً META_VERSION باشد،
+          # وگرنه fail-fast؛ VERSION هم همیشه META_VERSION می‌ماند
+          # تا نام فایل‌ها با نسخهٔ تعبیه‌شده یکی باشد.
+          if [ -n "$TAG" ]; then
+            TAG_VERSION="${TAG#v}"
+            if ! [[ "$TAG_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::release tag '$TAG' is malformed — expected vX.Y.Z."
+              exit 1
+            fi
+            if [ "$TAG_VERSION" != "$META_VERSION" ]; then
+              echo "::error::release tag '$TAG' (version $TAG_VERSION) does not match embedded tauri.conf.json version $META_VERSION — the bundle would ship version $META_VERSION under tag $TAG."
+              exit 1
+            fi
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"

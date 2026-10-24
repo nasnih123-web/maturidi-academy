@@ -46,6 +46,7 @@ on:
         description: "Attach the validated artifact to the GitHub Release with this tag (e.g. v1.1.0). Empty = workflow artifact only."
         required: false
         default: ""
+
   push:
     tags: ["mobile-v*"]
 
@@ -101,6 +102,7 @@ jobs:
         id: meta
         env:
           IN_VERSION: ${{ inputs.app_version }}
+          IN_RELEASE_TAG: ${{ inputs.release_tag }}
           IN_PLATFORM: ${{ inputs.platform || 'android' }}
           IN_PROFILE: ${{ inputs.profile || 'preview' }}
         run: |
@@ -111,6 +113,20 @@ jobs:
               VERSION="${GITHUB_REF_NAME#mobile-v}"
             else
               VERSION="$(node -p "require('./package.json').version || '0.0.0'")"
+            fi
+          fi
+          # Pass 4 / B8: tag باید دقیقاً با نسخهٔ همین بیلد یکی باشد —
+          # پیش از این release_tag verbatim می‌رفت و نسخهٔ داخل باندل
+          # می‌توانست چیز دیگری باشد.
+          if [ -n "$IN_RELEASE_TAG" ]; then
+            TAGV="${IN_RELEASE_TAG#v}"
+            if ! [[ "$TAGV" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::release_tag '$IN_RELEASE_TAG' is malformed — expected vX.Y.Z."
+              exit 1
+            fi
+            if [ "$TAGV" != "$VERSION" ]; then
+              echo "::error::release_tag '$IN_RELEASE_TAG' (version $TAGV) does not match this build's version $VERSION — refusing to attach a mismatched artifact."
+              exit 1
             fi
           fi
           EXT="apk"
@@ -128,6 +144,7 @@ jobs:
       - name: Submit EAS build (wait for the real result)
         id: eas
         env:
+          EAS_POLL_MINUTES: ${{ vars.EAS_POLL_MINUTES || 90 }}
           BUILD_PLATFORM: ${{ inputs.platform || 'android' }}
           BUILD_PROFILE: ${{ inputs.profile || 'preview' }}
           EXPO_PUBLIC_API_URL: ${{ inputs.api_url }}
@@ -150,8 +167,18 @@ jobs:
           fi
           echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
           echo "Polling EAS build $BUILD_ID …"
+          # Pass 4 / B5: سقف poll دیگر هاردکد ۵۵ نیست — از متغیر
+          # مخزن EAS_POLL_MINUTES می‌آید (پیش‌فرض ۹۰ دقیقه). ورودیِ
+          # یازدهم workflow_dispatch ممکن نیست: سقف ورودی‌های
+          # workflow_dispatch در گیت‌هاب ۱۰ است و این workflow از قبل
+          # ۱۰ ورودی دارد (actionlint این را می‌گیرد). سقفِ متناهی
+          # حفظ شده و مقدار نامعتبر/بیش‌ازحد به ۴۸۰ دقیقه clamp می‌شود.
+          POLL_MIN="${EAS_POLL_MINUTES:-90}"
+          if ! [[ "$POLL_MIN" =~ ^[0-9]+$ ]] || [ "$POLL_MIN" -lt 1 ]; then POLL_MIN=90; fi
+          if [ "$POLL_MIN" -gt 480 ]; then POLL_MIN=480; fi
+          echo "Poll ceiling: $POLL_MIN minute(s)"
           STATUS=""
-          for i in $(seq 1 55); do
+          for i in $(seq 1 "$POLL_MIN"); do
             eas build:view "$BUILD_ID" --json > view.json 2>/dev/null || true
             STATUS="$(node -pe "require('./view.json').status" 2>/dev/null || echo UNKNOWN)"
             echo "  [$i] status: $STATUS"
@@ -192,12 +219,21 @@ jobs:
       # IPA: plistlib on Info.plist + embedded.mobileprovision presence;
       #      codesign CANNOT be verified on a Linux runner — recorded as such.
       # Nothing reaches the manifest unless it was really extracted here.
+      # Pass 4 / B6: اعتبارسنجی AAB به jarsigner و bundletool (java)
+      # نیاز دارد، ولی هیچ setup-javaای در workflow نبود — روی
+      # runnerای بدون JDK پیش‌فرض، گام validate می‌مرد.
+      - name: Set up JDK for AAB validation
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
       - name: Validate artifact (type-specific)
         id: validate
         env:
           ART_NAME: ${{ steps.meta.outputs.artifact_name }}
           WANT_PKG: ${{ inputs.package_id }}
           WANT_VC: ${{ inputs.version_code }}
+          WANT_VN: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
           ART="release-assets/$ART_NAME"
@@ -279,6 +315,13 @@ jobs:
           fi
           if [ -n "$WANT_VC" ] && [ "$VC" != "$WANT_VC" ]; then
             echo "::error::$TYPE versionCode mismatch: built '$VC', requested '$WANT_VC'."
+            exit 1
+          fi
+          # Pass 4 / B8: نسخهٔ تعبیه‌شدهٔ داخل آرتیفکت (versionName)
+          # باید با نسخهٔ همین بیلد یکی باشد — پیش از این فقط
+          # استخراج می‌شد و هرگز مقایسه نمی‌شد.
+          if [ -n "$VN" ] && [ -n "$WANT_VN" ] && [ "$VN" != "$WANT_VN" ]; then
+            echo "::error::$TYPE versionName mismatch: embedded '$VN', this build is '$WANT_VN' — refusing to publish a mismatched artifact."
             exit 1
           fi
           {
@@ -373,8 +416,13 @@ jobs:
           BUILDS_S3_SECRET_KEY: ${{ secrets.BUILDS_S3_SECRET_KEY }}
           BUILDS_S3_REGION: ${{ secrets.BUILDS_S3_REGION }}
         run: |
+          # Pass 4 / B1: رشته‌های امضای Android (eas-*-signed) پیش
+          # از این با هیچ الگویی نمی‌خواندند و هر بیلد Androidِ
+          # واقعاً امضاشده با signed=false ثبت می‌شد. الگوها حالا
+          # هر سه خانوادهٔ SIGNINGای را که گام validate می‌سازد
+          # پوشش می‌دهند (تست نگهبان: test_workflows_pass4.py).
           case "$SIGNING" in
-            verified*|apple-provisioned*) export CB_SIGNED=true ;;
+            verified*|apple-provisioned*|eas-*-signed*) export CB_SIGNED=true ;;
             *) export CB_SIGNED=false ;;
           esac
           bash "$GITHUB_WORKSPACE/tools/ci/build-callback.sh"

@@ -172,6 +172,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build ./apps/api -t maturidi-api:${{ github.sha }}
+      # Pass 4 / B3: پیش از این فقط ایمیج API ساخته می‌شد و
+      # Dockerfileهای web/crm هرگز در CI بیلد نمی‌شدند — خرابیِ
+      # آن‌ها فقط موقع deploy معلوم می‌شد. حالا هر سه ایمیج با
+      # همان context/argsای که compose.prod دارد ساخته می‌شوند
+      # (مقادیر API_URL این‌جا فقط CI هستند، نه deploy).
+      - run: docker build -f apps/web/Dockerfile --build-arg NEXT_PUBLIC_API_URL=http://localhost:8000 -t maturidi-web:${{ github.sha }} .
+      - run: docker build -f apps/crm/Dockerfile --build-arg VITE_API_URL=http://localhost:8000 -t maturidi-crm:${{ github.sha }} .
       - name: Media toolchain present in the image (B-04)
         # مدرک واقعیِ داخل ایمیج: ffmpeg/tesseract(+fas/ara/eng)/pdftoppm
         # و faster-whisper باید باشند — همان گیت app/core/media_tools.py
@@ -189,6 +196,24 @@ jobs:
             python -c 'from app.core.media_tools import assert_media_tools_ready; assert_media_tools_ready(); print(\"media readiness gate OK\")'
           "
 
+  # Pass 4 / B7: نگهبان استاتیک workflowها و اسکریپت‌های CI —
+  # actionlint پین‌شده + shellcheck روی tools/ci/*.sh. هیچ exclusion
+  # سراسری نیست؛ اگر فایلی واقعاً نیاز به استثنا داشت، همان‌جا با
+  # کامنتِ دلیل‌دار (actionlint:ignore / shellcheck disable) ثبت می‌شود.
+  lint-workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: actionlint (pinned 1.7.7)
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          args: -color=false
+      - name: shellcheck on CI scripts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck -S warning tools/ci/*.sh
+
   compose-smoke:
     # C-04: استقرار واقعیِ compose تولید با env آزمایشی + migration +
     # دود HTTP/WS. مقادیر .env.prod این job فقط CI هستند (اسرار واقعی
@@ -199,6 +224,9 @@ jobs:
     # migrate) — web/crm/workerها/monitoring این‌جا ساخته یا بررسی
     # نمی‌شوند و سبز شدن این job ادعای سلامت آن‌ها نیست. دود شامل
     # آپلود زندهٔ EICAR علیه ClamAV واقعی استک هم هست (FIX2-10).
+    # استثنا (Pass 4 / B4): settings هر شش worker در job backend با
+    # pytest پوشش داده می‌شود (tests/test_worker_settings_pass4.py) —
+    # ولی boot واقعی workerها در compose هنوز این‌جا ورزش نمی‌شود.
     name: Compose smoke (prod stack)
     runs-on: ubuntu-latest
     needs: [backend, docker]
