@@ -15,12 +15,12 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    Manager,
+    Emitter, Manager,
 };
 
 fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_notification::NotificationExt::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let open =
                 MenuItem::with_id(app, "tray-open", "Open Maturidi Academy", true, None::<&str>)?;

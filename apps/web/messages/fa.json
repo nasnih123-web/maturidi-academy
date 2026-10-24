@@ -161,7 +161,8 @@
         "section": "بخش",
         "theme": "پوسته",
         "verse": "آیه"
-      }
+      },
+      "allTypes": "همه"
     },
     "skipToContent": "پرش به محتوای اصلی",
     "status": {

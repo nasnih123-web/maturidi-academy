@@ -5,7 +5,7 @@
       "csp": "default-src 'self'; connect-src 'self' http://localhost:* https://localhost:*; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     },
     "trayIcon": {
-      "icon": "icons/icon.png",
+      "iconPath": "icons/icon.png",
       "title": "Maturidi Academy",
       "tooltip": "Maturidi Academy"
     },
@@ -43,9 +43,9 @@
     },
     "targets": "all",
     "windows": {
-      "certificateThumbprint": "",
+      "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
-      "timestampUrl": ""
+      "timestampUrl": null
     }
   },
   "identifier": "academy.maturidi.desktop",
@@ -53,16 +53,5 @@
     "notification": {}
   },
   "productName": "Maturidi Academy",
-  "version": "0.1.0",
-  "updater": {
-    // Track 2 / §۱۶ — غیرفعال تا وقتی زیرساخت releases واقعی + کلید امضا آماده شود؛
-    // با endpoint placeholder (releases.example.com) فعال‌بودن یعنی اپ به دامنهٔ
-    // جعلی درخواست می‌زند. چک‌لیست انتشار: apps/desktop/README.md
-    "active": false,
-    "dialog": true,
-    "endpoints": [
-      "https://releases.example.com/desktop/{{target}}/{{arch}}/{{current_version}}"
-    ],
-    "pubkey": ""
-  }
+  "version": "0.1.0"
 }

@@ -240,18 +240,21 @@ async def validate_key(
         )
     _check_rate_limit(key.key_hash, key.rate_limit_per_min or 60)
 
+    # C-06/F2: شمارش مصرف دیگر write-per-render روی دیتابیس نیست —
+    # شمارندهٔ Redis (یا fallback درون‌پروسه‌ای) با flush دوره‌ای.
+    # سهمیه از شمارندهٔ زنده چک می‌شود؛ hit ردشده refund می‌شود.
+    from .counter import get_usage_counter
+
     period = _period_now()
-    if key.quota_period != period:
-        key.quota_period = period
-        key.used_this_month = 0
-    if (key.used_this_month or 0) >= (key.quota_monthly or 0):
+    seed = (key.used_this_month or 0) if key.quota_period == period else 0
+    counter = await get_usage_counter()
+    total = await counter.hit(key.key_hash, period, seed=seed)
+    if total > (key.quota_monthly or 0):
+        await counter.refund(key.key_hash, period)
         raise APIError(
             429, "quota_exceeded", "سهمیهٔ ماهانهٔ این کلید تمام شده است",
             details={"quota_monthly": key.quota_monthly},
         )
-    key.used_this_month = (key.used_this_month or 0) + 1
-    key.last_used_at = _utcnow()
-    await db.commit()
     return key
 
 

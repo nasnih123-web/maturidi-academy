@@ -13,6 +13,65 @@ class UploadConstraints:
     allowed_mime_prefixes: tuple[str, ...]
 
 
+# ---------------------------------------------------------------------------
+# منظور (purpose) امضای دانلود — FIX2-08 / ADR-0047
+#
+# امضای HMAC ارائه‌دهندهٔ محلی به (purpose, key, exp) گره می‌خورد، نه
+# فقط (key, exp): URLی که برای یک مصرف صادر شده (مثلاً فایل کتابخانه)
+# در endpoint مصرف دیگر (مثلاً دانلود گواهی) کار نمی‌کند. URLها
+# کوتاه‌عمرند (دقایق) پس تغییر قالب امضا مهاجرت ذخیره‌شده نمی‌خواهد؛
+# URLهای صادرشدهٔ پیش از این تغییر تا انقضای طبیعی‌شان از کار می‌افتند.
+# ---------------------------------------------------------------------------
+
+SIGNED_PURPOSE_GENERIC = "download"
+SIGNED_PURPOSE_LIBRARY = "library"
+SIGNED_PURPOSE_CERTIFICATE = "lms-certificate"
+
+
+# ---------------------------------------------------------------------------
+# راز امضای URLهای storage — FIX3-02 / ADR-0049
+#
+# تا پیش از این fix ریشهٔ HMAC همان jwt_secret بود: نشت یکی از دو
+# راز، هر دو سامانه (نشست‌ها + دانلودهای امضاشده) را با هم می‌انداخت.
+# حالا کلید اختصاصی `storage_signing_secret` ریشهٔ امضاست:
+# - امضا همیشه با کلید جاری انجام می‌شود.
+# - راستی‌آزمایی کلید جاری و (در دورهٔ گذار چرخش) کلید قبلی
+#   (`storage_signing_secret_previous`) را می‌پذیرد تا URLهای زندهٔ
+#   صادرشده با کلید قبلی تا انقضای طبیعی‌شان (دقایق) نمی‌رند.
+# - در production/staging نبودِ کلید اختصاصی fail-fast است
+#   (assert_production_secrets_ok)؛ fallback به jwt_secret فقط
+#   dev/test است و با هشدارِ یک‌باره در لاگ مشخص می‌شود — هرگز سکوت.
+# ---------------------------------------------------------------------------
+
+_transitional_fallback_warned = False
+
+
+def storage_signing_keys(settings) -> list[str]:
+    """کلیدهای معتبر امضای storage به ترتیب اولویت: [جاری, قبلی؟]."""
+    global _transitional_fallback_warned
+    current = (settings.storage_signing_secret or "").strip()
+    keys: list[str] = []
+    if current:
+        keys.append(current)
+    else:
+        # fallback انتقالی — فقط dev/test به این‌جا می‌رسد؛ production
+        # در startup رد شده است. هشدار یک‌باره تا لاگ غرق نشود.
+        if not _transitional_fallback_warned:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "storage signing: STORAGE_SIGNING_SECRET is not set — "
+                "falling back to JWT_SECRET (transitional, dev/test only; "
+                "production refuses to boot without the dedicated secret)"
+            )
+            _transitional_fallback_warned = True
+        keys.append(settings.jwt_secret)
+    previous = (settings.storage_signing_secret_previous or "").strip()
+    if previous and previous not in keys:
+        keys.append(previous)
+    return keys
+
+
 class StorageProvider(ABC):
     @abstractmethod
     async def put_object(self, key: str, data: bytes, mime_type: str) -> None:
@@ -20,13 +79,20 @@ class StorageProvider(ABC):
 
     @abstractmethod
     async def get_presigned_url(
-        self, key: str, expires_seconds: int = 300, *, download_path: str | None = None
+        self,
+        key: str,
+        expires_seconds: int = 300,
+        *,
+        download_path: str | None = None,
+        purpose: str = SIGNED_PURPOSE_GENERIC,
     ) -> str:
         """فقط برای آبجکت‌های خصوصی — URL عمومی قابل‌حدس هرگز.
 
         download_path: مسیر endpoint دانلود احرازهویتی (پیش‌فرض: مسیر
         گواهی LMS — سازگاری عقب‌رو)؛ ماژول‌ها مسیر خودشان را می‌دهند
         (مثلاً کتابخانه: /api/v1/library/download-by-ref).
+        purpose: منظور امضا (FIX2-08) — endpoint دانلود فقط امضای
+        هم‌منظور خودش را می‌پذیرد.
         """
         ...
 
@@ -65,12 +131,18 @@ class LocalStorageProvider(StorageProvider):
             fh.write(data)
 
     async def get_presigned_url(
-        self, key: str, expires_seconds: int = 300, *, download_path: str | None = None
+        self,
+        key: str,
+        expires_seconds: int = 300,
+        *,
+        download_path: str | None = None,
+        purpose: str = SIGNED_PURPOSE_GENERIC,
     ) -> str:
         """برای provider محلی: URL دانلود امضاشدهٔ کوتاه‌مدت.
 
-        امضا با HMAC روی (key + exp) و کلید jwt_secret انجام می‌شود؛
-        صحت آن در endpoint دانلود بررسی می‌شود.
+        امضا با HMAC روی (purpose + key + exp) و کلید اختصاصی storage
+        انجام می‌شود (FIX2-08 + FIX3-02)؛ صحت آن در endpoint دانلودِ
+        همان منظور بررسی می‌شود.
         """
         import hashlib
         import hmac
@@ -80,11 +152,13 @@ class LocalStorageProvider(StorageProvider):
 
         settings = get_settings()
         exp = int(time.time()) + expires_seconds
-        msg = f"{key}:{exp}".encode()
-        sig = hmac.new(settings.jwt_secret.encode(), msg, hashlib.sha256).hexdigest()
+        msg = f"{purpose}:{key}:{exp}".encode()
+        sig = hmac.new(
+            storage_signing_keys(settings)[0].encode(), msg, hashlib.sha256
+        ).hexdigest()
         base = (settings.app_base_url or "").rstrip("/")
         path = download_path or "/api/v1/lms/certificates/download-by-ref"
-        return f"{base}{path}?key={key}&exp={exp}&sig={sig}"
+        return f"{base}{path}?key={key}&exp={exp}&sig={sig}&purpose={purpose}"
 
     async def delete_object(self, key: str) -> None:
         import os
@@ -99,7 +173,15 @@ class LocalStorageProvider(StorageProvider):
         with open(self._path(key), "rb") as fh:
             return fh.read()
 
-    def verify_download_sig(self, key: str, exp: int, sig: str) -> bool:
+    def verify_download_sig(
+        self, key: str, exp: int, sig: str, purpose: str = SIGNED_PURPOSE_GENERIC
+    ) -> bool:
+        """بررسی امضا برای یک منظور مشخص (FIX2-08) — منظور اشتباه = رد.
+
+        کلید جاری و (در دورهٔ گذار چرخش) کلید قبلی پذیرفته می‌شوند
+        (FIX3-02)؛ امضای ساخته‌شده با jwt_secret دیگر معتبر نیست،
+        مگر وقتی کلید اختصاصی اصلاً تنظیم نشده باشد (dev/test).
+        """
         import hashlib
         import hmac
         import time
@@ -109,9 +191,13 @@ class LocalStorageProvider(StorageProvider):
         if int(time.time()) > exp:
             return False
         settings = get_settings()
-        msg = f"{key}:{exp}".encode()
-        want = hmac.new(settings.jwt_secret.encode(), msg, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(want, sig)
+        msg = f"{purpose}:{key}:{exp}".encode()
+        return any(
+            hmac.compare_digest(
+                hmac.new(k.encode(), msg, hashlib.sha256).hexdigest(), sig
+            )
+            for k in storage_signing_keys(settings)
+        )
 
 
 class S3StorageProvider(StorageProvider):
@@ -248,9 +334,18 @@ class S3StorageProvider(StorageProvider):
         )
 
     async def get_presigned_url(
-        self, key: str, expires_seconds: int = 300, *, download_path: str | None = None
+        self,
+        key: str,
+        expires_seconds: int = 300,
+        *,
+        download_path: str | None = None,
+        purpose: str = SIGNED_PURPOSE_GENERIC,
     ) -> str:
         """URL امضاشدهٔ مستقیم MinIO — بدون شبکه (فقط امضای محلی).
+
+        purpose (FIX2-08) در این provider بی‌اثر است: امضای SigV4 خود
+        MinIO ذاتاً به همان آبجکت و همان عملیات گره خورده و URL از
+        مسیر endpoint اپلیکیشن دانلود نمی‌شود.
 
         Track 1 (final) / یافتهٔ ۱: امضا همیشه با کلاینتِ endpoint عمومی
         انجام می‌شود تا هاست داخلی (مثلاً minio:9000) هرگز به مرورگر نشت
@@ -477,6 +572,104 @@ def get_storage() -> StorageProvider:
     raise RuntimeError(
         f"STORAGE_PROVIDER={settings.storage_provider!r} نامعتبر است "
         "(مقادیر مجاز: 'local' | 's3' | 'minio')"
+    )
+
+
+# ---------- StorageProvider اختصاصی بیلدها (FIX2-02 — ADR-0041) ----------
+
+#: چهار مقدار اصلی کانفیگ storage بیلدها — قرارداد «همه یا هیچ».
+_BUILDS_S3_REQUIRED = (
+    "builds_s3_endpoint",
+    "builds_s3_access_key",
+    "builds_s3_secret_key",
+    "builds_s3_bucket",
+)
+
+
+def builds_s3_configured(settings) -> bool:
+    """آیا کانفیگ اختصاصی بیلدها کامل تنظیم شده است؟"""
+    return all(
+        (getattr(settings, name) or "").strip() for name in _BUILDS_S3_REQUIRED
+    )
+
+
+def builds_storage_problems(settings) -> list[str]:
+    """ایرادهای کانفیگ storage بیلدها؛ خالی یعنی سازگار.
+
+    سازگار یعنی یکی از این دو: (الف) هیچ‌کدام از BUILDS_S3_* تنظیم نشده
+    — بیلدها باکت واحدِ storage عمومی برنامه (S3_*) را مصرف می‌کنند؛
+    (ب) هر چهار مقدار اصلی کامل و از نظر قالب معتبرند. حالت میانی
+    ناسازگاری است: کالبک CI در یک باکت می‌نویسد و API از باکت دیگری
+    می‌خواند — دانلود و prune بی‌صدا خراب می‌شوند، پس باید در startup
+    گرفته شود، نه در زمان دانلود کاربر. هیچ secretای در پیام‌ها نیست.
+    """
+    values = {
+        name: (getattr(settings, name) or "").strip()
+        for name in _BUILDS_S3_REQUIRED
+    }
+    present = [name for name, v in values.items() if v]
+    if not present:
+        return []
+    missing = [name.upper() for name, v in values.items() if not v]
+    if missing:
+        return [
+            "BUILDS_S3_* ناقص است — یا هر چهار مقدار را تنظیم کنید یا "
+            "هیچ‌کدام را (باکت واحد با S3_*): مقادیر خالی: " + ", ".join(missing)
+        ]
+    import re
+    from urllib.parse import urlparse
+
+    problems: list[str] = []
+    parsed = urlparse(values["builds_s3_endpoint"])
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        problems.append(
+            f"BUILDS_S3_ENDPOINT={values['builds_s3_endpoint']!r} یک URL معتبر http(s) نیست"
+        )
+    bucket = values["builds_s3_bucket"]
+    if not re.fullmatch(r"[a-z0-9][a-z0-9.\-]{1,61}[a-z0-9]", bucket) or ".." in bucket:
+        problems.append(f"BUILDS_S3_BUCKET={bucket!r} نام معتبر bucket نیست")
+    public = (settings.builds_s3_endpoint_public or "").strip()
+    if public:
+        pparsed = urlparse(public)
+        if pparsed.scheme not in ("http", "https") or not pparsed.hostname:
+            problems.append(
+                f"BUILDS_S3_ENDPOINT_PUBLIC={public!r} یک URL معتبر http(s) نیست"
+            )
+    return problems
+
+
+def validate_builds_storage(settings=None) -> None:
+    """fail-fast استارتاپ برای کانفیگ storage بیلدها — از lifespan صدا زده می‌شود."""
+    from app.core.config import get_settings
+
+    s = settings or get_settings()
+    problems = builds_storage_problems(s)
+    if problems:
+        raise RuntimeError(
+            "تنظیمات storage بیلدها ناسازگار است: " + "؛ ".join(problems)
+        )
+
+
+def get_builds_storage() -> StorageProvider:
+    """provider بیلدها — دقیقاً همان باکتی که کالبک CI در آن می‌نویسد.
+
+    BUILDS_S3_* کامل → S3StorageProvider اختصاصی با همان مقادیر؛ خالی →
+    همان provider عمومی برنامه (باکت واحد با S3_*). کانفیگ ناقص →
+    RuntimeError صریح (هرگز حدس/فالبک خاموش).
+    """
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    validate_builds_storage(settings)
+    if not builds_s3_configured(settings):
+        return get_storage()
+    return S3StorageProvider(
+        endpoint=settings.builds_s3_endpoint,
+        endpoint_public=(settings.builds_s3_endpoint_public or "").strip() or None,
+        access_key=settings.builds_s3_access_key,
+        secret_key=settings.builds_s3_secret_key,
+        bucket=settings.builds_s3_bucket,
+        region=settings.builds_s3_region,
     )
 
 

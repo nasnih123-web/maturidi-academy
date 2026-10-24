@@ -16,8 +16,23 @@ class Settings(BaseSettings):
     # امنیت — فاز ۰ §۲ و §۳: این‌ها باید از env/secrets manager بیایند، هرگز هاردکد
     encryption_key: str = "CHANGE_ME"
     encryption_key_version: int = 1
+    # چرخش کلید (M-05): JSON map نسخه→کلید، مثل {"1": "...", "2": "..."}.
+    # خالی یعنی فقط کلید تکیِ بالا (نسخهٔ جاری) در دسترس است.
+    encryption_keys: str = ""
     jwt_secret: str = "CHANGE_ME"
     access_token_expire_minutes: int = 15
+
+    # راز اختصاصی امضای URLهای storage (FIX3-02 — ADR-0049): جدا از
+    # jwt_secret تا نشت یکی از این دو راز، سامانهٔ دیگر را نیندازد
+    # (امضاهای FIX2-08 به purpose مقیدند ولی ریشه‌شان jwt بود).
+    # در production/staging نبودن یا ضعیف‌بودنش fail-fast است
+    # (assert_production_secrets_ok)؛ در dev/test خالی یعنی fallback
+    # انتقالیِ لاگ‌دار به jwt_secret (فقط برای سبک‌ماندن توسعه).
+    # چرخش: storage_signing_secret_previous در دورهٔ گذار فقط برای
+    # راستی‌آزمایی پذیرفته می‌شود؛ امضا همیشه با کلید جاری است.
+    # ران‌بوک چرخش: docs/ops/storage.md
+    storage_signing_secret: str = ""
+    storage_signing_secret_previous: str = ""
 
     # محدودیت نرخ توزیع‌شده — remediation-pass-2 Track 1 (§۷)
     # در production اگر Redis در دسترس نباشد، endpointهای احرازهویتی
@@ -49,6 +64,25 @@ class Settings(BaseSettings):
     # مقدار نامعتبر → فکتوری در startup با خطای صریح fail می‌کند.
     storage_provider: str = "local"
     app_base_url: str = "http://localhost:8000"
+
+    # اسکن ویروس آپلودها با ClamAV (C-01 — ADR-0028، قرارداد §۷).
+    # سیاست fail-closed در همهٔ محیط‌ها: اسکنر غایب = رد آپلود (503).
+    # clamav_allow_insecure_dev_bypass فقط یک پرچم صریحِ ناامن برای dev
+    # است (پیش‌فرض خاموش) و در production (app_env != dev) هیچ اثری
+    # ندارد؛ فعال بودنش در هر فراخوانی CRITICAL لاگ می‌شود.
+    clamav_host: str = "clamav"
+    clamav_port: int = 3310
+    clamav_timeout_seconds: float = 30.0
+    clamav_allow_insecure_dev_bypass: bool = False
+
+    # کپچا روی ثبت‌نام — Cloudflare Turnstile (C-02 — ADR-0029، قرارداد §۲).
+    # captcha_enabled پیش‌فرض روشن است: اگر secret تنظیم نشده باشد،
+    # ثبت‌نام fail-closed با 503 captcha_not_configured رد می‌شود؛
+    # خاموش‌کردن فقط با CAPTCHA_ENABLED=false صریح ممکن است (dev).
+    # site key عمومی است و از /api/v1/settings/public به کلاینت‌ها می‌رسد.
+    captcha_enabled: bool = True
+    turnstile_site_key: str = ""
+    turnstile_secret_key: str = ""
 
     # ایمیل تراکنشی — فاز ۱ (خالی = حالت dev با لاگ)
     smtp_host: str = ""
@@ -86,6 +120,28 @@ class Settings(BaseSettings):
     # مقدار آن هرگز در دیتابیس/audit/لاگ ذخیره نمی‌شود (§۱۴).
     github_dispatch_token: str = ""
     github_repo: str = ""  # owner/repo — مثل nasnih123-web/maturidi-academy
+    # توکن سرویس callback بیلدها (B-01 — ADR-0025): workflowهای CI پس از
+    # ساخت، فایل را به باکت builds در MinIO می‌فرستند و متادیتا را با این
+    # توکن (هدر X-Build-Service-Token) به POST /admin/builds/releases
+    # ثبت می‌کنند. خالی = مسیر سرویس غیرفعال (فقط کاربرِ دارای مجوز).
+    # مقدارش secret است: فقط از محیط خوانده می‌شود و هرگز چاپ/ذخیره نمی‌شود.
+    builds_service_token: str = ""
+    # یکپارچگی باکت بیلدها (FIX2-02 — ADR-0041): کالبک CI فایل‌ها را با
+    # همین مقادیر (در GitHub Secrets با همان نام‌ها) در باکت builds
+    # می‌نویسد؛ سمت API هم دقیقاً باید همان باکت را بخواند تا URL دانلود
+    # و prune روی همان‌جا کار کنند. قرارداد «همه یا هیچ»:
+    # - هر چهار مقدار اصلی خالی → بیلدها از همان storage عمومی برنامه
+    #   (S3_*) استفاده می‌کنند؛ باکت واحد، بدون کانفیگ دوم.
+    # - هر چهار مقدار پر → StorageProvider اختصاصی بیلدها با همین‌ها.
+    # - حالت میانی (بعضی پر، بعضی خالی) = ناسازگاری خطرناک: در startup
+    #   با خطای واضح fail می‌شود (validate_builds_storage) — هرگز
+    #   دانلود/prune بی‌صدا روی باکت اشتباه نمی‌رود.
+    builds_s3_endpoint: str = ""
+    builds_s3_endpoint_public: str = ""
+    builds_s3_access_key: str = ""
+    builds_s3_secret_key: str = ""
+    builds_s3_bucket: str = ""
+    builds_s3_region: str = "us-east-1"
 
     @property
     def is_dev(self) -> bool:
@@ -168,6 +224,60 @@ def assert_production_secrets_ok(settings: Settings | None = None) -> None:
     bad: list[str] = []
     bad.extend(_secret_problems("jwt_secret", s.jwt_secret, s.encryption_key))
     bad.extend(_secret_problems("encryption_key", s.encryption_key))
+    # FIX3-02 (ADR-0049): راز امضای storage باید وجود داشته، قوی و از
+    # هر دو راز دیگر جدا باشد — وگرنه جداسازیِ منظور این fix از دست
+    # می‌رود. کلید قبلیِ دورهٔ گذار (اختیاری) هم اگر هست باید قوی و
+    # متفاوت از کلید جاری باشد.
+    bad.extend(
+        _secret_problems(
+            "storage_signing_secret", s.storage_signing_secret, s.encryption_key
+        )
+    )
+    _signing = (s.storage_signing_secret or "").strip()
+    if _signing and _signing == (s.jwt_secret or "").strip():
+        bad.append(
+            "storage_signing_secret: must not equal jwt_secret (secret reuse)"
+        )
+    _signing_prev = (s.storage_signing_secret_previous or "").strip()
+    if _signing_prev:
+        bad.extend(
+            _secret_problems(
+                "storage_signing_secret_previous",
+                s.storage_signing_secret_previous,
+            )
+        )
+        if _signing and _signing_prev == _signing:
+            bad.append(
+                "storage_signing_secret_previous: must differ from "
+                "storage_signing_secret"
+            )
+    # M-05: اگر چرخش کلید فعال است (ENCRYPTION_KEYS)، هر کلیدِ داخل map
+    # هم باید واقعی باشد و کلید نسخهٔ جاری باید در دسترس باشد (در map
+    # یا همان encryption_key) — وگرنه بوت production بی‌صدا خراب است.
+    if s.encryption_keys.strip():
+        import json as _json
+
+        try:
+            key_map = {
+                int(v): str(k)
+                for v, k in _json.loads(s.encryption_keys).items()
+            }
+        except (ValueError, AttributeError):
+            key_map = {}
+            bad.append("encryption_keys: invalid JSON map")
+        for version, material in key_map.items():
+            bad.extend(
+                _secret_problems(f"encryption_keys[{version}]", material)
+            )
+        if (
+            key_map
+            and s.encryption_key_version not in key_map
+            and not s.encryption_key.strip()
+        ):
+            bad.append(
+                "encryption_key_version: current key not in ENCRYPTION_KEYS "
+                "and ENCRYPTION_KEY empty"
+            )
     # Track 1 (final remediation) / §۱۲ — نگهبان S3 در production:
     # هیچ placeholderای (CHANGE_ME__...، کلید ضعیف/کوتاه، endpoint داخلی یا
     # example.com، bucket نمایشی) نباید بوت production را رد کند.

@@ -170,6 +170,26 @@ def _prepare_create(resource: str, data: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _encode_cursor(created_at: datetime, item_id: uuid.UUID) -> str:
+    """کرسر صفحه‌بندی — همان قالب کتابخانه (base64 از [iso, uuid])."""
+    import base64
+
+    raw = json.dumps([ensure_aware(created_at).isoformat(), str(item_id)])
+    return base64.urlsafe_b64encode(raw.encode()).decode()
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    import base64
+
+    try:
+        ts, lid = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
+        return datetime.fromisoformat(ts), uuid.UUID(lid)
+    except (ValueError, TypeError, KeyError, UnicodeDecodeError):
+        # b64 ناقص (binascii.Error زیرکلاس ValueError است)، JSON خراب،
+        # iso/uuid نامعتبر — همه یعنی کرسر دست‌کاری‌شده/نامعتبر.
+        raise APIError(400, "invalid_cursor", "کرسر صفحه‌بندی نامعتبر است") from None
+
+
 async def list_items(
     db: AsyncSession,
     resource: str,
@@ -179,7 +199,8 @@ async def list_items(
     locale: str | None = None,
     limit: int = 50,
     offset: int = 0,
-) -> tuple[list[dict], int]:
+    cursor: str | None = None,
+) -> tuple[list[dict], int, str | None]:
     model = _MODELS[resource]
     stmt = select(model)
     if workflow_status and "workflow_status" in _LIST_FILTERS[resource]:
@@ -194,13 +215,40 @@ async def list_items(
         # locale فقط روی NavItem است (طبق _LIST_FILTERS)
         stmt = stmt.where(cast(type[NavItem], model).locale == locale)
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
+    limit = min(limit, 200)
     if resource == "nav":
+        # nav ترتیب درختی دارد (parent/sort_order) — keyset روی آن
+        # معنادار نیست؛ همان offset می‌ماند (m-01: استثنای مستند).
         nav_model = cast(type[NavItem], model)
         stmt = stmt.order_by(nav_model.parent_id.is_(None).desc(), nav_model.sort_order.asc())
-    else:
-        stmt = stmt.order_by(model.created_at.desc())
-    rows = (await db.execute(stmt.limit(min(limit, 200)).offset(max(offset, 0)))).scalars().all()
-    return [_to_dict(r) for r in rows], total
+        rows = (await db.execute(stmt.limit(limit).offset(max(offset, 0)))).scalars().all()
+        return [_to_dict(r) for r in rows], total, None
+    # m-01: صفحه‌بندی کرسری (keyset) روی (created_at desc, id desc) —
+    # الگوی پروژه (کتابخانه). offset فقط وقتی کرسر نیامده کار می‌کند
+    # تا کلاینت‌های قدیمی نشکنند؛ پاسخ همیشه next_cursor می‌دهد تا
+    # کلاینت بتواند به حالت کرسری مهاجرت کند.
+    m = cast(Any, model)  # همهٔ مدل‌های CMS created_at/id دارند
+    stmt = stmt.order_by(m.created_at.desc(), m.id.desc())
+    if cursor:
+        ts, lid = _decode_cursor(cursor)
+        stmt = stmt.where(
+            (m.created_at < ts) | ((m.created_at == ts) & (m.id < lid))
+        )
+        rows = list((await db.execute(stmt.limit(limit + 1))).scalars().all())
+        next_cursor = None
+        if len(rows) > limit:
+            last = cast(Any, rows[limit - 1])
+            next_cursor = _encode_cursor(last.created_at, last.id)
+            rows = rows[:limit]
+        return [_to_dict(r) for r in rows], total, next_cursor
+    rows = list(
+        (await db.execute(stmt.limit(limit).offset(max(offset, 0)))).scalars().all()
+    )
+    next_cursor = None
+    if rows and max(offset, 0) + len(rows) < total:
+        tail_row = cast(Any, rows[-1])
+        next_cursor = _encode_cursor(tail_row.created_at, tail_row.id)
+    return [_to_dict(r) for r in rows], total, next_cursor
 
 
 async def get_item(db: AsyncSession, resource: str, item_id: str) -> dict:

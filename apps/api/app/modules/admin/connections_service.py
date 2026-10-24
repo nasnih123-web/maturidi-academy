@@ -57,6 +57,11 @@ async def get_status(db: AsyncSession) -> dict:
         or await get_setting(db, "ai.model"),
     }
 
+    # Embedding / جست‌وجوی معنایی (M-07) — هشدار صریح وقتی در عمل خاموش است
+    from app.modules.fatwa.embeddings import semantic_search_status
+
+    out["embeddings"] = await semantic_search_status(db)
+
     # SMS
     out["sms"] = {
         "configured": bool(settings.sms_api_key and settings.sms_api_key.strip()),

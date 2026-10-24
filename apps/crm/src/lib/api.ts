@@ -129,22 +129,67 @@ async function rawFetch(
 /** Single-flight refresh so concurrent 401s don't rotate the token twice. */
 let refreshPromise: Promise<TokenPair> | null = null;
 
-async function refreshTokens(): Promise<TokenPair> {
-  if (!refreshToken) {
-    throw new ApiError(401, "no_refresh_token", "No refresh token available", null);
+const REFRESH_LOCK_NAME = "ma.auth.refresh";
+
+/**
+ * Cross-tab mutual exclusion for refresh (B-02).
+ *
+ * The server treats ANY second presentation of a rotated refresh token
+ * as theft and revokes the whole session (no grace window). Tabs share
+ * localStorage, so refresh is serialized across tabs with the Web
+ * Locks API; inside the lock the pair is re-read from storage and, if
+ * another tab already rotated it, the stored pair is adopted instead
+ * of presenting the stale token to the server. Without Web Locks the
+ * in-tab single-flight promise above is the fallback.
+ */
+async function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
+  const locks =
+    typeof navigator !== "undefined"
+      ? (navigator as Navigator & { locks?: LockManager }).locks
+      : undefined;
+  if (locks && typeof locks.request === "function") {
+    return locks.request(REFRESH_LOCK_NAME, fn) as Promise<T>;
   }
+  return fn();
+}
+
+function readStoredPair(): TokenPair | null {
+  try {
+    const access = localStorage.getItem(ACCESS_KEY);
+    const refresh = localStorage.getItem(REFRESH_KEY);
+    if (access && refresh) {
+      return { access_token: access, refresh_token: refresh, token_type: "bearer" };
+    }
+  } catch {
+    // storage unavailable — fall back to the in-memory pair
+  }
+  return null;
+}
+
+async function refreshTokens(): Promise<TokenPair> {
   if (!refreshPromise) {
-    refreshPromise = (async () => {
+    refreshPromise = withRefreshLock(async () => {
+      // Inside the lock, storage is the source of truth: another tab
+      // may have rotated the pair while this tab waited.
+      const stored = readStoredPair();
+      if (stored && stored.access_token !== accessToken) {
+        setTokens(stored);
+        return stored;
+      }
+      const currentRefresh = stored?.refresh_token ?? refreshToken;
+      if (!currentRefresh) {
+        throw new ApiError(401, "no_refresh_token", "No refresh token available", null);
+      }
       const res = await rawFetch(
         "/api/v1/auth/refresh",
-        { method: "POST", body: JSON.stringify({ refresh_token: refreshToken }) },
+        { method: "POST", body: JSON.stringify({ refresh_token: currentRefresh }) },
         null,
       );
       if (!res.ok) throw await parseError(res);
       const pair = (await res.json()) as TokenPair;
       setTokens(pair);
       return pair;
-    })().finally(() => {
+    }).finally(() => {
       refreshPromise = null;
     });
   }

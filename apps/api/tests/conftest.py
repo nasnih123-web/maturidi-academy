@@ -2,10 +2,122 @@
 from __future__ import annotations
 
 import os
+import socket
+import struct
+import threading
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+_EICAR_MARKER = b"EICAR-STANDARD-ANTIVIRUS-TEST-FILE"
+
+
+class _StubClamd(threading.Thread):
+    """سرور clamd آزمایشی — سوکت واقعی + پروتکل واقعی INSTREAM (C-01).
+
+    دادهٔ پاک → `stream: OK`؛ دادهٔ حاوی نشان EICAR →
+    `stream: Eicar-Test-Signature FOUND`. پاسخ‌ها دقیقاً مثل clamd واقعی
+    در حالت z با ترمیناتور NUL بسته می‌شوند (نه newline) — همین تفاوت
+    فریمینگ، باگ واقعیِ «اسکن پاک همیشه 503» را تا پیش از تست زندهٔ
+    FIX2-10 پنهان کرده بود. فقط زیرساخت تست است؛ کد production همیشه
+    به clamd واقعی وصل می‌شود.
+    """
+
+    def __init__(self, port: int = 0) -> None:
+        super().__init__(daemon=True)
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind(("127.0.0.1", port))
+        self._sock.listen(16)
+        self.port = self._sock.getsockname()[1]
+        self._closed = False
+
+    def run(self) -> None:
+        while not self._closed:
+            try:
+                conn, _ = self._sock.accept()
+            except OSError:
+                return
+            threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
+
+    @staticmethod
+    def _read_exact(conn: socket.socket, n: int) -> bytes:
+        buf = b""
+        while len(buf) < n:
+            part = conn.recv(n - len(buf))
+            if not part:
+                raise ConnectionError("eof")
+            buf += part
+        return buf
+
+    def _handle(self, conn: socket.socket) -> None:
+        try:
+            # فرمان: zINSTREAM\0
+            cmd = b""
+            while not cmd.endswith(b"\x00"):
+                cmd += conn.recv(1)
+            infected = False
+            tail = b""
+            while True:
+                (length,) = struct.unpack(">I", self._read_exact(conn, 4))
+                if length == 0:
+                    break
+                data = self._read_exact(conn, length)
+                window = tail + data
+                if _EICAR_MARKER in window:
+                    infected = True
+                tail = window[-len(_EICAR_MARKER):]
+            if infected:
+                conn.sendall(b"stream: Eicar-Test-Signature FOUND\x00")
+            else:
+                conn.sendall(b"stream: OK\x00")
+        except (ConnectionError, OSError):
+            pass
+        finally:
+            conn.close()
+
+    def close(self) -> None:
+        self._closed = True
+        try:
+            self._sock.close()
+        except OSError:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# پیکربندی harness در سطح env (C-01/C-02) — در importِ conftest ست می‌شود
+# تا در برابر get_settings.cache_clear() در ماژول‌های تست دیگر مصون
+# بماند: جهش‌دادن نمونهٔ کش‌شدهٔ Settings کافی نبود (یک cache_clear
+# همهٔ مقادیر harness را از دست می‌داد و register/آپلودهای بعدیِ سوئیت
+# با پیش‌فرض‌های production مواجه می‌شدند).
+# ---------------------------------------------------------------------------
+
+_STUB_CLAMD_PORT = 33310
+os.environ["CLAMAV_HOST"] = "127.0.0.1"
+os.environ["CLAMAV_PORT"] = str(_STUB_CLAMD_PORT)
+os.environ["CAPTCHA_ENABLED"] = "false"
+_STUB_SERVER = _StubClamd(port=_STUB_CLAMD_PORT)
+_STUB_SERVER.start()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _stub_clamd():
+    """همهٔ تست‌ها مسیر اسکن واقعی را علیه stub clamd تمرین می‌کنند."""
+    yield _STUB_SERVER
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _captcha_disabled_by_default():
+    """پیش‌فرضِ harness تست: کپچا خاموش است (C-02 — با env در بالای فایل).
+
+    پیش‌فرض production روشن + fail-closed است؛ تست‌های C-02 آن را
+    per-test با monkeypatch صریح روشن و siteverify را stub می‌کنند.
+    بقیهٔ سوئیت (که روی register تکیه دارد) نباید به secret واقعی
+    کلودفلر نیاز داشته باشد.
+    """
+    yield
 
 TEST_DB = os.environ.get("MATURIDI_TEST_DB", "/tmp/maturidi_test_phase1.db")
 # نکتهٔ Track C (2026-10-19): مسیر از env قابل بازنویسی است تا چند اجرای
@@ -22,7 +134,14 @@ async def tc():
     if os.path.exists(TEST_DB):
         os.remove(TEST_DB)
     engine = create_async_engine(
-        f"sqlite+aiosqlite:///{TEST_DB}", connect_args={"check_same_thread": False}
+        f"sqlite+aiosqlite:///{TEST_DB}",
+        # timeout=30: سقف پیش‌فرض sqlite برای «database is locked» پنج
+        # ثانیه است؛ روی رانر شلوغ CI یک قفل نوشتاریِ پس‌زمینه (مثل
+        # فلاش شمارندهٔ C-06) از آن رد شد و ۴۴ تست با یک امضای واحد
+        # مردند (CI run 167 روی PR #16 — همان درخت محلی ۷۲۷ سبز بود).
+        # این فقط صبرِ هارنس تست است؛ هیچ assertion یا کد production
+        # دست نخورده.
+        connect_args={"check_same_thread": False, "timeout": 30},
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

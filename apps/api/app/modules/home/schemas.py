@@ -54,8 +54,8 @@ class HomeOut(BaseModel):
 
 
 class SearchResultOut(BaseModel):
-    # type فعلاً "section" | "theme" است؛ فازهای بعد fatwa | library | course | cms
-    # اضافه می‌کنند بدون شکستن شکل (forward-compatible — فاز ۳ §۸).
+    # type: "section" | "theme" | "fatwa" | "library" | "course" | "page"
+    # (M-01 تجمیع سراسری را کامل کرد — همان شکل forward-compatible فاز ۳).
     type: str
     id: str
     title: LocalizedText

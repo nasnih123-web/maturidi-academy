@@ -57,6 +57,44 @@
 هر سه مرحله fail-fast هستند: با config بد یا MinIOِ در دسترس‌نبودن،
 سرویس api بالا **نمی‌آید** (exit غیرصفر → در compose/log بلند معلوم است).
 
+## راز امضای URLها و چرخش آن (FIX3-02 — ADR-0049)
+
+امضای HMAC روی URLهای دانلودِ provider محلی (و هر مسیری که از
+`LocalStorageProvider.get_presigned_url` می‌گذرد: کتابخانه، گواهی
+LMS، دانلود عمومی و URLهای بیلد وقتی provider محلی است) با راز
+اختصاصی `STORAGE_SIGNING_SECRET` انجام می‌شود — **مستقل از
+`JWT_SECRET`** تا نشت یکی از این دو راز، سامانهٔ دیگر را نیندازد.
+(در provider ‏S3 امضا SigV4 خود MinIO است و به این راز کاری ندارد.)
+
+قواعد نگهبان در production/staging (`assert_production_secrets_ok`):
+
+- `STORAGE_SIGNING_SECRET` الزامی است؛ خالی/placeholder/کوتاه‌تر از
+  ۳۲ کاراکتر/مقدار ضعیف شناخته‌شده = امتناع از بوت.
+- برابری با `JWT_SECRET` یا `ENCRYPTION_KEY` ممنوع است (استفادهٔ
+  مجدد از راز).
+- `STORAGE_SIGNING_SECRET_PREVIOUS` اختیاری و فقط برای پنجرهٔ چرخش
+  است؛ اگر پر باشد باید قوی و متفاوت از کلید جاری باشد.
+
+**ران‌بوک چرخش (بدون قطعی):**
+
+1. راز تازه بسازید: `python -c "import secrets; print(secrets.token_urlsafe(43))"`
+2. در secrets manager/env مقدار فعلی را به
+   `STORAGE_SIGNING_SECRET_PREVIOUS` منتقل و مقدار تازه را در
+   `STORAGE_SIGNING_SECRET` بگذارید؛ سرویس را redeploy کنید.
+   از این لحظه امضاهای تازه با کلید تازه ساخته می‌شوند و
+   راستی‌آزمایی هر دو کلید را می‌پذیرد.
+3. دست‌کم به‌اندازهٔ حداکثر عمر URLهای صادرشده صبر کنید (پیش‌فرض
+   امضاها ۵ دقیقه است؛ اگر جایی TTL بزرگ‌تری تنظیم شده، همان ملاک
+   است — یک ساعت صبر، حاشیهٔ امن عملی است).
+4. `STORAGE_SIGNING_SECRET_PREVIOUS` را خالی کنید و دوباره redeploy
+   کنید. از این لحظه URLهای امضاشده با کلید قدیمی رد می‌شوند.
+
+در dev/test اگر `STORAGE_SIGNING_SECRET` خالی باشد، امضا به‌صورت
+انتقالی با `JWT_SECRET` انجام می‌شود و یک هشدار در لاگ ثبت می‌شود؛
+این fallback در production هرگز رخ نمی‌دهد چون بوت پیش‌تر رد شده
+است. محیط توسعهٔ محلی (bootstrap) از همان ابتدا راز اختصاصی تصادفی
+جدا می‌سازد.
+
 ## پیاده‌سازی‌ها
 
 | provider | کی | کجا |

@@ -23,6 +23,7 @@ from sqlalchemy import Text, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import workflow
+from app.core.antivirus import scan_upload_or_reject
 from app.core.audit import log_audit
 from app.core.config import get_settings
 from app.core.errors import APIError
@@ -287,9 +288,14 @@ async def _signed_url(key: str | None) -> str | None:
     """signed URL کوتاه‌مدت — هرگز کلید خام یا URL عمومی."""
     if not key or key.startswith("pending:"):
         return None
+    from app.core.storage import SIGNED_PURPOSE_LIBRARY
+
     storage = get_storage()
     return await storage.get_presigned_url(
-        key, expires_seconds=SIGNED_URL_EXPIRY_S, download_path=DOWNLOAD_PATH
+        key,
+        expires_seconds=SIGNED_URL_EXPIRY_S,
+        download_path=DOWNLOAD_PATH,
+        purpose=SIGNED_PURPOSE_LIBRARY,
     )
 
 
@@ -402,6 +408,39 @@ async def _maybe_enqueue_pipeline(db: AsyncSession, item: LibraryItem) -> None:
 # ---------------------------------------------------------------------------
 
 
+async def _scan_upload_or_audit(
+    db: AsyncSession,
+    *,
+    actor: User,
+    data: bytes,
+    filename: str | None,
+    ip: str | None,
+    user_agent: str | None,
+) -> None:
+    """گیت ClamAV همهٔ آپلودهای کتابخانه (C-01 — ADR-0028).
+
+    این نقطهٔ خفگیِ واحد است: آپلود HTTP و درون‌ریزی تلگرام هر دو از
+    create_item/update_item می‌گذرند. فایل آلوده → ممیزی + رد 422؛
+    اسکنر غایب → 503 fail-closed (در app/core/antivirus.py).
+    """
+    try:
+        await scan_upload_or_reject(data, filename=filename)
+    except APIError as exc:
+        if exc.code == "file_infected":
+            await log_audit(
+                db, actor_id=actor.id, actor_type="admin",
+                action="library.upload_rejected_infected",
+                entity_type="library_item", entity_id=None,
+                new_values={
+                    "filename": filename,
+                    "signature": exc.details.get("signature"),
+                },
+                ip=ip, user_agent=user_agent,
+            )
+            await db.commit()
+        raise
+
+
 async def create_item(
     db: AsyncSession,
     meta: dict,
@@ -418,6 +457,17 @@ async def create_item(
     source_type: str = "upload",
     source_ref: dict | None = None,
 ) -> dict:
+    # اسکن ویروس پیش از هر اعتبارسنجی/ذخیره‌ای (C-01 — fail-closed)
+    await _scan_upload_or_audit(
+        db, actor=actor, data=content, filename=filename,
+        ip=ip, user_agent=user_agent,
+    )
+    if cover_content:
+        await _scan_upload_or_audit(
+            db, actor=actor, data=cover_content, filename=cover_filename,
+            ip=ip, user_agent=user_agent,
+        )
+
     kind = meta["kind"]
     ext, mime = _validate_upload(kind, filename, content)
 
@@ -713,6 +763,13 @@ async def update_item(
     """ویرایش — نسخهٔ قبلی بایگانی می‌شود، هرگز حذف. محتوای جدید اختیاری."""
     item = await _get_admin_item(db, item_id)
     old = {"version": item.version, "title": item.title, "visibility": item.visibility}
+
+    if new_content is not None:
+        # اسکن پیش از بایگانی نسخهٔ قبلی — رد شدن نباید نسخه بسازد (C-01)
+        await _scan_upload_or_audit(
+            db, actor=actor, data=new_content, filename=new_filename,
+            ip=ip, user_agent=user_agent,
+        )
 
     await _archive_version(db, item, actor.id, patch.get("note"))
 

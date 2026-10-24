@@ -5,19 +5,37 @@
   مثلاً کلید `theme.palette.color-primary-700` با مقدار `#0a5c44` می‌شود
   `"palette": {"color-primary-700": "#0a5c44"}`. اگر هیچ کلید `theme.*` نباشد → theme=null
   و فرانت‌اند به CSS پیش‌فرض برمی‌گردد).
-- GET /api/v1/search: جست‌وجوی واژگانی واقعی (نه mock) روی home_sections
-  (title/subtitle در هر سه زبان) و themes (name). امتیاز: تطابق پیشوندی بالاتر از
-  تطابق درونی. عمداً با ilike/lower پیاده شده تا هم روی SQLite (تست) هم Postgres
-  کار کند — FTS معنایی/pgvector فازهای بعد می‌آید (قرارداد §۸).
+- GET /api/v1/search: جست‌وجوی سراسری واقعی (M-01 — ADR-0033) روی
+  home_sections و themes (فاز ۳) + فتواهای منتشرشده، آیتم‌های عمومیِ
+  کتابخانه، دوره‌های فعال عمومی و صفحه‌های CMS منتشرشده. امتیاز
+  ترکیبی: واژگانی (پیشوند > درون‌رشته؛ عنوان > متن) + تازگی +
+  محبوبیت (فقط سیگنال واقعی: ثبت‌نام دوره) + تقویت معنایی فتوا
+  وقتی provider واقعی embedding فعال است (§۸).
 """
 from __future__ import annotations
 
-from sqlalchemy import select
+import logging
+import math
+from datetime import UTC, datetime
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import APIError
 from app.core.platform_settings import get_setting
-from app.models.models import HomeSection, PlatformSetting, Theme
+from app.models.models import (
+    CohortEnrollment,
+    Course,
+    CourseCohort,
+    FatwaSubmission,
+    HomeSection,
+    LibraryItem,
+    Page,
+    PlatformSetting,
+    Theme,
+)
+
+logger = logging.getLogger("app.home")
 
 from .schemas import (
     HomeOut,
@@ -123,6 +141,296 @@ async def _load_theme_overrides(db: AsyncSession) -> ThemeOverrides | None:
     return ThemeOverrides(palette=palette, fonts=fonts)
 
 
+# ---------------------------------------------------------------------------
+# M-01 — تجمیع سراسری: فتوا + کتابخانه + دوره + صفحهٔ CMS
+# ---------------------------------------------------------------------------
+# امتیاز ترکیبی هر hit: lexical (وزن‌های بالا) + تازگی (≤۰٫۱۵، افت
+# ۱۸۰روزه) + محبوبیت (≤۰٫۱۵ — فقط جایی که سیگنال واقعیِ مشارکت هست:
+# فعلاً ثبت‌نام دوره‌ها؛ برای بقیهٔ منابع سیگنال صادقانه‌ای در داده
+# نیست و مؤلفه صفر است، ADR-0033) + معنایی (فقط فتوا، فقط وقتی
+# provider واقعیِ embedding فعال است — با hash فعال نمی‌شود).
+
+_TYPE_ORDER = {"section": 0, "fatwa": 1, "library": 2, "course": 3, "page": 4, "theme": 5}
+# سقف اسکن واژگانی به‌ازای هر منبع (تازه‌ترین‌های منتشرشده) — همان
+# الگوی جست‌وجوی خود کتابخانه؛ ستون‌های JSONB روی SQLite به‌صورت
+# unicode-escaped ذخیره می‌شوند و پیش‌فیلتر SQL روی آن‌ها قابل‌اتکا
+# نیست، پس امتیازدهی در پایتون است و روی هر دو دیالکت یکسان کار
+# می‌کند. مسیر ارتقا به PG FTS برای کاتالوگ‌های بسیار بزرگ در
+# ADR-0033 ثبت شده است.
+_SCAN_CAP = 500
+_RECENCY_MAX = 0.15
+_POPULARITY_MAX = 0.15
+_SEMANTIC_MAX = 0.3
+
+
+def _recency_boost(ts: datetime | None) -> float:
+    if ts is None:
+        return 0.0
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=UTC)
+    age_days = max(0.0, (datetime.now(UTC) - ts).total_seconds() / 86400.0)
+    return _RECENCY_MAX * max(0.0, 1.0 - age_days / 180.0)
+
+
+def _popularity_boost(count: int, max_count: int) -> float:
+    if count <= 0 or max_count <= 0:
+        return 0.0
+    return _POPULARITY_MAX * (math.log1p(count) / math.log1p(max_count))
+
+
+def _locale_texts(raw: dict | None) -> list[str]:
+    if not isinstance(raw, dict):
+        return []
+    return [str(raw[loc]) for loc in _LOCALES if raw.get(loc)]
+
+
+def _score_hit(
+    title_texts: list[str],
+    body_texts: list[str],
+    needle: str,
+    *,
+    recency_ts: datetime | None = None,
+    popularity: float = 0.0,
+) -> tuple[float, str | None]:
+    """-> (امتیاز ترکیبی، متن تطابق‌یافته برای snippet)."""
+    score = _match_score(title_texts, needle, _SCORE_PREFIX_TITLE, _SCORE_SUBSTR_TITLE)
+    matched: str | None = next((t for t in title_texts if needle in t.lower()), None)
+    if body_texts:
+        body_score = _match_score(
+            body_texts, needle, _SCORE_PREFIX_SUBTITLE, _SCORE_SUBSTR_SUBTITLE
+        )
+        if body_score > score:
+            score = body_score
+            matched = next((t for t in body_texts if needle in t.lower()), matched)
+    if score <= 0:
+        return 0.0, None
+    return round(score + _recency_boost(recency_ts) + popularity, 4), matched
+
+
+async def _fatwa_hits(db: AsyncSession, needle: str) -> list[SearchResultOut]:
+    rows = (
+        await db.execute(
+            select(FatwaSubmission)
+            .where(FatwaSubmission.workflow_status == "published")
+            .order_by(FatwaSubmission.published_at.desc())
+            .limit(_SCAN_CAP)
+        )
+    ).scalars().all()
+    hits: list[SearchResultOut] = []
+    for row in rows:
+        title = _as_localized(row.title)
+        if title is None:
+            continue
+        score, matched = _score_hit(
+            _locale_texts(row.title),
+            [row.body or ""],
+            needle,
+            recency_ts=row.published_at or row.created_at,
+        )
+        if score <= 0:
+            continue
+        hits.append(
+            SearchResultOut(
+                type="fatwa",
+                id=str(row.id),
+                title=title,
+                snippet=_snippet(matched or row.body or ""),
+                url="/fatwa",
+                score=score,
+            )
+        )
+    return hits
+
+
+async def _library_hits(db: AsyncSession, needle: str) -> list[SearchResultOut]:
+    rows = (
+        await db.execute(
+            select(LibraryItem)
+            .where(
+                LibraryItem.workflow_status == "published",
+                LibraryItem.visibility == "public",
+            )
+            .order_by(LibraryItem.created_at.desc())
+            .limit(_SCAN_CAP)
+        )
+    ).scalars().all()
+    hits: list[SearchResultOut] = []
+    for row in rows:
+        title = _as_localized(row.title)
+        if title is None:
+            continue
+        body_texts = _locale_texts(row.description) + (
+            [row.transcript] if row.transcript else []
+        )
+        score, matched = _score_hit(
+            _locale_texts(row.title),
+            body_texts,
+            needle,
+            recency_ts=row.created_at,
+        )
+        if score <= 0:
+            continue
+        hits.append(
+            SearchResultOut(
+                type="library",
+                id=str(row.id),
+                title=title,
+                snippet=_snippet(matched or ""),
+                url=f"/library/{row.id}",
+                score=score,
+            )
+        )
+    return hits
+
+
+async def _course_hits(db: AsyncSession, needle: str) -> list[SearchResultOut]:
+    rows = (
+        await db.execute(
+            select(Course)
+            .where(Course.is_active.is_(True), Course.visibility == "public")
+            .order_by(Course.created_at.desc())
+            .limit(_SCAN_CAP)
+        )
+    ).scalars().all()
+    if not rows:
+        return []
+    enrollments: dict[str, int] = {}
+    counts = (
+        await db.execute(
+            select(CourseCohort.course_id, func.count(CohortEnrollment.id))
+            .join(CohortEnrollment, CohortEnrollment.cohort_id == CourseCohort.id)
+            .where(CohortEnrollment.status == "active")
+            .group_by(CourseCohort.course_id)
+        )
+    ).all()
+    for course_id, n in counts:
+        enrollments[str(course_id)] = int(n)
+    max_enroll = max(enrollments.values(), default=0)
+    hits: list[SearchResultOut] = []
+    for row in rows:
+        title = _as_localized(row.title)
+        if title is None:
+            continue
+        score, matched = _score_hit(
+            _locale_texts(row.title),
+            _locale_texts(row.description),
+            needle,
+            recency_ts=row.created_at,
+            popularity=_popularity_boost(
+                enrollments.get(str(row.id), 0), max_enroll
+            ),
+        )
+        if score <= 0:
+            continue
+        hits.append(
+            SearchResultOut(
+                type="course",
+                id=str(row.id),
+                title=title,
+                snippet=_snippet(matched or ""),
+                url=f"/learn/courses/{row.id}",
+                score=score,
+            )
+        )
+    return hits
+
+
+def _block_texts(blocks: object) -> list[str]:
+    out: list[str] = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, str):
+            out.append(node)
+        elif isinstance(node, dict):
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(blocks)
+    return out
+
+
+async def _page_hits(db: AsyncSession, needle: str) -> list[SearchResultOut]:
+    rows = (
+        await db.execute(
+            select(Page)
+            .where(Page.workflow_status == "published")
+            .order_by(Page.created_at.desc())
+            .limit(_SCAN_CAP)
+        )
+    ).scalars().all()
+    hits: list[SearchResultOut] = []
+    for row in rows:
+        title = _as_localized(row.title)
+        if title is None:
+            continue
+        score, matched = _score_hit(
+            _locale_texts(row.title),
+            _block_texts(row.blocks),
+            needle,
+            recency_ts=row.published_at or row.created_at,
+        )
+        if score <= 0:
+            continue
+        hits.append(
+            SearchResultOut(
+                type="page",
+                id=str(row.id),
+                title=title,
+                snippet=_snippet(matched or ""),
+                url=f"/pages/{row.slug}",
+                score=score,
+            )
+        )
+    return hits
+
+
+async def _apply_semantic_boost(
+    db: AsyncSession, query: str, hits: list[SearchResultOut]
+) -> None:
+    """تقویت معناییِ hitهای فتوا — فقط با provider واقعی (نه hash).
+
+    بهترین‌تلاش است: هر خطایی در این پا، جست‌وجوی واژگانی را هرگز
+    خراب نمی‌کند (لاگ debug و ادامه).
+    """
+    fatwa_ids = {h.id for h in hits if h.type == "fatwa"}
+    if not fatwa_ids:
+        return
+    try:
+        from app.models.models import FiqhKnowledgeChunk
+        from app.modules.fatwa.embeddings import ChunkIndex, get_embedding_provider
+
+        provider = await get_embedding_provider(db)
+        if getattr(provider, "name", "hash") == "hash":
+            return
+        scored = await ChunkIndex(provider).search(db, query, top_k=10)
+        if not scored:
+            return
+        chunk_ids = [s.chunk_id for s in scored]
+        chunks = (
+            await db.execute(
+                select(FiqhKnowledgeChunk).where(FiqhKnowledgeChunk.id.in_(chunk_ids))
+            )
+        ).scalars().all()
+        ref_by_chunk = {
+            str(c.id): (c.source_ref or {}).get("id")
+            for c in chunks
+            if isinstance(c.source_ref, dict)
+        }
+        best: dict[str, float] = {}
+        for s in scored:
+            ref = ref_by_chunk.get(str(s.chunk_id))
+            if ref in fatwa_ids:
+                best[ref] = max(best.get(ref, 0.0), float(s.semantic))
+        for h in hits:
+            if h.type == "fatwa" and h.id in best:
+                h.score = round(h.score + _SEMANTIC_MAX * best[h.id], 4)
+    except (APIError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        logger.debug("semantic boost skipped: %s", exc)
+
+
 async def search(
     db: AsyncSession, q: str, result_type: str | None = None, limit: int = 10
 ) -> SearchOut:
@@ -185,7 +493,12 @@ async def search(
             )
 
     if want_themes:
-        themes = (await db.execute(select(Theme))).scalars().all()
+        # FIX2-12: فقط تم فعال (منتشرشده) — مثل همهٔ مصرف‌کننده‌های
+        # عمومی دیگر (meta/router، cms)؛ قبلاً همهٔ تم‌ها از جمله
+        # پیش‌نویس/غیرفعال در جست‌وجوی عمومی نشت می‌کردند.
+        themes = (
+            await db.execute(select(Theme).where(Theme.is_active.is_(True)))
+        ).scalars().all()
         for theme in themes:
             name = _as_localized(theme.name)
             if name is None:
@@ -208,8 +521,20 @@ async def search(
                 )
             )
 
-    # امتیاز نزولی؛ تساوی: sectionها قبل از themeها، بعد key/id برای قطعیت ترتیب
-    hits.sort(key=lambda h: (-h.score, 0 if h.type == "section" else 1, h.id))
+    # M-01: تجمیع منابع محتوایی (فقط منتشرشده‌ها/عمومی‌ها)
+    if result_type in (None, "fatwa"):
+        hits += await _fatwa_hits(db, needle)
+    if result_type in (None, "library"):
+        hits += await _library_hits(db, needle)
+    if result_type in (None, "course"):
+        hits += await _course_hits(db, needle)
+    if result_type in (None, "page"):
+        hits += await _page_hits(db, needle)
+    if result_type in (None, "fatwa"):
+        await _apply_semantic_boost(db, q.strip(), hits)
+
+    # امتیاز نزولی؛ تساوی: ترتیب نوع ثابت، بعد id برای قطعیت ترتیب
+    hits.sort(key=lambda h: (-h.score, _TYPE_ORDER.get(h.type, 9), h.id))
     total = len(hits)
     return SearchOut(query=q.strip(), results=hits[:limit], total=total)
 

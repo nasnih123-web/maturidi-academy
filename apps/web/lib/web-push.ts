@@ -41,10 +41,12 @@ export function pushSupported(): boolean {
   );
 }
 
-function urlBase64ToUint8Array(base64: string): Uint8Array {
+function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
+  // TS 5.7+ (M-06): PushManager wants ArrayBufferView<ArrayBuffer> —
+  // the buffer is explicitly a fresh ArrayBuffer, never shared.
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
   const raw = window.atob(base64.replace(/-/g, "+").replace(/_/g, "/") + padding);
-  const out = new Uint8Array(raw.length);
+  const out = new Uint8Array(new ArrayBuffer(raw.length));
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
   return out;
 }

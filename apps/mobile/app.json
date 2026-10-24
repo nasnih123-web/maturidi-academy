@@ -47,15 +47,19 @@
           "icon": "./assets/notification-icon.png",
           "sounds": []
         }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#064e3b"
+        }
       ]
     ],
     "scheme": "maturidi-academy",
     "slug": "maturidi-academy",
-    "splash": {
-      "backgroundColor": "#064e3b",
-      "image": "./assets/splash.png",
-      "resizeMode": "contain"
-    },
     "userInterfaceStyle": "automatic",
     "version": "1.0.0"
   }

@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector (B-03 — ADR-0026): ایمیج رسمی pgvector روی همان نسل PG16؛
+    # اکستنشن‌های vector و pg_trgm با مهاجرت e2b3c4d5f6a7 ساخته می‌شوند.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: maturidi
       POSTGRES_PASSWORD: maturidi
@@ -26,9 +28,12 @@ services:
       retries: 5
 
   minio:
-    # Track B: ایمیج‌های minio/minio از Docker Hub حذف شده‌اند (سپتامبر ۲۰۲۶) —
-    # همان ایمیج با digest یکسان روی quay.io منتشر می‌شود؛ latest پین نیست.
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # Track B (اصلاحیهٔ ممیزی 197efa0 — ADR-0039): رجیستری عمومی MinIO
+    # (Hub و quay) برای pull ناشناس بسته است؛ ایمیج از باینری رسمیِ همان
+    # release ساخته می‌شود (infra/minio/Dockerfile، با sha256 رسمی).
+    build:
+      context: ./infra/minio
+    image: maturidi/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -44,6 +49,28 @@ services:
       timeout: 5s
       retries: 5
 
+  # اسکن ویروس آپلودها (C-01 — ADR-0028): clamd روی پورت 3310 (INSTREAM).
+  # سیاست API fail-closed است: تا وقتی این سرویس healthy نشده، آپلودها
+  # 503 می‌گیرند — هرگز ردِّ بی‌صدا نداریم.
+  clamav:
+    image: clamav/clamav:1.4
+    volumes:
+      - clamavdata:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/clamdcheck.sh"]
+      # چک سلامت = اسکریپت رسمی خود ایمیج (clamdcheck.sh): ‏PING را با
+      # newline می‌فرستد و PONG را چک می‌کند. چک دست‌نویس قبلی با
+      # ‏printf بدون newline هیچ‌وقت جواب نمی‌گرفت و کانتینر برای همیشه
+      # unhealthy می‌ماند — در حالی که clamd طبق لاگ CI در ~۸ ثانیه
+      # بالا آمده بود (شکست‌های compose-smoke در PR #16، ممیزی 197efa0؛
+      # ایمیج رسمی دیتابیس امضا را baked دارد و دانلود بوت اول فقط
+      # آپدیت روزانهٔ کوچک است). پنجرهٔ زمانی پهن فقط headroom است؛
+      # گیت C-01 دست نخورده: api فقط با clamav سالم بالا می‌آید.
+      interval: 15s
+      timeout: 5s
+      retries: 24
+      start_period: 120s
+
   api:
     build: ./apps/api
     # Dockerfile CMD یووی‌کورن --timeout-graceful-shutdown 30 دارد؛ مهلت توقف
@@ -56,6 +83,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      clamav:
+        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -65,6 +94,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://maturidi:maturidi@postgres:5432/maturidi
       REDIS_URL: redis://redis:6379/0
       S3_ENDPOINT: http://minio:9000
+      CLAMAV_HOST: clamav
       APP_BASE_URL: http://localhost:8000
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
@@ -107,6 +137,7 @@ services:
 
 volumes:
   pgdata:
+  clamavdata:
   miniodata:
   promdata:
   grafanadata:

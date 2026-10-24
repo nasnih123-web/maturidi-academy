@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.errors import APIError
-from app.core.security import rate_limiter
+from app.core.rate_limit import get_rate_limiter
 from app.core.storage import get_storage
 from app.models.models import Permission, RolePermission, User, UserRole
 from app.modules.auth.dependencies import get_current_user, require_permission
@@ -329,20 +329,49 @@ async def download_certificate_by_ref(
     key: str,
     exp: int,
     sig: str,
+    purpose: str = "",
+    db: AsyncSession = Depends(get_db),
 ):
-    """دانلود با URL امضاشدهٔ کوتاه‌مدت (§۶) — امضا جای احراز هویت را می‌گیرد."""
+    """دانلود با URL امضاشدهٔ کوتاه‌مدت (§۶) — امضا جای احراز هویت را می‌گیرد.
+
+    FIX2-08: پیش از این هر امضای معتبر برای هر کلیدی پذیرفته می‌شد.
+    حالا دو شرط اضافه است: (۱) امضا باید هم‌منظور گواهی باشد
+    (purpose=lms-certificate)؛ (۲) کلید باید واقعاً pdf_storage_ref
+    یک رکورد Certificate در دیتابیس باشد — کلیدِ فایل دیگری (کتابخانه،
+    صدا، بیلد) با امضای خودش هم از این در رد می‌شود.
+    """
+    from app.core.storage import SIGNED_PURPOSE_CERTIFICATE
+    from app.models.models import Certificate
+
     storage = get_storage()
     verify = getattr(storage, "verify_download_sig", None)
     read_bytes = getattr(storage, "read_bytes", None)
-    if verify is None or read_bytes is None or not verify(key, exp, sig):
+    if (
+        verify is None
+        or read_bytes is None
+        or purpose != SIGNED_PURPOSE_CERTIFICATE
+        or not verify(key, exp, sig, purpose)
+    ):
         raise APIError(403, "invalid_signature", "امضای دانلود نامعتبر یا منقضی است")
+    cert = (
+        await db.execute(
+            select(Certificate).where(Certificate.pdf_storage_ref == key)
+        )
+    ).scalar_one_or_none()
+    if cert is None:
+        raise APIError(404, "certificate_not_found", "گواهی یافت نشد")
     data = await read_bytes(key)
     return Response(content=data, media_type="application/pdf")
 
 
 async def _verify_impl(request: Request, code: str, db: AsyncSession) -> CertificateVerifyOut:
     ip = _ip(request) or "unknown"
-    if not rate_limiter.is_allowed(f"cert_verify:{ip}", limit=30, window_s=60):
+    # FIX3-03 (ADR-0050): استعلام عمومی گواهی روی limiter توزیع‌شده
+    # (Redis) است — سقف ۳۰/دقیقه سقفِ کل سیستم است، نه هر worker.
+    # auth=True: در production با Redisِ قطع fail-closed (429).
+    if not await get_rate_limiter().is_allowed(
+        f"cert_verify:{ip}", limit=30, window_s=60, auth=True
+    ):
         raise APIError(429, "rate_limited", "تعداد درخواست بیش از حد مجاز است")
     return CertificateVerifyOut(**await service.verify_certificate(db, code))
 

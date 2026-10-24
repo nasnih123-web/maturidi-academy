@@ -23,9 +23,10 @@ apps/desktop/
     config.js                  # MATURIDI_WEB_URL — set at packaging time
     icon.png                   # emblem shown on the state pages
   src-tauri/
-    tauri.conf.json            # window, tray, CSP, bundle, updater (moved here
+    tauri.conf.json            # window, tray, CSP, bundle (moved here
                                # from apps/desktop/ in Phase 13 — the Tauri 2
-                               # conventional location)
+                               # conventional location; NO updater block —
+                               # see Notes)
     Cargo.toml / build.rs / src/main.rs
     capabilities/default.json
     icons/                     # generated set: icon.png 512, 32/128/256,
@@ -80,18 +81,25 @@ pages), so the production desktop bundle ships a small **local shell**
     `tauri build`.
   - Windows: code-signing cert thumbprint in `bundle.windows.certificateThumbprint`
     (or `TAURI_SIGNING_PRIVATE_KEY` for the updater signature).
-  - Updater: `tauri.conf.json → updater.pubkey` stays **empty** here; CI
-    injects the real public key and the private key signs artifacts via the
-    `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` secrets.
+  - Updater: there is **no updater block at all** in `tauri.conf.json`
+    (see Notes). When the real release feed exists, CI adds a Tauri 2
+    `plugins.updater` block carrying the real `pubkey`; the private key
+    signs artifacts via the `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)`
+    secrets.
 - Phase-13 acceptance: signed installers for all three platforms are stored
   in MinIO (Phase 14 wires the upload step; the workflow comment tracks it).
 
 ## Notes
 
-- Updater: **disabled** (`updater.active: false` — Track 2 / §۱۶). The
-  `endpoints` URL is still a placeholder (`releases.example.com`); enable
-  auto-update only after pointing it at the real release feed AND injecting
-  the real `updater.pubkey` (CI injects the key; the private key signs via
+- Updater: **disabled by absence** (Track 2 / §۱۶; decision re-affirmed
+  in ADR-0031 / C-05). There is no `updater` key anywhere in
+  `tauri.conf.json`: a top-level `updater` block is Tauri v1 style and
+  the v2 config schema rejects the whole file (owner's Desktop builds
+  run #5 failed on all three OSes with exactly that error — FIX3-01).
+  No placeholder endpoint/pubkey ships in the config. Enable
+  auto-update only by adding a Tauri 2 `plugins.updater` block with
+  `endpoints` pointing at the real release feed AND the real `pubkey`
+  (CI injects the key; the private key signs via
   `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` secrets).
 - CSP (`app.security.csp`): the shell page itself only loads local files
   (`script-src 'self'`); after navigation, the remote web origin's own
@@ -102,13 +110,11 @@ pages), so the production desktop bundle ships a small **local shell**
   `icon.ico`, `icon.icns`. `bundle.icon` and the tray icon reference exactly
   these files. Regenerate with Pillow from the emblem (or `tauri icon` on a
   machine with the Tauri CLI) whenever the emblem changes.
-- **⚠ Root `apps/desktop/tauri.conf.json` is a STALE DIVERGENT copy (F-12).**
-  Tauri 2 reads only `src-tauri/tauri.conf.json`; the root file is not a
-  byte-copy — it has `updater.active: true` with an `example.com` endpoint,
-  `devUrl` on port 1420, `frontendDist: ../dist`, a different CSP, and no
-  tray/plugins config. It was **not** deleted in the v1.1.0 remediation
-  because it differs meaningfully (ADR-0023): owner action — review and
-  delete it; until then no tooling may reference it.
+- Root `apps/desktop/tauri.conf.json` **was** a stale divergent copy
+  (F-12: active updater with a placeholder endpoint, wrong ports/paths).
+  Per the post-197efa0 audit (C-05, ADR-0031) it is **deleted**; the only
+  Tauri config is `src-tauri/tauri.conf.json`. Nothing may reference the
+  root path.
 - `cargo check`/`cargo build` need a Rust toolchain — not run in this
   sandbox; CI compiles on the per-OS runners.
 

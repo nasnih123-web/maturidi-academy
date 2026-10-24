@@ -424,7 +424,12 @@ def test_prod_compose_crm_gets_api_url_arg():
 def test_prod_api_uses_proxy_headers_behind_tls_terminating_proxy():
     """§۱۵: uvicorn با --proxy-headers (لاگ audit باید IP واقعی ببیند)."""
     cmd = _prod_compose()["services"]["api"]["command"]
-    assert "--proxy-headers" in cmd
+    # command از فیکس C-04 فرم ["sh", "-c", <script>] دارد تا
+    # $${UVICORN_WORKERS:-4} داخل کانتینر باز شود؛ پرچم‌ها داخل
+    # همان اسکریپت‌اند، پس برای چکِ «وجود پرچم در دستور api» فرم
+    # تخت‌شده ملاک است (معنای assertion عوض نشده).
+    flat = cmd if isinstance(cmd, str) else " ".join(str(part) for part in cmd)
+    assert "--proxy-headers" in flat
 
 
 def test_body_size_limit_middleware():

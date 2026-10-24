@@ -24,11 +24,12 @@ async def get_home_sections(db: AsyncSession = Depends(get_db)):
 async def search(
     q: str = Query(min_length=1, max_length=200, description="متن جست‌وجو — ۱ تا ۲۰۰ کاراکتر"),
     type: str | None = Query(
-        default=None, description="فیلتر نوع نتیجه: section | theme (بعداً بیشتر)"
+        default=None,
+        description="فیلتر نوع نتیجه: section | theme | fatwa | library | course | page",
     ),
     limit: int = Query(default=10, ge=1, le=50, description="حداکثر نتایج"),
     db: AsyncSession = Depends(get_db),
 ):
-    """جست‌وجوی واژگانی واقعی روی بخش‌های خانه و تم‌ها (§۸: معنایی فازهای بعد)."""
+    """جست‌وجوی سراسری واقعی (M-01): بخش‌ها، تم‌ها، فتوا، کتابخانه، دوره، صفحهٔ CMS."""
     # q خالی/فقط-فاصله بعد از trim در service به 422 تبدیل می‌شود (پاکت یکدست).
     return await service.search(db, q=q, result_type=type, limit=limit)

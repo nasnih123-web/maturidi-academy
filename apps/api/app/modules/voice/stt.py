@@ -26,20 +26,28 @@ def faster_whisper_available() -> bool:
 class STTProvider(Protocol):
     name: str
 
-    async def transcribe(self, audio_bytes: bytes, *, lang: str | None) -> dict:
+    async def transcribe(
+        self, audio_bytes: bytes, *, lang: str | None, timeout_s: float | None = None
+    ) -> dict:
         """-> {"text": str, "language": str, "duration_s": float}"""
         ...
 
 
 class FasterWhisperSTT:
-    """رونویسی واقعی با faster-whisper (lazy-load مدل، thread جدا)."""
+    """رونویسی واقعی با faster-whisper (lazy-load مدل، thread جدا).
+
+    مدل پیش‌فرض = مدل نام‌دار و پین‌شدهٔ B-04 در app/core/media_tools.py
+    (FASTER_WHISPER_MODEL) — یک منبع حقیقت برای صدا و کتابخانه.
+    """
 
     name = "faster_whisper"
     _model = None
     _lock = threading.Lock()
 
-    def __init__(self, model_size: str = "tiny", device: str = "cpu"):
-        self.model_size = model_size
+    def __init__(self, model_size: str | None = None, device: str = "cpu"):
+        from app.core.media_tools import FASTER_WHISPER_MODEL
+
+        self.model_size = model_size or FASTER_WHISPER_MODEL
         self.device = device
 
     def _get_model(self):
@@ -52,7 +60,13 @@ class FasterWhisperSTT:
                 )
             return FasterWhisperSTT._model
 
-    async def transcribe(self, audio_bytes: bytes, *, lang: str | None) -> dict:
+    async def transcribe(
+        self,
+        audio_bytes: bytes,
+        *,
+        lang: str | None,
+        timeout_s: float | None = None,
+    ) -> dict:
         import io
 
         def _run() -> dict:
@@ -75,13 +89,13 @@ class FasterWhisperSTT:
 
         try:
             return await asyncio.wait_for(
-                asyncio.to_thread(_run), timeout=STT_TIMEOUT_S
+                asyncio.to_thread(_run), timeout=timeout_s or STT_TIMEOUT_S
             )
         except TimeoutError:
             raise APIError(
                 503, "stt_timeout",
                 "رونویسی بیش از حد طول کشید؛ لطفاً فایل کوتاه‌تری بفرستید",
-                {"timeout_s": STT_TIMEOUT_S},
+                {"timeout_s": timeout_s or STT_TIMEOUT_S},
             )
         except APIError:
             raise

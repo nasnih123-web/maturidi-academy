@@ -92,7 +92,7 @@ export function SocialScreen(): React.JSX.Element {
                 onPress={loadMore}
                 loading={loadingMore}
               />
-            ) : null
+            ) : undefined
           }
         />
       )}

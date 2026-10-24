@@ -6,7 +6,9 @@
  * document directory and are registered in `cache_library` so the Library
  * screen can offer them offline.
  */
-import * as FileSystem from "expo-file-system";
+// SDK 58 (M-06): API کلاسیک فایل‌سیستم به زیرمسیر legacy منتقل شده —
+// همین سرویس عمداً از همان سطح legacy استفاده می‌کند (دانلود resumable).
+import * as FileSystem from "expo-file-system/legacy";
 import { api, ApiError } from "../lib/api";
 import { getDb, nowIso } from "../lib/db";
 import { apiBaseUrl } from "../lib/config";

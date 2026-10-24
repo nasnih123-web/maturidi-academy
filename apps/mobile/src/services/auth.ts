@@ -24,6 +24,8 @@ export interface RegisterInput {
   phone?: string;
   password: string;
   locale?: string;
+  /** Cloudflare Turnstile token (C-02) — required when CAPTCHA is active. */
+  captchaToken?: string;
 }
 
 export async function login(input: LoginInput): Promise<{ user: UserMe; mustEnroll2fa: boolean }> {
@@ -51,6 +53,7 @@ export async function register(input: RegisterInput): Promise<UserMe> {
       password: input.password,
       locale: input.locale ?? "fa",
       accept_terms: true,
+      ...(input.captchaToken ? { captcha_token: input.captchaToken } : {}),
     },
     { auth: false },
   );

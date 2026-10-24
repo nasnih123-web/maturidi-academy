@@ -21,6 +21,9 @@ class ItemsOut(BaseModel):
 
     items: list[dict[str, Any]]
     total: int
+    # m-01: کرسر صفحهٔ بعد (keyset) — null یعنی صفحهٔ آخر؛ فیلد افزایشی
+    # و غیرشکننده است (کلاینت‌های offset-محور نادیده‌اش می‌گیرند).
+    next_cursor: str | None = None
 
 
 class DistributionIn(BaseModel):

@@ -45,6 +45,9 @@ def _prod_s3_env(monkeypatch, **overrides):
         "APP_BASE_URL": "https://api.example.com",
         "JWT_SECRET": GOOD_JWT,
         "ENCRYPTION_KEY": GOOD_ENC,
+        # FIX3-02: راز اختصاصی امضای storage در production الزامی است
+        "STORAGE_SIGNING_SECRET": "Zx9Qw8Er7Ty6Ui5Op4As3Df2Gh1Jk0LzXv7Bn",
+        "STORAGE_SIGNING_SECRET_PREVIOUS": "",
         "STORAGE_PROVIDER": "s3",
         "S3_ENDPOINT": "http://minio:9000",
         "S3_ENDPOINT_PUBLIC": "https://files.maturidi.academy",

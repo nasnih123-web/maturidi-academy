@@ -1,7 +1,13 @@
-"""روتر مرکز بیلدها — فاز ۱۴. مجوز: `builds.manage`."""
+"""روتر مرکز بیلدها — فاز ۱۴. مجوز: `builds.manage`.
+
+استثنا (B-01 — ADR-0025): POST /releases علاوه بر کاربرِ دارای مجوز،
+توکن سرویس اختصاصی CI (هدر X-Build-Service-Token) را هم می‌پذیرد تا
+workflow پس از آپلود فایل به باکت builds، انتشار را ثبت کند.
+"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -15,10 +21,28 @@ from app.modules.admin.control_schemas import (
     RebuildOut,
     ReleaseCreateIn,
 )
-from app.modules.auth.dependencies import require_permission
+from app.modules.auth.dependencies import get_current_user, require_permission
 
 router = APIRouter(prefix="/api/v1/admin/builds", tags=["admin-builds"])
 _perm = require_permission("builds.manage")
+_bearer = HTTPBearer(auto_error=False)
+
+
+async def _release_actor(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    """احراز ثبت انتشار: توکن سرویس CI (actor=None) یا کاربرِ مجاز.
+
+    اول توکن سرویس بررسی می‌شود (فقط وقتی در محیط API تنظیم شده باشد)؛
+    در غیر این صورت مسیر عادیِ کاربر + مجوز builds.manage طی می‌شود و
+    خطاهای 401/403 آن دست‌نخورده می‌ماند.
+    """
+    if svc.service_token_ok(request.headers.get(svc.SERVICE_TOKEN_HEADER)):
+        return None
+    user = await get_current_user(credentials=credentials, db=db, request=request)
+    return await _perm(user=user, db=db, request=request)
 
 
 def _client(request: Request) -> tuple[str | None, str | None]:
@@ -82,14 +106,19 @@ async def get_requests(
 async def post_release(
     data: ReleaseCreateIn,
     request: Request,
-    user: User = Depends(_perm),
+    actor: User | None = Depends(_release_actor),
     db: AsyncSession = Depends(get_db),
 ):
-    """ثبت نسخهٔ منتشرشده (معمولاً توسط CI) — `signed` فقط برای بیلد واقعی امضاشده."""
+    """ثبت نسخهٔ منتشرشده (معمولاً توسط CI) — `signed` فقط برای بیلد واقعی امضاشده.
+
+    احراز: کاربرِ دارای builds.manage یا توکن سرویس CI (B-01).
+    """
     ip, ua = _client(request)
     return await svc.create_release(
-        db, actor=user, platform=data.platform, version=data.version,
+        db, actor=actor, platform=data.platform, version=data.version,
         build_number=data.build_number, download_url=data.download_url,
         download_expires_at=data.download_expires_at, signed=data.signed,
-        build_metadata=data.build_metadata, ip=ip, user_agent=ua,
+        build_metadata=data.build_metadata, artifact_key=data.artifact_key,
+        file_size_bytes=data.file_size_bytes, sha256=data.sha256,
+        ip=ip, user_agent=ua,
     )

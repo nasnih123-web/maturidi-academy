@@ -8,7 +8,10 @@
 """
 from __future__ import annotations
 
-from datetime import date
+import json
+import logging
+import time
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import select
@@ -16,6 +19,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import APIError
 from app.models.models import FatwaSubmission
+
+logger = logging.getLogger("app.widgets")
+
+try:  # alias امن برای except — redis وابستگی واقعی است (arq)
+    from redis.exceptions import RedisError as _RedisError
+except ImportError:  # pragma: no cover
+    class _RedisError(Exception):  # type: ignore[no-redef]
+        pass
 
 # ارجاع‌های ثابت آیات مشهور — فقط (سوره، آیه)؛ متن از provider می‌آید.
 AYAH_ROTATION: list[tuple[int, int]] = [
@@ -67,17 +78,100 @@ async def prayer_times_widget(
     }
 
 
+# ---------------------------------------------------------------------------
+# کش آیهٔ روز (C-06/F1 — طوفان تلاش مجدد)
+# ---------------------------------------------------------------------------
+# آیهٔ روز برای یک تاریخ ثابت است؛ بدون کش، هر رندرِ ویجت در هزاران
+# سایتِ embed یک فراخوانی provider خارجی می‌ساخت و هنگام قطعی provider
+# به طوفان retry بدل می‌شد. حالا: موفقیت تا پایان روز (سقف ۶ ساعت)
+# کش می‌شود و شکست ۶۰ ثانیه negative-cache می‌شود تا در قطعی،
+# به‌ازای هر درخواست به provider ضربه نزنیم. کش اول Redis است و در
+# نبودش in-process؛ هدر Cache-Control هم در روتر ست می‌شود.
+
+
+_ayah_mem_cache: dict[str, tuple[float, dict | None]] = {}
+_ayah_redis_client = None
+_ayah_redis_tried = False
+
+_NEGATIVE_TTL = 60.0
+
+
+def _success_ttl() -> float:
+    now = datetime.now(UTC)
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    to_midnight = ((midnight + timedelta(days=1)) - now).total_seconds()
+    return max(300.0, min(21600.0, to_midnight))
+
+
+async def _ayah_redis():
+    global _ayah_redis_client, _ayah_redis_tried
+    if _ayah_redis_tried:
+        return _ayah_redis_client
+    _ayah_redis_tried = True
+    try:
+        import redis.asyncio as aioredis
+
+        from app.core.config import get_settings
+
+        client = aioredis.from_url(
+            get_settings().redis_url, socket_connect_timeout=2
+        )
+        await client.ping()
+        _ayah_redis_client = client
+    except (ImportError, OSError, ValueError, _RedisError):
+        logger.warning("ayah-of-day cache: redis unavailable — in-process cache")
+        _ayah_redis_client = None
+    return _ayah_redis_client
+
+
+async def _ayah_cache_get(key: str) -> tuple[bool, dict | None]:
+    client = await _ayah_redis()
+    if client is not None:
+        raw = await client.get(key)
+        if raw is None:
+            return False, None
+        s = raw.decode() if isinstance(raw, bytes) else raw
+        return True, (None if s == "__error__" else json.loads(s))
+    entry = _ayah_mem_cache.get(key)
+    if entry is None or entry[0] < time.time():
+        return False, None
+    return True, entry[1]
+
+
+async def _ayah_cache_set(key: str, value: dict | None, ttl: float) -> None:
+    client = await _ayah_redis()
+    if client is not None:
+        await client.set(
+            key, "__error__" if value is None else json.dumps(value), ex=int(ttl)
+        )
+        return
+    _ayah_mem_cache[key] = (time.time() + ttl, value)
+
+
 async def ayah_of_day(db: AsyncSession, *, bundle_fn=None) -> dict:
-    """آیهٔ روز — قطعی بر اساس روز سال (تزریق‌پذیر برای تست)."""
+    """آیهٔ روز — قطعی بر اساس روز سال (تزریق‌پذیر برای تست) + کش روزانه."""
     idx = date.today().timetuple().tm_yday % len(AYAH_ROTATION)
     surah, ayah = AYAH_ROTATION[idx]
+    cache_key = f"widget:ayah-of-day:{date.today().isoformat()}:{surah}:{ayah}"
+    hit, cached = await _ayah_cache_get(cache_key)
+    if hit:
+        if cached is None:
+            raise APIError(502, "quran_provider_error", "دریافت آیه ناموفق بود")
+        return {
+            "date": date.today().isoformat(),
+            "surah": surah,
+            "ayah": ayah,
+            "bundle": cached,
+        }
     fn = bundle_fn or _default_ayah_bundle
     try:
         bundle = await fn(db, surah, ayah)
     except APIError:
         raise
     except Exception as exc:
+        await _ayah_cache_set(cache_key, None, _NEGATIVE_TTL)
         raise APIError(502, "quran_provider_error", "دریافت آیه ناموفق بود") from exc
+    await _ayah_cache_set(cache_key, bundle, _success_ttl())
     return {
         "date": date.today().isoformat(),
         "surah": surah,
