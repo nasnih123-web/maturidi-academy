@@ -37,6 +37,7 @@ COPY app ./app
 # --- برای migration در startup (دستور api در docker-compose.prod.yml) ---
 COPY alembic.ini ./
 COPY alembic ./alembic
+COPY start.sh ./
 
 # دایرکتوری runtime فایل‌های static (فونت‌های آپلودشده از CRM) باید برای
 # appuser قابل‌نوشتن باشد — در production روی volume سوار می‌شود
