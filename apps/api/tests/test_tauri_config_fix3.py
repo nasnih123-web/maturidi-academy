@@ -213,6 +213,27 @@ def test_tauri_conf_validates_against_official_v2_schema() -> None:
     )
 
 
+def test_tauri_conf_windows_signing_fields_not_empty_strings() -> None:
+    """رگرسیون FIX3-01e: رشتهٔ خالی در certificateThumbprint یعنی «با این
+    گواهی امضا کن» و signtool با «Invalid SHA1 hash format: ''» باندل
+    ویندوز را می‌کشد (اثبات زنده: verify-unsigned ویندوز ران #14 — کامپایل
+    کامل شد، exe ساخته شد، مرگ فقط در امضای باندل). بدون امضا یعنی null
+    (همان الگوی macOS.signingIdentity در همین فایل)؛ timestampUrl هم
+    فقط هنگام امضا معنا دارد و خالی‌اش همان تله است.
+    """
+    win = (_load_conf().get("bundle") or {}).get("windows") or {}
+    thumb = win.get("certificateThumbprint")
+    assert thumb is None or (
+        isinstance(thumb, str)
+        and len(thumb) == 40
+        and all(c in "0123456789abcdefABCDEF" for c in thumb)
+    ), "certificateThumbprint باید null باشد یا SHA1 واقعی ۴۰ هگز"
+    ts = win.get("timestampUrl")
+    assert ts is None or (isinstance(ts, str) and ts.startswith(("http://", "https://"))), (
+        "timestampUrl باید null باشد یا URL واقعی"
+    )
+
+
 def test_tauri_conf_updater_plugin_if_present_uses_v2_keys() -> None:
     cfg = _load_conf()
     updater = (cfg.get("plugins") or {}).get("updater")

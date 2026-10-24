@@ -43,9 +43,9 @@
     },
     "targets": "all",
     "windows": {
-      "certificateThumbprint": "",
+      "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
-      "timestampUrl": ""
+      "timestampUrl": null
     }
   },
   "identifier": "academy.maturidi.desktop",
