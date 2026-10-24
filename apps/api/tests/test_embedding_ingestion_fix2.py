@@ -136,8 +136,10 @@ async def test_retrieval_never_mixes_other_provider_vectors(tc):
         by_id = {r.chunk_id: r for r in results}
 
         assert by_id[foreign_id].semantic == 0.0
-        # legacy فعلاً خوانده می‌شود (امتیاز معنایی دارد) ولی expose می‌شود
-        assert by_id[legacy_id].semantic > 0.0
+        # Pass 4 / C2: legacy بدون هویت دیگر امتیاز معنایی نمی‌گیرد —
+        # فقط واژگانی می‌ماند و در وضعیت به‌عنوان نیازمند reindex
+        # expose می‌شود (استثنای FIX2-03 حذف شد).
+        assert by_id[legacy_id].semantic == 0.0
 
         stats = await emb.chunk_provider_stats(db, "hash")
         assert stats["chunks_other_provider"] >= 1

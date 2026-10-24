@@ -159,9 +159,11 @@ services:
       CLAMAV_HOST: clamav
     expose:
       - "8000"
-    # readiness روی /health (stdlib، بدون curl) — workerها هلث‌چک جدا ندارند
+    # readiness روی /ready (stdlib، بدون curl) — /health فقط liveness
+    # است و وابستگی‌ها را چک نمی‌کند (Pass 4 / C6).
+    # workerها هلث‌چک جدا ندارند
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=4)"]
       interval: 30s
       timeout: 5s
       retries: 3

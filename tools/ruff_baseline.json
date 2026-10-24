@@ -1,9 +1,9 @@
 {
  "ruff_version": "0.17.1",
  "target": "apps/api",
- "total": 130,
+ "total": 129,
  "counts": {
-  "apps/api/app/core/dispatcher.py::BLE001": 7,
+  "apps/api/app/core/dispatcher.py::BLE001": 6,
   "apps/api/app/core/platform_settings.py::PLE2502": 1,
   "apps/api/app/core/platform_settings.py::TRY004": 18,
   "apps/api/app/core/rate_limit.py::BLE001": 4,

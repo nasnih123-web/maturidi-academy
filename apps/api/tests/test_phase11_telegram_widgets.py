@@ -358,19 +358,22 @@ async def test_api_key_create_and_usage(tc):
     assert r.status_code == 200
     assert r.json()["quota_remaining"] == 10000
 
-    # embed snippet — بدون نشت کلید واقعی
+    # embed snippet — بدون نشت کلید واقعی: Pass 4 / A5 دیگر
+    # placeholder برنمی‌گرداند، بلکه توکن embed امضاشدهٔ واقعی
+    # (?embed_token=) صادر می‌کند؛ کلید خام هرگز در snippet نیست.
     r = await client.get(
         f"{BASE}/api-keys/{created['id']}/embed-snippet?widget=prayer-times",
         headers=admin)
     assert r.status_code == 200
-    assert "__API_KEY__" in r.json()["html"]
+    assert created["key"] not in r.json()["html"]
+    assert "embed_token=" in r.json()["html"]
     assert "<iframe" in r.json()["html"]
 
     # revoke
     r = await client.post(f"{BASE}/api-keys/{created['id']}/revoke", headers=admin)
     assert r.json()["is_active"] is False
     r = await client.get(
-        f"{BASE}/widgets/prayer-times?api_key={created['key']}&lat=35.7&lng=51.4")
+        f"{BASE}/widgets/prayer-times?lat=35.7&lng=51.4", headers={"X-API-Key": created["key"]})
     assert r.status_code == 401
 
 
@@ -380,12 +383,12 @@ async def test_api_key_scope_enforcement(tc):
     created = await _create_key(tc, admin, scopes=["prayer-times"])
     key = created["key"]
 
-    r = await client.get(f"{BASE}/widgets/ayah-of-day?api_key={key}")
+    r = await client.get(f"{BASE}/widgets/ayah-of-day", headers={"X-API-Key": key})
     assert r.status_code == 403
     assert r.json()["error"]["code"] == "api_key_scope_denied"
 
     r = await client.get(
-        f"{BASE}/widgets/prayer-times?api_key={key}&lat=35.7&lng=51.4")
+        f"{BASE}/widgets/prayer-times?lat=35.7&lng=51.4", headers={"X-API-Key": key})
     assert r.status_code == 200
     assert "fajr" in r.json()["times"]
 
@@ -396,10 +399,10 @@ async def test_api_key_rate_limit(tc):
     created = await _create_key(tc, admin, scopes=["prayer-times"],
                                 rate_limit_per_min=2)
     key = created["key"]
-    url = f"{BASE}/widgets/prayer-times?api_key={key}&lat=35.7&lng=51.4"
-    assert (await client.get(url)).status_code == 200
-    assert (await client.get(url)).status_code == 200
-    r = await client.get(url)
+    url = f"{BASE}/widgets/prayer-times?lat=35.7&lng=51.4"
+    assert (await client.get(url, headers={"X-API-Key": key})).status_code == 200
+    assert (await client.get(url, headers={"X-API-Key": key})).status_code == 200
+    r = await client.get(url, headers={"X-API-Key": key})
     assert r.status_code == 429
     assert r.json()["error"]["code"] == "rate_limited"
 
@@ -424,8 +427,8 @@ async def test_widget_cors_isolation(tc):
 
     # ویجت: wildcard
     r = await client.get(
-        f"{BASE}/widgets/prayer-times?api_key={key}&lat=35.7&lng=51.4",
-        headers={"Origin": "https://external-site.example"},
+        f"{BASE}/widgets/prayer-times?lat=35.7&lng=51.4",
+        headers={"Origin": "https://external-site.example", "X-API-Key": key},
     )
     assert r.status_code == 200
     assert r.headers.get("access-control-allow-origin") == "*"
@@ -466,8 +469,8 @@ async def test_prayer_times_widget(tc):
     key = (await _create_key(tc, admin, scopes=["prayer-times"]))["key"]
     client = tc["client"]
     r = await client.get(
-        f"{BASE}/widgets/prayer-times?api_key={key}&lat=21.42&lng=39.82"
-        f"&method=makkah&madhab=hanafi&tz=3")
+        f"{BASE}/widgets/prayer-times?lat=21.42&lng=39.82"
+        f"&method=makkah&madhab=hanafi&tz=3", headers={"X-API-Key": key})
     assert r.status_code == 200, r.text
     body = r.json()
     assert set(body["times"]) == {"imsak", "fajr", "sunrise", "dhuhr", "asr",
@@ -475,7 +478,7 @@ async def test_prayer_times_widget(tc):
     assert body["method"] == "makkah" and body["madhab"] == "hanafi"
 
     r = await client.get(
-        f"{BASE}/widgets/prayer-times?api_key={key}&lat=21.42&lng=39.82&method=nope")
+        f"{BASE}/widgets/prayer-times?lat=21.42&lng=39.82&method=nope", headers={"X-API-Key": key})
     assert r.status_code == 422
 
 
@@ -491,7 +494,7 @@ async def test_ayah_of_day_widget(tc, monkeypatch):
 
     monkeypatch.setattr(widget_service, "_default_ayah_bundle", fake_bundle)
     client = tc["client"]
-    r = await client.get(f"{BASE}/widgets/ayah-of-day?api_key={key}")
+    r = await client.get(f"{BASE}/widgets/ayah-of-day", headers={"X-API-Key": key})
     assert r.status_code == 200, r.text
     body = r.json()
     # قطعی بودن: شمارهٔ آیه از فهرست چرخشی است
@@ -519,7 +522,7 @@ async def test_latest_fatwa_widget(tc):
             db, submission=sub, target="published", actor=user)
 
     key = (await _create_key(tc, approver, scopes=["latest-fatwa"]))["key"]
-    r = await client.get(f"{BASE}/widgets/latest-fatwa?api_key={key}")
+    r = await client.get(f"{BASE}/widgets/latest-fatwa", headers={"X-API-Key": key})
     assert r.status_code == 200, r.text
     assert r.json()["title"]["fa"] == "حکم تست"
 
@@ -538,7 +541,7 @@ async def test_zakat_mini_no_rule(tc, monkeypatch):
         raise APIError(422, "rules_not_approved", "no rule")
 
     monkeypatch.setattr(calc_service, "get_active_rule", no_rule)
-    r = await client.get(f"{BASE}/widgets/zakat-mini?api_key={key}&amount=1000")
+    r = await client.get(f"{BASE}/widgets/zakat-mini?amount=1000", headers={"X-API-Key": key})
     assert r.status_code == 503
     assert r.json()["error"]["code"] == "zakat_rule_not_configured"
 
@@ -558,13 +561,13 @@ async def test_zakat_mini_with_rule(tc, monkeypatch):
         }
 
     monkeypatch.setattr(calc_service, "calculate_zakat", fake_calc)
-    r = await client.get(f"{BASE}/widgets/zakat-mini?api_key={key}&amount=1000")
+    r = await client.get(f"{BASE}/widgets/zakat-mini?amount=1000", headers={"X-API-Key": key})
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["zakat_due"] == "25.00"
     assert body["nisab"] == "400.00"
 
-    r = await client.get(f"{BASE}/widgets/zakat-mini?api_key={key}&amount=-5")
+    r = await client.get(f"{BASE}/widgets/zakat-mini?amount=-5", headers={"X-API-Key": key})
     assert r.status_code == 422
 
 

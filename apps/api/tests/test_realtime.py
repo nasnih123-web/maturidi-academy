@@ -481,12 +481,16 @@ async def test_dispatch_dead_letter_after_five_failures(tmp_path):
         bus = FailingBus()
         for _ in range(5):
             assert await dispatch_once(maker, bus) == 0
-            # شبیه‌سازی گذر زمان برای backoff نمایی
+            # شبیه‌سازی گذر زمان برای backoff نمایی — Pass 4 / C1:
+            # مبنای backoff دیگر created_at نیست، بلکه last_attempt_at
+            # است؛ پس هر دو را عقب می‌بریم (فقط created_at دیگر
+            # retry را جلو نمی‌اندازد — همان باگی که C1 بست).
             async with maker() as db:
                 ev = await db.get(DomainEvent, uuid.UUID(eid))
                 if ev.failed_at is not None:
                     break
                 ev.created_at = datetime.now(UTC) - timedelta(seconds=600)
+                ev.last_attempt_at = datetime.now(UTC) - timedelta(seconds=600)
                 await db.commit()
 
         async with maker() as db:

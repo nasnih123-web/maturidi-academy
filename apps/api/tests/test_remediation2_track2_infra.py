@@ -170,12 +170,16 @@ def test_prod_api_command_has_no_inline_migration():
 
 
 def test_prod_api_readiness_depends_on_db_health():
-    """§۱۰: readiness واقعی — service_healthy برای postgres/redis/minio + هلث‌چک /health."""
+    """§۱۰: readiness واقعی — service_healthy برای postgres/redis/minio + هلث‌چک /ready.
+    Pass 4 / C6: /health فقط liveness است و وابستگی‌ها را چک
+    نمی‌کند؛ هلث‌چک compose باید /ready را بزند (DB probe با
+    timeout) و نباید /health باشد."""
     api = _prod_compose()["services"]["api"]
     for dep in ("postgres", "redis", "minio"):
         assert api["depends_on"][dep].get("condition") == "service_healthy", dep
     hc = " ".join(api["healthcheck"]["test"])
-    assert "/health" in hc
+    assert "/ready" in hc
+    assert "/health" not in hc
 
 
 def test_prod_no_published_db_ports():

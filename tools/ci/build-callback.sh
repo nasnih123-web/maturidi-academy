@@ -55,7 +55,52 @@ sha256_of() {
 
 cd "$CB_ARTIFACT_DIR"
 shopt -s nullglob
+
+# Pass 4 / B2: تلاش محدود با backoff — خرابیِ گذرای یک فایل، کل
+# حلقه را نمی‌کشد؛ خلاصهٔ هر فایل در پایان چاپ می‌شود و exit code
+# فقط وقتی غیرصفر است که فایلی واقعاً ثبت نشده باشد (اجرای دوباره،
+# به‌لطف idempotencyِ POST /releases روی artifact_key، فایل‌های
+# موفق را دوباره ثبت نمی‌کند).
+retry_with_backoff() {
+  local attempt=0 max_attempts=3 delay=2
+  while [ "$attempt" -lt "$max_attempts" ]; do
+    attempt=$((attempt + 1))
+    if "$@"; then return 0; fi
+    if [ "$attempt" -lt "$max_attempts" ]; then
+      echo "Attempt $attempt/$max_attempts failed — retrying in ${delay}s..."
+      sleep "$delay"
+      delay=$((delay * 2))
+    fi
+  done
+  return 1
+}
+
+# ثبت یک فایل: 0=موفق، 1=خطای گذرا (قابل retry)، 2=conflict واقعی
+# (همان artifact_key با متادیتای متفاوت — retry بی‌فایده است).
+register_release() {
+  local body="$1" code
+  code="$(curl -sS -o /tmp/cb_resp.json -w "%{http_code}" -X POST "${BUILDS_API_BASE_URL%/}/api/v1/admin/builds/releases" \
+    -H "Content-Type: application/json" \
+    -H "X-Build-Service-Token: $BUILDS_SERVICE_TOKEN" \
+    -d "$body")" || return 1
+  case "$code" in
+    200|201) return 0 ;;
+    409)
+      echo "::error::Release conflict (same artifact_key, different metadata) — not retried."
+      head -c 500 /tmp/cb_resp.json; echo
+      return 2
+      ;;
+    *)
+      echo "API returned HTTP $code:"
+      head -c 500 /tmp/cb_resp.json; echo
+      return 1
+      ;;
+  esac
+}
+
 registered=0
+succeeded_files=()
+failed_files=()
 for f in *; do
   [ -f "$f" ] || continue
   case "$f" in
@@ -65,8 +110,12 @@ for f in *; do
   size="$(wc -c < "$f" | tr -d ' ')"
   sha="$(sha256_of "$f")"
   echo "Uploading $f -> s3://${BUILDS_S3_BUCKET}/${key} (${size} bytes, sha256 ${sha})"
-  aws s3 cp --endpoint-url "$BUILDS_S3_ENDPOINT" --only-show-errors \
-    "$f" "s3://${BUILDS_S3_BUCKET}/${key}"
+  if ! retry_with_backoff aws s3 cp --endpoint-url "$BUILDS_S3_ENDPOINT" --only-show-errors \
+      "$f" "s3://${BUILDS_S3_BUCKET}/${key}"; then
+    echo "::error::Upload failed after retries: $f"
+    failed_files+=("$f (upload)")
+    continue
+  fi
   body="$(CB_FILE="$f" CB_KEY="$key" CB_SIZE="$size" CB_SHA="$sha" node -e '
     const fs = require("fs");
     let manifest = {};
@@ -95,13 +144,35 @@ for f in *; do
     }));
   ')"
   echo "Registering release: platform=$CB_PLATFORM version=$CB_VERSION build=$CB_BUILD_NUMBER file=$f"
-  curl -fsS -X POST "${BUILDS_API_BASE_URL%/}/api/v1/admin/builds/releases" \
-    -H "Content-Type: application/json" \
-    -H "X-Build-Service-Token: ${BUILDS_SERVICE_TOKEN}" \
-    -d "$body" >/dev/null
-  registered=$((registered + 1))
+  attempt=0; reg_ok=0; reg_conflict=0
+  while [ "$attempt" -lt 3 ]; do
+    attempt=$((attempt + 1))
+    # نکته: $? پس از if همیشه ۰ است — وضعیت را مستقیم می‌گیریم.
+    # (فراخوان در فهرست || از set -e معاف است.)
+    rc=0
+    register_release "$body" || rc=$?
+    if [ "$rc" -eq 0 ]; then reg_ok=1; break; fi
+    if [ "$rc" -eq 2 ]; then reg_conflict=1; break; fi
+    if [ "$attempt" -lt 3 ]; then sleep $((2 ** attempt)); fi
+  done
+  if [ "$reg_ok" -eq 1 ]; then
+    registered=$((registered + 1))
+    succeeded_files+=("$f")
+  elif [ "$reg_conflict" -eq 1 ]; then
+    failed_files+=("$f (conflict)")
+  else
+    echo "::error::Registration failed after retries: $f"
+    failed_files+=("$f (register)")
+  fi
 done
 
+echo "Build callback summary:"
+echo "  succeeded (${#succeeded_files[@]}): ${succeeded_files[*]:-none}"
+echo "  failed (${#failed_files[@]}): ${failed_files[*]:-none}"
+if [ "${#failed_files[@]}" -gt 0 ]; then
+  echo "::error::Build callback: ${#failed_files[@]} artifact(s) not registered — rerun recovers the succeeded ones via artifact_key idempotency."
+  exit 1
+fi
 if [ "$registered" -eq 0 ]; then
   echo "::error::Build callback found no artifact files in $CB_ARTIFACT_DIR — nothing registered."
   exit 1

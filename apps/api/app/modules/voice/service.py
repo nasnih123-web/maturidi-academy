@@ -98,9 +98,19 @@ async def _synthesize_answer_audio(
     ext = "mp3" if ("mpeg" in mime or "mp3" in mime) else "bin"
     key = f"voice/tts/{session_id}.{ext}"
     try:
+        from app.core.storage import SIGNED_PURPOSE_VOICE_TTS
+
         storage = get_storage()
         await storage.put_object(key, raw, mime)
-        url = await storage.get_presigned_url(key)
+        # Pass 4 / A3: مسیر دانلودِ خودِ صوت، با منظور voice-tts —
+        # دیگر پیش‌فرضِ مسیر/منظور گواهی LMS را به ارث نمی‌برد.
+        # روی S3، get_presigned_url مستقیم MinIO است و این پارامترها
+        # بی‌اثرند؛ روی local، URL به endpoint زیر می‌رسد.
+        url = await storage.get_presigned_url(
+            key,
+            download_path="/api/v1/voice/tts-audio-by-ref",
+            purpose=SIGNED_PURPOSE_VOICE_TTS,
+        )
         return url, None, mime, configured_tts, None
     except Exception:
         logger.warning("TTS audio storage failed; falling back to base64", exc_info=True)
