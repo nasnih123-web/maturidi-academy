@@ -9,7 +9,8 @@
 قرارداد:
 - «ناسازگار» یعنی هویت (provider, model, projection, dim) chunk با
   هویت جاری یکی نیست — از جمله ردیف‌های legacy با هویت NULL و
-  بردارهای پروجکشن قدیم (برش ساده، پیش از FIX2-03).
+  بردارهای پروجکشن قدیم (برش ساده، پیش از FIX2-03) — و، روی PG،
+  ردیف JSON-سازگاری که embedding_vecاش NULL است (Pass 4 / C3).
 - پردازش اکیداً به ترتیب صعودی id است و پس از هر batch کامیت
   می‌شود؛ `last_id` چاپ‌شده checkpoint است: اجرای دوباره از همان
   نقطه ادامه می‌دهد (chunkهای به‌روز رد می‌شوند) و با
@@ -49,12 +50,21 @@ from app.modules.fatwa.embeddings import (
 async def _incompatible_ids(
     db: AsyncSession, current: dict, resume_from: uuid.UUID | None
 ) -> list[uuid.UUID]:
+    from app.modules.fatwa.embeddings import _pg_vec_presence
+
     rows = await _chunk_identity_rows(db)
-    ids = [
-        cid
-        for cid, prov, model, proj, dim in rows
-        if not _identity_matches(prov, model, proj, dim, current)
-    ]
+    vec_present = await _pg_vec_presence(db)
+    ids = []
+    for cid, prov, model, proj, dim in rows:
+        ident_ok = _identity_matches(prov, model, proj, dim, current)
+        # Pass 4 / C3: روی PG، JSON-سازگارِ بدون embedding_vec هم
+        # ناسازگار است — reindex هر دو ستون را با هم بازمی‌نویسد و
+        # حذفِ ساکت از جست‌وجوی معنایی را ترمیم می‌کند.
+        vec_missing = (
+            vec_present is not None and ident_ok and str(cid) not in vec_present
+        )
+        if not ident_ok or vec_missing:
+            ids.append(cid)
     ids.sort()
     if resume_from is not None:
         ids = [cid for cid in ids if cid > resume_from]
@@ -80,6 +90,13 @@ def _print_report(report: dict, log: Callable[[str], None]) -> None:
         "total={chunks_total} compatible={chunks_compatible} "
         "incompatible={chunks_incompatible}".format(**report)
     )
+    if report.get("embedding_vec_checked"):
+        log(
+            "embedding_vec checked (PG): {n} JSON-compatible chunk(s) "
+            "missing embedding_vec — included in reindex".format(
+                n=report.get("chunks_vec_missing", 0)
+            )
+        )
 
 
 async def run_reindex(
@@ -90,6 +107,7 @@ async def run_reindex(
     resume_from: uuid.UUID | None = None,
     provider_name: str | None = None,
     log: Callable[[str], None] = print,
+    debug: bool = False,
 ) -> dict:
     """هستهٔ ابزار — از CLI و تست‌ها صدا زده می‌شود.
 
@@ -105,11 +123,19 @@ async def run_reindex(
         "status": "ok",
         "dry_run": dry_run,
         "total_incompatible": len(ids),
+        # Pass 4 / C8: شمارنده‌های صریح — پیش از این فقط processed بود
+        # و شکستِ یک رکورد کل run را با traceback خام می‌کشت.
         "processed": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "skipped": 0,
+        "remaining": len(ids),
+        "failed_ids": [],
         "last_id": None,
     }
     if not ids:
         result["status"] = "nothing_to_do"
+        result["remaining"] = 0
         log("reindex: nothing to do — all chunks match the current identity")
         return result
     if dry_run:
@@ -132,34 +158,86 @@ async def run_reindex(
 
     on_pg = pgvector_available()
     processed = 0
-    for start in range(0, len(ids), batch_size):
-        batch_ids = ids[start : start + batch_size]
-        chunks = (
-            await db.execute(
-                select(FiqhKnowledgeChunk).where(
-                    FiqhKnowledgeChunk.id.in_(batch_ids)
+    succeeded = 0
+    failed = 0
+    skipped = 0
+    failed_ids: list[dict] = []
+    try:
+        for start in range(0, len(ids), batch_size):
+            batch_ids = ids[start : start + batch_size]
+            chunks = (
+                await db.execute(
+                    select(FiqhKnowledgeChunk).where(
+                        FiqhKnowledgeChunk.id.in_(batch_ids)
+                    )
                 )
+            ).scalars().all()
+            by_id = {c.id: c for c in chunks}
+            ordered = [by_id[cid] for cid in batch_ids if cid in by_id]
+            skipped += len(batch_ids) - len(ordered)
+            # embed دسته‌ای؛ اگر یک رکورد خراب کل batch را بیندازد،
+            # تک‌تک retry می‌کنیم تا رکورد خراب ایزوله شود، نه این‌که
+            # کل run بمیرد (C8).
+            try:
+                vectors = await provider.embed([c.chunk_text for c in ordered])
+                pairs = list(zip(ordered, vectors))
+            except Exception:  # noqa: BLE001 — شکست batch = fallback تک‌تک
+                pairs = []
+                for chunk in ordered:
+                    try:
+                        vec = (await provider.embed([chunk.chunk_text]))[0]
+                        pairs.append((chunk, vec))
+                    except Exception as exc:  # noqa: BLE001 — رکورد خراب
+                        failed += 1
+                        failed_ids.append(
+                            {
+                                "id": str(chunk.id),
+                                "error": f"{type(exc).__name__}: {exc}",
+                            }
+                        )
+            for chunk, vec in pairs:
+                chunk.embedding = list(vec)
+                chunk.embedding_vec = list(vec) if on_pg else None
+                chunk.embedding_provider = prov_name
+                chunk.embedding_model = prov_model
+                chunk.embedding_projection = PROJECTION_ID
+            await db.commit()
+            succeeded += len(pairs)
+            processed = succeeded + failed
+            last_id = ordered[-1].id if ordered else batch_ids[-1]
+            result["last_id"] = str(last_id)
+            log(
+                f"reindex: processed {processed}/{len(ids)} "
+                f"(last_id={last_id})"
             )
-        ).scalars().all()
-        by_id = {c.id: c for c in chunks}
-        ordered = [by_id[cid] for cid in batch_ids if cid in by_id]
-        vectors = await provider.embed([c.chunk_text for c in ordered])
-        for chunk, vec in zip(ordered, vectors):
-            chunk.embedding = list(vec)
-            chunk.embedding_vec = list(vec) if on_pg else None
-            chunk.embedding_provider = prov_name
-            chunk.embedding_model = prov_model
-            chunk.embedding_projection = PROJECTION_ID
-        await db.commit()
-        processed += len(ordered)
-        last_id = ordered[-1].id if ordered else batch_ids[-1]
-        result["last_id"] = str(last_id)
+    except Exception as exc:  # خطای میانیِ run — خلاصه برمی‌گردد، نه traceback
+
+        await db.rollback()
+        result["status"] = "error"
+        result["error"] = f"{type(exc).__name__}: {exc}"
+        if debug:
+            raise
         log(
-            f"reindex: processed {processed}/{len(ids)} "
-            f"(last_id={last_id})"
+            "reindex: FAILED mid-run — checkpoint last_id="
+            f"{result['last_id']} (resume with --resume-from)"
         )
     result["processed"] = processed
-    log(f"reindex: done — {processed} chunk(s) re-embedded")
+    result["succeeded"] = succeeded
+    result["failed"] = failed
+    result["skipped"] = skipped
+    result["failed_ids"] = failed_ids
+    result["remaining"] = len(ids) - succeeded - failed - skipped
+    if result["status"] == "ok" and failed:
+        result["status"] = "partial"
+    log(
+        f"reindex: done — {succeeded} chunk(s) re-embedded "
+        f"(succeeded={succeeded} failed={failed} "
+        f"skipped={skipped} remaining={result['remaining']} "
+        f"last_id={result['last_id']})"
+    )
+    if failed_ids:
+        for item in failed_ids:
+            log(f"reindex: failed chunk {item['id']}: {item['error']}")
     return result
 
 
@@ -175,10 +253,26 @@ async def _amain(argv: list[str] | None = None) -> int:
         "--dry-run", action="store_true", help="گزارش + برنامه، بدون نوشتن"
     )
     parser.add_argument("--batch-size", type=int, default=50)
+    def _uuid_arg(value: str) -> uuid.UUID:
+        # Pass 4 / C8: مقدار بدشکل باید usage error بدهد، نه
+        # traceback خام از uuid.UUID در _amain.
+        try:
+            return uuid.UUID(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"invalid UUID for --resume-from: {value!r}"
+            ) from None
+
     parser.add_argument(
         "--resume-from",
+        type=_uuid_arg,
         default=None,
         help="ادامه از بعد از این chunk id (checkpoint اجرای قبلی)",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="نمایش traceback کامل روی خطای میانی (پیش‌فرض: خلاصه)",
     )
     parser.add_argument(
         "--provider",
@@ -189,7 +283,6 @@ async def _amain(argv: list[str] | None = None) -> int:
 
     from app.core.database import SessionLocal
 
-    resume_from = uuid.UUID(args.resume_from) if args.resume_from else None
     async with SessionLocal() as db:
         if args.report:
             _print_report(await chunk_compatibility_report(db), print)
@@ -198,8 +291,9 @@ async def _amain(argv: list[str] | None = None) -> int:
             db,
             dry_run=args.dry_run,
             batch_size=max(1, args.batch_size),
-            resume_from=resume_from,
+            resume_from=args.resume_from,
             provider_name=args.provider,
+            debug=args.debug,
         )
     if result["status"] == "provider_unavailable":
         print(
@@ -208,6 +302,22 @@ async def _amain(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    if result["status"] == "error":
+        print(
+            "reindex FAILED mid-run: "
+            f"{result.get('error')} — checkpoint last_id="
+            f"{result.get('last_id')} (resume with --resume-from)",
+            file=sys.stderr,
+        )
+        return 1
+    if result["status"] == "partial":
+        print(
+            "reindex PARTIAL: "
+            f"succeeded={result.get('succeeded')} "
+            f"failed={result.get('failed')} — see failed chunk list above",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

@@ -26,6 +26,7 @@ class UploadConstraints:
 SIGNED_PURPOSE_GENERIC = "download"
 SIGNED_PURPOSE_LIBRARY = "library"
 SIGNED_PURPOSE_CERTIFICATE = "lms-certificate"
+SIGNED_PURPOSE_VOICE_TTS = "voice-tts"  # Pass 4 / A3: دانلود صوت TTS محلی
 
 
 # ---------------------------------------------------------------------------
@@ -414,13 +415,49 @@ def _host_of(url: str) -> str:
 
 
 def _is_browser_unreachable_host(host: str) -> bool:
+    """Pass 4 / A2: هاستِ غیرقابل‌دسترس برای مرورگر — با parse واقعی IP.
+
+    قبلاً فقط string-matching بود و همهٔ RFC1918 (10/8، 172.16/12،
+    192.168/16)، ULA/link-local IPv6، multicast، reserved و
+    unspecified از آن رد می‌شدند. حالا هر literal IP با ipaddress
+    بررسی می‌شود: loopback، private، link-local، multicast،
+    reserved، unspecified و IPv4-mapped به private → غیرقابل‌دسترس.
+    هاست‌نام‌های غیر-IP (مثلاً files.example.com) با همان قاعده‌های
+    قبلی (localhost/minio/پسوندهای داخلی) سنجیده می‌شوند.
+    محدودهٔ صریح: این نگهبان، اعتبارسنجیِ رشتهٔ config است، نه
+    دفاع SSRF در برابر DNS rebinding — هاست‌نامی که امروز به IP
+    عمومی resolve می‌شود، فردا می‌تواند به IP خصوصی برگردد؛ هیچ
+    مسیر fetchِ URLِ کاربر از این‌جا نمی‌گذرد و اگر روزی گذشت،
+    باید resolve + اعتبارسنجیِ مجددِ آدرسِ resolveشده اضافه شود.
+    """
+    import ipaddress
+
     if not host:
         return True
-    if host in _BROWSER_UNREACHABLE_HOSTS:
+    h = host.strip().lower().rstrip(".")
+    if h in _BROWSER_UNREACHABLE_HOSTS:
         return True
-    if host == "::1" or host.startswith(("127.", "[::1]")):
+    if h.endswith(_BROWSER_UNREACHABLE_SUFFIXES):
         return True
-    return host.endswith(_BROWSER_UNREACHABLE_SUFFIXES)
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return False
+    # IPv4-mapped IPv6 (مثل ::ffff:10.0.0.1) را هم به IPv4 برگردان
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return bool(
+        ip.is_loopback
+        or ip.is_private
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+        # CGNAT (100.64/10) و رنج‌های مستندسازی: is_private در پایتون
+        # آن‌ها را private نمی‌شمرد ولی is_global هم نیستند — مرورگر
+        # عمومی به آن‌ها نمی‌رسد، پس غیرقابل‌دسترس‌اند.
+        or not ip.is_global
+    )
 
 
 def _is_dummy_internal_host(host: str) -> bool:
@@ -634,6 +671,12 @@ def builds_storage_problems(settings) -> list[str]:
         if pparsed.scheme not in ("http", "https") or not pparsed.hostname:
             problems.append(
                 f"BUILDS_S3_ENDPOINT_PUBLIC={public!r} یک URL معتبر http(s) نیست"
+            )
+        elif _is_browser_unreachable_host(pparsed.hostname):
+            # Pass 4 / A2: همان نگهبان S3 اصلی، برای endpoint عمومی بیلدها
+            problems.append(
+                "BUILDS_S3_ENDPOINT_PUBLIC: must be browser-reachable "
+                "(internal/private host must never leak to browsers)"
             )
     return problems
 

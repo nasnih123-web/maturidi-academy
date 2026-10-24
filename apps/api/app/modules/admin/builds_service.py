@@ -853,6 +853,55 @@ async def list_requests(
     return [_request_out(r) for r in rows]
 
 
+async def _existing_release_for_artifact(
+    db: AsyncSession,
+    *,
+    artifact_key: str,
+    platform: str,
+    version: str,
+    build_number: str | None,
+    sha256: str | None,
+    file_size_bytes: int | None,
+    signed: bool,
+) -> BuildRelease:
+    """Idempotencyِ POST /releases (Pass 4 / B2) — رکورد موجود برای
+    artifact_key را برمی‌گرداند، یا روی متادیتای متعارض 409 می‌دهد.
+
+    فقط هویت + محتوای فایل مقایسه می‌شود (platform, version,
+    build_number, sha256, file_size_bytes, signed). download_url و
+    build_metadata عمداً مقایسه نمی‌شوند: آن‌ها مقادیرِ هر run
+    هستند (URL امضاشده با انقضا، شناسهٔ run) و مقایسه‌شان، replay
+    سالمِ یک callback را به‌اشتباه conflict می‌کرد. بازگشتِ رکورد
+    موجود هیچ side-effect ندارد: نه audit تازه، نه prune تازه.
+    """
+    existing = (
+        await db.execute(
+            select(BuildRelease).where(BuildRelease.artifact_key == artifact_key)
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        raise LookupError(artifact_key)
+    diffs = []
+    for field, new_value in (
+        ("platform", platform),
+        ("version", version),
+        ("build_number", build_number),
+        ("sha256", sha256),
+        ("file_size_bytes", file_size_bytes),
+        ("signed", signed),
+    ):
+        if getattr(existing, field) != new_value:
+            diffs.append(field)
+    if diffs:
+        raise APIError(
+            409,
+            "release_conflict",
+            "artifact_key تکراری با متادیتای متفاوت ثبت شده است",
+            details={"artifact_key": artifact_key, "existing_id": str(existing.id), "differing_fields": diffs},
+        )
+    return existing
+
+
 async def create_release(
     db: AsyncSession,
     *,
@@ -892,6 +941,28 @@ async def create_release(
         raise APIError(422, "bad_sha256", "sha256 باید ۶۴ نویسهٔ hex باشد")
     if file_size_bytes is not None and file_size_bytes < 0:
         raise APIError(422, "bad_file_size", "file_size_bytes نمی‌تواند منفی باشد")
+    new_sha = sha256.strip().lower() if sha256 else None
+    if artifact_key is not None:
+        try:
+            existing = await _existing_release_for_artifact(
+                db,
+                artifact_key=artifact_key,
+                platform=platform,
+                version=version,
+                build_number=build_number,
+                sha256=new_sha,
+                file_size_bytes=file_size_bytes,
+                signed=signed,
+            )
+        except LookupError:
+            existing = None
+        if existing is not None:
+            logger.info(
+                "builds.release.create: duplicate artifact_key replay — "
+                "returning existing release %s",
+                existing.id,
+            )
+            return await _release_out(existing, storage=storage)
     rel = BuildRelease(
         platform=platform, version=version, build_number=build_number,
         download_url=download_url if signed else None,
@@ -903,7 +974,35 @@ async def create_release(
         released_by=actor.id if actor is not None else None,
     )
     db.add(rel)
-    await db.flush()
+    try:
+        await db.flush()
+    except Exception as exc:  # مسابقهٔ دو callback هم‌زمان
+        from sqlalchemy.exc import IntegrityError as _IntegrityError
+
+        if not isinstance(exc, _IntegrityError):
+            raise
+        await db.rollback()
+        if artifact_key is not None:
+            try:
+                existing = await _existing_release_for_artifact(
+                    db,
+                    artifact_key=artifact_key,
+                    platform=platform,
+                    version=version,
+                    build_number=build_number,
+                    sha256=new_sha,
+                    file_size_bytes=file_size_bytes,
+                    signed=signed,
+                )
+            except LookupError:
+                raise exc from None
+            logger.info(
+                "builds.release.create: concurrent duplicate artifact_key "
+                "— returning existing release %s",
+                existing.id,
+            )
+            return await _release_out(existing, storage=storage)
+        raise
     await log_audit(
         db,
         actor_id=actor.id if actor is not None else None,

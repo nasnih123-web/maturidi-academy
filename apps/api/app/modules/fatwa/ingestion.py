@@ -12,6 +12,7 @@ approval: chunkهای ساخته‌شده با workflow_status=draft می‌ما
 """
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -89,6 +90,7 @@ async def run_ingestion(
     await db.flush()
 
     stats: dict[str, Any] = {"stages": {}}
+    created_chunks: list = []
     try:
         raw = extract_source(source_type, payload)
         stats["stages"]["extract"] = {"chars": len(raw)}
@@ -145,19 +147,38 @@ async def run_ingestion(
             )
             db.add(chunk)
             await db.flush()
+            created_chunks.append(chunk)
             chunk_ids.append(str(chunk.id))
         stats["stages"]["index"] = {"chunk_ids": chunk_ids}
 
         run.status = "done"
         run.stats = stats
-    except Exception as exc:
-        run.status = "failed"
-        stats["error"] = str(exc)
-        run.stats = stats
-        raise
-    finally:
         run.finished_at = datetime.now(UTC)
-        await db.flush()
+    except Exception as exc:
+        # Pass 4 / C4: شکست باید در دیتابیس بماند، نه این‌که با
+        # rollbackِ خروج از session محو شود. پیش از این، این‌جا فقط
+        # flush می‌شد و تنها commitِ caller (ingest_knowledge_run)
+        # بعد از return موفق بود — روی شکست، آن commit هرگز نمی‌رسید
+        # و پس از ۳ retryِ ARQ ردیف برای همیشه «queued» می‌ماند، بدون
+        # هیچ خطایی. پس وضعیت failed + خلاصهٔ خطا همین‌جا commit
+        # می‌شود، پیش از re-raise. chunkهای ناقصِ همین run (draft،
+        # هنوز approve نشده) هم حذف می‌شوند تا runِ ناموفق دادهٔ
+        # نصفه به‌جا نگذارد؛ اگر commitِ شکست خودش خطا بدهد، rollback
+        # می‌شود و خطای اصلی (نه خطای commit) بالا می‌رود.
+        run.status = "failed"
+        stats["error"] = f"{type(exc).__name__}: {exc}"
+        run.stats = stats
+        run.finished_at = datetime.now(UTC)
+        for chunk in created_chunks:
+            try:
+                await db.delete(chunk)
+            except Exception:  # noqa: BLE001 — پاکسازی best-effort
+                logger.debug("ingestion failure cleanup: chunk delete skipped")
+        try:
+            await db.commit()
+        except Exception:  # noqa: BLE001 — خطای اصلی مهم‌تر است
+            await db.rollback()
+        raise
     return stats
 
 
@@ -188,3 +209,5 @@ async def ingest_knowledge_run(ctx: dict, run_id: str) -> dict:
         )
         await db.commit()
         return {"ok": True, "stats": stats}
+
+logger = logging.getLogger(__name__)

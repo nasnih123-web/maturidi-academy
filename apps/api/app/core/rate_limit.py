@@ -5,12 +5,16 @@ login، register، بازیابی رمز، تأیید OTP/2FA، عملیات ا�
 پرهزینهٔ AI/voice. حافظهٔ درون‌فرایندی بین instanceها مشترک نیست و زیر
 ترافیک واقعی به‌راحتی دور زده می‌شود؛ این پیاده‌سازی روی Redis سوار است.
 
-الگوریتم (بدون Lua — با دستورهای اتمیک استاندارد):
-- `SET key 1 EX window NX` → اگر موفق بود، شمارنده ۱ است (TTL هم ست شد).
-- وگرنه `INCR key` → شمارندهٔ فعلی؛ مجاز اگر `count <= limit`.
-
-هر دو دستور به‌تنهایی اتمیک‌اند؛ ترکیبشان هم درست است چون فقط برندهٔ
-`SET NX` شمارنده را از ۱ شروع می‌کند و TTL همیشه همراه همان دستور ست می‌شود.
+الگوریتم (Pass 4 / A4 — اتمیک):
+- مسیر اصلی یک اسکریپت Lua است: `INCR` + اگر شمارنده ۱ شد `PEXPIRE`
+  در همان دستور — پس شمارنده هرگز بدون TTL به‌وجود نمی‌آید و پنجره
+  با اولین increment شروع می‌شود و با incrementهای بعدی تمدید نمی‌شود.
+- مسیر fallback (کلاینت/سروری که EVAL را پشتیبانی نمی‌کند):
+  `SET NX EX` سپس `INCR`، و بعد بررسی TTL: اگر `TTL == -1` (کلید
+  بین دو دستور منقضی و بدون TTL بازسازی شده) فوراً `PEXPIRE` می‌شود؛
+  اگر کلید بین INCR و TTL ناپدید شد، یک بار دیگر تلاش می‌شود.
+  مسیر قدیمیِ SET-سپس-INCR بدون بررسی TTL، باگ Pass 4 بود: انقضای
+  کلید در همان شکاف، شمارندهٔ بی‌TTL و 429 دائمی می‌ساخت.
 
 رفتار Redis-down (مستند، §۷):
 - endpointهای احرازهویتی (`auth=True`) در production → **fail-closed** (رد با 429).
@@ -77,15 +81,16 @@ class DistributedRateLimiter:
     # -- fallback حافظه‌ای (همان معنای RateLimiter قبلی) --
 
     def _mem_is_allowed(self, key: str, limit: int, window_s: int) -> bool:
+        # Pass 4 / C7: پنجرهٔ لغزان استاندارد — رد تا وقتی که قدیمی‌ترین
+        # hit از window_s خارج شود. قفل ۹۰۰ ثانیه‌ایِ قبلی (۱۵ برابر
+        # پنجرهٔ ۶۰ ثانیه‌ای) حذف شد؛ _mem_locked_until فقط برای
+        # سازگاری reset_for_tests نگه داشته شده و دیگر استفاده نمی‌شود.
         now = time.time()
         with self._mem_lock:
-            if self._mem_locked_until.get(key, 0) > now:
-                return False
             dq = self._mem_hits[key]
             while dq and dq[0] <= now - window_s:
                 dq.popleft()
             if len(dq) >= limit:
-                self._mem_locked_until[key] = now + 900
                 return False
             dq.append(now)
             return True
@@ -99,6 +104,64 @@ class DistributedRateLimiter:
 
     def _redis_key(self, key: str) -> str:
         return f"rl:{self._ns}:{key}"
+
+    _RATE_LIMIT_LUA = (
+        "local c = redis.call('INCR', KEYS[1]) "
+        "if c == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end "
+        "return c"
+    )
+
+    async def _redis_is_allowed(
+        self, client: Any, key: str, limit: int, window_s: int
+    ) -> bool:
+        """مسیر Redis: اول Lua اتمیک، وگرنه SET/INCR + تعمیر TTL.
+
+        ResponseError (دستور پشتیبانی‌نشده در سرور/کلاینت مینیمال)
+        به fallback می‌رود، نه به degraded؛ خطای اتصال/شبکه به
+        فراخواننده می‌رسد تا مسیر degraded/fail-closed اعمال شود.
+        """
+        rkey = self._redis_key(key)
+        eval_fn = getattr(client, "eval", None)
+        if eval_fn is not None:
+            try:
+                count = await eval_fn(
+                    self._RATE_LIMIT_LUA, 1, rkey, int(window_s * 1000)
+                )
+                return int(count) <= limit
+            except Exception as exc:
+                if exc.__class__.__name__ not in (
+                    "ResponseError",
+                    "RedisError",
+                ) and "unknown command" not in str(exc).lower():
+                    raise
+                # EVAL پشتیبانی نمی‌شود — fallback زیر
+        for _attempt in range(3):
+            first = await client.set(rkey, 1, ex=window_s, nx=True)
+            if first:
+                return True
+            count = await client.incr(rkey)
+            ttl_fn = getattr(client, "ttl", None)
+            if ttl_fn is None:
+                return int(count) <= limit
+            try:
+                ttl = await ttl_fn(rkey)
+            except Exception:  # noqa: BLE001 - TTL نامشخص = نتیجهٔ legacy
+                return int(count) <= limit
+            if ttl == -1:
+                # A4: کلید بین SET و INCR منقضی و بدون TTL بازسازی شد
+                pexpire = getattr(client, "pexpire", None)
+                if pexpire is not None:
+                    try:
+                        await pexpire(rkey, int(window_s * 1000))
+                    except Exception:  # noqa: BLE001 - ترمیم TTL best-effort
+                        logger.debug("rate-limit TTL repair skipped")
+                return int(count) <= limit
+            if ttl == -2:
+                continue  # کلید بین INCR و TTL رفت؛ یک بار دیگر
+            return int(count) <= limit
+        # کلید سه بار پشت سر هم ناپدید شد — یک تلاش نهایی بدون تعمیر TTL
+        count = await client.incr(rkey)
+        return int(count) <= limit
 
     async def is_allowed(
         self, key: str, limit: int, window_s: int, *, auth: bool = False
@@ -114,13 +177,7 @@ class DistributedRateLimiter:
                 self._redis_dead_since = None  # پروب؛ اگر شکست بخورد دوباره ست می‌شود
         if client is not None:
             try:
-                rkey = self._redis_key(key)
-                # برندهٔ SET NX شمارنده را از ۱ شروع می‌کند (با TTL اتمیک)
-                first = await client.set(rkey, 1, ex=window_s, nx=True)
-                if first:
-                    return True
-                count = await client.incr(rkey)
-                return int(count) <= limit
+                return await self._redis_is_allowed(client, key, limit, window_s)
             except Exception as exc:  # Redis down / خطای شبکه
                 self._redis_dead_since = time.monotonic()
                 logger.warning(

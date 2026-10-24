@@ -268,7 +268,69 @@ async def ws_events(websocket: WebSocket, db: AsyncSession = Depends(get_db)):
 
 @app.get("/health")
 async def health():
+    """Liveness خالص — فقط یعنی پردازه زنده است، نه این‌که آمادهٔ
+    سرویس‌دهی است. برای readiness به /ready نگاه کنید (Pass 4 / C6)."""
     return {"status": "ok", "env": settings.app_env}
+
+
+@app.get("/ready")
+async def ready():
+    """Readiness — Pass 4 / C6.
+
+    /health پیش از این بدون هیچ بررسی وابستگی «ok» برمی‌گرداند،
+    در حالی که healthcheck در docker-compose.prod.yml آن را
+    readiness می‌خواند: کانتینری که DBاش پس از startup می‌مرد،
+    همچنان healthy/readiness گزارش می‌شد. حالا:
+    - DB با timeout صریحِ ۳ ثانیه probe می‌شود؛ خطا → 503.
+    - Redis فقط گزارش می‌شود (ok/unavailable) و readiness را
+      خراب نمی‌کند: API بدون Redis هم سرویس می‌دهد (degraded) و
+      رویدادها در outboxِ DB durable می‌مانند؛ کشتن پردازه به‌خاطر
+      Redis، readiness را به liveness گره می‌زد.
+    """
+    import asyncio
+
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import text
+
+    from app.core.database import SessionLocal
+
+    db_ok = False
+    try:
+        async with SessionLocal() as db:
+            await asyncio.wait_for(db.execute(text("SELECT 1")), timeout=3)
+        db_ok = True
+    except Exception:  # noqa: BLE001 — هر خطای DB یعنی not-ready
+        db_ok = False
+    redis_status = "unknown"
+    try:
+        import redis.asyncio as aioredis
+
+        client = aioredis.from_url(
+            settings.redis_url, socket_connect_timeout=2
+        )
+        try:
+            await asyncio.wait_for(client.ping(), timeout=2)
+            redis_status = "ok"
+        finally:
+            await client.aclose()
+    except Exception:  # noqa: BLE001 — Redis فقط گزارشی است
+        redis_status = "unavailable"
+    if not db_ok:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "env": settings.app_env,
+                "db": "unavailable",
+                "redis": redis_status,
+            },
+        )
+    return {
+        "status": "ready",
+        "env": settings.app_env,
+        "db": "ok",
+        "redis": redis_status,
+    }
 
 
 @app.get("/api/v1/health")

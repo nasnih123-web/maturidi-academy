@@ -509,6 +509,26 @@ def _identity_matches(
     )
 
 
+async def _pg_vec_presence(db: AsyncSession) -> set[str] | None:
+    """مجموعهٔ idهایی که embedding_vec غیر-NULL دارند — فقط روی PG.
+
+    روی SQLite (Backend B) ستون برداری معنا ندارد و JSON مبناست، پس
+    None برمی‌گردد یعنی «بررسی vec انجام نشد». روی PG، ردیفی که JSON
+    سازگار دارد ولی vecاش NULL است، از جست‌وجوی معناییِ PG حذفِ
+    ساکت می‌شود (C3) — گزارش باید آن را صریح نشان دهد.
+    """
+    bind = getattr(db, "bind", None)
+    dialect = bind.dialect.name if bind is not None and getattr(bind, "dialect", None) is not None else ""
+    if dialect != "postgresql":
+        return None
+    rows = (
+        await db.execute(
+            text("SELECT id FROM fiqh_knowledge_chunks WHERE embedding_vec IS NOT NULL")
+        )
+    ).all()
+    return {str(r[0]) for r in rows}
+
+
 async def chunk_compatibility_report(db: AsyncSession) -> dict:
     """گزارش سازگاری امبدینگ‌ها (FIX3-04 — ADR-0051).
 
@@ -519,11 +539,20 @@ async def chunk_compatibility_report(db: AsyncSession) -> dict:
     reindex است (ابزار: app.modules.fatwa.reindex).
     """
     current = await current_embedding_identity(db)
+    vec_present = await _pg_vec_presence(db)
     groups: dict[tuple, dict] = {}
     total = 0
     compatible = 0
+    vec_missing = 0
     for _cid, prov, model, proj, dim in await _chunk_identity_rows(db):
         key = (prov, model, proj, dim)
+        ident_ok = _identity_matches(prov, model, proj, dim, current)
+        # Pass 4 / C3: روی PG، سازگاریِ واقعی یعنی هویت JSON + vec
+        # موجود؛ JSON-سازگارِ بدون vec در PG از semantic حذف می‌شود و
+        # نباید «سازگار» گزارش شود — بلکه برای reindex علامت می‌خورد.
+        row_vec_missing = (
+            vec_present is not None and ident_ok and str(_cid) not in vec_present
+        )
         group = groups.get(key)
         if group is None:
             group = {
@@ -532,12 +561,16 @@ async def chunk_compatibility_report(db: AsyncSession) -> dict:
                 "projection": proj,
                 "dim": dim,
                 "count": 0,
-                "compatible": _identity_matches(prov, model, proj, dim, current),
+                "compatible": ident_ok,
+                "vec_missing": 0,
             }
             groups[key] = group
         group["count"] += 1
         total += 1
-        if group["compatible"]:
+        if row_vec_missing:
+            group["vec_missing"] += 1
+            vec_missing += 1
+        elif ident_ok:
             compatible += 1
     return {
         "current": current,
@@ -548,6 +581,8 @@ async def chunk_compatibility_report(db: AsyncSession) -> dict:
         "chunks_total": total,
         "chunks_compatible": compatible,
         "chunks_incompatible": total - compatible,
+        "embedding_vec_checked": vec_present is not None,
+        "chunks_vec_missing": vec_missing,
         "reindex_recommended": (total - compatible) > 0,
     }
 
@@ -690,15 +725,34 @@ async def _pgvector_search(
     query_vec: list[float],
     top_k: int,
     filters: dict[str, Any],
+    identity: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]] | None:
     """جست‌وجوی معنایی در دیتابیس با pgvector — None یعنی fallback به Backend B.
 
     ستون embedding_vec و ایندکس HNSW را مهاجرت B-03 می‌سازد (دیگر هیچ
     DDL تنبلی در مسیر کوئری نیست)؛ اگر ستون/اکستنشن نباشد، کوئری خطا
     می‌دهد و None برمی‌گردد تا Backend B نتیجهٔ درست بدهد.
+
+    Pass 4 / C2: وقتی identity داده شود، پنجرهٔ نامزد (LIMIT top_k*3)
+    فقط با بردارهای هم‌هویت (provider, model, projection) پر می‌شود.
+    پیش از این، پنجره با فاصله‌های بین‌فضایی پر می‌شد و بردارهای
+    سازگارِ بیرون از پنجره برای همیشه از دست می‌رفتند؛ فیلتر در SQL
+    است، نه پس از امتیازدهی. فراخوان مستقیم بدون identity فقط برای
+    تست‌های سطح پایین مجاز است — مسیر search() همیشه identity می‌دهد.
     """
     where, params = _pg_filters(filters)
     where.append("embedding_vec IS NOT NULL")
+    if identity is not None:
+        where.append("embedding_provider = :ident_prov")
+        where.append("embedding_model = :ident_model")
+        where.append("embedding_projection = :ident_proj")
+        params.update(
+            {
+                "ident_prov": identity["provider"],
+                "ident_model": identity["model"],
+                "ident_proj": identity["projection"],
+            }
+        )
     params.update(
         {
             "qvec": "[" + ",".join(repr(float(x)) for x in query_vec) + "]",
@@ -795,6 +849,16 @@ class ChunkIndex:
 
         query_vec = (await self.provider.embed([query]))[0]
 
+        # Pass 4 / C2: هویت فضای برداریِ همین کوئری — مبنای واحدِ
+        # فیلتر SQL و امتیازدهی (provider + model + projection + dim).
+        _q_prov, _q_model = await provider_identity(self.provider)
+        query_identity = {
+            "provider": _q_prov,
+            "model": _q_model,
+            "projection": PROJECTION_ID,
+            "dim": EMBEDDING_DIM,
+        }
+
         filters = {
             "ai_scope": ai_scope,
             "topic_category": topic_category,
@@ -806,7 +870,9 @@ class ChunkIndex:
         # همان ردیف‌ها برای امتیازدهی نهایی خوانده می‌شوند — هیچ سقف
         # اسکنی نیست، پس chunk قدیمی هم قابل بازیابی است.
         if pgvector_available():
-            sem_rows = await _pgvector_search(db, query_vec, top_k, filters)
+            sem_rows = await _pgvector_search(
+                db, query_vec, top_k, filters, identity=query_identity
+            )
             if sem_rows is not None:
                 pg_semantic = {str(r["id"]): r["semantic"] for r in sem_rows}
                 candidate_ids = set(pg_semantic)
@@ -825,7 +891,9 @@ class ChunkIndex:
                     ).scalars().all()
                     scored_pg: list[ScoredChunk] = []
                     for c in rows:
-                        s = self._score(c, query, query_vec, ai_scope, pg_semantic)
+                        s = self._score(
+                            c, query, query_vec, ai_scope, pg_semantic, query_identity
+                        )
                         if s is not None:
                             scored_pg.append(s)
                     scored_pg.sort(key=lambda s: s.score, reverse=True)
@@ -852,7 +920,7 @@ class ChunkIndex:
 
         scored: list[ScoredChunk] = []
         for c in candidates:
-            s = self._score(c, query, query_vec, ai_scope, None)
+            s = self._score(c, query, query_vec, ai_scope, None, query_identity)
             if s is not None:
                 scored.append(s)
         scored.sort(key=lambda s: s.score, reverse=True)
@@ -865,6 +933,7 @@ class ChunkIndex:
         query_vec: list[float],
         ai_scope: str,
         pg_semantic: dict[str, float] | None,
+        query_identity: dict[str, Any] | None = None,
     ) -> ScoredChunk | None:
         """امتیاز هیبریدی یک chunk — None یعنی خارج از ai_scope خواسته‌شده.
 
@@ -873,18 +942,34 @@ class ChunkIndex:
         بی‌معناست و قاطی‌کردن خاموش آن دقیقاً باگ گزارش‌شده بود. چنین
         chunkی فقط با امتیاز واژگانی می‌ماند و در وضعیت
         (chunks_other_provider) به‌عنوان نیازمند reindex شمرده می‌شود.
-        chunkهای legacy بدون provider ثبت‌شده فعلاً امتیاز معنایی
-        می‌گیرند ولی در همان وضعیت expose می‌شوند.
+
+        Pass 4 / C2: معیار، هویت کامل است (provider + model +
+        projection + dim)، نه فقط نام provider؛ ردیف legacy با هویت
+        NULL هم ناسازگار است و فقط امتیاز واژگانی می‌گیرد — استثنای
+        قدیمیِ «legacy امتیاز معنایی می‌گیرد» حذف شد، چون همان بردار
+        (برش سادهٔ پیش از FIX3-04) در فضای جاری نیست. بدون
+        query_identity، برای سازگاری با فراخوان‌های قدیمی، فقط نام
+        provider چک می‌شود.
         """
         scopes = c.ai_scopes or []
         if ai_scope not in scopes:
             return None
         lex = lexical_score(query, c.chunk_text)
-        recorded_provider = getattr(c, "embedding_provider", None)
-        provider_mismatch = bool(recorded_provider) and (
-            recorded_provider != self.provider.name
-        )
-        if provider_mismatch:
+        if query_identity is not None:
+            _dim = len(c.embedding) if getattr(c, "embedding", None) else 0
+            identity_mismatch = not _identity_matches(
+                getattr(c, "embedding_provider", None),
+                getattr(c, "embedding_model", None),
+                getattr(c, "embedding_projection", None),
+                _dim,
+                query_identity,
+            )
+        else:
+            recorded_provider = getattr(c, "embedding_provider", None)
+            identity_mismatch = bool(recorded_provider) and (
+                recorded_provider != self.provider.name
+            )
+        if identity_mismatch:
             sem = 0.0
         elif pg_semantic is not None and str(c.id) in pg_semantic:
             sem = pg_semantic[str(c.id)]

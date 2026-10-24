@@ -5,13 +5,13 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.errors import APIError
-from app.core.storage import read_capped_upload
+from app.core.storage import get_storage, read_capped_upload
 from app.models.models import AIUsageLog, User
 from app.modules.auth.dependencies import get_current_user, require_permission
 from app.modules.fatwa.service import check_quota
@@ -123,6 +123,45 @@ async def ask_voice(
     )
     await db.commit()
     return out
+
+
+@voice_router.get("/tts-audio-by-ref")
+async def tts_audio_by_ref(
+    key: str,
+    exp: int,
+    sig: str,
+    purpose: str = "",
+    db: AsyncSession = Depends(get_db),
+):
+    """دانلود صوت TTS با URL امضاشدهٔ کوتاه‌مدت (Pass 4 / A3).
+
+    مدل احراز هویت همان مدل library/cert است: امضای کوتاه‌عمرِ
+    هم‌منظور (voice-tts) جای احراز هویت را می‌گیرد — رکورد مالکیت
+    جداگانه‌ای برای صوت TTS در DB وجود ندارد، پس URL خودش bearer
+    است (۳۰۰ ثانیه). در عوض، کلید به‌شدت محدود است: فقط
+    `voice/tts/<uuid>.<mp3|bin>`؛ کلید گواهی یا کتابخانه این‌جا
+    ۴۰۳/۴۰۴ می‌گیرد و گواهی این‌جا هرگز سرو نمی‌شود.
+    """
+    import re
+
+    from app.core.storage import SIGNED_PURPOSE_VOICE_TTS
+
+    storage = get_storage()
+    verify = getattr(storage, "verify_download_sig", None)
+    read_bytes = getattr(storage, "read_bytes", None)
+    if (
+        verify is None
+        or read_bytes is None
+        or purpose != SIGNED_PURPOSE_VOICE_TTS
+        or not verify(key, exp, sig, purpose)
+        or not re.fullmatch(
+            r"voice/tts/[0-9a-fA-F-]{36}\.(mp3|bin)", key or ""
+        )
+    ):
+        raise APIError(403, "invalid_signature", "امضای دانلود نامعتبر یا منقضی است")
+    data = await read_bytes(key)
+    mime = "audio/mpeg" if key.endswith(".mp3") else "application/octet-stream"
+    return Response(content=data, media_type=mime)
 
 
 # ---------------------------------------------------------------------------

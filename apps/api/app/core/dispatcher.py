@@ -96,9 +96,25 @@ class InMemoryBus(EventBus):
 
 
 class RedisBus(EventBus):
+    #: سقف backoff اتصال مجدد listener (ثانیه) — Pass 4 / C5.
+    LISTENER_BACKOFF_INITIAL_S = 0.5
+    LISTENER_BACKOFF_MAX_S = 60.0
+
     def __init__(self, client, channel: str = BUS_CHANNEL) -> None:
         self._client = client
         self._channel = channel
+        self._listener_alive = False
+        self._listener_failures = 0
+        self._listener_last_error: str | None = None
+
+    def listener_state(self) -> dict:
+        """وضعیت قابل‌مشاهدهٔ listener — مرگ ساکت دیگر ممکن نیست:
+        alive=False + failures>0 یعنی اتصال قطع و در حال backoff است."""
+        return {
+            "alive": self._listener_alive,
+            "consecutive_failures": self._listener_failures,
+            "last_error": self._listener_last_error,
+        }
 
     async def publish(self, message: dict) -> None:
         await self._client.publish(self._channel, json.dumps(message, ensure_ascii=False))
@@ -106,22 +122,60 @@ class RedisBus(EventBus):
     async def run_listener(
         self, callback: Callable[[dict], Awaitable[None]]
     ) -> None:
-        pubsub = self._client.pubsub()
-        await pubsub.subscribe(self._channel)
-        try:
-            async for raw in pubsub.listen():
-                if raw.get("type") != "message":
-                    continue
-                data = raw["data"]
-                if isinstance(data, bytes):
-                    data = data.decode("utf-8")
+        """حلقهٔ supervisor listener — Pass 4 / C5.
+
+        پیش از این، یک قطع‌شدن Redis از داخل pubsub.listen() تسک را
+        بی‌صدا می‌کشت (فقط «exception never retrieved») و هیچ
+        supervisor/metricای نبود. حالا: هر تلاش با pubsub تازه است،
+        pubsub قبلی در finally بسته می‌شود (single-flight — هرگز دو
+        listener هم‌زمان subscribe نمی‌کنند، پس تحویل تکراری از این
+        مسیر رخ نمی‌دهد)، خطای غیر-cancel با backoff نماییِ کران‌دار
+        (۰٫۵ تا ۶۰ ثانیه) دوباره تلاش می‌شود، و cancel شدن تسک
+        supervisor را تمیز و فوری متوقف می‌کند.
+        """
+        backoff = self.LISTENER_BACKOFF_INITIAL_S
+        while True:
+            pubsub = self._client.pubsub()
+            try:
+                await pubsub.subscribe(self._channel)
+                self._listener_alive = True
+                self._listener_failures = 0
+                async for raw in pubsub.listen():
+                    if raw.get("type") != "message":
+                        continue
+                    data = raw["data"]
+                    if isinstance(data, bytes):
+                        data = data.decode("utf-8")
+                    try:
+                        await callback(json.loads(data))
+                    except Exception:
+                        logger.exception("event bus callback failed")
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 — قطع اتصال = تلاش مجدد
+                self._listener_last_error = f"{type(exc).__name__}: {exc}"
+                self._listener_failures += 1
+                logger.warning(
+                    "event bus listener disconnected (%s) — reconnecting "
+                    "in %.1fs (failure #%d)",
+                    self._listener_last_error,
+                    backoff,
+                    self._listener_failures,
+                )
+            finally:
+                self._listener_alive = False
                 try:
-                    await callback(json.loads(data))
-                except Exception:
-                    logger.exception("event bus callback failed")
-        finally:
-            await pubsub.unsubscribe(self._channel)
-            await pubsub.close()
+                    await pubsub.unsubscribe(self._channel)
+                except Exception:  # noqa: BLE001 — پاکسازیِ best-effort
+                    logger.debug("listener cleanup: unsubscribe skipped")
+                try:
+                    await pubsub.close()
+                except Exception:  # noqa: BLE001 — پاکسازیِ best-effort
+                    logger.debug("listener cleanup: pubsub close skipped")
+            # رسیدن به این‌جا یعنی تلاش قبلی با خطا تمام شده، نه cancel:
+            # با backoff بخواب؛ cancel در sleep، supervisor را می‌کشد.
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, self.LISTENER_BACKOFF_MAX_S)
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -165,11 +219,21 @@ async def create_event_bus() -> EventBus:
 
 
 def _backoff_eligible(event: DomainEvent, now: datetime) -> bool:
-    """آیا زمان تلاش مجدد (backoff نمایی) رسیده است؟"""
+    """آیا زمان تلاش مجدد (backoff نمایی) رسیده است؟
+
+    Pass 4 / C1: مبنا، آخرین تلاش ناموفق است، نه created_at.
+    رویداد قدیمی (مثلاً پس از outage بازپس‌گرفته‌شده) نباید در
+    همان دورِ اولِ polling دوباره retry شود؛ هر گام دقیقاً یک تلاش
+    پس از delay = min(2**retry_count, 300s) از تلاش قبلی می‌گیرد.
+    MAX_RETRIES=5 عمداً دست نخورده — سقف ۳۰۰ ثانیه یک کرانِ بالا
+    با min() است، نه هدفِ delay؛ سیاست dead-letter پس از ۵ تلاش
+    همان است که تست موجود رمزگذاری کرده است.
+    """
     if event.retry_count <= 0:
         return True
     delay = min(2 ** event.retry_count, MAX_BACKOFF_SECONDS)
-    return now >= ensure_aware(event.created_at) + timedelta(seconds=delay)
+    anchor = event.last_attempt_at or event.created_at
+    return now >= ensure_aware(anchor) + timedelta(seconds=delay)
 
 
 #: سقف batch هر دور dispatcher (M-04)
@@ -295,6 +359,7 @@ async def dispatch_once(
                 await bus.publish(serialize_event(event))
             except Exception:
                 event.retry_count += 1
+                event.last_attempt_at = now
                 event.claimed_by = None
                 event.claimed_at = None
                 if event.retry_count >= MAX_RETRIES:
@@ -388,6 +453,16 @@ async def start_realtime(app: FastAPI) -> None:
         bus.run_listener(_bus_to_gateway),
         name="event-bus-listener",
     )
+    app.state.bus_listener_task.add_done_callback(_log_listener_done)
+
+
+def _log_listener_done(task: asyncio.Task) -> None:
+    """پایان غیرمنتظرهٔ listener (غیر از cancel در shutdown) را لاگ کن."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error("event bus listener task ended unexpectedly: %r", exc)
 
 
 async def stop_realtime(app: FastAPI) -> None:

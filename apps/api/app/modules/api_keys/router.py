@@ -96,11 +96,20 @@ async def embed_snippet(
     widget: str = Query(...),
     base_url: str = Query(default=""),
 ):
-    """قالب کد embed — به‌جای کلید واقعی، جای‌نگهدار می‌گذارد (§۱۴)."""
+    """قالب کد embed — با توکن امضاشدهٔ تک‌ویجتی (Pass 4 / A5).
+
+    کلید خام هرگز در snippet نیست؛ توکن با revoke کلید می‌میرد و
+    پس از ۳۶۵ روز منقضی می‌شود (آن‌وقت از همین endpoint توکن تازه
+    بگیرید)."""
     await service.get_key(db, key_id)  # 404 اگر نبود
-    html = service.build_embed_snippet(widget, "__API_KEY__", base_url=base_url)
+    token = service.issue_embed_token(key_id, widget)
+    html = service.build_embed_snippet(widget, token, base_url=base_url)
     return {
         "widget": widget,
         "html": html,
-        "note": "به‌جای __API_KEY__ کلید واقعی (که فقط لحظهٔ ساخت دیده شد) را بگذارید.",
+        "note": (
+            "snippet با توکن embed امضاشده ساخته شد — کلید خام در آن "
+            "نیست؛ توکن فقط همین ویجت را باز می‌کند و با revoke کلید "
+            "از کار می‌افتد."
+        ),
     }

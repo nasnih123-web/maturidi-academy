@@ -135,51 +135,123 @@ class RedisUsageCounter:
 
 _counter: UsageCounter | None = None
 _counter_lock = asyncio.Lock()
+# Pass 4 / A6: زمان اولین fallback — پس از cooldown، flush بعدی
+# Redis را دوباره پروب می‌کند و (در صورت موفقیت) دلتاهای
+# in-process را اول به DB می‌رساند و سپس به Redis برمی‌گردد.
+# این یعنی fallback هرگز «برای همیشه» قفل نمی‌شود.
+_counter_failed_since: float | None = None
+_COUNTER_RETRY_COOLDOWN_S = 30.0
+
+
+async def _try_redis_counter() -> RedisUsageCounter | None:
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    try:
+        import redis.asyncio as aioredis
+
+        client = aioredis.from_url(
+            settings.redis_url, socket_connect_timeout=2
+        )
+        await client.ping()
+        return RedisUsageCounter(client)
+    except (ImportError, OSError, ValueError, _RedisError):
+        return None
 
 
 async def get_usage_counter() -> UsageCounter:
-    """singleton تنبل: اول Redis (با ping)، وگرنه in-process با لاگ هشدار."""
-    global _counter
+    """singleton تنبل: اول Redis (با ping)، وگرنه in-process با لاگ هشدار.
+
+    نکتهٔ Pass 4: fallback درون‌پروسه‌ای دیگر دائمی نیست — بهبودی
+    در flush_usage_counters اتفاق می‌افتد (جایی که DB در دسترس است و
+    دلتاها بدون double-count به DB می‌رسند)، نه با حدس seed در
+    get_usage_counter.
+    """
+    global _counter, _counter_failed_since
     if _counter is not None:
         return _counter
     async with _counter_lock:
         if _counter is not None:
             return _counter
-        from app.core.config import get_settings
-
-        settings = get_settings()
-        try:
-            import redis.asyncio as aioredis
-
-            client = aioredis.from_url(
-                settings.redis_url, socket_connect_timeout=2
-            )
-            await client.ping()
-            _counter = RedisUsageCounter(client)
+        redis_counter = await _try_redis_counter()
+        if redis_counter is not None:
+            _counter = redis_counter
+            _counter_failed_since = None
             logger.info("widget usage counter: redis")
-        except (ImportError, OSError, ValueError, _RedisError) as exc:
+        else:
             logger.warning(
-                "widget usage counter: redis unavailable (%s) — in-process "
-                "buffered fallback (flush still applies)",
-                exc,
+                "widget usage counter: redis unavailable — in-process "
+                "buffered fallback (flush still applies; recovery is "
+                "probed on the next flush after the cooldown)",
             )
             _counter = InProcessUsageCounter()
+            _counter_failed_since = time.monotonic()
+        return _counter
+
+
+async def switch_to_inprocess_after_redis_failure() -> UsageCounter:
+    """پس از مرگ Redis در میانهٔ کار: به fallback برگرد، ولی با
+    مُهر زمانی تا flush بعدی بهبودی را پروب کند (نه ۵۰۰ و نه قفل دائم)."""
+    global _counter, _counter_failed_since
+    async with _counter_lock:
+        # هر شمارندهٔ backendای که hitش خطا داده (Redis واقعی یا
+        # جایگزین تست) با in-process عوض می‌شود؛ فقط in-processِ
+        # موجود حفظ می‌شود تا دلتاهای pendingاش از دست نرود.
+        if isinstance(_counter, InProcessUsageCounter):
+            return _counter
+        logger.warning(
+            "widget usage counter: redis failed mid-flight — "
+            "degraded in-process mode (bounded; recovery on next flush)"
+        )
+        _counter = InProcessUsageCounter()
+        _counter_failed_since = time.monotonic()
         return _counter
 
 
 def set_usage_counter_for_test(counter: UsageCounter | None) -> None:
-    global _counter
+    global _counter, _counter_failed_since
     _counter = counter
+    _counter_failed_since = None
 
 
 async def flush_usage_counters(db) -> int:
-    """دلتاهای pending را به ردیف‌های ApiKey اعمال کن. -> تعداد ردیف‌های به‌روز."""
+    """دلتاهای pending را به ردیف‌های ApiKey اعمال کن. -> تعداد ردیف‌های به‌روز.
+
+    Pass 4 / A6 — بهبودی: اگر شمارندهٔ فعلی in-process است و cooldown
+    گذشته، اول Redis را پروب می‌کنیم؛ در صورت موفقیت، دلتاهای
+    in-process را با همین flush به DB می‌رسانیم و سپس شمارنده را
+    به Redis برمی‌گردانیم. hit بعدی از DBِ به‌روز seed می‌گیرد، پس
+    نه double-count می‌شود و نه سهمیه از نو شروع می‌شود.
+    """
+    global _counter, _counter_failed_since
+    counter = await get_usage_counter()
+    if (
+        isinstance(counter, InProcessUsageCounter)
+        and _counter_failed_since is not None
+        and time.monotonic() - _counter_failed_since >= _COUNTER_RETRY_COOLDOWN_S
+    ):
+        redis_counter = await _try_redis_counter()
+        if redis_counter is not None:
+            # اول flush همین شمارندهٔ قدیمی، بعد تعویض — ترتیب مهم است
+            # چون seed بعدی باید DBِ شامل همین دلتاها را ببیند.
+            pending = await counter.drain_pending()
+            updated = await _apply_pending(db, pending)
+            async with _counter_lock:
+                _counter = redis_counter
+                _counter_failed_since = None
+            logger.info("widget usage counter: recovered to redis")
+            return updated
+        _counter_failed_since = time.monotonic()
+    pending = await counter.drain_pending()
+    return await _apply_pending(db, pending)
+
+
+async def _apply_pending(db, pending: dict) -> int:
+    """دلتاها را به ردیف‌های ApiKey اعمال کن (بدون drain مجدد)."""
     from sqlalchemy import select
 
     from app.models.models import ApiKey
 
-    counter = await get_usage_counter()
-    pending = await counter.drain_pending()
     if not pending:
         return 0
     updated = 0

@@ -297,6 +297,14 @@ class DomainEvent(Base):
     claimed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+    # Pass 4 / C1: زمان آخرین تلاش ناموفق — مبنای backoff نمایی.
+    # قبلاً backoff به created_at گره خورده بود: رویداد قدیمیِ بازپس‌گرفته
+    # در همان ثانیه‌های اول outage چند بار retry و dead-letter می‌شد و
+    # سقف ۳۰۰ ثانیه‌ای هیچ‌وقت قابل‌دسترس نبود (dead-letter در ۳۲ ثانیه).
+    # NULL یعنی «هنوز تلاش ناموفقی نبوده» → مبنا created_at است.
+    last_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class HomeSection(Base):
