@@ -1,4 +1,4 @@
-import { API_BASE_URL, ApiError } from './api';
+import { getApiBaseUrl, ApiError } from './api';
 
 /**
  * Quran domain layer (Phase 5 — Track 2/web).
@@ -120,7 +120,7 @@ export interface AyahNote {
 }
 
 function apiUrl(path: string): string {
-  return `${API_BASE_URL.replace(/\/+$/, '')}${path}`;
+  return `${getApiBaseUrl().replace(/\/+$/, '')}${path}`;
 }
 
 async function getJson<T>(path: string): Promise<T> {
@@ -132,7 +132,7 @@ async function getJson<T>(path: string): Promise<T> {
     });
   } catch (err) {
     throw new ApiError(
-      `API unreachable at ${API_BASE_URL}: ${err instanceof Error ? err.message : String(err)}`,
+      `API unreachable at ${getApiBaseUrl}: ${err instanceof Error ? err.message : String(err)}`,
       0,
     );
   }

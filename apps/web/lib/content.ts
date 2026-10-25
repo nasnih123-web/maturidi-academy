@@ -1,4 +1,4 @@
-import { API_BASE_URL, ApiError } from './api';
+import { getApiBaseUrl, ApiError } from './api';
 import type {
   AnnouncementWire,
   BannerWire,
@@ -27,7 +27,7 @@ const PUBLIC = '/api/v1/content/public';
 function contentUrl(path: string, query: Record<string, string> = {}): string {
   const params = new URLSearchParams(query);
   const qs = params.toString();
-  return `${API_BASE_URL.replace(/\/+$/, '')}${path}${qs ? `?${qs}` : ''}`;
+  return `${getApiBaseUrl().replace(/\/+$/, '')}${path}${qs ? `?${qs}` : ''}`;
 }
 
 async function getJson<T>(path: string, query: Record<string, string> = {}, init: RequestInit = {}): Promise<T | null> {

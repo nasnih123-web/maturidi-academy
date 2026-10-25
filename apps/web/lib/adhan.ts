@@ -1,4 +1,4 @@
-import { API_BASE_URL, ApiError } from './api';
+import { getApiBaseUrl, ApiError } from './api';
 import type { AdhanSettings } from './settings';
 
 /**
@@ -56,7 +56,7 @@ export const PRAYER_GRID_ORDER: PrayerName[] = [
 ];
 
 function apiUrl(path: string): string {
-  return `${API_BASE_URL.replace(/\/+$/, '')}${path}`;
+  return `${getApiBaseUrl().replace(/\/+$/, '')}${path}`;
 }
 
 /** The browser's UTC offset in hours (e.g. +3.5 for Asia/Tehran). Pure. */
@@ -111,7 +111,7 @@ export async function getPrayerTimes(
     });
   } catch (err) {
     throw new ApiError(
-      `API unreachable at ${API_BASE_URL}: ${err instanceof Error ? err.message : String(err)}`,
+      `API unreachable at ${getApiBaseUrl}: ${err instanceof Error ? err.message : String(err)}`,
       0,
     );
   }

@@ -1,4 +1,4 @@
-import { ApiError, API_BASE_URL } from './api';
+import { ApiError, getApiBaseUrl } from './api';
 import type { LocalizedText } from './types';
 
 /**
@@ -77,7 +77,7 @@ export interface LibrarySearchResponse {
 }
 
 function apiUrl(path: string): string {
-  return `${API_BASE_URL.replace(/\/+$/, '')}${path}`;
+  return `${getApiBaseUrl().replace(/\/+$/, '')}${path}`;
 }
 
 async function fetchJson(path: string, init?: RequestInit): Promise<Response> {
@@ -89,7 +89,7 @@ async function fetchJson(path: string, init?: RequestInit): Promise<Response> {
     });
   } catch (err) {
     throw new ApiError(
-      `API unreachable at ${API_BASE_URL}: ${err instanceof Error ? err.message : String(err)}`,
+      `API unreachable at ${getApiBaseUrl}: ${err instanceof Error ? err.message : String(err)}`,
       0,
     );
   }

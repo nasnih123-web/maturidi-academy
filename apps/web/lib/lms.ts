@@ -1,5 +1,5 @@
 import type { LocalizedText } from './types';
-import { ApiError, API_BASE_URL } from './api';
+import { ApiError, getApiBaseUrl } from './api';
 import { authFetch, authJson } from './auth-client';
 import type { QuizFetchers, QuizQuestion, QuizReviewItem, QuizScore } from './quiz';
 
@@ -159,7 +159,7 @@ export interface LmsCertificateVerify {
 /* ------------------------------------------------------- server (public) */
 
 function serverUrl(path: string): string {
-  return `${API_BASE_URL.replace(/\/+$/, '')}${path}`;
+  return `${getApiBaseUrl().replace(/\/+$/, '')}${path}`;
 }
 
 async function getServer<T>(path: string, revalidate = 120): Promise<T> {
@@ -171,7 +171,7 @@ async function getServer<T>(path: string, revalidate = 120): Promise<T> {
     });
   } catch (err) {
     throw new ApiError(
-      `API unreachable at ${API_BASE_URL}: ${err instanceof Error ? err.message : String(err)}`,
+      `API unreachable at ${getApiBaseUrl}: ${err instanceof Error ? err.message : String(err)}`,
       0,
     );
   }
