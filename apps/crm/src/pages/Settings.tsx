@@ -70,6 +70,8 @@ const SECTIONS: SectionDef[] = [
     titleKey: "settings.sections.telegram",
     fields: [
       { key: "telegram.bot_token", labelKey: "settings.fields.botToken", secret: true },
+      { key: "telegram.api_id", labelKey: "settings.fields.telegramApiId", secret: true },
+      { key: "telegram.api_hash", labelKey: "settings.fields.telegramApiHash", secret: true },
       { key: "telegram.channel", labelKey: "settings.fields.channel", secret: false },
     ],
   },
