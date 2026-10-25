@@ -39,11 +39,20 @@ RUN npm run build
 FROM node:24-alpine AS runner
 WORKDIR /app/apps/web
 ENV NODE_ENV=production
+# nginx جلوی next start می‌نشیند تا پاسخ upstream را کامل بافر کند و با
+# Content-Length به پایین‌دست بفرستد (به‌جای استریم chunked مستقیم Next.js).
+# next روی پورت داخلی 3000 و nginx روی $PORT تزریقی Railway گوش می‌دهد —
+# start.sh هر دو را بالا می‌آورد و اگر هر کدام بمیرد کانتینر را fail می‌کند
+# تا Railway ری‌استارت کند.
+RUN apk add --no-cache nginx && mkdir -p /var/log/nginx /var/lib/nginx/tmp /run/nginx
 # بدون output:standalone در next.config — کل بیلد + node_modules کپی می‌شود
 COPY --from=builder /app/apps/web/public ./public
 COPY --from=builder /app/apps/web/.next ./.next
 COPY --from=builder /app/apps/web/node_modules ./node_modules
 COPY --from=builder /app/apps/web/package.json ./package.json
 COPY --from=builder /app/apps/web/next.config.mjs ./next.config.mjs
-EXPOSE 3000
-CMD ["npm", "start"]
+COPY apps/web/nginx.conf.template ./nginx.conf.template
+COPY apps/web/start.sh ./start.sh
+RUN chmod +x ./start.sh
+EXPOSE 8080
+CMD ["sh", "start.sh"]
