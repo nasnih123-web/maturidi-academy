@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.errors import APIError
 from app.models.models import User
 from app.modules.auth.dependencies import get_current_user, require_permission
 from app.modules.content import cms_schemas as S
@@ -178,6 +179,20 @@ async def public_announcements(
 ):
     """اعلان‌های عمومی — فقط published و درون پنجره."""
     return await service.list_public_announcements(db, placement)
+
+
+@router.get("/public/pages")
+async def public_pages(
+    content_type: str = Query(default="article", description="article | page | faq"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """فهرست عمومی صفحه‌های منتشرشده — فعلاً فقط article پشتیبانی می‌شود
+    (فهرست /articles وب)؛ بقیهٔ انواع 422 می‌گیرند تا رفتار صادقانه بماند."""
+    if content_type != "article":
+        raise APIError(422, "unsupported_content_type", "فقط content_type=article پشتیبانی می‌شود")
+    return await service.list_public_articles(db, limit=limit, offset=offset)
 
 
 @router.get("/public/pages/slug/{slug}")

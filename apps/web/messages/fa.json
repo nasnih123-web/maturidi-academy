@@ -11,7 +11,7 @@
             "label": "فتوا"
           },
           {
-            "href": "/courses",
+            "href": "/learn/courses",
             "label": "دوره‌ها"
           },
           {
@@ -82,7 +82,7 @@
         "label": "زکات"
       },
       {
-        "href": "/courses",
+        "href": "/learn/courses",
         "label": "دوره‌ها"
       },
       {
@@ -156,6 +156,7 @@
         "book": "کتاب",
         "course": "دوره",
         "fatwa": "فتوا",
+        "library": "کتابخانه",
         "lesson": "درس",
         "page": "صفحه",
         "section": "بخش",
@@ -181,6 +182,10 @@
     "noResults": "نتیجه‌ای یافت نشد. عبارت دیگری را امتحان کنید.",
     "resultsFor": "نتایج «{q}»",
     "title": "نتایج جست‌وجو"
+  },
+  "articlesPage": {
+    "title": "مقالات",
+    "empty": "هنوز مقاله‌ای منتشر نشده است."
   },
   "tagline": "پلتفرم آموزشی اسلامی جامع",
   "content": {
