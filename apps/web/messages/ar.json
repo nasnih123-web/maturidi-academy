@@ -11,7 +11,7 @@
             "label": "الفتوى"
           },
           {
-            "href": "/courses",
+            "href": "/learn/courses",
             "label": "الدورات"
           },
           {
@@ -82,7 +82,7 @@
         "label": "الزكاة"
       },
       {
-        "href": "/courses",
+        "href": "/learn/courses",
         "label": "الدورات"
       },
       {
@@ -156,6 +156,7 @@
         "book": "كتاب",
         "course": "دورة",
         "fatwa": "فتوى",
+        "library": "المكتبة",
         "lesson": "درس",
         "page": "صفحة",
         "section": "قسم",
@@ -181,6 +182,10 @@
     "noResults": "لم يتم العثور على نتائج. جرّب عبارة أخرى.",
     "resultsFor": "نتائج «{q}»",
     "title": "نتائج البحث"
+  },
+  "articlesPage": {
+    "title": "المقالات",
+    "empty": "لم يُنشر أي مقال بعد."
   },
   "tagline": "منصة تعليمية إسلامية شاملة",
   "content": {

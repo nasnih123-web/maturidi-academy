@@ -115,6 +115,28 @@ export async function getCmsPage(
 }
 
 /**
+ * GET /api/v1/content/public/pages?content_type=article — published CMS
+ * articles for the /articles list page. Non-throwing like the other
+ * fetchers here: a missing endpoint yields an empty list, never a crash.
+ */
+export async function getPublicArticles(): Promise<
+  { slug: string; title: CmsPage['title']; published_at: string | null }[]
+> {
+  const body = await getJson<{ items?: unknown[] }>(`${PUBLIC}/pages`, {
+    content_type: 'article',
+    limit: '50',
+  });
+  if (!body) return [];
+  return asArray<Record<string, unknown>>(body.items ?? body)
+    .filter((r) => typeof r.slug === 'string')
+    .map((r) => ({
+      slug: r.slug as string,
+      title: (r.title as CmsPage['title']) ?? {},
+      published_at: typeof r.published_at === 'string' ? r.published_at : null,
+    }));
+}
+
+/**
  * GET /api/v1/content/public/nav?locale={locale} — nested nav tree.
  * The server resolves visibility/scheduling; the web only localizes
  * labels. Empty array ⇒ caller falls back to the static IA.

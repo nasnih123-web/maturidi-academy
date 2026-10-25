@@ -275,19 +275,19 @@ async def seed_platform_settings_defaults(db: AsyncSession) -> list[str]:
         "hero.fa": {
             "title": "آکادمی ماتریدی",
             "subtitle": "آموزش اصیل اسلامی؛ از عقیده تا عمل",
-            "primary_cta": {"label": "شروع یادگیری", "href": "/fa/courses"},
+            "primary_cta": {"label": "شروع یادگیری", "href": "/fa/learn/courses"},
             "secondary_cta": {"label": "مشاهدهٔ کتابخانه", "href": "/fa/library"},
         },
         "hero.ar": {
             "title": "أكاديمية الماتريدي",
             "subtitle": "تعليم إسلامي أصيل؛ من العقيدة إلى العمل",
-            "primary_cta": {"label": "ابدأ التعلم", "href": "/ar/courses"},
+            "primary_cta": {"label": "ابدأ التعلم", "href": "/ar/learn/courses"},
             "secondary_cta": {"label": "تصفح المكتبة", "href": "/ar/library"},
         },
         "hero.en": {
             "title": "Maturidi Academy",
             "subtitle": "Authentic Islamic learning — from creed to practice",
-            "primary_cta": {"label": "Start learning", "href": "/en/courses"},
+            "primary_cta": {"label": "Start learning", "href": "/en/learn/courses"},
             "secondary_cta": {"label": "Browse library", "href": "/en/library"},
         },
         # --- فاز ۵ (Track 1): قرآن / مناجات ---

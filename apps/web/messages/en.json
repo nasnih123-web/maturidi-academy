@@ -11,7 +11,7 @@
             "label": "Fatwa"
           },
           {
-            "href": "/courses",
+            "href": "/learn/courses",
             "label": "Courses"
           },
           {
@@ -82,7 +82,7 @@
         "label": "Zakat"
       },
       {
-        "href": "/courses",
+        "href": "/learn/courses",
         "label": "Courses"
       },
       {
@@ -156,6 +156,7 @@
         "book": "Book",
         "course": "Course",
         "fatwa": "Fatwa",
+        "library": "Library",
         "lesson": "Lesson",
         "page": "Page",
         "section": "Section",
@@ -181,6 +182,10 @@
     "noResults": "No results found. Try a different query.",
     "resultsFor": "Results for “{q}”",
     "title": "Search results"
+  },
+  "articlesPage": {
+    "title": "Articles",
+    "empty": "No articles published yet."
   },
   "tagline": "A comprehensive Islamic learning platform",
   "content": {

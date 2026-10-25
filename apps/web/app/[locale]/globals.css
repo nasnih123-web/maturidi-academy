@@ -443,6 +443,12 @@ img, svg { max-inline-size: 100%; }
 /* ═══ Search results page ═══ */
 .search-page { max-width: var(--container); margin-inline: auto; padding: 2.5rem clamp(1rem, 3vw, 2rem); }
 .search-page h1 { color: hsl(var(--text-primary)); font-size: clamp(1.4rem, 3vw, 2rem); }
+/* Type-filter chips: previously unstyled, so the filter links rendered as
+   plain inline text with no spacing (e.g. «همهفتوا…») — flex + gap fixes it. */
+.search-type-filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 1.5rem; }
+.search-type-filters .chip { display: inline-block; padding: 0.35rem 0.9rem; border: 1px solid rgba(212, 175, 55, 0.35); border-radius: 999px; background: rgba(7, 35, 28, 0.55); color: hsl(var(--text-secondary)); text-decoration: none; font-size: 0.88rem; }
+.search-type-filters .chip:hover { border-color: rgba(212, 175, 55, 0.65); color: hsl(var(--text-primary)); }
+.search-type-filters .chip-active { background: rgba(212, 175, 55, 0.2); color: #e5c07b; border-color: rgba(212, 175, 55, 0.65); font-weight: 700; }
 .search-result { display: block; padding: 1rem 1.2rem; border: 1px solid rgba(212, 175, 55, 0.2); border-radius: var(--radius-md); background: rgba(7, 35, 28, 0.5); text-decoration: none; margin-bottom: 0.8rem; transition: border-color var(--dur-base); }
 .search-result:hover { border-color: rgba(212, 175, 55, 0.55); }
 .search-result h2 { margin: 0 0 0.3rem; font-size: 1.02rem; color: #e5c07b; }

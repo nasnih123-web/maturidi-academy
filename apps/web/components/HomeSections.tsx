@@ -90,7 +90,7 @@ export function HomeSectionRenderer({
             const heroBody = heroOverride?.subtitle || subtitle;
             const primary: HeroCta = heroOverride?.primaryCta ?? {
               label: labels.heroCtaPrimary,
-              href: `/${locale}/courses`,
+              href: `/${locale}/learn/courses`,
             };
             const secondary: HeroCta = heroOverride?.secondaryCta ?? {
               label: labels.heroCtaSecondary,
@@ -106,7 +106,7 @@ export function HomeSectionRenderer({
                 headingId={id}
                 title={heroTitle}
                 body={heroBody}
-                ctaPrimary={safeCta(primary, { label: labels.heroCtaPrimary, href: `/${locale}/courses` })}
+                ctaPrimary={safeCta(primary, { label: labels.heroCtaPrimary, href: `/${locale}/learn/courses` })}
                 ctaSecondary={safeCta(secondary, { label: labels.heroCtaSecondary, href: `/${locale}/library` })}
                 searchAction={`/${locale}/search`}
                 searchEndpoint="/api/search"

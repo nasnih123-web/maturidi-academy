@@ -520,6 +520,33 @@ async def get_public_page(db: AsyncSession, slug: str) -> dict:
     return _to_dict(obj)
 
 
+async def list_public_articles(
+    db: AsyncSession,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict]:
+    """صفحه‌های CMS منتشرشده با content_type=article — برای فهرست /articles وب.
+
+    فقط published (مثل get_public_page)؛ مرتب‌سازی بر اساس published_at
+    نزولی، با created_at به‌عنوان پشتیبان برای رکوردهای بدون published_at.
+    """
+    stmt = (
+        select(Page)
+        .where(
+            Page.workflow_status == workflow.PUBLISHED,
+            Page.content_type == "article",
+        )
+        .order_by(
+            Page.published_at.desc().nulls_last(),
+            Page.created_at.desc(),
+        )
+        .limit(min(limit, 200))
+        .offset(max(offset, 0))
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    return [_to_dict(r) for r in rows]
+
+
 async def list_public_events(
     db: AsyncSession,
     hijri_month: int | None = None,
