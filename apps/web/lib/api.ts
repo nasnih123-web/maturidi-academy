@@ -8,6 +8,16 @@ import type { HomeSectionsResponse, SearchResponse } from './types';
  * NEXT_PUBLIC_API_URL که عمومی/مرورگر است؛ Track 2 / §۱۳).
  * در production بدون API_URL صریح، بلند خطا می‌دهد (نه fallback خاموش به
  * localhost) — مقدار درست در compose: http://api:8000 (نام سرویس داخلی).
+ *
+ * CRITICAL — lazy, never at import time: this module is transitively
+ * imported by client bundles (layout → AdhanCountdown → useAdhanCountdown
+ * → lib/adhan → lib/api), and in the browser process.env.API_URL is always
+ * undefined (only NEXT_PUBLIC_* vars are inlined into client bundles).
+ * A module-level `export const API_BASE_URL = resolveApiBaseUrl()` therefore
+ * threw an Uncaught Error in every browser page load, before any caller's
+ * try/catch could run. Resolve only on first use, inside the fetch
+ * functions, so callers that catch ApiError (or return null/defaults) get
+ * the graceful error state instead of a crashed render/hydration.
  */
 function resolveApiBaseUrl(): string {
   const base = process.env.API_URL;
@@ -22,7 +32,10 @@ function resolveApiBaseUrl(): string {
   return 'http://localhost:8000';
 }
 
-export const API_BASE_URL = resolveApiBaseUrl();
+/** Lazy replacement for the old module-level API_BASE_URL constant. */
+export function getApiBaseUrl(): string {
+  return resolveApiBaseUrl();
+}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -34,7 +47,7 @@ export class ApiError extends Error {
 }
 
 function apiUrl(path: string): string {
-  return `${API_BASE_URL.replace(/\/+$/, '')}${path}`;
+  return `${getApiBaseUrl().replace(/\/+$/, '')}${path}`;
 }
 
 /**
@@ -52,7 +65,7 @@ export async function getHomeSections(): Promise<HomeSectionsResponse> {
     });
   } catch (err) {
     throw new ApiError(
-      `API unreachable at ${API_BASE_URL}: ${err instanceof Error ? err.message : String(err)}`,
+      `API unreachable: ${err instanceof Error ? err.message : String(err)}`,
       0,
     );
   }
@@ -85,7 +98,7 @@ export async function searchApi(
     });
   } catch (err) {
     throw new ApiError(
-      `API unreachable at ${API_BASE_URL}: ${err instanceof Error ? err.message : String(err)}`,
+      `API unreachable: ${err instanceof Error ? err.message : String(err)}`,
       0,
     );
   }

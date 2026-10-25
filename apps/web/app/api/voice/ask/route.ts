@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { API_BASE_URL } from '@/lib/api';
+import { getApiBaseUrl } from '@/lib/api';
 
 /**
  * Same-origin proxy for the Phase 12 voice assistant:
@@ -52,7 +52,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const target = `${API_BASE_URL.replace(/\/+$/, '')}/api/v1/voice/ask`;
+  let target: string;
+  try {
+    // Resolve lazily: a missing API_URL returns 502 below instead of an
+    // uncaught 500 (previously the import itself threw first).
+    target = `${getApiBaseUrl().replace(/\/+$/, '')}/api/v1/voice/ask`;
+  } catch (err) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'upstream_unreachable',
+          message: `voice API unreachable: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      },
+      { status: 502 },
+    );
+  }
   const upstream = new FormData();
   upstream.append('file', file, file.name || 'voice.webm');
   if (typeof lang === 'string') upstream.append('lang', lang);

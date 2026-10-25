@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { API_BASE_URL } from '@/lib/api';
+import { getApiBaseUrl } from '@/lib/api';
 
 /**
  * Same-origin proxy for global search: GET /api/search?q=&type=&limit=
@@ -30,13 +30,15 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const target = new URL(`${API_BASE_URL.replace(/\/+$/, '')}/api/v1/search`);
-  target.searchParams.set('q', q);
-  if (type) target.searchParams.set('type', type);
-  if (limit) target.searchParams.set('limit', limit);
-
   let upstream: Response;
   try {
+    // Resolve lazily inside the try: if API_URL is missing, this returns
+    // the 502 below instead of an uncaught 500 (previously the import
+    // itself threw before this handler could run at all).
+    const target = new URL(`${getApiBaseUrl().replace(/\/+$/, '')}/api/v1/search`);
+    target.searchParams.set('q', q);
+    if (type) target.searchParams.set('type', type);
+    if (limit) target.searchParams.set('limit', limit);
     upstream = await fetch(target, { headers: { Accept: 'application/json' } });
   } catch {
     return NextResponse.json(

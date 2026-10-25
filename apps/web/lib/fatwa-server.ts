@@ -5,7 +5,7 @@
  * (madhab comparison). Per ADR-0002 all data access goes through this
  * layer; components only render.
  */
-import { API_BASE_URL, ApiError } from './api';
+import { getApiBaseUrl, ApiError } from './api';
 import type { MadhabComparison, MadhabPosition } from './fatwa';
 
 function asString(v: unknown): string {
@@ -35,12 +35,12 @@ export async function getMadhabComparisonServer(
 ): Promise<MadhabComparison> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/v1/fatwa/compare/${encodeURIComponent(topicId)}`, {
+    res = await fetch(`${getApiBaseUrl().replace(/\/+$/, '')}/api/v1/fatwa/compare/${encodeURIComponent(topicId)}`, {
       headers: { Accept: 'application/json' },
       next: { revalidate: 300 },
     });
   } catch (err) {
-    throw new ApiError(`API unreachable at ${API_BASE_URL}: ${err instanceof Error ? err.message : String(err)}`, 0);
+    throw new ApiError(`API unreachable at ${getApiBaseUrl}: ${err instanceof Error ? err.message : String(err)}`, 0);
   }
   if (!res.ok) throw new ApiError(`GET /api/v1/fatwa/compare/${topicId} → ${res.status}`, res.status);
   const o = ((await res.json()) ?? {}) as Record<string, unknown>;

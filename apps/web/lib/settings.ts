@@ -1,4 +1,4 @@
-import { API_BASE_URL } from './api';
+import { getApiBaseUrl } from './api';
 import { safeHref } from './section-data';
 import type { Locale } from './types';
 
@@ -416,7 +416,7 @@ export function parseSiteConfig(body: unknown): SiteConfig {
 /* ------------------------------------------------------------------ */
 
 function settingsUrl(): string {
-  return `${API_BASE_URL.replace(/\/+$/, '')}${PUBLIC_SETTINGS_PATH}`;
+  return `${getApiBaseUrl().replace(/\/+$/, '')}${PUBLIC_SETTINGS_PATH}`;
 }
 
 /**
