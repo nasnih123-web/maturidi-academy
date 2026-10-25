@@ -9,14 +9,15 @@ export type { Locale };
  * client components). Per ADR-0002 all settings access goes through this
  * layer; components receive plain typed values via props.
  *
- * Revalidation contract (polish milestone, issue #3):
- * - Settings are fetched **per request** (`cache: 'no-store'`) — no Next.js
- *   fetch cache, no stale reads. A CRM change is visible on the very next
- *   website request.
+ * Revalidation contract (polish milestone, issue #3; homepage-static-cache):
+ * - Settings are fetched with `next: { revalidate: 120 }` — a CRM change
+ *   is visible on the website within ~2 minutes. The previous per-request
+ *   (`cache: 'no-store'`) fetch forced every [locale] route (layout +
+ *   homepage) into dynamic rendering: chunked HTML with `no-cache` and
+ *   no Content-Length. The cached fetch lets the homepage render as a
+ *   prerendered file with Content-Length.
  * - The response carries `version` / `updated_at` (Track A backend); the web
- *   keeps them on the parsed config for observability. Because nothing is
- *   cached, no conditional revalidation logic is needed — every request
- *   trivially sees the latest version.
+ *   keeps them on the parsed config for observability.
  * - Non-throwing: any failure (endpoint missing, network error, bad shape)
  *   yields the typed defaults, i.e. today's behavior. Production never
  *   renders fixture data and never crashes on settings.
@@ -419,15 +420,16 @@ function settingsUrl(): string {
 }
 
 /**
- * Fetch + parse the public settings. Per-request (`cache: 'no-store'`),
- * non-throwing — falls back to the typed defaults when the endpoint is
- * missing or fails, so the site keeps today's behavior.
+ * Fetch + parse the public settings. Cached with `next: { revalidate: 120 }`
+ * (see the revalidation contract above), non-throwing — falls back to the
+ * typed defaults when the endpoint is missing or fails, so the site keeps
+ * today's behavior.
  */
 export async function getSiteConfig(): Promise<SiteConfig> {
   let body: unknown = null;
   try {
     const res = await fetch(settingsUrl(), {
-      cache: 'no-store',
+      next: { revalidate: 120 },
       headers: { Accept: 'application/json' },
     });
     if (res.ok) body = (await res.json()) as unknown;
