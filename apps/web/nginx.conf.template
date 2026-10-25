@@ -17,6 +17,13 @@ http {
     # عمداً gzip خاموش: تا طول بافرشده حفظ شود و downstream با Content-Length
     # بیاید، نه chunked فشرده‌شده.
     gzip off;
+    # chunked را کلا خاموش کن: حتی اگر upstream chunked فرستاد، nginx باید
+    # پاسخ را کامل بافر کند و با Content-Length بفرستد، نه اینکه chunked را
+    # به پایین‌دست منتقل کند. بدون این خط، بافرینگ به‌تنهایی کافی نبود
+    # (دیپلوی 28bd057d با وجود nginx فعال، هنوز chunked می‌داد).
+    chunked_transfer_encoding off;
+    # سربرگ اثبات: تا در بررسی سربرگ معلوم شود nginx واقعاً در مسیر است.
+    add_header X-Web-Proxy "nginx" always;
     proxy_buffering on;
     proxy_buffer_size 16k;
     proxy_buffers 16 16k;
