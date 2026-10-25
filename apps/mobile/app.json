@@ -21,6 +21,9 @@
     "extra": {
       "defaultLocale": "fa",
       "easProjectId": "808c8ff1-d7c6-41e8-9599-2569c6a6f7cb",
+      "eas": {
+        "projectId": "808c8ff1-d7c6-41e8-9599-2569c6a6f7cb"
+      },
       "supportsRTL": true
     },
     "icon": "./assets/icon.png",
