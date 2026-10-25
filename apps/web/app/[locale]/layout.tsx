@@ -188,7 +188,7 @@ export default async function LocaleLayout({
     ambientPause: tMunajat("ambientPause"),
   };
 
-  // Platform settings (per request, no stale cache — issue #3): particles,
+  // Platform settings (cached, revalidate 120s — see lib/settings.ts): particles,
   // uploaded per-locale fonts, hero copy, homepage slots. Non-throwing;
   // missing settings → today's defaults.
   const siteConfig = await getSiteConfig();

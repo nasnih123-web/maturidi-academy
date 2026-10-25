@@ -27,6 +27,14 @@ export function generateStaticParams() {
   return [{ locale: "fa" }, { locale: "ar" }, { locale: "en" }];
 }
 
+/**
+ * ISR: the homepage is prerendered and served as a static file (with
+ * Content-Length) instead of a per-request dynamic stream. Data (home
+ * sections, settings, content surfaces) revalidates every 120 seconds, so
+ * a CRM change appears on the site within ~2 minutes.
+ */
+export const revalidate = 120;
+
 function hijriDateLabel(
   t: Awaited<ReturnType<typeof getTranslations>>,
   locale: string,
@@ -58,7 +66,7 @@ function hijriDateLabel(
  * is non-throwing and its surface renders nothing when the API has no data.
  * If the API is unreachable we render a graceful, localized error state
  * (contract §15: no mock data, never fake sections).
- * Platform settings (`platform_settings`, fetched per request via
+ * Platform settings (`platform_settings`, fetched with 120s revalidation via
  * lib/settings.ts) drive: homepage slot composition (`home.sections`),
  * hero copy (`hero.<locale>`), particles and uploaded fonts (in the
  * layout). When the settings endpoint is missing, everything falls back
