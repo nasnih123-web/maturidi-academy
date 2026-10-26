@@ -217,8 +217,13 @@ HOME_SECTIONS_SEED: list[dict] = [
 async def seed_home_sections(db: AsyncSession) -> None:
     """upsert idempotent بخش‌های خانه بر اساس key.
 
-    روی رکورد موجود: عنوان/زیرعنوان/داده/empty و sort_order به‌روز می‌شود،
-    ولی `visible` دست نخورده می‌ماند (ادمین ممکن است بخشی را پنهان کرده باشد).
+    روی رکورد موجود: عنوان/زیرعنوان/empty و sort_order به‌روز می‌شود،
+    ولی `visible` و `data` دست نخورده می‌مانند: `visible` را ادمین ممکن است
+    پنهان کرده باشد، و `data` را ادمین از پنل CRM ذخیره کرده است — بازنویسی
+    آن با مقدار spec در هر بوت، دادهٔ ذخیره‌شدهٔ بخش‌ها را پاک می‌کرد
+    (هر استقرار مجدد API سه بخش پرشده را به null برمی‌گرداند).
+    `data` فقط هنگام ساخت رکورد تازه از spec گرفته می‌شود، یا وقتی رکورد
+    موجود `data` ندارد (None) و spec مقدار پیش‌فرضی دارد.
     """
     for spec in HOME_SECTIONS_SEED:
         row = (
@@ -227,10 +232,12 @@ async def seed_home_sections(db: AsyncSession) -> None:
         if row is None:
             row = HomeSection(key=spec["key"], visible=True)
             db.add(row)
+            row.data = spec.get("data")
+        elif row.data is None and spec.get("data") is not None:
+            row.data = spec.get("data")
         row.sort_order = spec["sort_order"]
         row.title = spec["title"]
         row.subtitle = spec.get("subtitle")
-        row.data = spec.get("data")
         row.empty_title = spec.get("empty_title")
         row.empty_hint = spec.get("empty_hint")
     await db.flush()
