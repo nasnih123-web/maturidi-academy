@@ -132,6 +132,8 @@ export function HomeSectionRenderer({
                 key={section.key}
                 sectionId={id}
                 ariaLabel={title}
+                title={title}
+                subtitle={subtitle}
                 text={first ? first.title : null}
                 cite={first?.subtitle || undefined}
                 emptyTitle={emptyTitle}

@@ -207,6 +207,9 @@ img, svg { max-inline-size: 100%; }
 }
 .nav-submenu li a { display: block; padding: 0.55rem 0.8rem; }
 .nav-submenu[hidden] { display: none; }
+/* Edge items: a 12rem submenu opening toward the viewport edge would stick
+ * out (in RTL the last items sit at the left edge), so flip the last two. */
+.nav-item:nth-last-child(-n+2) .nav-submenu { inset-inline-start: auto; inset-inline-end: 0; }
 .nav-drawer-list { list-style: none; margin: 0; padding: 0; }
 .nav-drawer-sub { list-style: none; margin: 0; padding: 0 0 0.3rem; }
 .nav-drawer-sub a { font-size: 0.9rem !important; font-weight: 500 !important; padding-inline-start: 1.8rem !important; }
@@ -247,9 +250,28 @@ img, svg { max-inline-size: 100%; }
 .lang-menu a:hover { background: rgba(212, 175, 55, 0.12); color: #e5c07b; }
 .lang-menu a.on { color: #e5c07b; font-weight: 750; }
 .mobile-only { display: none; }
-@media (max-width: 1024px) {
+/* The desktop nav is a scrollable row (flex: 1 + overflow-x: auto), so it
+ * stays usable down to tablet widths; the hamburger only takes over below
+ * 768px. (Previously 1024px, which collapsed the menu on narrow desktop
+ * windows, zoomed desktops, and phone "desktop site" mode.) */
+@media (max-width: 768px) {
   .primary-nav { display: none; }
   .mobile-only { display: inline-flex; }
+}
+/* Narrow phones: the header row (brand + search + language + hamburger)
+ * measured ~440px at 390px viewport and widened the whole page (the
+ * "page zooms" symptom). Shrink the row pieces and let the brand name
+ * ellipsize instead of forcing the page wider. */
+@media (max-width: 520px) {
+  .header-inner { padding: 0.5rem 0.75rem; gap: 0.5rem; }
+  .brand { font-size: 0.92rem; min-width: 0; }
+  .brand > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .brand-mark { width: 28px; height: 28px; }
+  .brand-sub { display: none; }
+  .header-actions { gap: 0.35rem; min-width: 0; }
+  .header-search { min-width: 0; }
+  .header-search input { width: clamp(6rem, 30vw, 15rem); }
+  .lang-btn { padding-inline: 0.5rem; }
 }
 .nav-drawer { position: fixed; inset: 0; z-index: 300; display: grid; grid-template-rows: auto 1fr; background: rgba(4, 16, 13, 0.92); backdrop-filter: blur(24px); animation: drawer-in var(--dur-base) var(--ease-out); }
 @keyframes drawer-in { from { opacity: 0; transform: translateY(-8px); } }
