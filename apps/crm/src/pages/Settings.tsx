@@ -95,7 +95,8 @@ export default function Settings(): React.ReactElement {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const [values, setValues] = React.useState<SettingsMap>({});
-  const [saved, setSaved] = React.useState(false);
+  const [savedSection, setSavedSection] = React.useState<string | null>(null);
+  const [failedSection, setFailedSection] = React.useState<string | null>(null);
 
   const settingsQuery = useQuery({
     queryKey: ["platform-settings"],
@@ -103,25 +104,30 @@ export default function Settings(): React.ReactElement {
   });
 
   const saveMutation = useMutation({
-    mutationFn: (payload: SettingsMap) =>
+    mutationFn: ({ payload }: { section: string; payload: SettingsMap }) =>
       apiFetch<SettingsResponse>("/api/v1/admin/settings", {
         method: "PUT",
         body: { settings: payload },
       }),
-    onSuccess: () => {
-      // Secrets are write-only: clear local inputs, keep non-secret values.
+    onSuccess: (_data, variables) => {
+      // Secrets are write-only: clear only the saved section's secret
+      // inputs, keep everything else (including other sections' typed
+      // secrets) so each section saves independently.
+      const section = SECTIONS.find((s) => s.titleKey === variables.section);
       setValues((prev) => {
-        const next: SettingsMap = {};
-        for (const s of SECTIONS) {
-          for (const f of s.fields) {
-            if (!f.secret) next[f.key] = prev[f.key] ?? null;
-          }
+        const next: SettingsMap = { ...prev };
+        for (const f of section?.fields ?? []) {
+          if (f.secret) next[f.key] = null;
         }
         return next;
       });
-      setSaved(true);
+      setSavedSection(variables.section);
+      setFailedSection(null);
       queryClient.invalidateQueries({ queryKey: ["platform-settings"] });
-      window.setTimeout(() => setSaved(false), 3000);
+      window.setTimeout(() => setSavedSection(null), 3000);
+    },
+    onError: (_error, variables) => {
+      setFailedSection(variables.section);
     },
   });
 
@@ -139,24 +145,26 @@ export default function Settings(): React.ReactElement {
     }
   }, [settingsQuery.data]);
 
-  function handleSave(): void {
+  // Each section saves on its own: the payload contains only that
+  // section's fields, so a save never depends on (or fails because of)
+  // any other section's values.
+  function handleSaveSection(section: SectionDef): void {
     const payload: SettingsMap = {};
-    for (const s of SECTIONS) {
-      for (const f of s.fields) {
-        const v = values[f.key];
-        // Only send secrets when the operator actually typed a new value.
-        if (f.secret) {
-          if (v !== undefined && v !== null && v !== "") payload[f.key] = v;
-        } else if (v !== undefined && v !== null) {
-          // Unset fields have no DB row; sending null makes the backend
-          // reject the WHOLE save (400, all-or-nothing) and nothing
-          // persists — including freshly typed secrets. Omit them instead;
-          // clearing a field still sends "" and stores an empty string.
-          payload[f.key] = v;
-        }
+    for (const f of section.fields) {
+      const v = values[f.key];
+      // Only send secrets when the operator actually typed a new value.
+      if (f.secret) {
+        if (v !== undefined && v !== null && v !== "") payload[f.key] = v;
+      } else if (v !== undefined && v !== null) {
+        // Unset fields have no DB row; sending null makes the backend
+        // reject the WHOLE save (400, all-or-nothing) and nothing
+        // persists — including freshly typed secrets. Omit them instead;
+        // clearing a field still sends "" and stores an empty string.
+        payload[f.key] = v;
       }
     }
-    saveMutation.mutate(payload);
+    setFailedSection(null);
+    saveMutation.mutate({ section: section.titleKey, payload });
   }
 
   return (
@@ -210,25 +218,25 @@ export default function Settings(): React.ReactElement {
                   {field.secret && <span className="hint">{t("settings.secretHint")}</span>}
                 </div>
               ))}
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.75rem" }}>
+                <button
+                  type="button"
+                  className="btn-gold"
+                  onClick={() => handleSaveSection(section)}
+                  disabled={saveMutation.isPending}
+                >
+                  {saveMutation.isPending ? t("settings.saving") : t("settings.save")}
+                </button>
+                {savedSection === section.titleKey && <Badge tone="success">{t("settings.saved")}</Badge>}
+                {failedSection === section.titleKey && (
+                  <span className="form-error" style={{ marginBottom: 0 }}>
+                    {t("common.error")}
+                  </span>
+                )}
+              </div>
             </section>
           ))}
 
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <button
-              type="button"
-              className="btn-gold"
-              onClick={handleSave}
-              disabled={saveMutation.isPending}
-            >
-              {saveMutation.isPending ? t("settings.saving") : t("settings.save")}
-            </button>
-            {saved && <Badge tone="success">{t("settings.saved")}</Badge>}
-            {saveMutation.isError && (
-              <span className="form-error" style={{ marginBottom: 0 }}>
-                {t("common.error")}
-              </span>
-            )}
-          </div>
         </>
       )}
     </div>
