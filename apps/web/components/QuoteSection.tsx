@@ -8,6 +8,8 @@ import { EmptyState } from "./EmptyState";
 export function QuoteSection({
   sectionId,
   ariaLabel,
+  title,
+  subtitle,
   text,
   cite,
   emptyTitle,
@@ -15,6 +17,10 @@ export function QuoteSection({
 }: {
   sectionId: string;
   ariaLabel: string;
+  /** Visible section title (e.g. «آیهٔ روز») — previously only the
+   *  aria-label carried it, so the empty state rendered untitled. */
+  title: string;
+  subtitle?: string;
   text: string | null;
   cite?: string;
   emptyTitle: string;
@@ -22,6 +28,14 @@ export function QuoteSection({
 }) {
   return (
     <section className="home-section quote-section" aria-label={ariaLabel}>
+      {title ? (
+        <div className="section-head">
+          <div>
+            <h2 id={`${sectionId}-title`}>{title}</h2>
+            {subtitle ? <span className="section-sub">{subtitle}</span> : null}
+          </div>
+        </div>
+      ) : null}
       {text ? (
         <blockquote>
           <span id={sectionId}>{text}</span>
