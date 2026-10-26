@@ -11,7 +11,13 @@
 # ("Failed to start clamd", no clamd output anywhere in the logs), so
 # its real error was invisible. Removing LogFile makes a foreground
 # clamd log to stdout/stderr, which Railway captures.
+#
+# Build-context note: Railway builds this service from the repository
+# root (no root directory is set), so COPY source paths MUST be
+# relative to the repo root, not to this Dockerfile's directory.
+# A bare "COPY clamd.conf ..." fails the build because there is no
+# clamd.conf at the repo root.
 FROM clamav/clamav:latest
 USER root
-COPY clamd.conf /clamav/config/clamd.conf
-COPY clamd.conf /etc/clamav/clamd.conf
+COPY infra/clamav/clamd.conf /clamav/config/clamd.conf
+COPY infra/clamav/clamd.conf /etc/clamav/clamd.conf
