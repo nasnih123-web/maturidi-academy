@@ -16,7 +16,7 @@ import { useI18n } from "../lib/i18n";
  * One glance per external dependency, from GET /api/v1/admin/connections/status:
  * AI (configured? providers), SMS (configured? provider/sender), Telegram
  * (connected? which account — from the Phase-11 session), payment gateway
- * (honestly «پیکربندی نشده — فاز ۱۵»), maps (OSM + Neshan), and the five
+ * (honestly «پیکربندی نشده»), maps (OSM + Neshan), and the five
  * signing certificates (uploaded? expiry — red when < 30 days).
  *
  * Every test button calls POST /api/v1/admin/connections/test/{service}
@@ -264,7 +264,7 @@ export default function Connections(): React.ReactElement {
               <TestButton connKey="telegram" disabled={!st.telegram.connected} />
             </ServiceCard>
 
-            {/* Payment gateway — honest about Phase 15 */}
+            {/* Payment gateway — not configured */}
             <ServiceCard connKey="payment">
               <p>
                 <Badge tone="warning">{t("conn14.paymentPhase15")}</Badge>

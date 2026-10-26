@@ -24,8 +24,8 @@ import { errText } from "./library";
  *                     sender: str|null },
  *         telegram:{ connected: bool, account: str|null,   # masked phone
  *                     bot_configured: bool, channel: str|null },
- *         payment: { configured: false,                     # Phase 15
- *                     note: "درگاه پرداخت در فاز ۱۵ پیاده‌سازی می‌شود" },
+ *         payment: { configured: false,
+ *                     note: "درگاه پرداخت پیکربندی نشده است" },
  *         maps:    { osm: {available: true, note}, neshan: {configured: bool} },
  *         signing: { apple_developer: {uploaded: bool, expires_at: str|null},
  *                     google_play: {...}, cafebazaar: {...},
