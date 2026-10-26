@@ -2283,3 +2283,47 @@ button.linklike {
   flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 50%;
   background: var(--gold, #c9a227);
 }
+
+/* ─── Mobile nav drawer (≤760px) ───
+ * Below 760px the sidebar no longer sits as a permanent icon rail: it is
+ * hidden until the menu button (in the floating util-stack) opens it as an
+ * overlay drawer, so the main content gets the full phone width. The open
+ * drawer restores the full (non-mini) sidebar appearance, overriding both
+ * the ≤760px rail rules and the .mini rules above. */
+.crm-menu-btn { display: none; }
+@media (max-width: 760px) {
+  .crm-menu-btn { display: inline-flex; }
+  .crm-shell.nav-open .util-stack { z-index: 310; }
+  .crm-sidebar {
+    display: none;
+    position: fixed;
+    inset-inline-start: 0;
+    top: 0;
+    z-index: 300;
+    width: 15rem;
+    height: 100vh;
+    height: 100dvh;
+    box-shadow: 0 0 0 1px var(--x-border), 24px 0 48px rgba(0, 0, 0, 0.5);
+  }
+  .crm-sidebar.mobile-open { display: flex; width: 15rem; }
+  .crm-sidebar.mobile-open .nav-item { justify-content: flex-start; padding: 0.45rem 0.62rem; }
+  .crm-sidebar.mobile-open .nav-title,
+  .crm-sidebar.mobile-open .nav-label,
+  .crm-sidebar.mobile-open .user-chip { display: block; }
+  .crm-sidebar.mobile-open .soon { display: inline; }
+  .crm-sidebar.mobile-open .sidebar-mark { display: grid; }
+  .crm-sidebar.mobile-open .sidebar-brand > span:not(.sidebar-mark) { display: block; }
+  .crm-sidebar.mobile-open .locale-wrap { display: block; }
+  .crm-nav-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 290;
+    border: 0;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.55);
+    cursor: pointer;
+  }
+  /* Inline two-column form grids (the legacy pattern across CRM pages —
+   * MediaManager, Settings, Fatwa, LMS, …) stack to one column on phones. */
+  .crm-main [style*="1fr 1fr"] { grid-template-columns: 1fr !important; }
+}
