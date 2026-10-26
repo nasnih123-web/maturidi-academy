@@ -171,3 +171,30 @@ async def test_section_data_bad_layout_422(tc):
         headers=admin,
     )
     assert r.status_code == 422
+
+
+async def test_seed_preserves_admin_saved_section_data(tc):
+    """رگرسیون: اجرای دوبارهٔ seed نباید دادهٔ ذخیره‌شدهٔ بخش را پاک کند.
+
+    تا پیش از اصلاح، seed_home_sections در هر بوت مقدار data را با مقدار spec
+    (برای بیشتر بخش‌ها None) بازنویسی می‌کرد و هر استقرار مجدد API دادهٔ
+    بخش‌های پرشده از پنل CRM را به null برمی‌گرداند.
+    """
+    await _seed_sections(tc)
+    admin = await _make_user(tc, ("platform.settings",))
+    items = [_item(i) for i in range(1, 4)]
+    r = await tc["client"].put(
+        f"{BASE}/admin/home/sections/fresh_library/data",
+        json={"items": items, "layout": "shelf"},
+        headers=admin,
+    )
+    assert r.status_code == 200, r.text
+
+    await _seed_sections(tc)
+
+    pub = await tc["client"].get(f"{BASE}/home/sections")
+    assert pub.status_code == 200
+    sec = next(s for s in pub.json()["sections"] if s["key"] == "fresh_library")
+    assert sec["data"] is not None
+    assert len(sec["data"]["items"]) == 3
+    assert sec["data"]["items"][0]["title"]["fa"] == "نمونهٔ 1"
