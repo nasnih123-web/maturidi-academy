@@ -1015,6 +1015,8 @@
     "demoNote": "جميع البيانات أدناه تجريبية (lib/demo-fixtures.ts) وليست محتوى حقيقيًا.",
     "statOverall": "التقدّم العام",
     "courseQuizAvg": "متوسط الاختبارات",
+    "coursesEmpty": "لا توجد دورات معلنة حاليًا.",
+    "coursesTitle": "الدورات",
     "reasonNextIncomplete": "مواصلة درسك غير المكتمل",
     "reasonNextLevel": "خطوتك التالية في المستوى",
     "inProgressBadge": "قيد الدراسة",

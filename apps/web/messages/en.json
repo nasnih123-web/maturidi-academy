@@ -1015,6 +1015,8 @@
     "demoNote": "All data below is fixture data (lib/demo-fixtures.ts), not real content.",
     "statOverall": "Overall progress",
     "courseQuizAvg": "Quiz avg",
+    "coursesEmpty": "No courses announced right now.",
+    "coursesTitle": "Courses",
     "reasonNextIncomplete": "Continue your unfinished lesson",
     "reasonNextLevel": "Your next step up",
     "inProgressBadge": "In progress",
