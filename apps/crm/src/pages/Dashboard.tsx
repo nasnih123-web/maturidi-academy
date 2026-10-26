@@ -133,7 +133,11 @@ export function DashboardLayout(): React.ReactElement {
   const { user, logout, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = React.useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [cmdOpen, setCmdOpen] = React.useState(false);
+  /* The mobile drawer always renders expanded, even when the desktop
+   * sidebar is collapsed — otherwise it would show icons only. */
+  const expanded = !collapsed || mobileNavOpen;
   const [logoOk, setLogoOk] = React.useState(true);
   const { sound, toggle: toggleSound } = useSoundToggle();
   const brandLogo = useBrandLogo();
@@ -180,11 +184,11 @@ export function DashboardLayout(): React.ReactElement {
   );
 
   return (
-    <div className="crm-shell">
+    <div className={`crm-shell${mobileNavOpen ? " nav-open" : ""}`}>
       {/* Subtle parallax particle layer behind the whole shell (config-driven). */}
       <ParticleField config={particles} density={0.45} className="crm-shell-particles" />
 
-      <aside className={`crm-sidebar${collapsed ? " mini" : ""}`}>
+      <aside className={`crm-sidebar${collapsed ? " mini" : ""}${mobileNavOpen ? " mobile-open" : ""}`}>
         <div className="sidebar-brand">
           <span className="sidebar-mark" aria-hidden="true">
             {logoOk ? (
@@ -198,7 +202,7 @@ export function DashboardLayout(): React.ReactElement {
               t("app.mark")
             )}
           </span>
-          {!collapsed && (
+          {expanded && (
             <span>
               <strong>{t("app.name")}</strong>
               <span>{t("app.subtitle")}</span>
@@ -208,7 +212,7 @@ export function DashboardLayout(): React.ReactElement {
 
         {visibleItems.map((group) => (
           <nav key={group.groupKey} className="nav-group" aria-label={t(group.groupKey)}>
-            {!collapsed && <p className="nav-title">{t(group.groupKey)}</p>}
+            {expanded && <p className="nav-title">{t(group.groupKey)}</p>}
             {group.items.map((item) => (
               <NavLink
                 key={item.to}
@@ -216,11 +220,12 @@ export function DashboardLayout(): React.ReactElement {
                 end={item.to === "/"}
                 className={({ isActive }) => `nav-item${isActive ? " on" : ""}`}
                 title={t(item.labelKey)}
+                onClick={() => setMobileNavOpen(false)}
               >
                 <span className="nav-ico">
                   <NavIcon d={item.icon} />
                 </span>
-                {!collapsed && <span className="nav-label">{t(item.labelKey)}</span>}
+                {expanded && <span className="nav-label">{t(item.labelKey)}</span>}
               </NavLink>
             ))}
           </nav>
@@ -228,9 +233,7 @@ export function DashboardLayout(): React.ReactElement {
 
         <div className="sidebar-foot">
           <div className="locale-wrap">
-            {collapsed ? (
-              <LocaleCycleButton />
-            ) : (
+            {expanded ? (
               <select
                 className="input"
                 value={locale}
@@ -243,14 +246,35 @@ export function DashboardLayout(): React.ReactElement {
                   </option>
                 ))}
               </select>
+            ) : (
+              <LocaleCycleButton />
             )}
           </div>
-          {!collapsed && <div className="user-chip">{user?.full_name}</div>}
+          {expanded && <div className="user-chip">{user?.full_name}</div>}
         </div>
       </aside>
 
+      {mobileNavOpen && (
+        <button
+          type="button"
+          className="crm-nav-backdrop"
+          aria-label={t("nav.collapse")}
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
       {/* Utility icons detached from the nav flow: a floating action stack. */}
       <div className="util-stack" role="toolbar" aria-label={t("nav.commandBar")}>
+        <button
+          type="button"
+          className="icon-mini crm-menu-btn"
+          onClick={() => setMobileNavOpen((v) => !v)}
+          aria-label={mobileNavOpen ? t("nav.collapse") : t("nav.expand")}
+          aria-expanded={mobileNavOpen}
+          title={mobileNavOpen ? t("nav.collapse") : t("nav.expand")}
+        >
+          ☰
+        </button>
         <button
           type="button"
           className={`icon-mini${sound ? " on" : ""}`}
