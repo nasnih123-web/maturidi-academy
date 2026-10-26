@@ -1,7 +1,9 @@
 import React from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Button } from "@maturidi/ui-web";
 import { ApiError } from "../lib/api";
 import { LOCALES, useI18n, type Locale } from "../lib/i18n";
+import { fetchHomeSections, putSectionData } from "../lib/homeSections";
 import {
   DEFAULT_PARTICLES,
   EMPTY_HERO,
@@ -25,6 +27,8 @@ import { ParticleField } from "../components/ParticleField";
  *   1. Particles & effects → `particles` {enabled, count, speed, parallax, lines}
  *   2. Below-hero sections  → `home.sections` [{id, variant, enabled}]
  *   3. Hero text           → `hero.fa|ar|en` {title, subtitle, primary_cta, secondary_cta}
+ * Plus a fourth area backed by HomeSection.data (admin endpoint, not settings):
+ *   4. Section content     → PUT /api/v1/admin/home/sections/{key}/data {items, layout?}
  *
  * This page only renders and binds forms; parsing/defaults/transport live in
  * lib/appearance.ts (ADR-001).
@@ -643,6 +647,127 @@ function HeroPanel(): React.ReactElement {
 }
 
 /* ------------------------------------------------------------------ */
+/* Section data (HomeSection.data — items shown on the homepage)       */
+/* ------------------------------------------------------------------ */
+
+function SectionDataPanel(): React.ReactElement {
+  const { t } = useI18n();
+  const queryClient = useQueryClient();
+  const sectionsQuery = useQuery({
+    queryKey: ["home-sections-data"],
+    queryFn: fetchHomeSections,
+    retry: false,
+  });
+  const [selectedKey, setSelectedKey] = React.useState("");
+  const [text, setText] = React.useState("");
+  const [jsonError, setJsonError] = React.useState("");
+  const [savedTick, setSavedTick] = React.useState(0);
+
+  const sections = sectionsQuery.data ?? [];
+  const effectiveKey = selectedKey || sections[0]?.key || "";
+
+  React.useEffect(() => {
+    if (!effectiveKey) return;
+    const current = sections.find((s) => s.key === effectiveKey);
+    setText(JSON.stringify(current?.data ?? { items: [] }, null, 2));
+    setJsonError("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveKey]);
+
+  const writer = useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      putSectionData(effectiveKey, data),
+    onSuccess: () => {
+      setSavedTick((n) => n + 1);
+      void queryClient.invalidateQueries({ queryKey: ["home-sections-data"] });
+    },
+  });
+
+  const handleSave = (): void => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      setJsonError(t("appearance.sectionDataInvalidJson"));
+      return;
+    }
+    if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { items?: unknown }).items)) {
+      setJsonError(t("appearance.sectionDataInvalidJson"));
+      return;
+    }
+    setJsonError("");
+    writer.mutate(parsed as Record<string, unknown>);
+  };
+
+  return (
+    <section className="panel" aria-label={t("appearance.sectionDataTitle")}>
+      <div className="panel-head">
+        <h2>{t("appearance.sectionDataTitle")}</h2>
+        <span className="panel-hint">{t("appearance.sectionDataHint")}</span>
+      </div>
+
+      {sectionsQuery.isLoading && <div className="empty">{t("common.loading")}</div>}
+      {sectionsQuery.isError && (
+        <div>
+          <p>{t("common.error")}</p>
+          <Button size="sm" variant="secondary" onClick={() => void sectionsQuery.refetch()}>
+            {t("common.retry")}
+          </Button>
+        </div>
+      )}
+      {sectionsQuery.data && (
+        <div>
+          <label style={{ display: "block", marginBottom: "8px" }}>
+            <span>{t("appearance.sectionDataSelect")}</span>{" "}
+            <select
+              value={effectiveKey}
+              onChange={(e) => setSelectedKey(e.target.value)}
+              aria-label={t("appearance.sectionDataSelect")}
+            >
+              {sections.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.key}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: "block", marginBottom: "8px" }}>
+            <span>{t("appearance.sectionDataJson")}</span>
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              dir="ltr"
+              rows={16}
+              style={{ display: "block", width: "100%", fontFamily: "monospace", marginTop: "4px" }}
+            />
+          </label>
+
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={handleSave}
+              disabled={writer.isPending || !effectiveKey}
+            >
+              {writer.isPending ? t("appearance.saving") : t("appearance.save")}
+            </button>
+            {savedTick > 0 && !writer.isError && !jsonError && (
+              <Badge tone="success">{t("appearance.sectionDataSaved")}</Badge>
+            )}
+            {(writer.isError || jsonError) && (
+              <span className="form-error" style={{ marginBottom: 0 }}>
+                {jsonError || errText(writer.error)}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 
 export default function Appearance(): React.ReactElement {
   const { t } = useI18n();
@@ -652,6 +777,7 @@ export default function Appearance(): React.ReactElement {
       <ParticlesPanel />
       <SectionsPanel />
       <HeroPanel />
+      <SectionDataPanel />
     </div>
   );
 }
