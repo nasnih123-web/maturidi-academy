@@ -112,6 +112,29 @@ async def get_home_sections(db: AsyncSession) -> HomeOut:
     return HomeOut(theme=await _load_theme_overrides(db), sections=sections)
 
 
+async def set_section_data(
+    db: AsyncSession, key: str, items: list[dict], layout: str | None
+) -> dict:
+    """Replace a HomeSection's data payload (admin-only, via admin_router).
+
+    Only the `data` column is written; key/sort_order/visible/title/subtitle
+    are untouched. Unknown key → 404. The payload shape mirrors the web's
+    section-data contract: {"items": [...], "layout"?: <known layout>}.
+    """
+    row = (
+        await db.execute(select(HomeSection).where(HomeSection.key == key))
+    ).scalar_one_or_none()
+    if row is None:
+        raise APIError(404, "section_not_found", "بخش خانه یافت نشد")
+    data: dict = {"items": items}
+    if layout is not None:
+        data["layout"] = layout
+    row.data = data
+    db.add(row)
+    await db.commit()
+    return {"key": row.key, "data": row.data}
+
+
 async def _load_theme_overrides(db: AsyncSession) -> ThemeOverrides | None:
     """خواندن کلیدهای theme.* از platform_settings (مقادیر رمزگشایی‌شده via get_setting).
 

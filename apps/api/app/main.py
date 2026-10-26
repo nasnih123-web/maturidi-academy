@@ -56,6 +56,7 @@ from app.modules.finance.router import (
     admin_finance_router,
     finance_router,
 )
+from app.modules.home.admin_router import router as home_admin_router
 from app.modules.home.router import router as home_router
 from app.modules.library.router import (
     admin_library_router,
@@ -223,6 +224,7 @@ app.include_router(admin_roles_router)
 app.include_router(content_router)
 app.include_router(cms_router)
 app.include_router(home_router)
+app.include_router(home_admin_router)
 app.include_router(quran_router)
 app.include_router(tasbih_router)
 app.include_router(adhan_router)
