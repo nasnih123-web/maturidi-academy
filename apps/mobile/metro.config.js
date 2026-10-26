@@ -27,3 +27,26 @@ config.resolver.extraNodeModules = {
 };
 
 module.exports = config;
+
+// The Expo/Metro toolchain applies tsconfig "paths" during bundling, and this
+// app's tsconfig maps "react"/"react-native" to TYPE-ONLY targets
+// (@types/react, react-native/types_generated) so tsc can typecheck the
+// shared packages under ../../packages. Those targets are not runnable code,
+// so Metro must never resolve the bare specifiers through them. Intercept the
+// exact specifiers first and resolve them to the real runtime packages;
+// everything else (including "react/jsx-runtime" and "react-native/*")
+// delegates to the default resolver untouched.
+const defaultResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === "react" || moduleName === "react-native") {
+    return context.resolveRequest(
+      context,
+      path.resolve(projectRoot, "node_modules", moduleName),
+      platform
+    );
+  }
+  if (typeof defaultResolveRequest === "function") {
+    return defaultResolveRequest(context, moduleName, platform);
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
