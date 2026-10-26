@@ -48,7 +48,7 @@ export function errText(err: unknown): string {
 export type LibraryKind = "video" | "video_360" | "pdf" | "audio" | "mindmap";
 /** The shared Phase-0 workflow state machine (spec: no separate implementation). */
 export type LibraryWorkflow = WorkflowStatus;
-export type LibraryVisibility = "public" | "members" | "scholars_only" | "private";
+export type LibraryVisibility = "public" | "registered" | "scholars_only";
 export type AiScope = "fatwa" | "assistant" | "quiz" | "verification" | "semantic_search";
 export type TranscriptStatus = "pending" | "processing" | "done" | "failed";
 export type DownloadPolicy = "allowed" | "watermarked" | "disabled";
@@ -66,9 +66,8 @@ export const LIBRARY_WORKFLOWS: LibraryWorkflow[] = [
 ];
 export const LIBRARY_VISIBILITIES: LibraryVisibility[] = [
   "public",
-  "members",
+  "registered",
   "scholars_only",
-  "private",
 ];
 export const AI_SCOPES: AiScope[] = ["fatwa", "assistant", "quiz", "verification", "semantic_search"];
 export const DOWNLOAD_POLICIES: DownloadPolicy[] = ["allowed", "watermarked", "disabled"];
@@ -233,7 +232,7 @@ function parseWorkflow(v: unknown): LibraryWorkflow {
 function parseVisibility(v: unknown): LibraryVisibility {
   return (LIBRARY_VISIBILITIES as string[]).includes(typeof v === "string" ? v : "")
     ? (v as LibraryVisibility)
-    : "private";
+    : "registered";
 }
 
 function parseAiScopes(v: unknown): AiScope[] {
@@ -247,9 +246,17 @@ function parseTranscriptStatus(v: unknown): TranscriptStatus {
 }
 
 function parseDownloadPolicy(v: unknown): DownloadPolicy {
-  return (DOWNLOAD_POLICIES as string[]).includes(typeof v === "string" ? v : "")
-    ? (v as DownloadPolicy)
-    : "disabled";
+  if (typeof v === "string" && (DOWNLOAD_POLICIES as string[]).includes(v)) {
+    return v as DownloadPolicy;
+  }
+  // The API stores download_policy as a JSON dict (see toApiMetadata); map it back.
+  if (v && typeof v === "object") {
+    const mode = (v as Record<string, unknown>).mode;
+    if (typeof mode === "string" && (DOWNLOAD_POLICIES as string[]).includes(mode)) {
+      return mode as DownloadPolicy;
+    }
+  }
+  return "disabled";
 }
 
 function parseTelegramPolicy(v: unknown): TelegramPolicy {
@@ -530,7 +537,7 @@ export function defaultMetadata(kind: LibraryKind): LibraryMetadata {
     description: { ...EMPTY_L10N },
     scholar_id: null,
     topic_tags: [],
-    visibility: "private",
+    visibility: "registered",
     download_policy: "disabled",
     telegram_policy: "never",
     placements: [],
@@ -565,6 +572,29 @@ export function metadataFromItem(item: LibraryItem): LibraryMetadata {
   };
 }
 
+/**
+ * Translate CRM metadata to the API wire format (LibraryItemMetaIn /
+ * LibraryItemUpdateIn in apps/api/app/modules/library/schemas.py). The API
+ * accepts visibility only as "public" | "registered" | "scholars_only"
+ * (LibraryVisibility is aligned to that literal) and download_policy only as
+ * a JSON dict (or null) — the CRM keeps the friendlier string policy in UI
+ * state, so the translation lives here. Every write path must use this
+ * serializer, never the raw LibraryMetadata object: previously the raw
+ * defaults "private"/"disabled" were sent verbatim and the API rejected every
+ * create with 422.
+ */
+export function toApiMetadata(metadata: LibraryMetadata): Record<string, unknown> {
+  return {
+    ...metadata,
+    download_policy:
+      metadata.download_policy === "allowed"
+        ? { mode: "allowed" }
+        : metadata.download_policy === "watermarked"
+          ? { mode: "watermarked" }
+          : null,
+  };
+}
+
 /** Build the multipart body for create (file + metadata JSON). */
 export function buildCreateForm(
   file: File,
@@ -573,7 +603,7 @@ export function buildCreateForm(
 ): FormData {
   const form = new FormData();
   form.append("file", file, file.name);
-  form.append("metadata", JSON.stringify(metadata));
+  form.append("metadata", JSON.stringify(toApiMetadata(metadata)));
   if (cover) form.append("cover", cover, cover.name);
   return form;
 }
@@ -613,7 +643,7 @@ export function useUpdateLibraryItem() {
   return useLibraryMutation(({ id, metadata }: UpdateLibraryItemArgs) =>
     apiFetch<unknown>(`${BASE}/items/${encodeURIComponent(id)}`, {
       method: "PUT",
-      body: metadata,
+      body: toApiMetadata(metadata),
     }).then((raw) => {
       const item = parseLibraryItem(raw);
       if (!item) throw new Error("malformed library item");
@@ -634,7 +664,7 @@ export async function putLibraryItemMultipart(
   cover: File | null,
 ): Promise<LibraryItem> {
   const form = new FormData();
-  form.append("metadata", JSON.stringify(metadata));
+  form.append("metadata", JSON.stringify(toApiMetadata(metadata)));
   if (file) form.append("file", file, file.name);
   if (cover) form.append("cover", cover, cover.name);
   const token = getAccessToken();
