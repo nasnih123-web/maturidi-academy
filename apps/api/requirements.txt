@@ -2,15 +2,15 @@
 # Phase-1 (v1.1.0 remediation): کل استک به Python 3.14 ارتقا یافت؛ fastapi از
 # 0.115.6 به 0.156.4 رفت تا starlette از 0.41.3 (دارای ۷ advisory) به 1.9.0
 # برسد و هر ۸ ignore بخش Dependency scan در CI حذف شود (pip-audit: ۰ یافته).
-fastapi==0.156.4
+fastapi==0.161.1
 uvicorn[standard]==0.54.0
 pydantic==2.14.1
 pydantic-settings==2.16.1
-sqlalchemy[asyncio]==2.1.5
+sqlalchemy[asyncio]==2.1.6
 # greenlet وابستگی واقعی SQLAlchemy asyncio است؛ قبلاً به‌صورت transitive
 # می‌آمد و در استک جدید دیگر نمی‌آید — صریح پین شد.
 greenlet==3.5.6
-alembic==1.20.0
+alembic==1.20.1
 asyncpg==0.32.0
 # pgvector (B-03 — ADR-0026): نوع Vector برای ستون embedding_vec روی
 # PostgreSQL؛ روی SQLite ستون به‌صورت نوع تعریف‌شدهٔ کاربر ساخته می‌شود
@@ -38,7 +38,7 @@ pytest-asyncio==1.4.0
 # لینتر CI — پین‌شده: شمارش خطاهای ruff به نسخه حساس است (از 0.16 قواعد
 # پیش‌فرض گسترش یافت)؛ baseline در tools/ruff_baseline.json فقط با همین
 # نسخه معنا دارد. کانفیگ: apps/api/ruff.toml
-ruff==0.17.1
+ruff==0.17.2
 # تایپ‌چکر CI — پین‌شده به همان نسخه‌ای که بدهی تایپ با آن صفر شد
 # (mypy.ini در apps/api؛ گام Typecheck در CI blocking است).
 # types-reportlab: استاب‌های reportlab برای mypy (خود reportlab استاب ندارد).
@@ -48,14 +48,14 @@ email-validator==2.3.0
 # فاز ۴ — تقویم اسلامی (انتزاع تاریخ هجری در app/core/hijri.py)
 hijri-converter==2.3.2.post1
 # فاز ۸ — LMS: گواهی PDF سه‌زبانه (reportlab) + شکل‌دهی درست RTL (عربی/فارسی)
-reportlab==5.0.1
+reportlab==5.1.0
 arabic-reshaper==3.0.1
 python-bidi==0.6.12
 # فاز ۱۱ — تلگرام دوطرفه (بات + Telethon)
 python-telegram-bot==22.8
 telethon==1.45.0
 # فاز ۲ — رصدپذیری (init در main.py فقط وقتی env تنظیم شده باشد)
-sentry-sdk==2.72.0
+sentry-sdk==2.73.0
 opentelemetry-sdk==1.45.1
 opentelemetry-exporter-otlp==1.45.1
 # Track 2 / §۱۲ — کلاینت S3-سازگار برای S3StorageProvider (MinIO)؛ ایمپورت lazy است
@@ -69,4 +69,4 @@ fakeredis==2.40.0
 # CI تمیز آن را ندارد و تست با ModuleNotFoundError قرمز شد (ران ۱۸۶:
 # ‏۱ failed / 810 passed). صریح پین شد تا محیط تست همان چیزی باشد که
 # توسعه می‌بیند.
-jsonschema==4.25.1
+jsonschema==4.26.0
