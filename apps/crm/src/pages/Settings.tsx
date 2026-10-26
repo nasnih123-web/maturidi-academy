@@ -147,8 +147,12 @@ export default function Settings(): React.ReactElement {
         // Only send secrets when the operator actually typed a new value.
         if (f.secret) {
           if (v !== undefined && v !== null && v !== "") payload[f.key] = v;
-        } else {
-          payload[f.key] = v ?? null;
+        } else if (v !== undefined && v !== null) {
+          // Unset fields have no DB row; sending null makes the backend
+          // reject the WHOLE save (400, all-or-nothing) and nothing
+          // persists — including freshly typed secrets. Omit them instead;
+          // clearing a field still sends "" and stores an empty string.
+          payload[f.key] = v;
         }
       }
     }
