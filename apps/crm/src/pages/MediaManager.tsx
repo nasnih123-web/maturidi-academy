@@ -226,7 +226,7 @@ function KindBadge({ kind }: { kind: LibraryKind }): React.ReactElement {
 
 function VisibilityBadge({ v }: { v: LibraryVisibility }): React.ReactElement {
   const { t } = useI18n();
-  const tone = v === "public" ? "success" : v === "private" ? "neutral" : "warning";
+  const tone = v === "public" ? "success" : v === "registered" ? "neutral" : "warning";
   return <Badge tone={tone}>{t(`media.vis_${v}`)}</Badge>;
 }
 
