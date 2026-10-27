@@ -78,10 +78,10 @@ async def get_status(db: AsyncSession) -> dict:
         "channel": await get_setting(db, "telegram.channel"),
     }
 
-    # پرداخت — فاز ۱۵؛ صادقانه «پیکربندی نشده»
+    # پرداخت؛ صادقانه «پیکربندی نشده»
     out["payment"] = {
         "configured": False,
-        "note": "درگاه پرداخت در فاز ۱۵ پیاده‌سازی می‌شود",
+        "note": "درگاه پرداخت پیکربندی نشده است",
     }
 
     # نقشه
@@ -177,9 +177,9 @@ async def _test_telegram(db: AsyncSession, params: dict) -> dict:
 
 
 async def _test_payment(db: AsyncSession, params: dict) -> dict:
-    """تراکنش آزمایشی — صادقانه: تا فاز ۱۵ در دسترس نیست."""
+    """تراکنش آزمایشی — صادقانه: در دسترس نیست (درگاه پیکربندی نشده است)."""
     return {"ok": False, "error": "payment_not_available",
-            "detail": "درگاه پرداخت در فاز ۱۵ پیاده‌سازی می‌شود"}
+            "detail": "درگاه پرداخت پیکربندی نشده است"}
 
 
 async def _test_maps(db: AsyncSession, params: dict) -> dict:

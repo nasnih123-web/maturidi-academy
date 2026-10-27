@@ -268,6 +268,11 @@ function parseGatewayStatus(raw: unknown): GatewayStatus {
 }
 
 function itemsOf<T>(raw: unknown, parse: (v: unknown) => T): T[] {
+  // The admin finance list endpoints return a bare array (e.g. GET
+  // /campaigns -> list[CampaignOut]); other lists return {items, ...}.
+  // Accept both: previously a bare array was read as {items: undefined}
+  // and every list rendered empty even when rows existed.
+  if (Array.isArray(raw)) return raw.map(parse);
   const r = (raw ?? {}) as Record<string, unknown>;
   const items = Array.isArray(r.items) ? r.items : [];
   return items.map(parse);

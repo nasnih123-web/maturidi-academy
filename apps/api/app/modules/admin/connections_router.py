@@ -42,7 +42,7 @@ async def test_connection(
 ):
     """«تست تماس» یک سرویس — نتیجه در audit ثبت می‌شود؛ secret لاگ نمی‌شود.
 
-    payment صادقانه «تا فاز ۱۵ در دسترس نیست» برمی‌گرداند.
+    payment صادقانه «در دسترس نیست» برمی‌گرداند.
     """
     ip, ua = _client(request)
     return await svc.test_service(
