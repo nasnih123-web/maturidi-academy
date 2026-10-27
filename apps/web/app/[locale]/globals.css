@@ -228,7 +228,15 @@ img, svg { max-inline-size: 100%; }
   background: rgba(7, 35, 28, 0.5); color: hsl(var(--text-primary)); font: inherit; font-size: 0.85rem;
 }
 [dir="ltr"] .header-search input { padding: 0.45rem 0.9rem 0.45rem 2.4rem; }
-.header-search input::placeholder { color: hsl(var(--text-muted)); }
+/* Placeholder was --text-muted (55% lightness, and browsers may render
+ * placeholders at reduced opacity by default), which read as faint light
+ * gray on the dark-green pill. --text-secondary (74% lightness in the
+ * dark theme) is clearly more readable yet still visibly dimmer than
+ * typed text (--text-primary, 92%), so placeholder vs. input stays
+ * distinguishable. Color-only rule: identical in RTL and LTR; the
+ * existing [dir="ltr"] padding override is untouched. Hero search
+ * (.mihrab-search) is a separate rule and is not changed. */
+.header-search input::placeholder { color: hsl(var(--text-secondary)); opacity: 1; }
 /* The icon sits on the padded side (inline-start): previously it was at
  * inline-end while the 2.4rem padding was on the opposite side, so typed
  * text running toward the icon slid underneath it. */
