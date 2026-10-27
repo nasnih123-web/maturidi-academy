@@ -15,7 +15,7 @@ import { AudioPlayerProvider, type MiniPlayerLabels } from "@/lib/audio-player-c
 import { getHomeSections } from "@/lib/api";
 import { getSiteConfig, uploadedFontCss, type Locale } from "@/lib/settings";
 import { getNavItems } from "@/lib/content";
-import { finalizeNav, getCmsNav, getNavColumns, type NavEntryFinal } from "@/lib/section-data";
+import { finalizeNav, getCmsNav, getFooterBrand, getNavColumns, type NavEntryFinal } from "@/lib/section-data";
 import "./globals.css";
 // Design tokens: `--ma-*` system (source of truth for platform_settings
 // theme overrides) + the imperial semantic system (`turbo.css`, imported
@@ -138,20 +138,26 @@ export default async function LocaleLayout({
   }
 
   const footerColumns: FooterColumn[] = tFooter.raw("columns") as FooterColumn[];
-  // Footer nav columns are API-driven (footer section `data.columns`);
-  // the localized static columns are the fallback when the API has none.
+  // Footer is CRM-driven (footer section `data.columns` + `data.brand`);
+  // the localized static columns/messages are the fallback whenever the
+  // API has none, so a null/empty footer payload never breaks the footer.
   let apiColumns: FooterColumn[] = [];
+  let apiBrand: { tagline: string | null; rights: string | null } | null = null;
   try {
     const res = await getHomeSections();
     const footerSection = res.sections.find((s) => s.key === "footer" && s.visible !== false);
-    if (footerSection) apiColumns = getNavColumns(footerSection.data, locale);
+    if (footerSection) {
+      apiColumns = getNavColumns(footerSection.data, locale);
+      apiBrand = getFooterBrand(footerSection.data, locale);
+    }
   } catch {
     apiColumns = [];
+    apiBrand = null;
   }
   const footerLabels: FooterLabels = {
     brandName: tRoot("appName"),
-    tagline: tFooter("tagline"),
-    rights: tFooter("rights", { year: String(new Date().getFullYear()) }),
+    tagline: apiBrand?.tagline ?? tFooter("tagline"),
+    rights: apiBrand?.rights ?? tFooter("rights", { year: String(new Date().getFullYear()) }),
     navFallback: footerColumns,
   };
 

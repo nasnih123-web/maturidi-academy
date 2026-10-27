@@ -137,6 +137,27 @@ export function getStatusLine(data: unknown, locale: string): string | null {
   return line || null;
 }
 
+/** Footer brand texts from `data.brand`, localized. Each field is
+ * optional: a missing/empty field returns null for that field and the
+ * caller falls back to the built-in messages text. `{year}` in `rights`
+ * is replaced with the current year (same convention as the messages
+ * string). Columns themselves come from `getNavColumns` below. */
+export interface FooterBrandView {
+  tagline: string | null;
+  rights: string | null;
+}
+
+export function getFooterBrand(data: unknown, locale: string): FooterBrandView | null {
+  if (!isRecord(data) || !isRecord(data.brand)) return null;
+  const tagline = textOf(data.brand.tagline, locale) || null;
+  const rawRights = textOf(data.brand.rights, locale) || null;
+  const rights = rawRights
+    ? rawRights.split('{year}').join(String(new Date().getFullYear()))
+    : null;
+  if (!tagline && !rights) return null;
+  return { tagline, rights };
+}
+
 /** data.columns → footer nav columns. */
 export function getNavColumns(data: unknown, locale: string): NavColumn[] {
   if (!isRecord(data) || !Array.isArray(data.columns)) return [];
