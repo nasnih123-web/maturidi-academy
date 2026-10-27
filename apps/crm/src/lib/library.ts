@@ -38,7 +38,16 @@ export function errText(err: unknown): string {
   if (err instanceof ApiError) {
     return err.message || `HTTP ${err.status}`;
   }
-  return err instanceof Error ? err.message : String(err);
+  const message = err instanceof Error ? err.message : String(err);
+  if (
+    message === "Failed to fetch" ||
+    message === "NetworkError when attempting to fetch resource." ||
+    message === "Load failed" ||
+    message === "Network request failed"
+  ) {
+    return "ارتباط با سرور برقرار نشد؛ اتصال اینترنت را بررسی کنید و دوباره تلاش کنید";
+  }
+  return message;
 }
 
 /* ------------------------------------------------------------------ */
