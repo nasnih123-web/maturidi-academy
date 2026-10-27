@@ -700,6 +700,71 @@ async def test_telegram_connect_invalid_code_maps_to_422(tc):
     assert r.json()["error"]["code"] == "bad_code"
 
 
+async def test_telegram_connect_reuses_pending_session(tc):
+    """قدم تأیید باید با همان نشست قدم درخواست ساخته شود، نه کلاینت تازه."""
+    from app.core.platform_settings import get_setting
+
+    admin = await _make_user(tc, ("telegram.manage",))
+    client = tc["client"]
+    await _set_settings(tc, {"telegram.api_id": "123456",
+                             "telegram.api_hash": "fakehash"})
+    fake = FakeMtprotoClient(session_str="PENDINGSESSIONDATA")
+    created: list = []
+
+    def factory(s, i, h):
+        created.append(s)
+        return fake
+
+    set_client_factory(factory)
+
+    r = await client.post(f"{BASE}/telegram/connect/request-code",
+                          json={"phone": "+989123456789"}, headers=admin)
+    assert r.status_code == 200, r.text
+    assert created == [None]
+    async with tc["maker"]() as db:
+        assert await get_setting(
+            db, "telegram.pending_session") == "PENDINGSESSIONDATA"
+
+    r = await client.post(
+        f"{BASE}/telegram/connect/confirm-code",
+        json={"phone": "+989123456789", "code": "12345"}, headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["connected"] is True
+    assert created == [None, "PENDINGSESSIONDATA"]
+    async with tc["maker"]() as db:
+        assert await get_setting(db, "telegram.pending_session") is None
+
+
+async def test_telegram_connect_confirm_without_pending_session_falls_back(tc):
+    """pending ساخته‌شده با نسخهٔ قدیمی (بدون نشست) با کلاینت تازه تأیید می‌شود."""
+    from datetime import UTC, datetime, timedelta
+
+    admin = await _make_user(tc, ("telegram.manage",))
+    client = tc["client"]
+    expires = (datetime.now(UTC)
+               + timedelta(seconds=600)).isoformat()
+    await _set_settings(tc, {"telegram.api_id": "123456",
+                             "telegram.api_hash": "fakehash",
+                             "telegram.pending_phone": "+989123456789",
+                             "telegram.pending_phone_code_hash": "HASH123",
+                             "telegram.pending_expires_at": expires})
+    fake = FakeMtprotoClient()
+    created: list = []
+
+    def factory(s, i, h):
+        created.append(s)
+        return fake
+
+    set_client_factory(factory)
+
+    r = await client.post(
+        f"{BASE}/telegram/connect/confirm-code",
+        json={"phone": "+989123456789", "code": "12345"}, headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["connected"] is True
+    assert created == [None]
+
+
 # ---------------------------------------------------------------------------
 # ۶) درون‌ریزی: in_review، flood-wait، هرگز auto-publish
 # ---------------------------------------------------------------------------

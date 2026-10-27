@@ -42,6 +42,7 @@ SETTING_DEFS: dict[str, dict] = {
     "telegram.pending_phone": {"type": "secret", "sensitive": True, "label": "شمارهٔ در انتظار تأیید کد (داخلی)"},
     "telegram.pending_phone_code_hash": {"type": "secret", "sensitive": True, "label": "هش کد ورود تلگرام (داخلی)"},
     "telegram.pending_expires_at": {"type": "string", "sensitive": False, "label": "انقضای کد ورود (ISO8601 — داخلی)"},
+    "telegram.pending_session": {"type": "secret", "sensitive": True, "label": "نشست پیش‌ازورود تلگرام (داخلی — تأیید کد باید با همان اتصال انجام شود)"},
     "payment.zarinpal_key": {"type": "secret", "sensitive": True, "label": "کلید زرین‌پال"},
     "payment.idpay_key": {"type": "secret", "sensitive": True, "label": "کلید آیدی‌پی"},
     # --- فاز ۱۵: مالی و درگاه پرداخت (ADR-0013) ---
