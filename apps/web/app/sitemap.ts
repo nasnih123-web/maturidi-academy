@@ -1,13 +1,15 @@
 import type { MetadataRoute } from "next";
 
+import { getApiBaseUrl } from "../lib/api";
+
 async function publishedArticleSlugs(): Promise<string[]> {
-  const api = (
-    process.env.API_URL ??
-    process.env.NEXT_PUBLIC_API_URL ??
-    "http://localhost:8000"
-  ).replace(/\/+$/, "");
   const slugs: string[] = [];
   try {
+    // مثل بقیهٔ کد سروری وب: آدرس فقط از getApiBaseUrl می‌آید — در
+    // production بدون API_URL صریح بلند خطا می‌دهد، نه fallback خاموش
+    // به localhost (قرارداد §۱۳؛ همان دلیلی که تست
+    // test_web_no_silent_localhost_fallbacks را قرمز کرده بود).
+    const api = getApiBaseUrl().replace(/\/+$/, "");
     let page = 1;
     let pages = 1;
     while (page <= pages) {
