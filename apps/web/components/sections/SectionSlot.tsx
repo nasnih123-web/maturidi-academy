@@ -14,7 +14,7 @@
  */
 import type { HomeSection } from '@/lib/types';
 import type { HomeSlotSetting, HeroSettings } from '@/lib/settings';
-import { HomeSectionRenderer, type HomeSectionsLabels } from '../HomeSections';
+import { HomeSectionRenderer, type FatwaSliderItem, type HomeSectionsLabels } from '../HomeSections';
 import { isVariantEligibleSection } from './specs';
 import { VariantRenderer, isVariantId } from './VariantRenderer';
 
@@ -24,13 +24,28 @@ export function SectionSlot({
   locale,
   labels,
   heroOverride,
+  fatwaSliderItems,
 }: {
   section: HomeSection;
   slot: HomeSlotSetting;
   locale: string;
   labels: HomeSectionsLabels;
   heroOverride: HeroSettings | null;
+  fatwaSliderItems?: FatwaSliderItem[] | null;
 }) {
+  // The fatwa slider always comes from the public published-topics
+  // endpoint — a variant must not silently revert it to section JSON.
+  if (section.key === 'latest_fatwas') {
+    return (
+      <HomeSectionRenderer
+        section={section}
+        locale={locale}
+        labels={labels}
+        heroOverride={heroOverride}
+        fatwaSliderItems={fatwaSliderItems}
+      />
+    );
+  }
   if (
     slot.variant &&
     isVariantId(slot.variant) &&
@@ -44,6 +59,7 @@ export function SectionSlot({
       locale={locale}
       labels={labels}
       heroOverride={heroOverride}
+      fatwaSliderItems={fatwaSliderItems}
     />
   );
 }
@@ -61,12 +77,14 @@ export function ComposedSections({
   locale,
   labels,
   heroOverride,
+  fatwaSliderItems,
 }: {
   sections: HomeSection[];
   slots: HomeSlotSetting[];
   locale: string;
   labels: HomeSectionsLabels;
   heroOverride: HeroSettings | null;
+  fatwaSliderItems?: FatwaSliderItem[] | null;
 }) {
   const byKey = new Map<string, HomeSection>();
   for (const s of sections) {
@@ -89,6 +107,7 @@ export function ComposedSections({
               locale={locale}
               labels={labels}
               heroOverride={heroOverride}
+              fatwaSliderItems={fatwaSliderItems}
             />
           );
         })}

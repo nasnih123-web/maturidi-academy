@@ -317,6 +317,14 @@ export interface FiqhTopic {
   id: string;
   title: LocalizedText;
   description: LocalizedText;
+  workflow_status: WorkflowStatus;
+  category_id: string | null;
+  category: { slug: string; title: LocalizedText } | null;
+  author_name: string | null;
+  featured_image_url: string | null;
+  view_count: number;
+  share_count: number;
+  published_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -325,10 +333,26 @@ export function parseTopic(raw: unknown): FiqhTopic | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.id !== "string" || !r.id) return null;
+  let category: FiqhTopic["category"] = null;
+  if (r.category && typeof r.category === "object") {
+    const c = r.category as Record<string, unknown>;
+    if (typeof c.slug === "string" && c.slug) {
+      category = { slug: c.slug, title: parseL10n(c.title) };
+    }
+  }
   return {
     id: r.id,
     title: parseL10n(r.title),
     description: parseL10n(r.description),
+    workflow_status: parseWorkflowStatus(r.workflow_status),
+    category_id: typeof r.category_id === "string" ? r.category_id : null,
+    category,
+    author_name: typeof r.author_name === "string" ? r.author_name : null,
+    featured_image_url:
+      typeof r.featured_image_url === "string" ? r.featured_image_url : null,
+    view_count: typeof r.view_count === "number" ? r.view_count : 0,
+    share_count: typeof r.share_count === "number" ? r.share_count : 0,
+    published_at: typeof r.published_at === "string" ? r.published_at : null,
     created_at: typeof r.created_at === "string" ? r.created_at : "",
     updated_at: typeof r.updated_at === "string" ? r.updated_at : "",
   };
@@ -336,11 +360,25 @@ export function parseTopic(raw: unknown): FiqhTopic | null {
 
 export const TOPIC_KEY = ["fatwa-topics"];
 
-export function useFatwaTopics() {
+export interface TopicFilters {
+  status?: string;
+  category?: string;
+  q?: string;
+  perPage?: number;
+}
+
+export function useFatwaTopics(filters?: TopicFilters) {
+  const { status, category, q, perPage } = filters ?? {};
   return useQuery({
-    queryKey: TOPIC_KEY,
+    queryKey: [...TOPIC_KEY, status ?? "", category ?? "", q ?? "", perPage ?? 100],
     queryFn: async (): Promise<FiqhTopic[]> => {
-      const raw = await apiFetch<unknown>("/api/v1/admin/fatwa/topics");
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      if (category) params.set("category", category);
+      if (q) params.set("q", q);
+      params.set("per_page", String(perPage ?? 100));
+      const qs = params.toString();
+      const raw = await apiFetch<unknown>(`/api/v1/admin/fatwa/topics${qs ? `?${qs}` : ""}`);
       const r = (raw ?? {}) as Record<string, unknown>;
       const items = Array.isArray(r.items) ? r.items : Array.isArray(raw) ? raw : [];
       return items.map(parseTopic).filter((x): x is FiqhTopic => x !== null);
@@ -349,10 +387,18 @@ export function useFatwaTopics() {
   });
 }
 
+export interface TopicBody {
+  title: LocalizedText;
+  description: LocalizedText;
+  category_id?: string | null;
+  author_name?: string | null;
+  featured_image_url?: string | null;
+}
+
 export function useCreateTopic() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { title: LocalizedText; description: LocalizedText }) =>
+    mutationFn: (body: TopicBody) =>
       apiFetch<unknown>("/api/v1/admin/fatwa/topics", { method: "POST", body }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: TOPIC_KEY });
@@ -363,8 +409,28 @@ export function useCreateTopic() {
 export function useUpdateTopic() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: { title: LocalizedText; description: LocalizedText } }) =>
+    mutationFn: ({ id, body }: { id: string; body: TopicBody }) =>
       apiFetch<unknown>(`/api/v1/admin/fatwa/topics/${id}`, { method: "PUT", body }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: TOPIC_KEY });
+    },
+  });
+}
+
+/**
+ * Workflow transition for a topic. The backend enforces the §9 machine
+ * (no jumps): approve from review means two sequential PATCHes here in
+ * the CRM (approved, then published); reject → rejected; archive →
+ * archived. No backend bypass.
+ */
+export function useSetTopicStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiFetch<unknown>(`/api/v1/admin/fatwa/topics/${id}/status`, {
+        method: "PATCH",
+        body: { status },
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: TOPIC_KEY });
     },
@@ -641,5 +707,84 @@ export function useFatwaUsage() {
       return out;
     },
     retry: false,
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* fatwa categories — defined in CRM, selected (never typed) in the    */
+/* registration form                                                   */
+/* ------------------------------------------------------------------ */
+
+export interface FatwaCategory {
+  id: string;
+  slug: string;
+  title: LocalizedText;
+  created_at: string;
+}
+
+export function parseFatwaCategory(raw: unknown): FatwaCategory | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== "string" || !r.id) return null;
+  if (typeof r.slug !== "string" || !r.slug) return null;
+  return {
+    id: r.id,
+    slug: r.slug,
+    title: parseL10n(r.title),
+    created_at: typeof r.created_at === "string" ? r.created_at : "",
+  };
+}
+
+export const FATWA_CATEGORY_KEY = ["fatwa-categories"];
+
+export function useFatwaCategories() {
+  return useQuery({
+    queryKey: FATWA_CATEGORY_KEY,
+    queryFn: async (): Promise<FatwaCategory[]> => {
+      const raw = await apiFetch<unknown>("/api/v1/admin/fatwa/categories");
+      const items = Array.isArray(raw) ? raw : [];
+      return items
+        .map(parseFatwaCategory)
+        .filter((x): x is FatwaCategory => x !== null);
+    },
+    retry: false,
+  });
+}
+
+export interface FatwaCategoryBody {
+  slug: string;
+  title: LocalizedText;
+}
+
+export function useCreateFatwaCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: FatwaCategoryBody) =>
+      apiFetch<unknown>("/api/v1/admin/fatwa/categories", { method: "POST", body }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: FATWA_CATEGORY_KEY });
+    },
+  });
+}
+
+export function useUpdateFatwaCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: FatwaCategoryBody }) =>
+      apiFetch<unknown>(`/api/v1/admin/fatwa/categories/${id}`, { method: "PUT", body }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: FATWA_CATEGORY_KEY });
+    },
+  });
+}
+
+export function useDeleteFatwaCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<unknown>(`/api/v1/admin/fatwa/categories/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: FATWA_CATEGORY_KEY });
+    },
   });
 }

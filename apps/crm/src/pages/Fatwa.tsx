@@ -10,11 +10,14 @@ import {
   AI_SCOPES,
   AiScope,
   CreateChunkBody,
+  FatwaCategory,
+  FatwaCategoryBody,
   FatwaChunk,
   FiqhTopic,
   MADHABS,
   MadhabId,
   MadhabPosition,
+  TopicBody,
   TrustedSource,
   TrustedSourceBody,
   chunkExcerpt,
@@ -22,11 +25,14 @@ import {
   statusLabel,
   useApproveChunk,
   useCreateChunk,
+  useCreateFatwaCategory,
   useCreatePosition,
   useCreateTopic,
   useCreateTrustedSource,
+  useDeleteFatwaCategory,
   useDeleteTrustedSource,
   useFatwaAudit,
+  useFatwaCategories,
   useFatwaChunks,
   useFatwaTopics,
   useFatwaUsage,
@@ -34,7 +40,9 @@ import {
   useIngestRuns,
   useMadhabPositions,
   useRejectChunk,
+  useSetTopicStatus,
   useTriggerIngest,
+  useUpdateFatwaCategory,
   useUpdatePosition,
   useUpdateTopic,
   useUpdateTrustedSource,
@@ -58,8 +66,31 @@ import {
  * stored there — old/new values are not fetched at all).
  */
 
-type FatwaTab = "chunks" | "entry" | "topics" | "ingest" | "sources" | "audit" | "usage";
-const TABS: FatwaTab[] = ["chunks", "entry", "topics", "ingest", "sources", "audit", "usage"];
+type FatwaTab =
+  | "chunks"
+  | "entry"
+  | "topics"
+  | "ingest"
+  | "sources"
+  | "audit"
+  | "usage"
+  | "register"
+  | "categories"
+  | "review"
+  | "published";
+const TABS: FatwaTab[] = [
+  "chunks",
+  "entry",
+  "topics",
+  "ingest",
+  "sources",
+  "audit",
+  "usage",
+  "register",
+  "categories",
+  "review",
+  "published",
+];
 
 const TAB_KEY: Record<FatwaTab, string> = {
   chunks: "fatwa.tabChunks",
@@ -69,6 +100,10 @@ const TAB_KEY: Record<FatwaTab, string> = {
   sources: "fatwa.tabSources",
   audit: "fatwa.tabAudit",
   usage: "fatwa.tabUsage",
+  register: "fatwa.tabRegister",
+  categories: "fatwa.tabCategories",
+  review: "fatwa.tabReview",
+  published: "fatwa.tabPublished",
 };
 
 const WORKFLOW_STATUSES: WorkflowStatus[] = [
@@ -1387,7 +1422,707 @@ export default function Fatwa(): React.ReactElement {
         {tab === "sources" && <SourcesTab />}
         {tab === "audit" && <AuditTab />}
         {tab === "usage" && <UsageTab />}
+        {tab === "register" && <RegisterTab />}
+        {tab === "categories" && <CategoriesTab />}
+        {tab === "review" && <ReviewTab />}
+        {tab === "published" && <PublishedTab />}
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* فهرست وردپرسی فتوا — ثبت چندمرحله‌ای، دسته‌بندی، بررسی، منتشرشده */
+/* ------------------------------------------------------------------ */
+
+function catName(
+  cat: { title: LocalizedText } | null | undefined,
+  locale: string,
+): string {
+  if (!cat) return "";
+  const l10n = cat.title as LocalizedText & Record<string, string>;
+  return l10n[locale] || cat.title.fa || cat.title.en || "—";
+}
+
+/** مرتب‌سازی فهرست‌ها بر اساس دسته، بعد تاریخ (تازه‌ترین اول). */
+function sortByCategoryDate(items: FiqhTopic[], locale: string): FiqhTopic[] {
+  return [...items].sort((a, b) => {
+    const ca = catName(a.category, locale);
+    const cb = catName(b.category, locale);
+    if (ca !== cb) return ca.localeCompare(cb);
+    const da = a.published_at || a.created_at;
+    const db = b.published_at || b.created_at;
+    return db.localeCompare(da);
+  });
+}
+
+/** فرم ویرایش فشردهٔ موضوع — همان فیلدهایی که PUT می‌پذیرد. */
+function TopicEditForm({
+  initial,
+  onDone,
+}: {
+  initial: FiqhTopic;
+  onDone: () => void;
+}): React.ReactElement {
+  const { t } = useI18n();
+  const categories = useFatwaCategories();
+  const [title, setTitle] = React.useState<LocalizedText>({ ...initial.title });
+  const [description, setDescription] = React.useState<LocalizedText>({
+    ...initial.description,
+  });
+  const [categoryId, setCategoryId] = React.useState<string>(initial.category_id ?? "");
+  const [author, setAuthor] = React.useState<string>(initial.author_name ?? "");
+  const [imageUrl, setImageUrl] = React.useState<string>(initial.featured_image_url ?? "");
+  const update = useUpdateTopic();
+  const pending = update.isPending;
+  const err = update.isError ? update.error : null;
+
+  return (
+    <div>
+      <LocalizedInput id="edit-topic-title" label={t("fatwa.fieldTitle")} value={title} onChange={setTitle} />
+      <LocalizedInput
+        id="edit-topic-desc"
+        label={t("fatwa.fieldDescription")}
+        value={description}
+        onChange={setDescription}
+        multiline
+      />
+      <div className="field">
+        <label htmlFor="edit-topic-cat">{t("fatwa.selectCategory")}</label>
+        <select
+          id="edit-topic-cat"
+          className="input"
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+        >
+          <option value="">{t("fatwa.selectCategory")}</option>
+          {categories.data?.map((c) => (
+            <option key={c.id} value={c.id}>
+              {catName(c, "fa") || c.slug}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor="edit-topic-author">{t("fatwa.stepAuthor")}</label>
+        <input
+          id="edit-topic-author"
+          className="input"
+          value={author}
+          placeholder={t("fatwa.authorPlaceholder")}
+          onChange={(e) => setAuthor(e.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label htmlFor="edit-topic-img">{t("fatwa.imageUrlLabel")}</label>
+        <input
+          id="edit-topic-img"
+          className="input"
+          dir="ltr"
+          value={imageUrl}
+          onChange={(e) => setImageUrl(e.target.value)}
+        />
+        <p className="hint">{t("fatwa.imageUrlHint")}</p>
+        {imageUrl.startsWith("http") ? (
+          <img src={imageUrl} alt="" style={{ maxWidth: "100%", maxHeight: "12rem", marginTop: "0.5rem" }} />
+        ) : null}
+      </div>
+      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+        <Button
+          size="sm"
+          disabled={pending}
+          onClick={() => {
+            const body: TopicBody = {
+              title,
+              description,
+              category_id: categoryId || null,
+              author_name: author.trim() || null,
+              featured_image_url: imageUrl.trim() || null,
+            };
+            update.mutate({ id: initial.id, body }, { onSuccess: onDone });
+          }}
+        >
+          {pending ? t("common.loading") : t("fatwa.saveTopic")}
+        </Button>
+        <Button size="sm" variant="secondary" onClick={onDone}>
+          {t("fatwa.cancel")}
+        </Button>
+        {err && (
+          <span className="form-error" style={{ marginBottom: 0 }}>
+            {errText(err)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const OTHER_MADHABS = ["shafii", "maliki", "hanbali"] as const;
+
+function RegisterTab(): React.ReactElement {
+  const { t, locale } = useI18n();
+  const categories = useFatwaCategories();
+  const drafts = useFatwaTopics({ status: "draft" });
+  const setStatus = useSetTopicStatus();
+  const createTopic = useCreateTopic();
+  const createPosition = useCreatePosition();
+
+  const [step, setStep] = React.useState(1);
+  const [question, setQuestion] = React.useState<LocalizedText>({ ...EMPTY_L10N });
+  const [answer, setAnswer] = React.useState<LocalizedText>({ ...EMPTY_L10N });
+  const [evidence, setEvidence] = React.useState("");
+  const [others, setOthers] = React.useState<Record<string, LocalizedText>>({
+    shafii: { ...EMPTY_L10N },
+    maliki: { ...EMPTY_L10N },
+    hanbali: { ...EMPTY_L10N },
+  });
+  const [categoryId, setCategoryId] = React.useState("");
+  const [author, setAuthor] = React.useState("");
+  const [imageUrl, setImageUrl] = React.useState("");
+  const [saved, setSaved] = React.useState(false);
+  const [submitErr, setSubmitErr] = React.useState<unknown>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+
+  const sortedDrafts = drafts.data ? sortByCategoryDate(drafts.data, locale) : [];
+  const editing = drafts.data?.find((x) => x.id === editingId) ?? null;
+
+  async function submit(): Promise<void> {
+    setSubmitting(true);
+    setSubmitErr(null);
+    setSaved(false);
+    try {
+      const created = (await createTopic.mutateAsync({
+        title: question,
+        description: answer,
+        category_id: categoryId || null,
+        author_name: author.trim() || null,
+        featured_image_url: imageUrl.trim() || null,
+      })) as unknown as { id?: string };
+      if (!created || typeof created.id !== "string") {
+        throw new Error("bad topic create payload");
+      }
+      const evidenceRefs = evidence.split("\n").map((s) => s.trim()).filter(Boolean);
+      await createPosition.mutateAsync({
+        topic_id: created.id,
+        madhab: "hanafi",
+        position_text: answer,
+        evidence_refs: evidenceRefs,
+      });
+      for (const m of OTHER_MADHABS) {
+        const text = others[m] ?? { ...EMPTY_L10N };
+        if (text.fa.trim() || text.ar.trim() || text.en.trim()) {
+          await createPosition.mutateAsync({
+            topic_id: created.id,
+            madhab: m,
+            position_text: text,
+            evidence_refs: [],
+          });
+        }
+      }
+      setSaved(true);
+      setStep(1);
+      setQuestion({ ...EMPTY_L10N });
+      setAnswer({ ...EMPTY_L10N });
+      setEvidence("");
+      setOthers({
+        shafii: { ...EMPTY_L10N },
+        maliki: { ...EMPTY_L10N },
+        hanbali: { ...EMPTY_L10N },
+      });
+      setCategoryId("");
+      setAuthor("");
+      setImageUrl("");
+    } catch (err) {
+      setSubmitErr(err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <section className="panel" aria-label={t("fatwa.registerTitle")}>
+        <div className="panel-head">
+          <h2>{t("fatwa.registerTitle")}</h2>
+          <span className="panel-hint">
+            {t("fatwa.stepContent")} · {step} / 4
+          </span>
+        </div>
+        {saved && <Badge tone="success">{t("fatwa.fatwaRegistered")}</Badge>}
+        {step === 1 && (
+          <div>
+            <LocalizedInput id="reg-q" label={t("fatwa.fieldQuestion")} value={question} onChange={setQuestion} />
+            <LocalizedInput
+              id="reg-a"
+              label={t("fatwa.fieldAnswer")}
+              value={answer}
+              onChange={setAnswer}
+              multiline
+              rows={4}
+            />
+            <div className="field">
+              <label htmlFor="reg-ev">{t("fatwa.fieldEvidenceRefs")}</label>
+              <textarea
+                id="reg-ev"
+                className="input"
+                rows={3}
+                dir="auto"
+                value={evidence}
+                onChange={(e) => setEvidence(e.target.value)}
+              />
+            </div>
+            {OTHER_MADHABS.map((m) => (
+              <LocalizedInput
+                key={m}
+                id={`reg-other-${m}`}
+                label={`${t("fatwa.fieldOtherMadhab")} ${t(`fatwa.madhab_${m}`)}`}
+                value={others[m] ?? { ...EMPTY_L10N }}
+                onChange={(v) => setOthers((prev) => ({ ...prev, [m]: v }))}
+                multiline
+                rows={3}
+              />
+            ))}
+          </div>
+        )}
+        {step === 2 && (
+          <div>
+            <div className="field">
+              <label htmlFor="reg-cat">{t("fatwa.selectCategory")}</label>
+              <select
+                id="reg-cat"
+                className="input"
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+              >
+                <option value="">{t("fatwa.selectCategory")}</option>
+                {categories.data?.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {catName(c, locale) || c.slug}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {categories.data && categories.data.length === 0 && (
+              <p className="hint">{t("fatwa.noCategoriesHint")}</p>
+            )}
+          </div>
+        )}
+        {step === 3 && (
+          <div className="field">
+            <label htmlFor="reg-author">{t("fatwa.stepAuthor")}</label>
+            <input
+              id="reg-author"
+              className="input"
+              value={author}
+              placeholder={t("fatwa.authorPlaceholder")}
+              onChange={(e) => setAuthor(e.target.value)}
+            />
+          </div>
+        )}
+        {step === 4 && (
+          <div>
+            <div className="field">
+              <label htmlFor="reg-img">{t("fatwa.imageUrlLabel")}</label>
+              <input
+                id="reg-img"
+                className="input"
+                dir="ltr"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+              />
+              <p className="hint">{t("fatwa.imageUrlHint")}</p>
+            </div>
+            {imageUrl.startsWith("http") ? (
+              <div className="field">
+                <span>{t("fatwa.imagePreview")}</span>
+                <img src={imageUrl} alt="" style={{ maxWidth: "100%", maxHeight: "12rem", display: "block", marginTop: "0.5rem" }} />
+              </div>
+            ) : null}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.75rem" }}>
+          {step > 1 && (
+            <Button size="sm" variant="secondary" onClick={() => setStep(step - 1)}>
+              {t("fatwa.stepPrev")}
+            </Button>
+          )}
+          {step < 4 && (
+            <Button size="sm" onClick={() => setStep(step + 1)}>
+              {t("fatwa.stepNext")}
+            </Button>
+          )}
+          {step === 4 && (
+            <Button size="sm" disabled={submitting} onClick={submit}>
+              {submitting ? t("common.loading") : t("fatwa.submitFatwa")}
+            </Button>
+          )}
+          {submitErr !== null && (
+            <span className="form-error" style={{ marginBottom: 0 }}>
+              {errText(submitErr)}
+            </span>
+          )}
+        </div>
+      </section>
+
+      <section className="panel" aria-label={t("fatwa.registeredTitle")}>
+        <div className="panel-head">
+          <h2>{t("fatwa.registeredTitle")}</h2>
+          <span className="panel-hint">{t("fatwa.sortByCategoryDate")}</span>
+        </div>
+        {drafts.isLoading && <div className="empty">{t("common.loading")}</div>}
+        {drafts.isError && (
+          <div className="empty">
+            <p>{t("common.error")}</p>
+            <Button size="sm" variant="secondary" onClick={() => drafts.refetch()}>
+              {t("common.retry")}
+            </Button>
+          </div>
+        )}
+        {drafts.data && sortedDrafts.length === 0 && (
+          <div className="empty">{t("fatwa.emptyTopics")}</div>
+        )}
+        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {sortedDrafts.map((tp) => (
+            <li
+              key={tp.id}
+              style={{
+                display: "flex",
+                gap: "0.5rem",
+                alignItems: "center",
+                flexWrap: "wrap",
+                padding: "0.4rem 0",
+                borderTop: "1px solid var(--x-line)",
+              }}
+            >
+              <span style={{ flex: "1 1 12rem" }}>{topicName(tp, locale)}</span>
+              <span className="hint" style={{ margin: 0 }}>
+                {catName(tp.category, locale)}
+              </span>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setEditingId(editingId === tp.id ? null : tp.id)}
+              >
+                {t("fatwa.editTopic")}
+              </Button>
+              <Button
+                size="sm"
+                disabled={setStatus.isPending}
+                onClick={() =>
+                  setStatus.mutate({ id: tp.id, status: "in_review" })
+                }
+              >
+                {t("fatwa.sendToReview")}
+              </Button>
+            </li>
+          ))}
+        </ul>
+        {editing && (
+          <div style={{ marginTop: "1rem", borderTop: "1px solid var(--x-line)", paddingTop: "1rem" }}>
+            <TopicEditForm initial={editing} onDone={() => setEditingId(null)} />
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function CategoriesTab(): React.ReactElement {
+  const { t, locale } = useI18n();
+  const categories = useFatwaCategories();
+  const create = useCreateFatwaCategory();
+  const update = useUpdateFatwaCategory();
+  const remove = useDeleteFatwaCategory();
+  const [editing, setEditing] = React.useState<FatwaCategory | null | "new">(null);
+  const [slug, setSlug] = React.useState("");
+  const [title, setTitle] = React.useState<LocalizedText>({ ...EMPTY_L10N });
+  const pending = create.isPending || update.isPending || remove.isPending;
+  const err = create.isError
+    ? create.error
+    : update.isError
+      ? update.error
+      : remove.isError
+        ? remove.error
+        : null;
+
+  function startEdit(c: FatwaCategory | "new"): void {
+    setEditing(c);
+    if (c === "new") {
+      setSlug("");
+      setTitle({ ...EMPTY_L10N });
+    } else {
+      setSlug(c.slug);
+      setTitle({ ...c.title });
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <section className="panel" aria-label={t("fatwa.categoriesTitle")}>
+        <div className="panel-head">
+          <h2>{t("fatwa.categoriesTitle")}</h2>
+          <Button size="sm" variant="secondary" onClick={() => startEdit("new")}>
+            {t("fatwa.newCategory")}
+          </Button>
+        </div>
+        {categories.isLoading && <div className="empty">{t("common.loading")}</div>}
+        {categories.isError && (
+          <div className="empty">
+            <p>{t("common.error")}</p>
+            <Button size="sm" variant="secondary" onClick={() => categories.refetch()}>
+              {t("common.retry")}
+            </Button>
+          </div>
+        )}
+        {categories.data && categories.data.length === 0 && (
+          <div className="empty">{t("fatwa.emptyCategories")}</div>
+        )}
+        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {categories.data?.map((c) => (
+            <li
+              key={c.id}
+              style={{
+                display: "flex",
+                gap: "0.5rem",
+                alignItems: "center",
+                flexWrap: "wrap",
+                padding: "0.4rem 0",
+                borderTop: "1px solid var(--x-line)",
+              }}
+            >
+              <span style={{ flex: "1 1 12rem" }}>{catName(c, locale) || c.slug}</span>
+              <span className="hint" style={{ margin: 0 }} dir="ltr">
+                {c.slug}
+              </span>
+              <Button size="sm" variant="secondary" onClick={() => startEdit(c)}>
+                {t("fatwa.editCategory")}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={pending}
+                onClick={() => remove.mutate(c.id)}
+              >
+                {t("fatwa.deleteCategory")}
+              </Button>
+            </li>
+          ))}
+        </ul>
+        {err && (
+          <p className="form-error" style={{ marginTop: "0.75rem" }}>
+            {errText(err)}
+          </p>
+        )}
+      </section>
+      {editing && (
+        <section className="panel">
+          <div className="field">
+            <label htmlFor="cat-slug">{t("fatwa.fieldSlug")}</label>
+            <input
+              id="cat-slug"
+              className="input"
+              dir="ltr"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+            />
+          </div>
+          <LocalizedInput
+            id="cat-title"
+            label={t("fatwa.fieldCategoryTitle")}
+            value={title}
+            onChange={setTitle}
+          />
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <Button
+              size="sm"
+              disabled={pending || !slug.trim()}
+              onClick={() => {
+                const body: FatwaCategoryBody = { slug: slug.trim(), title };
+                if (editing === "new") {
+                  create.mutate(body, { onSuccess: () => setEditing(null) });
+                } else {
+                  update.mutate({ id: editing.id, body }, { onSuccess: () => setEditing(null) });
+                }
+              }}
+            >
+              {pending ? t("common.loading") : t("fatwa.saveCategory")}
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setEditing(null)}>
+              {t("fatwa.cancel")}
+            </Button>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function ReviewTab(): React.ReactElement {
+  const { t, locale, formatDate } = useI18n();
+  const queue = useFatwaTopics({ status: "in_review" });
+  const setStatus = useSetTopicStatus();
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [actionErr, setActionErr] = React.useState<unknown>(null);
+  const [approvingId, setApprovingId] = React.useState<string | null>(null);
+  const editing = queue.data?.find((x) => x.id === editingId) ?? null;
+
+  async function approve(id: string): Promise<void> {
+    // تأیید از بررسی یعنی دو PATCH پیاپی: approved سپس published.
+    setActionErr(null);
+    setApprovingId(id);
+    try {
+      await setStatus.mutateAsync({ id, status: "approved" });
+      await setStatus.mutateAsync({ id, status: "published" });
+    } catch (err) {
+      setActionErr(err);
+    } finally {
+      setApprovingId(null);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <section className="panel" aria-label={t("fatwa.reviewTitle")}>
+        <div className="panel-head">
+          <h2>{t("fatwa.reviewTitle")}</h2>
+        </div>
+        {queue.isLoading && <div className="empty">{t("common.loading")}</div>}
+        {queue.isError && (
+          <div className="empty">
+            <p>{t("common.error")}</p>
+            <Button size="sm" variant="secondary" onClick={() => queue.refetch()}>
+              {t("common.retry")}
+            </Button>
+          </div>
+        )}
+        {queue.data && queue.data.length === 0 && (
+          <div className="empty">{t("fatwa.emptyReview")}</div>
+        )}
+        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {queue.data?.map((tp) => (
+            <li
+              key={tp.id}
+              style={{
+                display: "flex",
+                gap: "0.5rem",
+                alignItems: "center",
+                flexWrap: "wrap",
+                padding: "0.4rem 0",
+                borderTop: "1px solid var(--x-line)",
+              }}
+            >
+              <span style={{ flex: "1 1 12rem" }}>{topicName(tp, locale)}</span>
+              <span className="hint" style={{ margin: 0 }}>
+                {catName(tp.category, locale)}
+              </span>
+              <span className="hint" style={{ margin: 0 }}>
+                {tp.author_name ?? ""}
+              </span>
+              <span className="hint" style={{ margin: 0 }}>
+                {tp.created_at ? formatDate(tp.created_at) : ""}
+              </span>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setEditingId(editingId === tp.id ? null : tp.id)}
+              >
+                {t("fatwa.editTopic")}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={setStatus.isPending}
+                onClick={() => setStatus.mutate({ id: tp.id, status: "rejected" })}
+              >
+                {t("fatwa.rejectFatwa")}
+              </Button>
+              <Button
+                size="sm"
+                disabled={approvingId === tp.id}
+                onClick={() => approve(tp.id)}
+              >
+                {approvingId === tp.id ? t("common.loading") : t("fatwa.approveFatwa")}
+              </Button>
+            </li>
+          ))}
+        </ul>
+        {actionErr !== null && (
+          <p className="form-error" style={{ marginTop: "0.75rem" }}>
+            {errText(actionErr)}
+          </p>
+        )}
+      </section>
+      {editing && (
+        <section className="panel">
+          <TopicEditForm initial={editing} onDone={() => setEditingId(null)} />
+        </section>
+      )}
+    </div>
+  );
+}
+
+function PublishedTab(): React.ReactElement {
+  const { t, locale, formatDate } = useI18n();
+  const published = useFatwaTopics({ status: "published" });
+  const setStatus = useSetTopicStatus();
+  const sorted = published.data ? sortByCategoryDate(published.data, locale) : [];
+
+  return (
+    <section className="panel" aria-label={t("fatwa.publishedTitle")}>
+      <div className="panel-head">
+        <h2>{t("fatwa.publishedTitle")}</h2>
+        <span className="panel-hint">{t("fatwa.sortByCategoryDate")}</span>
+      </div>
+      {published.isLoading && <div className="empty">{t("common.loading")}</div>}
+      {published.isError && (
+        <div className="empty">
+          <p>{t("common.error")}</p>
+          <Button size="sm" variant="secondary" onClick={() => published.refetch()}>
+            {t("common.retry")}
+          </Button>
+        </div>
+      )}
+      {published.data && sorted.length === 0 && (
+        <div className="empty">{t("fatwa.emptyPublished")}</div>
+      )}
+      <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+        {sorted.map((tp) => (
+          <li
+            key={tp.id}
+            style={{
+              display: "flex",
+              gap: "0.5rem",
+              alignItems: "center",
+              flexWrap: "wrap",
+              padding: "0.4rem 0",
+              borderTop: "1px solid var(--x-line)",
+            }}
+          >
+            <span style={{ flex: "1 1 12rem" }}>{topicName(tp, locale)}</span>
+            <span className="hint" style={{ margin: 0 }}>
+              {catName(tp.category, locale)}
+            </span>
+            <span className="hint" style={{ margin: 0 }}>
+              {tp.published_at ? formatDate(tp.published_at) : ""}
+            </span>
+            <span className="hint" style={{ margin: 0 }}>
+              {tp.view_count} {t("fatwa.viewsLabel")}
+            </span>
+            <span className="hint" style={{ margin: 0 }}>
+              {tp.share_count} {t("fatwa.sharesLabel")}
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={setStatus.isPending}
+              onClick={() => setStatus.mutate({ id: tp.id, status: "archived" })}
+            >
+              {t("fatwa.archiveFatwa")}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

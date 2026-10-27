@@ -134,6 +134,20 @@ class ChunkStatusIn(BaseModel):
 class TopicCreateIn(BaseModel):
     title: dict
     description: dict | None = None
+    # فهرست وردپرسی فتوا — دسته فقط از دسته‌های ثبت‌شده انتخاب می‌شود.
+    category_id: UUID | None = None
+    author_name: str | None = Field(default=None, max_length=160)
+    featured_image_url: str | None = Field(default=None, max_length=1024)
+
+
+class TopicUpdateIn(BaseModel):
+    """ویرایش موضوع — دقیقاً همان فیلدهایی که CRM با PUT می‌فرستد."""
+
+    title: dict
+    description: dict | None = None
+    category_id: UUID | None = None
+    author_name: str | None = Field(default=None, max_length=160)
+    featured_image_url: str | None = Field(default=None, max_length=1024)
 
 
 class TopicOut(BaseModel):
@@ -141,6 +155,65 @@ class TopicOut(BaseModel):
     title: dict
     description: dict | None = None
     workflow_status: str
+    category_id: UUID | None = None
+    author_name: str | None = None
+    featured_image_url: str | None = None
+    view_count: int = 0
+    share_count: int = 0
+    published_at: datetime | None = None
+
+
+class CategoryIn(BaseModel):
+    slug: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    title: dict
+
+
+class FatwaCategoryOut(BaseModel):
+    id: UUID
+    slug: str
+    title: dict
+    created_at: datetime
+
+
+class CategoryWithCountOut(FatwaCategoryOut):
+    published_count: int = 0
+
+
+# --- public: فهرست وردپرسی فتوا (فقط منتشرشده‌ها) ---
+
+
+class PublicTopicCategoryOut(BaseModel):
+    slug: str
+    title: dict
+
+
+class PublicTopicOut(BaseModel):
+    id: UUID
+    title: dict
+    description: dict | None = None
+    category: PublicTopicCategoryOut | None = None
+    author_name: str | None = None
+    featured_image_url: str | None = None
+    published_at: datetime | None = None
+    view_count: int = 0
+    share_count: int = 0
+
+
+class PublicTopicListOut(BaseModel):
+    items: list[PublicTopicOut]
+    total: int
+    page: int
+    per_page: int
+    pages: int
+
+
+class PublicTopicDetailOut(PublicTopicOut):
+    positions: list[PositionOut] = []
+
+
+class ShareOut(BaseModel):
+    id: UUID
+    share_count: int
 
 
 class PositionCreateIn(BaseModel):

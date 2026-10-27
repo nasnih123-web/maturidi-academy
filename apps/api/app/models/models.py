@@ -653,10 +653,34 @@ class FiqhTopic(Base):
     title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
     description: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # LocalizedText
     workflow_status: Mapped[str] = mapped_column(String(16), default="draft", index=True)
+    # فهرست وردپرسی فتوا — دسته از بخش «ثبت دسته‌بندی» CRM می‌آید.
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("fatwa_categories.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+    author_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    featured_image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
+    share_count: Mapped[int] = mapped_column(Integer, default=0)
+    # موقع ورود به وضعیت published ثبت می‌شود؛ با بایگانی پاک نمی‌شود.
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
+
+
+class FatwaCategory(Base):
+    """دستهٔ فتوا — در CRM تعریف می‌شود و در فرم ثبت انتخاب می‌شود."""
+
+    __tablename__ = "fatwa_categories"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class MadhabPosition(Base):

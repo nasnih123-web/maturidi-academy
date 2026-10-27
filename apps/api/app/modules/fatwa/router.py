@@ -29,24 +29,33 @@ from .schemas import (
     AskIn,
     AskOut,
     AuditEntryOut,
+    CategoryIn,
     CategoryOut,
+    CategoryWithCountOut,
     ChunkCreateIn,
     ChunkOut,
     ChunkStatusIn,
     CitationOut,
     CompareOut,
+    FatwaCategoryOut,
     IngestionRunOut,
     IngestTriggerIn,
     IngestTriggerOut,
     PositionCreateIn,
     PositionOut,
+    PublicTopicCategoryOut,
+    PublicTopicDetailOut,
+    PublicTopicListOut,
+    PublicTopicOut,
     QuizGenerateOut,
     QuizQuestionCreateIn,
     QuizQuestionOut,
     QuizSubmitIn,
     QuizSubmitOut,
+    ShareOut,
     TopicCreateIn,
     TopicOut,
+    TopicUpdateIn,
     TrustedSourceIn,
     TrustedSourceOut,
     VerifyIn,
@@ -172,6 +181,93 @@ async def _ask_sse(request: Request, db: AsyncSession, body: AskIn, user):
 async def categories(db: AsyncSession = Depends(get_db)):
     """دسته‌بندی‌های موضوعی دانش تأییدشده."""
     return [CategoryOut(**c) for c in await service.list_categories(db)]
+
+
+# --- عمومی: فهرست وردپرسی فتوا (فقط منتشرشده‌ها) ---
+# ترتیب مهم است: /topics/categories باید پیش از /topics/{id} ثبت شود
+# تا «categories» به‌عنوان شناسه بلعیده نشود.
+
+
+def _public_topic_out(d: dict) -> PublicTopicOut:
+    cat = d.get("category")
+    return PublicTopicOut(
+        id=d["id"],
+        title=d["title"],
+        description=d.get("description"),
+        category=PublicTopicCategoryOut(**cat) if cat else None,
+        author_name=d.get("author_name"),
+        featured_image_url=d.get("featured_image_url"),
+        published_at=d.get("published_at"),
+        view_count=d.get("view_count") or 0,
+        share_count=d.get("share_count") or 0,
+    )
+
+
+@fatwa_router.get("/topics", response_model=PublicTopicListOut)
+async def public_topic_list(
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=10, ge=1, le=100),
+    q: str | None = Query(default=None),
+    category: str | None = Query(default=None, description="slug دسته"),
+    sort: str = Query(default="newest", pattern="^(newest|views)$"),
+    exclude: UUID | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """فهرست منتشرشده‌ها — بدون سقف کلی، همه با صفحه‌بندی در دسترس‌اند."""
+    data = await service.topic_public_list(
+        db, page=page, per_page=per_page, q=q, category=category,
+        sort=sort, exclude=exclude,
+    )
+    return PublicTopicListOut(
+        items=[_public_topic_out(d) for d in data["items"]],
+        total=data["total"],
+        page=data["page"],
+        per_page=data["per_page"],
+        pages=data["pages"],
+    )
+
+
+@fatwa_router.get("/topics/categories", response_model=list[CategoryWithCountOut])
+async def public_topic_categories(db: AsyncSession = Depends(get_db)):
+    """دسته‌های فتوا + تعداد فتواهای منتشرشدهٔ هر دسته.
+
+    با /fatwa/categories فرق دارد: آن یکی از چانک‌های دانش ساخته
+    می‌شود و دست نخورده می‌ماند؛ این یکی از دسته‌های ثبت‌شده در CRM
+    و موضوع‌های منتشرشده است.
+    """
+    rows = await service.category_list_with_published_counts(db)
+    return [
+        CategoryWithCountOut(
+            id=r["category"].id,
+            slug=r["category"].slug,
+            title=r["category"].title,
+            created_at=r["category"].created_at,
+            published_count=r["published_count"],
+        )
+        for r in rows
+    ]
+
+
+@fatwa_router.get("/topics/{topic_id}", response_model=PublicTopicDetailOut)
+async def public_topic_detail(
+    topic_id: UUID, db: AsyncSession = Depends(get_db)
+):
+    """جزئیات یک فتوای منتشرشده — هر فراخوانی یک بازدید می‌شمارد."""
+    data = await service.topic_public_get(db, topic_id)
+    out = _public_topic_out(data)
+    return PublicTopicDetailOut(
+        **out.model_dump(),
+        positions=[PositionOut(**p) for p in data["positions"]],
+    )
+
+
+@fatwa_router.post("/topics/{topic_id}/share", response_model=ShareOut)
+async def public_topic_share(
+    topic_id: UUID, db: AsyncSession = Depends(get_db)
+):
+    """ثبت یک اشتراک‌گذاری — فقط منتشرشده؛ شمارندهٔ تازه برمی‌گردد."""
+    t = await service.topic_share(db, topic_id)
+    return ShareOut(id=t.id, share_count=t.share_count or 0)
 
 
 @fatwa_router.get("/compare/{topic_id}", response_model=CompareOut)
@@ -338,6 +434,19 @@ async def ingest_status(
 # --- ادمین: topics / positions ---
 
 
+def _topic_out(t) -> TopicOut:
+    return TopicOut(
+        id=t.id, title=t.title, description=t.description,
+        workflow_status=t.workflow_status,
+        category_id=t.category_id,
+        author_name=t.author_name,
+        featured_image_url=t.featured_image_url,
+        view_count=t.view_count or 0,
+        share_count=t.share_count or 0,
+        published_at=t.published_at,
+    )
+
+
 @admin_fatwa_router.post("/topics", response_model=TopicOut, status_code=201)
 async def topic_create(
     body: TopicCreateIn,
@@ -345,12 +454,11 @@ async def topic_create(
     user: User = Depends(_can_knowledge),
 ):
     t = await service.topic_create(
-        db, user, title=body.title, description=body.description
+        db, user, title=body.title, description=body.description,
+        category_id=body.category_id, author_name=body.author_name,
+        featured_image_url=body.featured_image_url,
     )
-    return TopicOut(
-        id=t.id, title=t.title, description=t.description,
-        workflow_status=t.workflow_status,
-    )
+    return _topic_out(t)
 
 
 @admin_fatwa_router.patch("/topics/{topic_id}/status", response_model=TopicOut)
@@ -361,10 +469,103 @@ async def topic_set_status(
     user: User = Depends(_can_approve),
 ):
     t = await service.topic_set_status(db, user, topic_id, body.status)
-    return TopicOut(
-        id=t.id, title=t.title, description=t.description,
-        workflow_status=t.workflow_status,
+    return _topic_out(t)
+
+
+@admin_fatwa_router.get("/topics", response_model=dict)
+async def topic_admin_list(
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=50, ge=1, le=100),
+    q: str | None = Query(default=None),
+    category: str | None = Query(default=None, description="slug دسته"),
+    status: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(_can_knowledge),
+):
+    """فهرست ادمین — همهٔ وضعیت‌ها، با صفحه‌بندی و فیلترها."""
+    data = await service.topic_admin_list(
+        db, page=page, per_page=per_page, q=q, category=category,
+        status=status,
     )
+    items = []
+    for d in data["items"]:
+        cat = d.get("category")
+        items.append({
+            **d,
+            "category": PublicTopicCategoryOut(**cat).model_dump(mode="json") if cat else None,
+        })
+    return {
+        "items": items,
+        "total": data["total"],
+        "page": data["page"],
+        "per_page": data["per_page"],
+        "pages": data["pages"],
+    }
+
+
+@admin_fatwa_router.put("/topics/{topic_id}", response_model=TopicOut)
+async def topic_update(
+    topic_id: UUID,
+    body: TopicUpdateIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(_can_knowledge),
+):
+    """ویرایش موضوع — دقیقاً PUT، چون CRM از قبل PUT صدا می‌زند."""
+    t = await service.topic_update(
+        db, user, topic_id, title=body.title, description=body.description,
+        category_id=body.category_id, author_name=body.author_name,
+        featured_image_url=body.featured_image_url,
+    )
+    return _topic_out(t)
+
+
+# --- ادمین: دسته‌ها ---
+
+
+def _category_out(c) -> FatwaCategoryOut:
+    return FatwaCategoryOut(
+        id=c.id, slug=c.slug, title=c.title, created_at=c.created_at
+    )
+
+
+@admin_fatwa_router.get("/categories", response_model=list[FatwaCategoryOut])
+async def admin_category_list(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(_can_knowledge),
+):
+    return [_category_out(c) for c in await service.category_list(db)]
+
+
+@admin_fatwa_router.post("/categories", response_model=FatwaCategoryOut, status_code=201)
+async def admin_category_create(
+    body: CategoryIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(_can_knowledge),
+):
+    c = await service.category_create(db, user, slug=body.slug, title=body.title)
+    return _category_out(c)
+
+
+@admin_fatwa_router.put("/categories/{category_id}", response_model=FatwaCategoryOut)
+async def admin_category_update(
+    category_id: UUID,
+    body: CategoryIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(_can_knowledge),
+):
+    c = await service.category_update(
+        db, user, category_id, slug=body.slug, title=body.title
+    )
+    return _category_out(c)
+
+
+@admin_fatwa_router.delete("/categories/{category_id}", status_code=204)
+async def admin_category_delete(
+    category_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(_can_knowledge),
+):
+    await service.category_delete(db, user, category_id)
 
 
 @admin_fatwa_router.post(
