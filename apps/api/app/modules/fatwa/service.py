@@ -1011,6 +1011,12 @@ async def category_list(db: AsyncSession) -> list[FatwaCategory]:
     return list(rows)
 
 
+# مقدار ویژهٔ فیلتر دسته برای فتواهای منتشرشدهٔ بدون دسته. با slug
+# واقعی برخورد ندارد: الگوی CategoryIn حرف اول را [a-z0-9] می‌خواهد
+# و «__none» با underscore شروع می‌شود، پس هرگز نمی‌تواند ساخته شود.
+UNCATEGORIZED_SLUG = "__none"
+
+
 async def category_list_with_published_counts(
     db: AsyncSession,
 ) -> list[dict[str, Any]]:
@@ -1031,6 +1037,20 @@ async def category_list_with_published_counts(
     return [
         {"category": c, "published_count": counts.get(c.id, 0)} for c in cats
     ]
+
+
+async def count_published_without_category(db: AsyncSession) -> int:
+    """تعداد فتواهای منتشرشدهٔ بدون دسته (category_id خالی)."""
+    return (
+        await db.execute(
+            select(func.count())
+            .select_from(FiqhTopic)
+            .where(
+                FiqhTopic.workflow_status == "published",
+                FiqhTopic.category_id.is_(None),
+            )
+        )
+    ).scalar_one()
 
 
 def _category_dict(cat: FatwaCategory | None) -> dict | None:
@@ -1082,11 +1102,15 @@ def _apply_topic_filters(
             | (func.cast(FiqhTopic.description, sa_String).ilike(needle))
         )
     if category_slug:
-        stmt = stmt.where(
-            FiqhTopic.category_id.in_(
-                select(FatwaCategory.id).where(FatwaCategory.slug == category_slug)
+        if category_slug == UNCATEGORIZED_SLUG:
+            # فقط منتشرشده‌های بدون دسته؛ در فهرست عمومی و ادمین یکسان است.
+            stmt = stmt.where(FiqhTopic.category_id.is_(None))
+        else:
+            stmt = stmt.where(
+                FiqhTopic.category_id.in_(
+                    select(FatwaCategory.id).where(FatwaCategory.slug == category_slug)
+                )
             )
-        )
     if status:
         stmt = stmt.where(FiqhTopic.workflow_status == status)
     if exclude is not None:

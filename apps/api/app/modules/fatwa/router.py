@@ -31,7 +31,6 @@ from .schemas import (
     AuditEntryOut,
     CategoryIn,
     CategoryOut,
-    CategoryWithCountOut,
     ChunkCreateIn,
     ChunkOut,
     ChunkStatusIn,
@@ -43,6 +42,7 @@ from .schemas import (
     IngestTriggerOut,
     PositionCreateIn,
     PositionOut,
+    PublicCategoryWithCountOut,
     PublicTopicCategoryOut,
     PublicTopicDetailOut,
     PublicTopicListOut,
@@ -227,17 +227,19 @@ async def public_topic_list(
     )
 
 
-@fatwa_router.get("/topics/categories", response_model=list[CategoryWithCountOut])
+@fatwa_router.get("/topics/categories", response_model=list[PublicCategoryWithCountOut])
 async def public_topic_categories(db: AsyncSession = Depends(get_db)):
     """دسته‌های فتوا + تعداد فتواهای منتشرشدهٔ هر دسته.
 
     با /fatwa/categories فرق دارد: آن یکی از چانک‌های دانش ساخته
     می‌شود و دست نخورده می‌ماند؛ این یکی از دسته‌های ثبت‌شده در CRM
-    و موضوع‌های منتشرشده است.
+    و موضوع‌های منتشرشده است. اگر فتوای منتشرشدهٔ بدون دسته باشد،
+    یک ردیف «بدون دسته» هم با همان تعداد در انتها می‌آید تا جمع
+    تعدادها با total فهرست برابر شود.
     """
     rows = await service.category_list_with_published_counts(db)
-    return [
-        CategoryWithCountOut(
+    out = [
+        PublicCategoryWithCountOut(
             id=r["category"].id,
             slug=r["category"].slug,
             title=r["category"].title,
@@ -246,6 +248,22 @@ async def public_topic_categories(db: AsyncSession = Depends(get_db)):
         )
         for r in rows
     ]
+    uncategorized = await service.count_published_without_category(db)
+    if uncategorized > 0:
+        out.append(
+            PublicCategoryWithCountOut(
+                id=None,
+                slug=service.UNCATEGORIZED_SLUG,
+                title={
+                    "fa": "بدون دسته",
+                    "ar": "غير مصنّف",
+                    "en": "Uncategorized",
+                },
+                created_at=None,
+                published_count=uncategorized,
+            )
+        )
+    return out
 
 
 @fatwa_router.get("/topics/{topic_id}", response_model=PublicTopicDetailOut)
