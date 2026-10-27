@@ -899,6 +899,15 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
 .ftw-history li button { width: 100%; text-align: start; background: none; border: 1px solid transparent; border-radius: var(--radius-sm); padding: 0.45rem 0.6rem; color: hsl(var(--text-secondary)); font: inherit; font-size: 0.87rem; cursor: pointer; }
 .ftw-history li button:hover { border-color: rgba(212, 175, 55, 0.35); color: hsl(var(--text-primary)); }
 .ftw-cats { display: flex; gap: 0.45rem; flex-wrap: wrap; }
+.ftw-list { display: flex; flex-direction: column; gap: 1rem; }
+.ftw-list-search { display: flex; flex-direction: column; gap: 0.4rem; }
+.ftw-list-search input { width: 100%; background: transparent; border: 1px solid rgba(212, 175, 55, 0.3); border-radius: var(--radius-sm); padding: 0.6rem 0.8rem; color: hsl(var(--text-primary)); font: inherit; }
+.ftw-list-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.ftw-list-items li a, .ftw-list-items li article { display: flex; flex-direction: column; gap: 0.2rem; border: 1px solid rgba(212, 175, 55, 0.25); border-radius: var(--radius-sm); padding: 0.8rem 1rem; color: hsl(var(--text-primary)); text-decoration: none; }
+.ftw-list-items li a:hover { border-color: rgba(212, 175, 55, 0.6); }
+.ftw-list-items li small, .ftw-list-items li em { font-size: 0.82rem; color: hsl(var(--text-secondary)); font-style: normal; }
+.ftw-list-history { margin-top: 2rem; }
+.ftw-list-history ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
 .ftw-chip { border: 1px solid rgba(212, 175, 55, 0.3); background: transparent; color: hsl(var(--text-secondary)); border-radius: 999px; padding: 0.35rem 0.9rem; font: inherit; font-size: 0.82rem; cursor: pointer; }
 .ftw-chip:hover { border-color: rgba(212, 175, 55, 0.6); color: #e5c07b; }
 .ftw-chip.on { background: rgba(212, 175, 55, 0.16); color: #e5c07b; border-color: rgba(212, 175, 55, 0.65); }

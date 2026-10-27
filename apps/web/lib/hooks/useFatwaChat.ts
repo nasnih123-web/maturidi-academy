@@ -102,6 +102,7 @@ export function useFatwaChat(locale: string) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionKey, setSessionKey] = useState<string | null>(null);
   const [history, setHistory] = useState<ChatSession[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const turnsRef = useRef<ChatTurn[]>([]);
   turnsRef.current = turns;
@@ -128,6 +129,7 @@ export function useFatwaChat(locale: string) {
   // Load per-identity history once on mount.
   useEffect(() => {
     setHistory(loadHistory());
+    setHistoryLoaded(true);
   }, []);
 
   const persistSession = useCallback(
@@ -279,6 +281,7 @@ export function useFatwaChat(locale: string) {
       categoriesFailed,
       sessionId,
       history,
+      historyLoaded,
       ask,
       cancel,
       newChat,
@@ -296,6 +299,7 @@ export function useFatwaChat(locale: string) {
       categoriesFailed,
       sessionId,
       history,
+      historyLoaded,
       ask,
       cancel,
       newChat,
@@ -303,4 +307,22 @@ export function useFatwaChat(locale: string) {
       clearHistory,
     ],
   );
+}
+
+/**
+ * Read-only view of the same assistant history store the chat writes
+ * (localStorage, auth-aware key — see loadHistory). Used by surfaces
+ * outside the chat itself (e.g. the fatwa listing page) so a past
+ * conversation is shown from one source of truth, never a second copy.
+ * History lives on this device only; there is no backend fatwa-history
+ * endpoint, so nothing here is fetched from the server.
+ */
+export function useFatwaHistory() {
+  const [history, setHistory] = useState<ChatSession[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    setHistory(loadHistory());
+    setLoaded(true);
+  }, []);
+  return { history, loaded };
 }

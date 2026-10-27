@@ -6,7 +6,7 @@
  * Pure presentation + hook wiring. All strings arrive via `labels`;
  * all logic lives in lib/hooks/useFatwaChat.ts and lib/fatwa.ts (ADR-001).
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFatwaChat } from '@/lib/hooks/useFatwaChat';
 import type { FatwaStatus } from '@/lib/fatwa';
 
@@ -59,11 +59,38 @@ function StatusNote({ status, labels }: { status: FatwaStatus; labels: FatwaChat
   return null;
 }
 
-export function FatwaChat({ labels, locale }: { labels: FatwaChatLabels; locale: string }) {
+export function FatwaChat({
+  labels,
+  locale,
+  initialQuestion,
+  initialSessionId,
+}: {
+  labels: FatwaChatLabels;
+  locale: string;
+  /**
+   * Deep-link support for the fatwa listing page: a question to prefill
+   * in the ask box (the user still presses ask — nothing is sent
+   * automatically), and/or a past session id to reopen once history has
+   * loaded. Unknown session ids are ignored silently.
+   */
+  initialQuestion?: string;
+  initialSessionId?: string;
+}) {
   const chat = useFatwaChat(locale);
-  const [question, setQuestion] = useState('');
+  const [question, setQuestion] = useState(initialQuestion ?? '');
   const [category, setCategory] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const sessionRestoredRef = useRef(false);
+
+  useEffect(() => {
+    if (!initialSessionId || !chat.historyLoaded || sessionRestoredRef.current) return;
+    sessionRestoredRef.current = true;
+    const session = chat.history.find((s) => s.id === initialSessionId);
+    if (session) {
+      chat.openSession(session);
+      setShowHistory(false);
+    }
+  }, [initialSessionId, chat.historyLoaded, chat.history, chat.openSession]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();

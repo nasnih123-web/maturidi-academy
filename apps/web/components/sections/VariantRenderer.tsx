@@ -7,7 +7,7 @@
 import type { ComponentType } from 'react';
 import type { HomeSection } from '@/lib/types';
 import { pickText } from '@/lib/localize';
-import { getContentItems, getCta } from '@/lib/section-data';
+import { getContentItems, getSectionCta } from '@/lib/section-data';
 import type { TemplateItem } from '../ContentCard';import type { HomeSectionsLabels } from '../HomeSections';
 import { isVariantId, type SectionVariantId } from './registry';
 import { specForSection } from './specs';
@@ -46,7 +46,8 @@ export function buildVariantProps(
   const sectionId = `home-section-${section.key}`;
   const title = pickText(section.title, locale);
   const subtitle = pickText(section.subtitle, locale) || undefined;
-  const ctaRecord = getCta(section.data, locale, '');
+  // CMS CTA wins; latest_fatwas falls back to the full listing page.
+  const ctaRecord = getSectionCta(section.key, section.data, locale, labels.viewAllLabel);
   const items: TemplateItem[] = getContentItems(section.data, locale).map((it) => ({
     id: it.id,
     title: it.title,

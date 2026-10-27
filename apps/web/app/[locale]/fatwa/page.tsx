@@ -23,18 +23,31 @@ export async function generateMetadata({
  */
 export default async function FatwaPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams?: Promise<{ q?: string | string[]; session?: string | string[] }>;
 }) {
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'fatwa' });
+  // Deep links from the fatwa listing page: ?q= prefills the ask box,
+  // ?session= reopens a past conversation from the shared history store.
+  // Values are rendered only as an input value / session lookup — never
+  // sent to the API without the user pressing ask.
+  const sp = (await searchParams) ?? {};
+  const first = (v: string | string[] | undefined): string | undefined =>
+    Array.isArray(v) ? v[0] : v;
+  const initialQuestion = first(sp.q);
+  const initialSessionId = first(sp.session);
   return (
     <div className="page-wrap">
       <h1 className="page-title">{t('title')}</h1>
       <p className="page-sub">{t('subtitle')}</p>
       <FatwaChat
         locale={locale}
+        initialQuestion={initialQuestion}
+        initialSessionId={initialSessionId}
         labels={{
           noticeTitle: t('noticeTitle'),
           noticeBody: t('noticeBody'),

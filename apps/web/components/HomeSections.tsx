@@ -22,6 +22,7 @@ import { pickText } from "@/lib/localize";
 import {
   getContentItems,
   getCta,
+  getSectionCta,
   getSectionLayout,
   getStatusLine,
   safeHref,
@@ -173,10 +174,14 @@ export function HomeSectionRenderer({
             // latest_fatwas, suggested_lessons, fresh_library, community —
             // and any future key: spec-driven module rendering.
             const spec = specForSection(section.key);
-            const ctaRecord = getCta(section.data, locale, "");
-            const cta: SectionCta | null = ctaRecord
-              ? ctaRecord
-              : null;
+            // CMS CTA wins; latest_fatwas falls back to the full listing
+            // page ("show all fatwas") so the slider always offers it.
+            const cta: SectionCta | null = getSectionCta(
+              section.key,
+              section.data,
+              locale,
+              labels.viewAllLabel,
+            );
             return (
               <ContentSection
                 key={section.key}

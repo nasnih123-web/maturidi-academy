@@ -73,11 +73,14 @@ function textOf(v: unknown, locale: string): string {
  *    image?: string, url? }`
  * All fields are documented-optional; missing fields → empty strings, never
  * invented values.
+ *
+ * `limit` caps the returned items (default 12 — the homepage slider budget).
+ * Listing pages pass a larger limit to show the section's full item set.
  */
-export function getContentItems(data: unknown, locale: string): ContentItem[] {
+export function getContentItems(data: unknown, locale: string, limit = 12): ContentItem[] {
   if (!isRecord(data) || !Array.isArray(data.items)) return [];
   const out: ContentItem[] = [];
-  for (const raw of data.items.slice(0, 12)) {
+  for (const raw of data.items.slice(0, limit)) {
     if (!isRecord(raw) || !isLocalizedText(raw.title)) continue;
     const title = pickText(raw.title, locale);
     if (!title) continue;
@@ -127,6 +130,27 @@ export function getCta(data: unknown, locale: string, fallbackLabel = ''): Cta |
   }
   const href = safeHref(data.cta_url);
   if (href && fallbackLabel) return { label: fallbackLabel, href };
+  return null;
+}
+
+/**
+ * Section CTA with a built-in default for the fatwa slider: the CMS CTA
+ * wins when present; otherwise the latest_fatwas section links to the full
+ * fatwa listing page (`/{locale}/fatwa/all`) with the shared "view all"
+ * label. Other sections get no invented CTA (null → no button rendered).
+ * The listing route is a real route in this app, never an external guess.
+ */
+export function getSectionCta(
+  sectionKey: string,
+  data: unknown,
+  locale: string,
+  viewAllLabel: string,
+): Cta | null {
+  const cta = getCta(data, locale, '');
+  if (cta) return cta;
+  if (sectionKey === 'latest_fatwas' && viewAllLabel) {
+    return { label: viewAllLabel, href: `/${locale}/fatwa/all` };
+  }
   return null;
 }
 
