@@ -198,3 +198,103 @@ async def test_seed_preserves_admin_saved_section_data(tc):
     assert sec["data"] is not None
     assert len(sec["data"]["items"]) == 3
     assert sec["data"]["items"][0]["title"]["fa"] == "نمونهٔ 1"
+
+
+# ---------------------------------------------------------------------------
+# Footer payload ({columns, brand} on the same endpoint, key "footer")
+# ---------------------------------------------------------------------------
+
+
+def _footer_payload(**over: object) -> dict:
+    d: dict = {
+        "columns": [
+            {
+                "heading": {"fa": "پلتفرم", "ar": "المنصة", "en": "Platform"},
+                "links": [
+                    {
+                        "label": {"fa": "فتوا", "ar": "الفتوى", "en": "Fatwa"},
+                        "href": "/fatwa",
+                    },
+                    {
+                        "label": {"fa": "سایت بیرونی", "ar": "موقع خارجي", "en": "External"},
+                        "href": "https://example.org/about",
+                    },
+                ],
+            }
+        ],
+        "brand": {
+            "tagline": {"fa": "شعار آزمایشی", "ar": "شعار تجريبي", "en": "Test tagline"},
+            "rights": {"fa": "© {year} آزمون", "ar": "© {year} اختبار", "en": "© {year} test"},
+        },
+    }
+    d.update(over)
+    return d
+
+
+async def test_footer_data_saved_and_public_get_reflects_it(tc):
+    await _seed_sections(tc)
+    admin = await _make_user(tc, ("platform.settings",))
+    r = await tc["client"].put(
+        f"{BASE}/admin/home/sections/footer/data",
+        json=_footer_payload(),
+        headers=admin,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["key"] == "footer"
+    # A footer save must not invent an items key.
+    assert "items" not in body["data"]
+    assert body["data"]["columns"][0]["links"][0]["href"] == "/fatwa"
+    assert body["data"]["brand"]["tagline"]["fa"] == "شعار آزمایشی"
+
+    pub = await tc["client"].get(f"{BASE}/home/sections")
+    assert pub.status_code == 200
+    sec = next(s for s in pub.json()["sections"] if s["key"] == "footer")
+    assert sec["data"]["columns"][0]["links"][1]["href"] == "https://example.org/about"
+
+
+async def test_footer_unsafe_href_422(tc):
+    await _seed_sections(tc)
+    admin = await _make_user(tc, ("platform.settings",))
+    payload = _footer_payload()
+    payload["columns"][0]["links"][0]["href"] = "javascript:alert(1)"
+    r = await tc["client"].put(
+        f"{BASE}/admin/home/sections/footer/data",
+        json=payload,
+        headers=admin,
+    )
+    assert r.status_code == 422
+
+
+async def test_footer_empty_payload_422(tc):
+    await _seed_sections(tc)
+    admin = await _make_user(tc, ("platform.settings",))
+    r = await tc["client"].put(
+        f"{BASE}/admin/home/sections/footer/data",
+        json={},
+        headers=admin,
+    )
+    assert r.status_code == 422
+
+
+async def test_footer_columns_cleared_without_touching_items_sections(tc):
+    """Saving footer columns, then an items section, keeps both payloads intact."""
+    await _seed_sections(tc)
+    admin = await _make_user(tc, ("platform.settings",))
+    r = await tc["client"].put(
+        f"{BASE}/admin/home/sections/footer/data",
+        json=_footer_payload(),
+        headers=admin,
+    )
+    assert r.status_code == 200, r.text
+    r = await tc["client"].put(
+        f"{BASE}/admin/home/sections/fresh_library/data",
+        json={"items": [_item(1)]},
+        headers=admin,
+    )
+    assert r.status_code == 200, r.text
+    pub = await tc["client"].get(f"{BASE}/home/sections")
+    secs = {s["key"]: s for s in pub.json()["sections"]}
+    assert len(secs["footer"]["data"]["columns"]) == 1
+    assert len(secs["fresh_library"]["data"]["items"]) == 1
+    assert "columns" not in secs["fresh_library"]["data"]

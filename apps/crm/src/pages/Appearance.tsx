@@ -3,7 +3,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Button } from "@maturidi/ui-web";
 import { ApiError } from "../lib/api";
 import { LOCALES, useI18n, type Locale } from "../lib/i18n";
-import { fetchHomeSections, putSectionData } from "../lib/homeSections";
+import {
+  emptyLocalized,
+  fetchHomeSections,
+  parseFooterData,
+  putFooterData,
+  putSectionData,
+  validateFooterDraft,
+  type FooterColumnDraft,
+  type FooterDataDraft,
+  type FooterLinkDraft,
+  type FooterLocalized,
+} from "../lib/homeSections";
 import {
   DEFAULT_PARTICLES,
   EMPTY_HERO,
@@ -27,8 +38,11 @@ import { ParticleField } from "../components/ParticleField";
  *   1. Particles & effects → `particles` {enabled, count, speed, parallax, lines}
  *   2. Below-hero sections  → `home.sections` [{id, variant, enabled}]
  *   3. Hero text           → `hero.fa|ar|en` {title, subtitle, primary_cta, secondary_cta}
- * Plus a fourth area backed by HomeSection.data (admin endpoint, not settings):
+ * Plus two areas backed by HomeSection.data (admin endpoint, not settings):
  *   4. Section content     → PUT /api/v1/admin/home/sections/{key}/data {items, layout?}
+ *   5. Footer              → same endpoint, key "footer", {columns, brand}
+ *      (structured form below — the footer is deliberately excluded from
+ *      the JSON section-data panel, whose items-only save would wipe it).
  *
  * This page only renders and binds forms; parsing/defaults/transport live in
  * lib/appearance.ts (ADR-001).
@@ -663,7 +677,9 @@ function SectionDataPanel(): React.ReactElement {
   const [jsonError, setJsonError] = React.useState("");
   const [savedTick, setSavedTick] = React.useState(0);
 
-  const sections = sectionsQuery.data ?? [];
+  // The footer has its own structured panel (FooterPanel); it is excluded
+  // here because this panel's items-only save would wipe its columns/brand.
+  const sections = (sectionsQuery.data ?? []).filter((s) => s.key !== "footer");
   const effectiveKey = selectedKey || sections[0]?.key || "";
 
   React.useEffect(() => {
@@ -768,6 +784,274 @@ function SectionDataPanel(): React.ReactElement {
 }
 
 /* ------------------------------------------------------------------ */
+/* Footer (footer section data — structured form, not JSON)            */
+/*                                                                     */
+/* Same endpoint as SectionDataPanel (PUT .../sections/footer/data)    */
+/* but a footer-shaped payload: {columns, brand}. Texts are edited     */
+/* per locale via tabs (HeroPanel pattern); hrefs must be same-origin   */
+/* paths or http(s) URLs — anything else is refused before saving.     */
+/* Empty brand fields / no columns = the web falls back to its         */
+/* built-in footer text and columns, so clearing never breaks it.      */
+/* ------------------------------------------------------------------ */
+
+function FooterPanel(): React.ReactElement {
+  const { t } = useI18n();
+  const queryClient = useQueryClient();
+  const sectionsQuery = useQuery({
+    queryKey: ["home-sections-data"],
+    queryFn: fetchHomeSections,
+    retry: false,
+  });
+  const [tab, setTab] = React.useState<Locale>("fa");
+  const [draft, setDraft] = React.useState<FooterDataDraft>({
+    columns: [],
+    brand: { tagline: emptyLocalized(), rights: emptyLocalized() },
+  });
+  const [localError, setLocalError] = React.useState("");
+  const [savedTick, setSavedTick] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!sectionsQuery.data) return;
+    const footer = sectionsQuery.data.find((s) => s.key === "footer");
+    setDraft(parseFooterData(footer?.data ?? null));
+    setLocalError("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sectionsQuery.data]);
+
+  const writer = useMutation({
+    mutationFn: (d: FooterDataDraft) => putFooterData(d),
+    onSuccess: () => {
+      setSavedTick((n) => n + 1);
+      void queryClient.invalidateQueries({ queryKey: ["home-sections-data"] });
+    },
+  });
+
+  const patchLoc = (
+    loc: FooterLocalized,
+    value: string,
+  ): FooterLocalized => ({ ...loc, [tab]: value });
+
+  const patchColumn = (ci: number, patch: Partial<FooterColumnDraft>): void =>
+    setDraft((prev) => ({
+      ...prev,
+      columns: prev.columns.map((c, i) => (i === ci ? { ...c, ...patch } : c)),
+    }));
+
+  const patchLink = (ci: number, li: number, patch: Partial<FooterLinkDraft>): void =>
+    setDraft((prev) => ({
+      ...prev,
+      columns: prev.columns.map((c, i) =>
+        i === ci
+          ? { ...c, links: c.links.map((l, k) => (k === li ? { ...l, ...patch } : l)) }
+          : c,
+      ),
+    }));
+
+  const handleSave = (): void => {
+    const problem = validateFooterDraft(draft);
+    if (problem) {
+      setLocalError(t(`appearance.${problem}`));
+      return;
+    }
+    setLocalError("");
+    writer.mutate(draft);
+  };
+
+  return (
+    <section className="panel" aria-label={t("appearance.footerTitle")}>
+      <div className="panel-head">
+        <h2>{t("appearance.footerTitle")}</h2>
+        <span className="panel-hint">{t("appearance.footerHint")}</span>
+      </div>
+
+      <div className="locale-tabs" role="tablist" aria-label={t("studio.locale")}>
+        {LOCALES.map((l) => (
+          <button
+            key={l}
+            type="button"
+            role="tab"
+            aria-selected={tab === l}
+            className={`locale-tab${tab === l ? " on" : ""}`}
+            onClick={() => setTab(l)}
+          >
+            {t(`studio.locale_${l}`)}
+          </button>
+        ))}
+      </div>
+
+      {sectionsQuery.isLoading && <div className="empty">{t("common.loading")}</div>}
+      {sectionsQuery.isError && (
+        <div>
+          <p>{t("common.error")}</p>
+          <Button size="sm" variant="secondary" onClick={() => void sectionsQuery.refetch()}>
+            {t("common.retry")}
+          </Button>
+        </div>
+      )}
+      {sectionsQuery.data && (
+        <div key={tab}>
+          <fieldset className="cta-fieldset">
+            <legend>{t("appearance.footerBrand")}</legend>
+            <div className="field">
+              <label htmlFor="footer-tagline">{t("appearance.footerTagline")}</label>
+              <input
+                id="footer-tagline"
+                className="input"
+                dir={tab === "en" ? "ltr" : "rtl"}
+                value={draft.brand.tagline[tab]}
+                onChange={(e) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    brand: { ...prev.brand, tagline: patchLoc(prev.brand.tagline, e.target.value) },
+                  }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="footer-rights">{t("appearance.footerRights")}</label>
+              <input
+                id="footer-rights"
+                className="input"
+                dir={tab === "en" ? "ltr" : "rtl"}
+                value={draft.brand.rights[tab]}
+                onChange={(e) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    brand: { ...prev.brand, rights: patchLoc(prev.brand.rights, e.target.value) },
+                  }))
+                }
+              />
+            </div>
+          </fieldset>
+
+          {draft.columns.map((col, ci) => (
+            <fieldset key={ci} className="cta-fieldset">
+              <legend>
+                {t("appearance.footerColumn")} {ci + 1}
+              </legend>
+              <div className="field">
+                <label htmlFor={`footer-col-${ci}-heading`}>{t("appearance.footerHeading")}</label>
+                <input
+                  id={`footer-col-${ci}-heading`}
+                  className="input"
+                  dir={tab === "en" ? "ltr" : "rtl"}
+                  value={col.heading[tab]}
+                  onChange={(e) =>
+                    patchColumn(ci, { heading: patchLoc(col.heading, e.target.value) })
+                  }
+                />
+              </div>
+              {col.links.map((link, li) => (
+                <div key={li} className="two-col">
+                  <div className="field">
+                    <label htmlFor={`footer-col-${ci}-link-${li}-label`}>
+                      {t("appearance.footerLinkLabel")}
+                    </label>
+                    <input
+                      id={`footer-col-${ci}-link-${li}-label`}
+                      className="input"
+                      dir={tab === "en" ? "ltr" : "rtl"}
+                      value={link.label[tab]}
+                      onChange={(e) =>
+                        patchLink(ci, li, { label: patchLoc(link.label, e.target.value) })
+                      }
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`footer-col-${ci}-link-${li}-href`}>
+                      {t("appearance.footerLinkHref")}
+                    </label>
+                    <input
+                      id={`footer-col-${ci}-link-${li}-href`}
+                      className="input"
+                      dir="ltr"
+                      value={link.href}
+                      onChange={(e) => patchLink(ci, li, { href: e.target.value })}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-mini danger"
+                    aria-label={t("common.remove")}
+                    title={t("common.remove")}
+                    onClick={() =>
+                      patchColumn(ci, { links: col.links.filter((_, k) => k !== li) })
+                    }
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() =>
+                    patchColumn(ci, {
+                      links: [...col.links, { label: emptyLocalized(), href: "" }],
+                    })
+                  }
+                  disabled={col.links.length >= 12}
+                >
+                  {t("appearance.footerAddLink")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      columns: prev.columns.filter((_, i) => i !== ci),
+                    }))
+                  }
+                >
+                  {t("appearance.footerRemoveColumn")}
+                </Button>
+              </div>
+            </fieldset>
+          ))}
+
+          <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                setDraft((prev) => ({
+                  ...prev,
+                  columns: [...prev.columns, { heading: emptyLocalized(), links: [] }],
+                }))
+              }
+              disabled={draft.columns.length >= 6}
+            >
+              {t("appearance.footerAddColumn")}
+            </Button>
+          </div>
+
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "1rem" }}>
+            <button
+              type="button"
+              className="btn-gold"
+              onClick={handleSave}
+              disabled={writer.isPending}
+            >
+              {writer.isPending ? t("appearance.saving") : t("appearance.save")}
+            </button>
+            {savedTick > 0 && !writer.isError && !localError && (
+              <Badge tone="success">{t("appearance.footerSaved")}</Badge>
+            )}
+            {(writer.isError || localError) && (
+              <span className="form-error" style={{ marginBottom: 0 }}>
+                {localError || errText(writer.error)}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 
 export default function Appearance(): React.ReactElement {
   const { t } = useI18n();
@@ -778,6 +1062,7 @@ export default function Appearance(): React.ReactElement {
       <SectionsPanel />
       <HeroPanel />
       <SectionDataPanel />
+      <FooterPanel />
     </div>
   );
 }

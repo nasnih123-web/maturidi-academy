@@ -30,11 +30,26 @@ async def put_section_data(
     user: User = Depends(require_permission("platform.settings")),
     db: AsyncSession = Depends(get_db),
 ):
-    """جایگزینی کامل دادهٔ یک بخش خانه (data.items + layout اختیاری).
+    """جایگزینی کامل دادهٔ یک بخش خانه (data.items + layout اختیاری،
+    یا برای بخش footer: data.columns + data.brand اختیاری).
 
     فقط ستون data نوشته می‌شود؛ key/sort_order/visible/title/subtitle
     دست نمی‌خورند. کلید ناموجود → 404؛ بیش از ۱۲ آیتم، عنوان خالی یا
     پیوند ناامن → 422 (اعتبارسنجی Pydantic).
     """
-    items = [item.model_dump(exclude_none=True) for item in payload.items]
-    return await service.set_section_data(db, key, items, payload.layout)
+    items = (
+        [item.model_dump(exclude_none=True) for item in payload.items]
+        if payload.items is not None
+        else None
+    )
+    columns = (
+        [col.model_dump(exclude_none=True) for col in payload.columns]
+        if payload.columns is not None
+        else None
+    )
+    brand = (
+        payload.brand.model_dump(exclude_none=True)
+        if payload.brand is not None
+        else None
+    )
+    return await service.set_section_data(db, key, items, payload.layout, columns, brand)

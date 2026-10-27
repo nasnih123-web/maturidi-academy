@@ -47,11 +47,22 @@ export function SiteFooter({
         {cols.map((c) => (
           <nav key={c.heading} aria-label={c.heading}>
             <h3>{c.heading}</h3>
-            {c.links.map((l) => (
-              <Link key={l.href} href={l.href.startsWith("/") ? `/${locale}${l.href}` : l.href}>
-                {l.label}
-              </Link>
-            ))}
+            {c.links.map((l) => {
+              // Internal paths get the locale prefix — unless the admin
+              // already entered a locale-prefixed path (no double prefix).
+              // External http(s) links pass through untouched.
+              const href =
+                l.href.startsWith("/") &&
+                l.href !== `/${locale}` &&
+                !l.href.startsWith(`/${locale}/`)
+                  ? `/${locale}${l.href}`
+                  : l.href;
+              return (
+                <Link key={l.href} href={href}>
+                  {l.label}
+                </Link>
+              );
+            })}
           </nav>
         ))}
       </div>

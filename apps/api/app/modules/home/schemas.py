@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
 
@@ -175,11 +175,94 @@ class SectionDataItem(BaseModel):
         return _validate_safe_href(v)
 
 
-class SectionDataUpdate(BaseModel):
-    """Full replacement payload for a section's data."""
+class FooterLink(BaseModel):
+    """One link inside a footer column (web NavLink contract).
 
-    items: list[SectionDataItem] = Field(max_length=12)
+    label is a LocalizedText-ish dict/string with at least one non-empty
+    locale; href must be a safe href (same-origin path or http(s) URL) —
+    the same rule as the web's safeHref. No invented targets: an unsafe
+    href is rejected (422), never rewritten or dropped silently.
+    """
+
+    label: str | dict[str, str]
+    href: str
+
+    @field_validator("label")
+    @classmethod
+    def _label_ok(cls, v: Any) -> Any:
+        return _validate_localized_text(v, required=True)
+
+    @field_validator("href")
+    @classmethod
+    def _href_ok(cls, v: Any) -> Any:
+        out = _validate_safe_href(v)
+        if out is None:
+            raise PydanticCustomError("unsafe_url", "url must be a same-origin path or an http(s) URL")
+        return out
+
+
+class FooterColumn(BaseModel):
+    """One footer nav column: a localized heading plus its links."""
+
+    heading: str | dict[str, str]
+    links: list[FooterLink] = Field(max_length=12)
+
+    @field_validator("heading")
+    @classmethod
+    def _heading_ok(cls, v: Any) -> Any:
+        return _validate_localized_text(v, required=True)
+
+
+class FooterBrand(BaseModel):
+    """Footer brand texts, localized. Either field may be omitted; an
+    omitted/empty field falls back to the web's built-in messages text.
+    `rights` may contain a `{year}` placeholder, replaced by the web with
+    the current year (same convention as the built-in messages string).
+    """
+
+    tagline: str | dict[str, str] | None = None
+    rights: str | dict[str, str] | None = None
+
+    @field_validator("tagline", "rights")
+    @classmethod
+    def _brand_text_ok(cls, v: Any) -> Any:
+        return _validate_localized_text(v, required=False)
+
+
+class SectionDataUpdate(BaseModel):
+    """Full replacement payload for a section's data.
+
+    Card sections send `items` (+ optional `layout`); the footer section
+    sends `columns` (+ optional `brand`) instead — the endpoint is shared
+    because the footer is a HomeSection key and only its `data` column is
+    written, exactly like every other section. At least one content field
+    must be present; fields that are absent are not written, so a footer
+    save never invents an `items` key and an items save never invents
+    footer columns.
+    """
+
+    items: list[SectionDataItem] | None = Field(default=None, max_length=12)
     layout: Literal["slider", "grid", "featured-rail", "shelf", "mosaic"] | None = None
+    columns: list[FooterColumn] | None = Field(default=None, max_length=6)
+    brand: FooterBrand | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one_field(self) -> "SectionDataUpdate":
+        if (
+            self.items is None
+            and self.layout is None
+            and self.columns is None
+            and self.brand is None
+        ):
+            # PydanticCustomError, not ValueError: the app's validation
+            # handler serializes exc.errors() into the envelope, and a raw
+            # ValueError in the error ctx is not JSON-serializable (it
+            # would crash the handler with TypeError instead of a 422).
+            raise PydanticCustomError(
+                "empty_payload",
+                "at least one of items, layout, columns, brand must be present",
+            )
+        return self
 
 
 class SectionDataOut(BaseModel):

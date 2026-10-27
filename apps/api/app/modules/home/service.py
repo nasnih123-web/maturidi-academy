@@ -113,22 +113,37 @@ async def get_home_sections(db: AsyncSession) -> HomeOut:
 
 
 async def set_section_data(
-    db: AsyncSession, key: str, items: list[dict], layout: str | None
+    db: AsyncSession,
+    key: str,
+    items: list[dict] | None,
+    layout: str | None,
+    columns: list[dict] | None = None,
+    brand: dict | None = None,
 ) -> dict:
     """Replace a HomeSection's data payload (admin-only, via admin_router).
 
     Only the `data` column is written; key/sort_order/visible/title/subtitle
     are untouched. Unknown key → 404. The payload shape mirrors the web's
-    section-data contract: {"items": [...], "layout"?: <known layout>}.
+    section-data contract: {"items": [...], "layout"?: <known layout>} for
+    card sections, {"columns": [...], "brand"?: {...}} for the footer.
+    Only fields that were provided are written, so a footer save never
+    invents an `items` key (and vice versa); the whole payload is still
+    replaced atomically on each save.
     """
     row = (
         await db.execute(select(HomeSection).where(HomeSection.key == key))
     ).scalar_one_or_none()
     if row is None:
         raise APIError(404, "section_not_found", "بخش خانه یافت نشد")
-    data: dict = {"items": items}
+    data: dict = {}
+    if items is not None:
+        data["items"] = items
     if layout is not None:
         data["layout"] = layout
+    if columns is not None:
+        data["columns"] = columns
+    if brand is not None:
+        data["brand"] = brand
     row.data = data
     db.add(row)
     await db.commit()
