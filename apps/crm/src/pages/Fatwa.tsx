@@ -77,7 +77,8 @@ type FatwaTab =
   | "register"
   | "categories"
   | "review"
-  | "published";
+  | "published"
+  | "archived";
 const TABS: FatwaTab[] = [
   "chunks",
   "entry",
@@ -90,6 +91,7 @@ const TABS: FatwaTab[] = [
   "categories",
   "review",
   "published",
+  "archived",
 ];
 
 const TAB_KEY: Record<FatwaTab, string> = {
@@ -104,6 +106,7 @@ const TAB_KEY: Record<FatwaTab, string> = {
   categories: "fatwa.tabCategories",
   review: "fatwa.tabReview",
   published: "fatwa.tabPublished",
+  archived: "fatwa.tabArchived",
 };
 
 const WORKFLOW_STATUSES: WorkflowStatus[] = [
@@ -1426,6 +1429,7 @@ export default function Fatwa(): React.ReactElement {
         {tab === "categories" && <CategoriesTab />}
         {tab === "review" && <ReviewTab />}
         {tab === "published" && <PublishedTab />}
+        {tab === "archived" && <ArchivedTab />}
       </div>
     </div>
   );
@@ -2119,6 +2123,71 @@ function PublishedTab(): React.ReactElement {
               onClick={() => setStatus.mutate({ id: tp.id, status: "archived" })}
             >
               {t("fatwa.archiveFatwa")}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ArchivedTab(): React.ReactElement {
+  const { t, locale, formatDate } = useI18n();
+  const archived = useFatwaTopics({ status: "archived" });
+  const setStatus = useSetTopicStatus();
+  const sorted = archived.data ? sortByCategoryDate(archived.data, locale) : [];
+
+  return (
+    <section className="panel" aria-label={t("fatwa.archivedTitle")}>
+      <div className="panel-head">
+        <h2>{t("fatwa.archivedTitle")}</h2>
+        <span className="panel-hint">{t("fatwa.sortByCategoryDate")}</span>
+      </div>
+      {archived.isLoading && <div className="empty">{t("common.loading")}</div>}
+      {archived.isError && (
+        <div className="empty">
+          <p>{t("common.error")}</p>
+          <Button size="sm" variant="secondary" onClick={() => archived.refetch()}>
+            {t("common.retry")}
+          </Button>
+        </div>
+      )}
+      {archived.data && sorted.length === 0 && (
+        <div className="empty">{t("fatwa.emptyArchived")}</div>
+      )}
+      <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+        {sorted.map((tp) => (
+          <li
+            key={tp.id}
+            style={{
+              display: "flex",
+              gap: "0.5rem",
+              alignItems: "center",
+              flexWrap: "wrap",
+              padding: "0.4rem 0",
+              borderTop: "1px solid var(--x-line)",
+            }}
+          >
+            <span style={{ flex: "1 1 12rem" }}>{topicName(tp, locale)}</span>
+            <span className="hint" style={{ margin: 0 }}>
+              {catName(tp.category, locale)}
+            </span>
+            <span className="hint" style={{ margin: 0 }}>
+              {tp.published_at ? formatDate(tp.published_at) : ""}
+            </span>
+            <span className="hint" style={{ margin: 0 }}>
+              {tp.view_count} {t("fatwa.viewsLabel")}
+            </span>
+            <span className="hint" style={{ margin: 0 }}>
+              {tp.share_count} {t("fatwa.sharesLabel")}
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={setStatus.isPending}
+              onClick={() => setStatus.mutate({ id: tp.id, status: "draft" })}
+            >
+              {t("fatwa.restoreFatwa")}
             </Button>
           </li>
         ))}
