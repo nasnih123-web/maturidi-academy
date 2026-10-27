@@ -1015,6 +1015,8 @@
     "demoNote": "تمام داده‌های زیر نمایشی‌اند (lib/demo-fixtures.ts) و هیچ‌یک محتوای واقعی نیست. مسیرهای واقعی هرگز این داده‌ها را نشان نمی‌دهند.",
     "statOverall": "پیشرفت کلی",
     "courseQuizAvg": "میانگین آزمون",
+    "coursesEmpty": "در حال حاضر دوره‌ای اعلام نشده است.",
+    "coursesTitle": "دوره‌ها",
     "reasonNextIncomplete": "ادامهٔ درس ناتمام سطح شما",
     "reasonNextLevel": "گام بعدی سطح شما",
     "inProgressBadge": "در حال مطالعه",

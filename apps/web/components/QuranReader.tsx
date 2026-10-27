@@ -82,6 +82,20 @@ export function QuranReader({
   const statusKey = STATUS_KEY[state.status];
   const playing = statusKey === 'playing' || statusKey === 'loading';
 
+  // Auto-follow playback: when the playing ayah changes — auto-advance to
+  // the next ayah, or time-driven advance in whole-surah mode — keep its
+  // card in view. 'nearest' scrolls only when the card is out of view, so
+  // reading ahead while paused is never yanked back (paused => playing
+  // is false, and this effect exits early).
+  useEffect(() => {
+    if (state.ayahIndex < 0 || !playing) return;
+    const ayah = ayahs[state.ayahIndex];
+    if (!ayah) return;
+    document
+      .getElementById(`ayah-${ayah.number}`)
+      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [state.ayahIndex, playing, ayahs]);
+
   const progressPct = useMemo(() => {
     if (!state.duration || state.duration <= 0) return 0;
     return Math.min(100, (state.currentTime / state.duration) * 100);
