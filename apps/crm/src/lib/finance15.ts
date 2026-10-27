@@ -347,6 +347,20 @@ export function useUpdateCampaign() {
   });
 }
 
+export function useDeleteCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string): Promise<void> => {
+      await apiFetch<unknown>(`${BASE}/campaigns/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [QK, "campaigns"] });
+    },
+  });
+}
+
 /** Cursor-paginated donations list (contract §1 — cursor, not offset). */
 export function useDonations(cursor: string | null, limit = 25) {
   return useQuery({

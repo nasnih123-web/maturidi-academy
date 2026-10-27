@@ -728,6 +728,45 @@ async def update_campaign(
     return _campaign_out(campaign)
 
 
+async def delete_campaign(
+    db: AsyncSession,
+    *,
+    campaign_id: UUID,
+    admin: User,
+    ip: str | None,
+    ua: str | None,
+) -> None:
+    campaign = await db.get(DonationCampaign, campaign_id)
+    if campaign is None:
+        raise APIError(404, "campaign_not_found", "کمپین یافت نشد")
+    old = {"title": campaign.title, "goal_amount": campaign.goal_amount}
+    has_donations = (
+        await db.execute(
+            select(Donation.id)
+            .where(Donation.campaign_id == campaign_id)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if has_donations is not None:
+        raise APIError(
+            409, "campaign_has_donations",
+            "این کمپین اهدا دارد و نمی‌توان آن را حذف کرد",
+        )
+    await db.delete(campaign)
+    await log_audit(
+        db,
+        actor_id=admin.id,
+        actor_type="user",
+        action="finance.campaign_deleted",
+        entity_type="donation_campaign",
+        entity_id=str(campaign.id),
+        old_values=old,
+        ip=ip,
+        user_agent=ua,
+    )
+    await db.commit()
+
+
 # ---------------------------------------------------------------------------
 # لیست اهداها و دفتر (cursor)
 # ---------------------------------------------------------------------------
