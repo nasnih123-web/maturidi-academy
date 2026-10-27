@@ -15,7 +15,9 @@ import {
 } from "@/lib/section-data";
 import { buildHomeLabels } from "@/lib/home-labels";
 import { getFatwaListServer } from "@/lib/fatwa-topics";
+import { getArticleListServer } from "@/lib/articles";
 import { themeCssText } from "@/lib/theme";
+import { ArticlesSlider } from "@/components/ArticlesSlider";
 import { HomeSections, HomeSectionRenderer } from "@/components/HomeSections";
 import { ComposedSections } from "@/components/sections/SectionSlot";
 import { AnnouncementsBar } from "@/components/AnnouncementsBar";
@@ -81,12 +83,13 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: "home" });
   const tContent = await getTranslations({ locale, namespace: "content" });
+  const tArticles = await getTranslations({ locale, namespace: "articles" });
 
   let sections: HomeSection[] = [];
   let themeCss = "";
   let apiFailed = false;
 
-  const [homeRes, announcements, banners, calTheme, quotes, siteConfig, fatwaRes] = await Promise.all([
+  const [homeRes, announcements, banners, calTheme, quotes, siteConfig, fatwaRes, articlesRes] = await Promise.all([
     getHomeSections().then(
       (res) => ({ ok: true as const, res }),
       () => ({ ok: false as const }),
@@ -100,6 +103,18 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
     // endpoint (never section JSON). Non-throwing: on failure the slider
     // renders the honest empty state.
     getFatwaListServer({
+      locale: (["fa", "ar", "en"].includes(locale) ? locale : "fa"),
+      sort: "newest",
+      page: 1,
+      perPage: 10,
+    }).then(
+      (res) => ({ ok: true as const, res }),
+      () => ({ ok: false as const }),
+    ),
+    // Homepage articles slider — latest published articles from the
+    // public endpoint (never section JSON, no seed.py section key).
+    // Non-throwing: on failure the slider renders nothing.
+    getArticleListServer({
       locale: (["fa", "ar", "en"].includes(locale) ? locale : "fa"),
       sort: "newest",
       page: 1,
@@ -217,6 +232,12 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
               fatwaSliderItems={fatwaSliderItems}
             />
           )}
+          <ArticlesSlider
+            locale={locale}
+            items={articlesRes.ok ? articlesRes.res.items : []}
+            title={tArticles("homeTitle")}
+            showAllLabel={tArticles("showAll")}
+          />
           <ScholarQuotes
             quotes={quoteViews}
             heading={tContent("quotes.heading")}

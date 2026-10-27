@@ -683,6 +683,47 @@ class FatwaCategory(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class ArticleCategory(Base):
+    """دستهٔ مقاله — در CRM تعریف می‌شود و در فرم ثبت انتخاب می‌شود."""
+
+    __tablename__ = "article_categories"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class Article(Base):
+    """مقالهٔ وردپرسی — ثبت در CRM، انتشار در وبسایت."""
+
+    __tablename__ = "articles"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    title: Mapped[dict] = mapped_column(JSONB)  # LocalizedText
+    body: Mapped[dict] = mapped_column(JSONB)  # Tiptap JSON doc
+    slug: Mapped[str] = mapped_column(String(200), unique=True, index=True)
+    seo_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    seo_description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("article_categories.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+    author_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    featured_image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    workflow_status: Mapped[str] = mapped_column(String(16), default="draft", index=True)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
+    share_count: Mapped[int] = mapped_column(Integer, default=0)
+    # موقع ورود به وضعیت published ثبت می‌شود؛ با بایگانی پاک نمی‌شود.
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
 class MadhabPosition(Base):
     """موضع یک مذهب دربارهٔ یک موضوع — متن فقط از منابع واقعی."""
 

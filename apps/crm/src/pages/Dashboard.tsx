@@ -60,6 +60,7 @@ const NAV_GROUPS: NavGroupDef[] = [
       { to: "/events", labelKey: "nav.events", icon: "M3 12h4l2.5-7 4 14 2.5-7H21", superAdmin: false },
       { to: "/content", labelKey: "nav.content", icon: "M6 3h8l4 4v14H6zM14 3v5h4M9 13h6M9 16h4", superAdmin: false },
       { to: "/fatwa", labelKey: "nav.fatwa", icon: "M12 3v18M5 8l7-5 7 5M7 21h10", superAdmin: true },
+      { to: "/articles", labelKey: "nav.articles", icon: "M6 3h8l4 4v14H6zM14 3v5h4M9 13h6M9 16h4", superAdmin: true },
       { to: "/moderation", labelKey: "nav.moderation", icon: "M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z", superAdmin: true },
       { to: "/fatwa-submissions", labelKey: "nav.fatwaSubmissions", icon: "M6 3h9l4 4v14H6zM14 3v5h4M9 13h6M9 16h4", superAdmin: true },
       { to: "/clusters", labelKey: "nav.clusters", icon: "M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2 21c0-3.5 3-6 7-6s7 2.5 7 6M16 11a3 3 0 100-6", superAdmin: true },

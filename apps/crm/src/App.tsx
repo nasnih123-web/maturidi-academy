@@ -14,6 +14,7 @@ import Roles from "./pages/Roles";
 import { DashboardHome, DashboardLayout } from "./pages/Dashboard";
 import Events from "./pages/Events";
 import Fatwa from "./pages/Fatwa";
+import Articles from "./pages/Articles";
 import Finance from "./pages/Finance";
 import LMS from "./pages/LMS";
 import Login from "./pages/Login";
@@ -77,6 +78,7 @@ export default function App(): React.ReactElement {
             <Route path="events" element={<Events />} />
             <Route path="content" element={<ContentControl />} />
             <Route path="fatwa" element={<Fatwa />} />
+            <Route path="articles" element={<Articles />} />
             <Route path="finance" element={<Finance />} />
             <Route path="moderation" element={<Moderation />} />
             <Route path="users" element={<User360 />} />
