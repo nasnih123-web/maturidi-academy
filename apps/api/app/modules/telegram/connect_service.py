@@ -100,6 +100,10 @@ async def request_code(
         phone_code_hash = getattr(sent, "phone_code_hash", None)
         if not phone_code_hash:
             raise APIError(502, "telegram_code_failed", "ارسال کد ورود ناموفق بود")
+        # نشست پیش‌ازورود را نگه می‌داریم تا قدم تأیید با همان اتصال
+        # (همان کلید احراز و همان دیتاسنتر) انجام شود؛ ساخت کلاینت تازه
+        # در قدم تأیید، کد را در سمت تلگرام «منقضی» نشان می‌داد.
+        pending_session = client.save_session()
     finally:
         try:
             await client.disconnect()
@@ -113,6 +117,7 @@ async def request_code(
             "telegram.pending_phone": phone,
             "telegram.pending_phone_code_hash": phone_code_hash,
             "telegram.pending_expires_at": expires_at.isoformat(),
+            "telegram.pending_session": pending_session,
         },
     )
     await log_audit(
@@ -149,6 +154,9 @@ async def confirm_code(
     pending_phone = await get_setting(db, "telegram.pending_phone")
     phone_code_hash = await get_setting(db, "telegram.pending_phone_code_hash")
     expires_raw = await get_setting(db, "telegram.pending_expires_at")
+    # نشست ذخیره‌شده از قدم درخواست؛ اگر نباشد (pending ساخته‌شده با
+    # نسخهٔ قدیمی) با کلاینت تازه ادامه می‌دهیم (رفتار قبلی).
+    pending_session = await get_setting(db, "telegram.pending_session")
     try:
         expires_at = datetime.fromisoformat(expires_raw) if expires_raw else None
     except ValueError:
@@ -166,7 +174,7 @@ async def confirm_code(
         )
 
     api_id, api_hash = await _telethon_creds(db)
-    client = mtproto.create_client(None, api_id, api_hash)
+    client = mtproto.create_client(pending_session, api_id, api_hash)
     try:
         await client.connect()
         try:
@@ -206,6 +214,7 @@ async def confirm_code(
             "telegram.pending_phone": None,
             "telegram.pending_phone_code_hash": None,
             "telegram.pending_expires_at": None,
+            "telegram.pending_session": None,
         },
     )
     await log_audit(
@@ -252,6 +261,7 @@ async def disconnect(
             "telegram.pending_phone": None,
             "telegram.pending_phone_code_hash": None,
             "telegram.pending_expires_at": None,
+            "telegram.pending_session": None,
         },
     )
     await log_audit(
