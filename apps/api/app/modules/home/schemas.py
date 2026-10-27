@@ -247,7 +247,7 @@ class SectionDataUpdate(BaseModel):
     brand: FooterBrand | None = None
 
     @model_validator(mode="after")
-    def _at_least_one_field(self) -> "SectionDataUpdate":
+    def _at_least_one_field(self) -> SectionDataUpdate:
         if (
             self.items is None
             and self.layout is None
