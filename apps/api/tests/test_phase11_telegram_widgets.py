@@ -112,6 +112,8 @@ def _clean_telegram_state():
 # ---------------------------------------------------------------------------
 
 from app.modules.telegram.telethon_client import (
+    CodeExpired,
+    CodeInvalid,
     FloodWait,
     MtprotoMessage,
     SessionPasswordNeeded,
@@ -130,6 +132,7 @@ class FakeMtprotoClient:
         session_str: str = "FAKESESSIONDATA",
         messages: list[MtprotoMessage] | None = None,
         flood_wait_first: bool = False,
+        sign_in_error: Exception | None = None,
     ):
         self._authorized = authorized
         self._code = code
@@ -139,6 +142,7 @@ class FakeMtprotoClient:
         self._messages = messages or []
         self._flood_wait_first = flood_wait_first
         self._flooded = False
+        self._sign_in_error = sign_in_error
         self.sent_code_to: str | None = None
 
     async def connect(self): ...
@@ -155,6 +159,8 @@ class FakeMtprotoClient:
         assert phone_code_hash == "HASH123"
         if self._need_password:
             raise SessionPasswordNeeded()
+        if self._sign_in_error is not None:
+            raise self._sign_in_error
         if code != self._code:
             raise Exception("bad code")
         self._authorized = True
@@ -658,6 +664,40 @@ async def test_telegram_connect_password_flow(tc):
               "password": "s3cret"}, headers=admin)
     assert r.status_code == 200
     assert r.json()["connected"] is True
+
+
+async def test_telegram_connect_expired_code_maps_to_422(tc):
+    admin = await _make_user(tc, ("telegram.manage",))
+    client = tc["client"]
+    await _set_settings(tc, {"telegram.api_id": "123456",
+                             "telegram.api_hash": "fakehash"})
+    fake = FakeMtprotoClient(sign_in_error=CodeExpired())
+    set_client_factory(lambda s, i, h: fake)
+
+    await client.post(f"{BASE}/telegram/connect/request-code",
+                      json={"phone": "+989123456789"}, headers=admin)
+    r = await client.post(
+        f"{BASE}/telegram/connect/confirm-code",
+        json={"phone": "+989123456789", "code": "12345"}, headers=admin)
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "code_expired_or_invalid"
+
+
+async def test_telegram_connect_invalid_code_maps_to_422(tc):
+    admin = await _make_user(tc, ("telegram.manage",))
+    client = tc["client"]
+    await _set_settings(tc, {"telegram.api_id": "123456",
+                             "telegram.api_hash": "fakehash"})
+    fake = FakeMtprotoClient(sign_in_error=CodeInvalid())
+    set_client_factory(lambda s, i, h: fake)
+
+    await client.post(f"{BASE}/telegram/connect/request-code",
+                      json={"phone": "+989123456789"}, headers=admin)
+    r = await client.post(
+        f"{BASE}/telegram/connect/confirm-code",
+        json={"phone": "+989123456789", "code": "12345"}, headers=admin)
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "bad_code"
 
 
 # ---------------------------------------------------------------------------

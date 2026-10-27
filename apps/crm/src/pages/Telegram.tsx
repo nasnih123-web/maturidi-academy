@@ -1,5 +1,6 @@
 import React from "react";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@maturidi/ui-web";
+import { ApiError } from "../lib/api";
 import {
   errText,
   useConfirmConnectCode,
@@ -129,6 +130,9 @@ function ConnectTab(): React.ReactElement {
       setCode("");
       setPassword("");
     } catch (e) {
+      if (e instanceof ApiError && e.code === "password_required") {
+        setRequires2fa(true);
+      }
       setError(errText(e));
     }
   };

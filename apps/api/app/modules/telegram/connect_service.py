@@ -178,6 +178,16 @@ async def confirm_code(
                     "این حساب رمز دومرحله‌ای دارد؛ password را هم بفرستید",
                 )
             await client.sign_in_with_password(password)
+        except mtproto.CodeExpired:
+            raise APIError(
+                422, "code_expired_or_invalid",
+                "کد ورود منقضی شده است؛ کد تازه درخواست کنید",
+            )
+        except mtproto.CodeInvalid:
+            raise APIError(
+                422, "bad_code",
+                "کد ورود نامعتبر است",
+            )
         session_str = client.save_session()
         if not session_str:
             raise APIError(502, "telegram_session_failed", "ذخیرهٔ session ناموفق بود")

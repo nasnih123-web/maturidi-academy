@@ -17,6 +17,14 @@ class SessionPasswordNeeded(Exception):
     """ورود نیازمند رمز دومرحله‌ای است."""
 
 
+class CodeExpired(Exception):
+    """کد ورود در سمت تلگرام منقضی شده است."""
+
+
+class CodeInvalid(Exception):
+    """کد ورود نامعتبر است."""
+
+
 class FloodWait(Exception):
     """محدودیت نرخ تلگرام — `retry_after` ثانیه صبر کن."""
 
@@ -98,7 +106,11 @@ class _RealTelethonClient:
     async def sign_in_with_code(
         self, phone: str, code: str, phone_code_hash: str
     ) -> None:
-        from telethon.errors import SessionPasswordNeededError
+        from telethon.errors import (
+            PhoneCodeExpiredError,
+            PhoneCodeInvalidError,
+            SessionPasswordNeededError,
+        )
 
         try:
             await self._client.sign_in(
@@ -106,6 +118,10 @@ class _RealTelethonClient:
             )
         except SessionPasswordNeededError as exc:
             raise SessionPasswordNeeded() from exc
+        except PhoneCodeExpiredError as exc:
+            raise CodeExpired() from exc
+        except PhoneCodeInvalidError as exc:
+            raise CodeInvalid() from exc
 
     async def sign_in_with_password(self, password: str) -> None:
         await self._client.sign_in(password=password)
