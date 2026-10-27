@@ -12,6 +12,7 @@
  * Slot enable/disable is the settings-level switch; the API `visible` flag
  * is still honored when the section payload is selected.
  */
+import { Fragment, type ReactNode } from 'react';
 import type { HomeSection } from '@/lib/types';
 import type { HomeSlotSetting, HeroSettings } from '@/lib/settings';
 import { HomeSectionRenderer, type FatwaSliderItem, type HomeSectionsLabels } from '../HomeSections';
@@ -78,6 +79,7 @@ export function ComposedSections({
   labels,
   heroOverride,
   fatwaSliderItems,
+  afterCommunity,
 }: {
   sections: HomeSection[];
   slots: HomeSlotSetting[];
@@ -85,23 +87,32 @@ export function ComposedSections({
   labels: HomeSectionsLabels;
   heroOverride: HeroSettings | null;
   fatwaSliderItems?: FatwaSliderItem[] | null;
+  /**
+   * Block rendered immediately after the community section (in slots
+   * order), e.g. the recent-articles slider. When no community slot
+   * renders (disabled, invisible, or absent), it is appended at the end
+   * so it still appears exactly once.
+   */
+  afterCommunity?: ReactNode;
 }) {
   const byKey = new Map<string, HomeSection>();
   for (const s of sections) {
     if (s.visible !== false && !byKey.has(s.key)) byKey.set(s.key, s);
   }
+  // The hero is rendered separately by the page (with the
+  // hero.<locale> override); a "hero" slot here would duplicate it.
+  const renderedSlots = slots.filter((slot) => slot.enabled !== false && slot.id !== "hero");
+  const communityRendered = renderedSlots.some(
+    (slot) => slot.id === "community" && byKey.has("community"),
+  );
   return (
     <>
-      {slots
-        // The hero is rendered separately by the page (with the
-        // hero.<locale> override); a "hero" slot here would duplicate it.
-        .filter((slot) => slot.enabled !== false && slot.id !== "hero")
-        .map((slot) => {
-          const section = byKey.get(slot.id);
-          if (!section) return null;
-          return (
+      {renderedSlots.map((slot) => {
+        const section = byKey.get(slot.id);
+        if (!section) return null;
+        return (
+          <Fragment key={slot.id}>
             <SectionSlot
-              key={slot.id}
               section={section}
               slot={slot}
               locale={locale}
@@ -109,8 +120,11 @@ export function ComposedSections({
               heroOverride={heroOverride}
               fatwaSliderItems={fatwaSliderItems}
             />
-          );
-        })}
+            {slot.id === "community" ? afterCommunity : null}
+          </Fragment>
+        );
+      })}
+      {!communityRendered ? afterCommunity : null}
     </>
   );
 }

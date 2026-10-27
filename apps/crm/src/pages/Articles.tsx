@@ -118,12 +118,22 @@ function editorLabels(t: (k: string) => string) {
     italic: t("articles.editorItalic"),
     underline: t("articles.editorUnderline"),
     strike: t("articles.editorStrike"),
+    paragraph: t("articles.editorParagraph"),
     heading2: t("articles.editorHeading2"),
     heading3: t("articles.editorHeading3"),
+    heading4: t("articles.editorHeading4"),
+    format: t("articles.editorFormat"),
+    alignLeft: t("articles.editorAlignLeft"),
+    alignCenter: t("articles.editorAlignCenter"),
+    alignRight: t("articles.editorAlignRight"),
+    alignJustify: t("articles.editorAlignJustify"),
     bulletList: t("articles.editorBulletList"),
     orderedList: t("articles.editorOrderedList"),
     quote: t("articles.editorQuote"),
     codeBlock: t("articles.editorCodeBlock"),
+    horizontalRule: t("articles.editorHorizontalRule"),
+    undo: t("articles.editorUndo"),
+    redo: t("articles.editorRedo"),
     linkUrl: t("articles.editorLinkUrl"),
     applyLink: t("articles.editorApplyLink"),
     removeLink: t("articles.editorRemoveLink"),
@@ -133,6 +143,7 @@ function editorLabels(t: (k: string) => string) {
     insertVideo: t("articles.editorInsertVideo"),
     badImageUrl: t("articles.editorBadImageUrl"),
     badVideoUrl: t("articles.editorBadVideoUrl"),
+    dropLocalBlocked: t("articles.editorDropLocalBlocked"),
   };
 }
 
@@ -221,8 +232,10 @@ function RegisterTab(): React.ReactElement {
                 ? t("articles.stepCategory")
                 : step === 3
                   ? t("articles.stepAuthor")
-                  : t("articles.stepSeo")}{" "}
-            · {step} / 4
+                  : step === 4
+                    ? t("articles.stepFeaturedImage")
+                    : t("articles.stepSeo")}{" "}
+            · {step} / 5
           </span>
         </div>
         {saved && <Badge tone="success">{t("articles.articleRegistered")}</Badge>}
@@ -276,6 +289,10 @@ function RegisterTab(): React.ReactElement {
                 onChange={(e) => setAuthor(e.target.value)}
               />
             </div>
+          </div>
+        )}
+        {step === 4 && (
+          <div>
             <div className="field">
               <label htmlFor="art-img">{t("articles.imageUrlLabel")}</label>
               <input
@@ -295,7 +312,7 @@ function RegisterTab(): React.ReactElement {
             ) : null}
           </div>
         )}
-        {step === 4 && (
+        {step === 5 && (
           <div>
             <div className="field">
               <label htmlFor="art-slug">{t("articles.slugLabel")}</label>
@@ -339,12 +356,12 @@ function RegisterTab(): React.ReactElement {
               {t("articles.stepPrev")}
             </Button>
           )}
-          {step < 4 && (
+          {step < 5 && (
             <Button size="sm" onClick={() => setStep(step + 1)}>
               {t("articles.stepNext")}
             </Button>
           )}
-          {step === 4 && (
+          {step === 5 && (
             <Button size="sm" disabled={submitting || !slug.trim()} onClick={submit}>
               {submitting ? t("common.loading") : t("articles.submitArticle")}
             </Button>
