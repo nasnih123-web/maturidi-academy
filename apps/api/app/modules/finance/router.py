@@ -180,6 +180,7 @@ async def admin_list_campaigns(
 
 
 @admin_finance_router.put("/campaigns/{campaign_id}", response_model=schemas.CampaignOut)
+@admin_finance_router.patch("/campaigns/{campaign_id}", response_model=schemas.CampaignOut)
 async def admin_update_campaign(
     campaign_id: UUID,
     request: Request,
@@ -189,6 +190,19 @@ async def admin_update_campaign(
 ):
     return await service.update_campaign(
         db, campaign_id=campaign_id, body=body, admin=user,
+        ip=_client_ip(request), ua=_ua(request),
+    )
+
+
+@admin_finance_router.delete("/campaigns/{campaign_id}", status_code=204)
+async def admin_delete_campaign(
+    campaign_id: UUID,
+    request: Request,
+    user: User = Depends(_finance_admin),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    await service.delete_campaign(
+        db, campaign_id=campaign_id, admin=user,
         ip=_client_ip(request), ua=_ua(request),
     )
 

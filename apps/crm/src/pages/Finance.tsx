@@ -14,6 +14,7 @@ import {
   raisedPct,
   useCampaigns,
   useCreateCampaign,
+  useDeleteCampaign,
   useDonations,
   useGatewayStatus,
   useLedger,
@@ -260,6 +261,7 @@ function CampaignForm({
 function CampaignsTab({ locale }: { locale: Locale }): React.ReactElement {
   const { t } = useI18n();
   const query = useCampaigns();
+  const del = useDeleteCampaign();
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Campaign | null>(null);
 
@@ -300,6 +302,7 @@ function CampaignsTab({ locale }: { locale: Locale }): React.ReactElement {
       {query.isSuccess && query.data.length === 0 && (
         <p className="empty">{t("finance15.campaigns_empty")}</p>
       )}
+      {del.isError && <p className="error">{errText(del.error)}</p>}
       {query.isSuccess && query.data.length > 0 && (
         <div className="conn-grid">
           {query.data.map((c) => {
@@ -345,6 +348,15 @@ function CampaignsTab({ locale }: { locale: Locale }): React.ReactElement {
                       }}
                     >
                       {t("finance15.c_edit")}
+                    </Button>{" "}
+                    <Button
+                      variant="ghost"
+                      disabled={del.isPending}
+                      onClick={() => {
+                        if (window.confirm(t("finance15.campaigns_confirmDelete"))) del.mutate(c.id);
+                      }}
+                    >
+                      {t("finance15.campaigns_delete")}
                     </Button>
                   </div>
                 </CardContent>

@@ -621,6 +621,73 @@ async def test_admin_campaign_crud_and_lists(tc, db_session, zfake):
     assert denied.status_code == 403
 
 
+@pytest.mark.asyncio
+async def test_admin_campaign_delete_and_patch(tc, db_session):
+    client = tc["client"]
+    await _stage_pay_settings(db_session)
+    admin_tok = await _finance_admin_token(client, db_session, "fin-admin-del@example.com")
+    admin_h = _auth(admin_tok)
+
+    camp = await _make_campaign(client, admin_h)
+
+    # PATCH (همان مسیری که CRM برای ویرایش می‌فرستد) → ۲۰۰
+    patched = await client.patch(
+        f"{BASE}/admin/finance/campaigns/{camp['id']}",
+        headers=admin_h,
+        json={
+            "title": {"fa": "کمپین وصله‌شده", "ar": "حملة", "en": "Campaign"},
+            "description": None,
+            "goal_amount": 3_000_000_000,
+            "status": "active",
+        },
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["title"]["fa"] == "کمپین وصله‌شده"
+
+    # حذف → ۲۰۴ و دیگر در فهرست ادمین نیست
+    gone = await client.delete(
+        f"{BASE}/admin/finance/campaigns/{camp['id']}", headers=admin_h
+    )
+    assert gone.status_code == 204, gone.text
+    lst = await client.get(f"{BASE}/admin/finance/campaigns", headers=admin_h)
+    assert not any(c["id"] == camp["id"] for c in lst.json())
+    one = await client.get(f"{BASE}/finance/campaigns/{camp['id']}")
+    assert one.status_code == 404
+
+    # حذف دوباره → ۴۰۴
+    gone2 = await client.delete(
+        f"{BASE}/admin/finance/campaigns/{camp['id']}", headers=admin_h
+    )
+    assert gone2.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_admin_campaign_delete_blocked_with_donations(tc, db_session, zfake):
+    client = tc["client"]
+    await _stage_pay_settings(db_session)
+    admin_tok = await _finance_admin_token(client, db_session, "fin-admin-del2@example.com")
+    admin_h = _auth(admin_tok)
+
+    camp = await _make_campaign(client, admin_h)
+    zfake.box["authority"] = "AUTH-DEL-1"
+    zfake.box["ref_id"] = "REF-DEL-1"
+    r = await client.post(
+        f"{BASE}/finance/donate",
+        headers={"Idempotency-Key": f"key-{uuid.uuid4()}"},
+        json={"amount": 50_000, "campaign_id": camp["id"], "callback_url": "http://test/finance/callback"},
+    )
+    assert r.status_code == 201, r.text
+    await client.get(f"{BASE}/finance/callback", params={"Authority": "AUTH-DEL-1", "Status": "OK"})
+
+    blocked = await client.delete(
+        f"{BASE}/admin/finance/campaigns/{camp['id']}", headers=admin_h
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "campaign_has_donations"
+    lst = await client.get(f"{BASE}/admin/finance/campaigns", headers=admin_h)
+    assert any(c["id"] == camp["id"] for c in lst.json())
+
+
 # ---------------------------------------------------------------------------
 # رسید PDF: محتوای مجاز (بدون فقه)
 # ---------------------------------------------------------------------------
