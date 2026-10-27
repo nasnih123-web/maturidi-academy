@@ -179,6 +179,16 @@ class CategoryWithCountOut(FatwaCategoryOut):
     published_count: int = 0
 
 
+class PublicCategoryWithCountOut(BaseModel):
+    """ردیف دسته در فهرست عمومی؛ ردیف «بدون دسته» id ندارد."""
+
+    id: UUID | None = None
+    slug: str
+    title: dict
+    created_at: datetime | None = None
+    published_count: int = 0
+
+
 # --- public: فهرست وردپرسی فتوا (فقط منتشرشده‌ها) ---
 
 

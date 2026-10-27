@@ -22,7 +22,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: 'fatwa' });
-  return { title: t('listTitle'), description: t('listSubtitle') };
+  return { title: t('listPageTitle'), description: t('listSubtitle') };
 }
 
 function pageHref(
@@ -67,7 +67,7 @@ export default async function FatwaAllPage({
 
   return (
     <main className="ftw-page" dir={dir}>
-      <h1>{t('listTitle')}</h1>
+      <h1>{t('listPageTitle')}</h1>
       <p className="ftw-subtitle">{t('listSubtitle')}</p>
 
       <form className="ftw-search" method="get" action={`/${locale}/fatwa/all`}>
@@ -86,31 +86,6 @@ export default async function FatwaAllPage({
         <p className="ftw-empty">{t('listFailed')}</p>
       ) : (
         <div className="ftw-layout">
-          <aside className="ftw-sidebar" aria-label={t('allCategories')}>
-            <h2>{t('allCategories')}</h2>
-            <ul>
-              <li>
-                <Link
-                  href={pageHref(locale, { q: q || undefined })}
-                  aria-current={category ? undefined : 'page'}
-                >
-                  {t('allCategories')}
-                  {category ? null : ` (${list.total})`}
-                </Link>
-              </li>
-              {categories.map((c) => (
-                <li key={c.slug}>
-                  <Link
-                    href={pageHref(locale, { q: q || undefined, category: c.slug })}
-                    aria-current={category === c.slug ? 'page' : undefined}
-                  >
-                    {c.title} ({c.publishedCount})
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </aside>
-
           <section className="ftw-main">
             {list.items.length === 0 ? (
               <p className="ftw-empty">{t('listEmpty')}</p>
@@ -193,6 +168,31 @@ export default async function FatwaAllPage({
               </>
             )}
           </section>
+
+          <aside className="ftw-sidebar" aria-label={t('allCategories')}>
+            <h2>{t('allCategories')}</h2>
+            <ul>
+              <li>
+                <Link
+                  href={pageHref(locale, { q: q || undefined })}
+                  aria-current={category ? undefined : 'page'}
+                >
+                  {t('allCategories')}
+                  {category ? null : ` (${list.total})`}
+                </Link>
+              </li>
+              {categories.map((c) => (
+                <li key={c.slug}>
+                  <Link
+                    href={pageHref(locale, { q: q || undefined, category: c.slug })}
+                    aria-current={category === c.slug ? 'page' : undefined}
+                  >
+                    {c.title} ({c.publishedCount})
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </aside>
         </div>
       )}
     </main>

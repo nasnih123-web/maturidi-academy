@@ -445,6 +445,7 @@
       "forbidden": "This section is only available to fatwa authors (scholar_author role)."
     },
     "listTitle": "All fatwas",
+    "listPageTitle": "All fatwas",
     "listSubtitle": "Published fatwas, by category and search",
     "listEmpty": "No fatwa has been published yet.",
     "listFailed": "Could not load the fatwa list.",
