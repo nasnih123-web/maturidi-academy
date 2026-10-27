@@ -179,6 +179,21 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
       }))
     : [];
 
+  // Recent-articles slider — rendered exactly once, immediately after
+  // the community section in whichever render path is active (slots
+  // order when home.sections is set, API order otherwise). It renders
+  // nothing when there are no published articles. Previously this was
+  // a fixed block after ALL sections; the user asked for it to follow
+  // the community section like the fatwa slider does.
+  const articlesSlider = (
+    <ArticlesSlider
+      locale={locale}
+      items={articlesRes.ok ? articlesRes.res.items : []}
+      title={tArticles("homeTitle")}
+      showAllLabel={tArticles("showAll")}
+    />
+  );
+
   return (
     <>
       {themeCss ? <style>{themeCss}</style> : null}
@@ -221,6 +236,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
                 labels={homeLabels}
                 heroOverride={heroOverride}
                 fatwaSliderItems={fatwaSliderItems}
+                afterCommunity={articlesSlider}
               />
             </>
           ) : (
@@ -230,14 +246,9 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
               labels={homeLabels}
               heroOverride={heroOverride}
               fatwaSliderItems={fatwaSliderItems}
+              afterCommunity={articlesSlider}
             />
           )}
-          <ArticlesSlider
-            locale={locale}
-            items={articlesRes.ok ? articlesRes.res.items : []}
-            title={tArticles("homeTitle")}
-            showAllLabel={tArticles("showAll")}
-          />
           <ScholarQuotes
             quotes={quoteViews}
             heading={tContent("quotes.heading")}

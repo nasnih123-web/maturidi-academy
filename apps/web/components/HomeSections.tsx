@@ -17,6 +17,7 @@
  *  footer           → rendered by the page (outside <main>)
  * Any other key renders the generic ContentSection (article / magazine).
  */
+import { Fragment, type ReactNode } from "react";
 import type { HomeSection } from "@/lib/types";
 import { pickText } from "@/lib/localize";
 import {
@@ -81,6 +82,13 @@ export interface HomeSectionsProps {
    * omitted) renders the honest empty state — never section JSON.
    */
   fatwaSliderItems?: FatwaSliderItem[] | null;
+  /**
+   * Block rendered immediately after the community section (in section
+   * order), e.g. the recent-articles slider. When no community section
+   * renders (invisible or absent), it is appended at the end so it
+   * still appears exactly once.
+   */
+  afterCommunity?: ReactNode;
 }
 
 export function HomeSectionRenderer({
@@ -264,23 +272,27 @@ export function HomeSectionRenderer({
         }
 }
 
-export function HomeSections({ sections, locale, labels, heroOverride, fatwaSliderItems }: HomeSectionsProps) {
+export function HomeSections({ sections, locale, labels, heroOverride, fatwaSliderItems, afterCommunity }: HomeSectionsProps) {
   const ordered = [...sections]
     .filter((s) => s.visible !== false)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const communityRendered = ordered.some((s) => s.key === "community");
 
   return (
     <>
       {ordered.map((section) => (
-        <HomeSectionRenderer
-          key={section.key}
-          section={section}
-          locale={locale}
-          labels={labels}
-          heroOverride={heroOverride}
-          fatwaSliderItems={fatwaSliderItems}
-        />
+        <Fragment key={section.key}>
+          <HomeSectionRenderer
+            section={section}
+            locale={locale}
+            labels={labels}
+            heroOverride={heroOverride}
+            fatwaSliderItems={fatwaSliderItems}
+          />
+          {section.key === "community" ? afterCommunity : null}
+        </Fragment>
       ))}
+      {!communityRendered ? afterCommunity : null}
     </>
   );
 }

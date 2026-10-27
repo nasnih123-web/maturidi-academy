@@ -23,7 +23,16 @@ export function ArticlesSlider({
   if (items.length === 0) return null;
   return (
     <section className="ftw-page" aria-label={title}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', flexWrap: 'wrap' }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "1rem",
+          flexWrap: "wrap",
+          width: "100%",
+        }}
+      >
         <h2 style={{ margin: 0 }}>{title}</h2>
         <Link href={`/${locale}/articles`}>{showAllLabel}</Link>
       </div>
