@@ -35,51 +35,46 @@ def upgrade() -> None:
         sa.UniqueConstraint("slug"),
     )
     op.create_index("ix_fatwa_categories_slug", "fatwa_categories", ["slug"])
-    op.add_column(
-        "fiqh_topics",
-        sa.Column("category_id", sa.Uuid(), nullable=True),
-    )
-    op.add_column(
-        "fiqh_topics",
-        sa.Column("author_name", sa.String(length=160), nullable=True),
-    )
-    op.add_column(
-        "fiqh_topics",
-        sa.Column("featured_image_url", sa.String(length=1024), nullable=True),
-    )
-    op.add_column(
-        "fiqh_topics",
-        sa.Column("view_count", sa.Integer(), nullable=False, server_default="0"),
-    )
-    op.add_column(
-        "fiqh_topics",
-        sa.Column("share_count", sa.Integer(), nullable=False, server_default="0"),
-    )
-    op.add_column(
-        "fiqh_topics",
-        sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.create_index("ix_fiqh_topics_category_id", "fiqh_topics", ["category_id"])
-    op.create_foreign_key(
-        "fk_fiqh_topics_category_id",
-        "fiqh_topics",
-        "fatwa_categories",
-        ["category_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    # حالت batch الزامی است: SQLite از ALTER برای افزودن قید (FK) روی
+    # جدول موجود پشتیبانی نمی‌کند و op.create_foreign_key مستقیم با
+    # NotImplementedError می‌شکند — همان الگوی مهاجرت‌های قبلی
+    # (c2a91f7e44b1 و bd898906c7e2). روی Postgres هم بی‌ضرر است.
+    with op.batch_alter_table("fiqh_topics") as batch_op:
+        batch_op.add_column(sa.Column("category_id", sa.Uuid(), nullable=True))
+        batch_op.add_column(sa.Column("author_name", sa.String(length=160), nullable=True))
+        batch_op.add_column(
+            sa.Column("featured_image_url", sa.String(length=1024), nullable=True)
+        )
+        batch_op.add_column(
+            sa.Column("view_count", sa.Integer(), nullable=False, server_default="0")
+        )
+        batch_op.add_column(
+            sa.Column("share_count", sa.Integer(), nullable=False, server_default="0")
+        )
+        batch_op.add_column(
+            sa.Column("published_at", sa.DateTime(timezone=True), nullable=True)
+        )
+        batch_op.create_index("ix_fiqh_topics_category_id", ["category_id"])
+        batch_op.create_foreign_key(
+            "fk_fiqh_topics_category_id",
+            "fatwa_categories",
+            ["category_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "fk_fiqh_topics_category_id", "fiqh_topics", type_="foreignkey"
-    )
-    op.drop_index("ix_fiqh_topics_category_id", "fiqh_topics")
-    op.drop_column("fiqh_topics", "published_at")
-    op.drop_column("fiqh_topics", "share_count")
-    op.drop_column("fiqh_topics", "view_count")
-    op.drop_column("fiqh_topics", "featured_image_url")
-    op.drop_column("fiqh_topics", "author_name")
-    op.drop_column("fiqh_topics", "category_id")
+    with op.batch_alter_table("fiqh_topics") as batch_op:
+        batch_op.drop_constraint(
+            "fk_fiqh_topics_category_id", type_="foreignkey"
+        )
+        batch_op.drop_index("ix_fiqh_topics_category_id")
+        batch_op.drop_column("published_at")
+        batch_op.drop_column("share_count")
+        batch_op.drop_column("view_count")
+        batch_op.drop_column("featured_image_url")
+        batch_op.drop_column("author_name")
+        batch_op.drop_column("category_id")
     op.drop_index("ix_fatwa_categories_slug", "fatwa_categories")
     op.drop_table("fatwa_categories")
