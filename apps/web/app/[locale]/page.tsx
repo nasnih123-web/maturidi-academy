@@ -14,6 +14,7 @@ import {
   getScholarQuoteViews,
 } from "@/lib/section-data";
 import { buildHomeLabels } from "@/lib/home-labels";
+import { getFatwaListServer } from "@/lib/fatwa-topics";
 import { themeCssText } from "@/lib/theme";
 import { HomeSections, HomeSectionRenderer } from "@/components/HomeSections";
 import { ComposedSections } from "@/components/sections/SectionSlot";
@@ -85,7 +86,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
   let themeCss = "";
   let apiFailed = false;
 
-  const [homeRes, announcements, banners, calTheme, quotes, siteConfig] = await Promise.all([
+  const [homeRes, announcements, banners, calTheme, quotes, siteConfig, fatwaRes] = await Promise.all([
     getHomeSections().then(
       (res) => ({ ok: true as const, res }),
       () => ({ ok: false as const }),
@@ -95,6 +96,18 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
     getCalendarTheme(),
     getScholarQuotes("homepage"),
     getSiteConfig(),
+    // Homepage fatwa slider — latest published fatwas from the public
+    // endpoint (never section JSON). Non-throwing: on failure the slider
+    // renders the honest empty state.
+    getFatwaListServer({
+      locale: (["fa", "ar", "en"].includes(locale) ? locale : "fa"),
+      sort: "newest",
+      page: 1,
+      perPage: 10,
+    }).then(
+      (res) => ({ ok: true as const, res }),
+      () => ({ ok: false as const }),
+    ),
   ]);
 
   if (homeRes.ok) {
@@ -138,6 +151,19 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
 
   const quoteViews = getScholarQuoteViews(quotes, locale);
 
+  // Slider items mapped once for both homepage render paths.
+  const fatwaSliderItems = fatwaRes.ok
+    ? fatwaRes.res.items.map((it) => ({
+        id: it.id,
+        title: it.title,
+        subtitle: it.description || null,
+        author: it.authorName,
+        category: it.category?.title ?? null,
+        image: it.featuredImageUrl,
+        href: `/${locale}/fatwa/${it.id}`,
+      }))
+    : [];
+
   return (
     <>
       {themeCss ? <style>{themeCss}</style> : null}
@@ -179,10 +205,17 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
                 locale={locale}
                 labels={homeLabels}
                 heroOverride={heroOverride}
+                fatwaSliderItems={fatwaSliderItems}
               />
             </>
           ) : (
-            <HomeSections sections={sections} locale={locale} labels={homeLabels} heroOverride={heroOverride} />
+            <HomeSections
+              sections={sections}
+              locale={locale}
+              labels={homeLabels}
+              heroOverride={heroOverride}
+              fatwaSliderItems={fatwaSliderItems}
+            />
           )}
           <ScholarQuotes
             quotes={quoteViews}

@@ -52,6 +52,20 @@ export interface HomeSectionsLabels {
   viewAllLabel: string;
 }
 
+/**
+ * One slider card for the homepage fatwa slider — fed by the public
+ * published-topics endpoint (never homepage-section JSON).
+ */
+export interface FatwaSliderItem {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  author: string | null;
+  category: string | null;
+  image: string | null;
+  href: string;
+}
+
 export interface HomeSectionsProps {
   sections: HomeSection[];
   locale: string;
@@ -62,6 +76,11 @@ export interface HomeSectionsProps {
    * unset fields fall back to today's copy.
    */
   heroOverride?: HeroSettings | null;
+  /**
+   * Latest published fatwas for the `latest_fatwas` slider. Null (or
+   * omitted) renders the honest empty state — never section JSON.
+   */
+  fatwaSliderItems?: FatwaSliderItem[] | null;
 }
 
 export function HomeSectionRenderer({
@@ -69,11 +88,13 @@ export function HomeSectionRenderer({
   locale,
   labels,
   heroOverride,
+  fatwaSliderItems,
 }: {
   section: HomeSection;
   locale: string;
   labels: HomeSectionsLabels;
   heroOverride?: HeroSettings | null;
+  fatwaSliderItems?: FatwaSliderItem[] | null;
 }) {
   const id = `home-section-${section.key}`;
   const title = pickText(section.title, locale);
@@ -169,8 +190,43 @@ export function HomeSectionRenderer({
           case "footer":
             // Footer chrome is rendered by the page itself (outside <main>).
             return null;
+          case "latest_fatwas": {
+            // Homepage fatwa slider — items come ONLY from the public
+            // published-topics endpoint (passed in by the page). An empty
+            // list (no published fatwas, or a failed fetch) renders the
+            // honest empty state — never section JSON, never demo items.
+            const spec = specForSection(section.key);
+            const items = (fatwaSliderItems ?? []).map((it) => ({
+              id: it.id,
+              title: it.title,
+              subtitle: it.subtitle,
+              author: it.author,
+              category: it.category,
+              duration: null,
+              badge: null,
+              image: it.image,
+              href: it.href,
+            }));
+            return (
+              <ContentSection
+                key={section.key}
+                sectionId={id}
+                title={title}
+                subtitle={subtitle}
+                cta={{ label: labels.viewAllLabel, href: `/${locale}/fatwa/all` }}
+                type={spec.type}
+                template={spec.template}
+                layout={getSectionLayout(section.data, spec.layout)}
+                items={items}
+                locale={locale}
+                labels={labels.card}
+                emptyTitle={emptyTitle}
+                emptyHint={emptyHint}
+              />
+            );
+          }
           default: {
-            // latest_fatwas, suggested_lessons, fresh_library, community —
+            // suggested_lessons, fresh_library, community —
             // and any future key: spec-driven module rendering.
             const spec = specForSection(section.key);
             const ctaRecord = getCta(section.data, locale, "");
@@ -208,7 +264,7 @@ export function HomeSectionRenderer({
         }
 }
 
-export function HomeSections({ sections, locale, labels, heroOverride }: HomeSectionsProps) {
+export function HomeSections({ sections, locale, labels, heroOverride, fatwaSliderItems }: HomeSectionsProps) {
   const ordered = [...sections]
     .filter((s) => s.visible !== false)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -222,6 +278,7 @@ export function HomeSections({ sections, locale, labels, heroOverride }: HomeSec
           locale={locale}
           labels={labels}
           heroOverride={heroOverride}
+          fatwaSliderItems={fatwaSliderItems}
         />
       ))}
     </>

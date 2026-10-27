@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import String as sa_String
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +23,7 @@ from app.core.events import emit_event
 from app.core.platform_settings import get_typed_setting
 from app.models.models import (
     AIUsageLog,
+    FatwaCategory,
     FatwaMessage,
     FatwaSession,
     FiqhKnowledgeChunk,
@@ -831,9 +833,18 @@ async def chunk_set_status(
 
 
 async def topic_create(
-    db: AsyncSession, user: User, *, title: dict, description: dict | None
+    db: AsyncSession, user: User, *, title: dict, description: dict | None,
+    category_id: UUID | None = None,
+    author_name: str | None = None,
+    featured_image_url: str | None = None,
 ) -> FiqhTopic:
-    topic = FiqhTopic(title=title, description=description, workflow_status="draft")
+    if category_id is not None:
+        await _get_category_or_404(db, category_id)
+    topic = FiqhTopic(
+        title=title, description=description, workflow_status="draft",
+        category_id=category_id, author_name=author_name,
+        featured_image_url=featured_image_url,
+    )
     db.add(topic)
     await db.flush()
     await db.commit()
@@ -848,6 +859,31 @@ async def topic_set_status(
         raise APIError(404, "topic_not_found", "موضوع یافت نشد")
     _workflow.validate_transition(topic.workflow_status, target)
     topic.workflow_status = target
+    if target == "published":
+        # تاریخ انتشار موقع ورود به published ثبت می‌شود و با بایگانی
+        # پاک نمی‌شود (نمایش دو تقویمی شمسی/قمری روی سایت از همین زمان است).
+        topic.published_at = datetime.now(UTC)
+    await db.flush()
+    await db.commit()
+    return topic
+
+
+async def topic_update(
+    db: AsyncSession, user: User, topic_id: UUID, *, title: dict,
+    description: dict | None, category_id: UUID | None,
+    author_name: str | None, featured_image_url: str | None,
+) -> FiqhTopic:
+    """ویرایش موضوع — همان فیلدهایی که CRM با PUT می‌فرستد."""
+    topic = await db.get(FiqhTopic, topic_id)
+    if topic is None:
+        raise APIError(404, "topic_not_found", "موضوع یافت نشد")
+    if category_id is not None:
+        await _get_category_or_404(db, category_id)
+    topic.title = title
+    topic.description = description
+    topic.category_id = category_id
+    topic.author_name = author_name
+    topic.featured_image_url = featured_image_url
     await db.flush()
     await db.commit()
     return topic
@@ -898,6 +934,270 @@ async def position_set_status(
     await db.flush()
     await db.commit()
     return pos
+
+
+# ---------------------------------------------------------------------------
+# فهرست وردپرسی فتوا — دسته‌ها، فهرست عمومی، جزئیات، شمارنده‌ها
+# ---------------------------------------------------------------------------
+
+
+async def _get_category_or_404(db: AsyncSession, category_id: UUID) -> FatwaCategory:
+    cat = await db.get(FatwaCategory, category_id)
+    if cat is None:
+        raise APIError(404, "category_not_found", "دسته یافت نشد")
+    return cat
+
+
+async def category_create(
+    db: AsyncSession, user: User, *, slug: str, title: dict
+) -> FatwaCategory:
+    dup = (
+        await db.execute(
+            select(FatwaCategory).where(FatwaCategory.slug == slug)
+        )
+    ).scalar_one_or_none()
+    if dup is not None:
+        raise APIError(409, "category_slug_exists", "دسته‌ای با این slug هست")
+    cat = FatwaCategory(slug=slug, title=title)
+    db.add(cat)
+    await db.flush()
+    await db.commit()
+    return cat
+
+
+async def category_update(
+    db: AsyncSession, user: User, category_id: UUID, *, slug: str, title: dict
+) -> FatwaCategory:
+    cat = await _get_category_or_404(db, category_id)
+    if slug != cat.slug:
+        dup = (
+            await db.execute(
+                select(FatwaCategory).where(FatwaCategory.slug == slug)
+            )
+        ).scalar_one_or_none()
+        if dup is not None:
+            raise APIError(409, "category_slug_exists", "دسته‌ای با این slug هست")
+    cat.slug = slug
+    cat.title = title
+    await db.flush()
+    await db.commit()
+    return cat
+
+
+async def category_delete(db: AsyncSession, user: User, category_id: UUID) -> None:
+    cat = await _get_category_or_404(db, category_id)
+    used = (
+        await db.execute(
+            select(func.count())
+            .select_from(FiqhTopic)
+            .where(FiqhTopic.category_id == category_id)
+        )
+    ).scalar_one()
+    if used:
+        raise APIError(
+            409, "category_in_use",
+            "این دسته روی فتواهایی استفاده شده است؛ اول دستهٔ آن‌ها را عوض کنید",
+        )
+    await db.delete(cat)
+    await db.commit()
+
+
+async def category_list(db: AsyncSession) -> list[FatwaCategory]:
+    rows = (
+        await db.execute(
+            select(FatwaCategory).order_by(FatwaCategory.slug)
+        )
+    ).scalars().all()
+    return list(rows)
+
+
+async def category_list_with_published_counts(
+    db: AsyncSession,
+) -> list[dict[str, Any]]:
+    """هر دسته + تعداد فتواهای منتشرشدهٔ آن دسته (دستهٔ خالی هم با ۰ می‌آید)."""
+    counts = dict(
+        (
+            await db.execute(
+                select(FiqhTopic.category_id, func.count())
+                .where(
+                    FiqhTopic.workflow_status == "published",
+                    FiqhTopic.category_id.is_not(None),
+                )
+                .group_by(FiqhTopic.category_id)
+            )
+        ).all()
+    )
+    cats = await category_list(db)
+    return [
+        {"category": c, "published_count": counts.get(c.id, 0)} for c in cats
+    ]
+
+
+def _category_dict(cat: FatwaCategory | None) -> dict | None:
+    if cat is None:
+        return None
+    return {"slug": cat.slug, "title": cat.title}
+
+
+async def _load_categories(
+    db: AsyncSession, topics: list[FiqhTopic]
+) -> dict[UUID, FatwaCategory]:
+    ids = {t.category_id for t in topics if t.category_id is not None}
+    if not ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(FatwaCategory).where(FatwaCategory.id.in_(ids))
+        )
+    ).scalars().all()
+    return {c.id: c for c in rows}
+
+
+def _public_topic_dict(
+    topic: FiqhTopic, cats: dict[UUID, FatwaCategory]
+) -> dict[str, Any]:
+    cat = cats.get(topic.category_id) if topic.category_id else None
+    return {
+        "id": topic.id,
+        "title": topic.title,
+        "description": topic.description,
+        "category": _category_dict(cat),
+        "author_name": topic.author_name,
+        "featured_image_url": topic.featured_image_url,
+        "published_at": topic.published_at,
+        "view_count": topic.view_count or 0,
+        "share_count": topic.share_count or 0,
+    }
+
+
+def _apply_topic_filters(
+    stmt, *, q: str | None, category_slug: str | None,
+    status: str | None, exclude: UUID | None,
+):
+    """فیلترهای مشترک فهرست عمومی و ادمین (روی متن JSON عنوان/توضیح)."""
+    if q:
+        needle = f"%{q}%"
+        stmt = stmt.where(
+            (func.cast(FiqhTopic.title, sa_String).ilike(needle))
+            | (func.cast(FiqhTopic.description, sa_String).ilike(needle))
+        )
+    if category_slug:
+        stmt = stmt.where(
+            FiqhTopic.category_id.in_(
+                select(FatwaCategory.id).where(FatwaCategory.slug == category_slug)
+            )
+        )
+    if status:
+        stmt = stmt.where(FiqhTopic.workflow_status == status)
+    if exclude is not None:
+        stmt = stmt.where(FiqhTopic.id != exclude)
+    return stmt
+
+
+async def topic_public_list(
+    db: AsyncSession, *, page: int, per_page: int, q: str | None,
+    category: str | None, sort: str, exclude: UUID | None,
+) -> dict[str, Any]:
+    """فهرست عمومی — فقط منتشرشده‌ها؛ بدون سقف کلی، با صفحه‌بندی."""
+    stmt = select(FiqhTopic).where(FiqhTopic.workflow_status == "published")
+    stmt = _apply_topic_filters(
+        stmt, q=q, category_slug=category, status=None, exclude=exclude
+    )
+    total = (
+        await db.execute(select(func.count()).select_from(stmt.subquery()))
+    ).scalar_one()
+    if sort == "views":
+        stmt = stmt.order_by(
+            FiqhTopic.view_count.desc(),
+            FiqhTopic.published_at.desc().nulls_last(),
+        )
+    else:
+        stmt = stmt.order_by(
+            FiqhTopic.published_at.desc().nulls_last(),
+            FiqhTopic.created_at.desc(),
+        )
+    stmt = stmt.offset((page - 1) * per_page).limit(per_page)
+    topics = (await db.execute(stmt)).scalars().all()
+    cats = await _load_categories(db, list(topics))
+    pages = (total + per_page - 1) // per_page if total else 0
+    return {
+        "items": [_public_topic_dict(t, cats) for t in topics],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": pages,
+    }
+
+
+async def topic_public_get(db: AsyncSession, topic_id: UUID) -> dict[str, Any]:
+    """جزئیات عمومی — فقط منتشرشده؛ هر فراخوانی یک بازدید می‌شمارد."""
+    topic = await db.get(FiqhTopic, topic_id)
+    if topic is None or topic.workflow_status != "published":
+        raise APIError(404, "topic_not_found", "موضوع یافت نشد")
+    topic.view_count = (topic.view_count or 0) + 1
+    await db.flush()
+    await db.commit()
+    cats = await _load_categories(db, [topic])
+    positions = (
+        await db.execute(
+            select(MadhabPosition)
+            .where(MadhabPosition.topic_id == topic_id)
+            .order_by(MadhabPosition.madhab)
+        )
+    ).scalars().all()
+    # انتشار موضوع، دروازهٔ دیده‌شدن محتوای آن است؛ مواضع زیرمجموعهٔ
+    # همان موضوع‌اند، پس همهٔ مواضع موضوع منتشرشده برمی‌گردند (وضعیت
+    # جداگانهٔ موضع فقط برای موتور RAG و compare معنا دارد).
+    out = _public_topic_dict(topic, cats)
+    out["positions"] = [
+        {
+            "madhab": p.madhab,
+            "position_text": p.position_text,
+            "evidence_refs": p.evidence_refs,
+        }
+        for p in positions
+    ]
+    return out
+
+
+async def topic_share(db: AsyncSession, topic_id: UUID) -> FiqhTopic:
+    """ثبت یک اشتراک‌گذاری — فقط منتشرشده؛ شمارندهٔ تازه برمی‌گردد."""
+    topic = await db.get(FiqhTopic, topic_id)
+    if topic is None or topic.workflow_status != "published":
+        raise APIError(404, "topic_not_found", "موضوع یافت نشد")
+    topic.share_count = (topic.share_count or 0) + 1
+    await db.flush()
+    await db.commit()
+    return topic
+
+
+async def topic_admin_list(
+    db: AsyncSession, *, page: int, per_page: int, q: str | None,
+    category: str | None, status: str | None,
+) -> dict[str, Any]:
+    """فهرست ادمین — همهٔ وضعیت‌ها، با صفحه‌بندی و فیلترها."""
+    stmt = select(FiqhTopic)
+    stmt = _apply_topic_filters(
+        stmt, q=q, category_slug=category, status=status, exclude=None
+    )
+    total = (
+        await db.execute(select(func.count()).select_from(stmt.subquery()))
+    ).scalar_one()
+    stmt = stmt.order_by(FiqhTopic.created_at.desc())
+    stmt = stmt.offset((page - 1) * per_page).limit(per_page)
+    topics = (await db.execute(stmt)).scalars().all()
+    cats = await _load_categories(db, list(topics))
+    pages = (total + per_page - 1) // per_page if total else 0
+    return {
+        "items": [
+            {**_public_topic_dict(t, cats), "workflow_status": t.workflow_status}
+            for t in topics
+        ],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": pages,
+    }
 
 
 # ---------------------------------------------------------------------------
