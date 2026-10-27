@@ -38,6 +38,10 @@ from app.modules.admin.roles_router import router as admin_roles_router
 from app.modules.admin.router import router as admin_router
 from app.modules.admin.users_admin_router import router as admin_users_router
 from app.modules.api_keys.router import api_keys_router
+from app.modules.articles.router import (
+    admin_articles_router,
+    articles_router,
+)
 from app.modules.auth.router import router as auth_router
 from app.modules.calculators.router import (
     admin_calc_router,
@@ -231,6 +235,8 @@ app.include_router(adhan_router)
 app.include_router(fatwa_router)
 app.include_router(verify_router)
 app.include_router(admin_fatwa_router)
+app.include_router(articles_router)
+app.include_router(admin_articles_router)
 app.include_router(calc_router)
 app.include_router(admin_calc_router)
 app.include_router(lms_router)
