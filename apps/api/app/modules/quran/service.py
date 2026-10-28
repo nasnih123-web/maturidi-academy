@@ -29,6 +29,7 @@ from app.modules.sync.service import record_entity_change
 
 from . import adhan as adhan_calc
 from . import adhan_data
+from . import geocode as geocode_mod
 from . import jalali as jalali_mod
 from . import providers as quran_providers
 from .surahs import SURAHS, get_surah
@@ -47,7 +48,7 @@ _DEFAULTS: dict[str, object] = {
     "quran.playback": {"autoplay": False, "repeat": "off"},
     "munajat.enabled": True,
     "munajat.window": {"start": "02:00", "end": "05:00"},
-    "adhan.defaults": {"calculation_method": "council", "madhab": "hanafi", "default_city": "torbat-e-jam"},
+    "adhan.defaults": {"calculation_method": "council", "madhab": "hanafi"},
 }
 
 _NOTES_CURSOR_LIMIT = 50
@@ -649,7 +650,11 @@ def get_adhan_times(
     if not -12.0 <= tz <= 14.0:
         raise APIError(400, "invalid_timezone", "افست زمانی باید بین ‎−۱۲ و ‎+۱۴ باشد")
     try:
-        if city_slug == adhan_data.TORBAT_CITY and method == adhan_data.TORBAT_TABLE_METHOD:
+        # جدول تربت جام: روش council + مختصات در شعاع ۳۵ کیلومتری مرکز شهر.
+        # صفحه فیلد شهر ندارد و فقط lat/lng می‌فرستد، پس نزدیکی با فاصله
+        # سنجیده می‌شود؛ پارامتر city (سازگاری عقب‌رو + پیش‌فرض نوار CRM)
+        # از مسیر _resolve_location به همین مختصات می‌رسد.
+        if method == adhan_data.TORBAT_TABLE_METHOD and adhan_data.near_torbat(lat_v, lng_v):
             tabled = _table_day_times(day, madhab=madhab, tz=tz)
             if tabled is not None:
                 return {
@@ -668,8 +673,6 @@ def get_adhan_times(
         times = adhan_calc.prayer_times(
             day, lat_v, lng_v, tz=tz, method=method, madhab=madhab, ramadan=ramadan
         )
-    except adhan_calc.AdhanMethodUnavailable as exc:
-        raise APIError(422, "adhan_method_unavailable", str(exc))
     except ValueError as exc:
         raise APIError(400, "invalid_adhan_params", str(exc))
     return {
@@ -728,6 +731,31 @@ def get_adhan_options() -> dict:
         "methods": adhan_data.method_options(),
         "cities": adhan_data.city_options(),
     }
+
+
+def search_places(query: str) -> dict:
+    """جست‌وجوی مکان (پروکسی Nominatim) — خطای بالادست → ۵۰۲، هرگز نتیجهٔ جعلی."""
+    if not query or not query.strip():
+        raise APIError(400, "invalid_query", "عبارت جست‌وجو خالی است")
+    if len(query.strip()) > 200:
+        raise APIError(400, "invalid_query", "عبارت جست‌وجو بیش از حد طولانی است")
+    try:
+        results = geocode_mod.search_places(query.strip())
+    except geocode_mod.GeocodeUpstreamError as exc:
+        raise APIError(502, "geocode_upstream_unavailable", f"سرویس جست‌وجوی مکان در دسترس نیست: {exc}")
+    return {"results": results}
+
+
+def reverse_place(lat: float, lng: float) -> dict:
+    """نام مکان برای مختصات — نبودِ نام خطا نیست (name برابر None)."""
+    if not -90.0 <= lat <= 90.0:
+        raise APIError(400, "invalid_latitude", "عرض جغرافیایی باید بین ‎−۹۰ و ۹۰ باشد")
+    if not -180.0 <= lng <= 180.0:
+        raise APIError(400, "invalid_longitude", "طول جغرافیایی باید بین ‎−۱۸۰ و ۱۸۰ باشد")
+    try:
+        return geocode_mod.reverse_place(lat, lng)
+    except geocode_mod.GeocodeUpstreamError as exc:
+        raise APIError(502, "geocode_upstream_unavailable", f"سرویس جست‌وجوی مکان در دسترس نیست: {exc}")
 
 
 # ---------------------------------------------------------------------------

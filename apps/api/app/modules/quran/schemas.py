@@ -134,7 +134,7 @@ class TasbihTodayOut(BaseModel):
 
 AdhanMethod = Literal[
     "council", "tehran", "isna", "mwl", "egypt", "karachi", "makkah",
-    "qom", "jafari", "turkmen",
+    "qom", "jafari",
 ]
 Madhab = Literal["shafi", "hanafi"]
 
@@ -204,3 +204,14 @@ class AdhanCityOption(BaseModel):
 class AdhanOptionsOut(BaseModel):
     methods: list[AdhanMethodOption]
     cities: list[AdhanCityOption]
+
+
+class GeocodePlaceOut(BaseModel):
+    name: str | None = None
+    display_name: str = ""
+    lat: float
+    lng: float
+
+
+class GeocodeSearchOut(BaseModel):
+    results: list[GeocodePlaceOut]

@@ -410,25 +410,21 @@ _ADHAN_MADHABS = ("shafi", "hanafi")
 def _validate_adhan_defaults(value: Any) -> dict:
     if not isinstance(value, dict):
         raise ValueError("adhan.defaults must be an object")
+    # LEGACY TOLERANCE: old stored dicts may still carry `default_city` — it
+    # is simply ignored here (never an error, never written back). There is
+    # NO default city anymore; fresh values carry method + madhab only.
     unknown = set(value) - {"calculation_method", "madhab", "default_city"}
     if unknown:
         raise ValueError(f"adhan.defaults: unknown fields {sorted(unknown)}")
     method = value.get("calculation_method", "council")
     madhab = value.get("madhab", "hanafi")
-    default_city = value.get("default_city", "torbat-e-jam")
-    if method == "turkmen":
-        raise ValueError(
-            "adhan.defaults.calculation_method cannot be turkmen: it has no published angles yet"
-        )
     if method not in _ADHAN_METHODS:
         raise ValueError(
             f"adhan.defaults.calculation_method must be one of {'|'.join(_ADHAN_METHODS)}"
         )
     if madhab not in _ADHAN_MADHABS:
         raise ValueError("adhan.defaults.madhab must be one of shafi|hanafi")
-    if not isinstance(default_city, str) or not default_city or len(default_city) > 64:
-        raise ValueError("adhan.defaults.default_city must be a non-empty city slug")
-    return {"calculation_method": method, "madhab": madhab, "default_city": default_city}
+    return {"calculation_method": method, "madhab": madhab}
 
 
 def _validate_json_setting(key: str, value: Any) -> Any:

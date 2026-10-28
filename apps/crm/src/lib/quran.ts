@@ -24,9 +24,10 @@ import { readSettingsMap } from "./appearance";
  *   quran.playback           {autoplay: bool, repeat: "off"|"ayah"|"surah"}
  *   munajat.enabled          bool
  *   munajat.window           {start: "HH:MM", end: "HH:MM"}
- *   adhan.defaults           {calculation_method, madhab, default_city} —
- *                            registered in SETTING_DEFS
- *                            (apps/api/app/core/platform_settings.py).
+ *   adhan.defaults           {calculation_method, madhab} — registered
+ *                            in SETTING_DEFS (platform_settings.py).
+ *                            Legacy stored dicts may still carry
+ *                            `default_city`; it is ignored, never an error.
  *
  * Provider catalogs come ONLY from GET /api/v1/quran/providers:
  *   {providers: [{id, name, base_url, active}], active_provider, text_edition,
@@ -304,9 +305,7 @@ export function parseMunajatWindow(raw: string | null | undefined): MunajatWindo
 
 /**
  * Adhan calculation-method ids — the API's own enum values
- * (`AdhanMethod` on GET /api/v1/adhan/times, Track 1). `turkmen` is
- * deliberately NOT listed: it has no published angles yet and the backend
- * validator rejects it as a default.
+ * (`AdhanMethod` on GET /api/v1/adhan/times, Track 1).
  */
 export const ADHAN_METHODS = ["council", "tehran", "isna", "mwl", "egypt", "karachi", "makkah", "qom", "jafari"] as const;
 export type AdhanMethod = (typeof ADHAN_METHODS)[number];
@@ -319,18 +318,18 @@ export type Madhab = "shafi" | "hanafi";
 export interface AdhanDefaults {
   calculation_method: string;
   madhab: Madhab;
-  default_city: string;
 }
 
-export const DEFAULT_ADHAN: AdhanDefaults = { calculation_method: "", madhab: "hanafi", default_city: "torbat-e-jam" };
+export const DEFAULT_ADHAN: AdhanDefaults = { calculation_method: "", madhab: "hanafi" };
 
 export function parseAdhanDefaults(raw: string | null | undefined): AdhanDefaults {
   const v = decodeJson(raw);
   if (!v || typeof v !== "object") return { ...DEFAULT_ADHAN };
   const r = v as Record<string, unknown>;
+  // LEGACY TOLERANCE: old stored dicts may still carry `default_city` — it is
+  // simply ignored here (never an error, never written back).
   return {
     calculation_method: typeof r.calculation_method === "string" ? r.calculation_method : "",
     madhab: r.madhab === "shafi" ? "shafi" : "hanafi",
-    default_city: typeof r.default_city === "string" && r.default_city ? r.default_city : "torbat-e-jam",
   };
 }

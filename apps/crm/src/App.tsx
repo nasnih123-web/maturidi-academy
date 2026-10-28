@@ -23,6 +23,7 @@ import Moderation from "./pages/Moderation";
 import FatwaSubmissions from "./pages/FatwaSubmissions";
 import Clusters from "./pages/Clusters";
 import Quran from "./pages/Quran";
+import Adhan from "./pages/Adhan";
 import Telegram from "./pages/Telegram";
 import Places from "./pages/Places";
 import Voice from "./pages/Voice";
@@ -90,6 +91,7 @@ export default function App(): React.ReactElement {
             <Route path="lms" element={<LMS />} />
             <Route path="media" element={<MediaManager />} />
             <Route path="quran" element={<Quran />} />
+            <Route path="adhan" element={<Adhan />} />
             <Route path="telegram" element={<Telegram />} />
             <Route path="places" element={<Places />} />
             <Route path="voice" element={<Voice />} />
