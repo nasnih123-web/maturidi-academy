@@ -58,6 +58,31 @@ function asString(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
+/**
+ * Normalize an article slug before it goes into an API URL.
+ * Proven by live API logs (2026-10-28): during one detail visit, the
+ * /meta request arrived single-encoded and got 200, while the detail
+ * request arrived double-encoded and got 404 — i.e. Next.js can hand the
+ * page a slug that is still percent-encoded, and encoding it again
+ * double-encodes it. Decoding until the value stops changing (at most
+ * twice; stored slugs never contain a literal %) and then encoding
+ * exactly once guarantees a single-encoded request for decoded,
+ * encoded, or double-encoded input.
+ */
+function normalizeSlug(slug: string): string {
+  let decoded = slug;
+  try {
+    for (let i = 0; i < 2; i++) {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    }
+  } catch {
+    decoded = slug;
+  }
+  return encodeURIComponent(decoded);
+}
+
 function parseCategory(raw: unknown, locale: string): ArticleCategory | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -160,7 +185,7 @@ export async function getArticleDetailServer(
 ): Promise<ArticleDetail | null> {
   let o: Record<string, unknown>;
   try {
-    o = (await fetchJson(`/api/v1/articles/${encodeURIComponent(slug)}`, {
+    o = (await fetchJson(`/api/v1/articles/${normalizeSlug(slug)}`, {
       cache: 'no-store',
     })) as Record<string, unknown>;
   } catch (err) {
@@ -183,7 +208,7 @@ export async function getArticleMetaServer(
 ): Promise<ArticleMeta | null> {
   let o: Record<string, unknown>;
   try {
-    o = (await fetchJson(`/api/v1/articles/${encodeURIComponent(slug)}/meta`, {
+    o = (await fetchJson(`/api/v1/articles/${normalizeSlug(slug)}/meta`, {
       next: { revalidate: 60 },
     })) as Record<string, unknown>;
   } catch (err) {
