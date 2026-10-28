@@ -43,7 +43,8 @@ export interface HomeSectionsLabels {
   status: StatusStripLabels;
   card: ContentSectionLabels;
   quoteAria: string;
-  mapNote: string;
+  /** Globe phase: label of the homepage nearby_map preview card's link to /places. */
+  mapLink: string;
   search: SearchAutocompleteLabels;
   /** next-intl fallback when a section has no API `empty` payload. */
   emptyFallback: string;
@@ -171,17 +172,14 @@ export function HomeSectionRenderer({
             );
           }
           case "nearby_map": {
-            const hasData = getContentItems(section.data, locale).length > 0;
             return (
               <MapPanel
                 key={section.key}
                 sectionId={id}
+                locale={locale}
                 title={title}
                 subtitle={subtitle}
-                note={labels.mapNote}
-                emptyTitle={emptyTitle}
-                emptyHint={emptyHint}
-                hasData={hasData}
+                linkLabel={labels.mapLink}
               />
             );
           }

@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getPlace } from '@/lib/places';
-import { toPlaceView } from '@/lib/places-view';
+import { coverImage, toPlaceView, typeEmoji, typeLabel } from '@/lib/places-view';
+import { getSiteConfig } from '@/lib/settings';
+import { videoEmbedUrl } from '@/lib/video-embed';
 import { ApiError } from '@/lib/api';
 import { pickText } from '@/lib/localize';
 import { EmptyState } from '@/components/EmptyState';
@@ -64,18 +66,14 @@ export default async function PlaceDetailPage({
   }
 
   const view = toPlaceView(place, locale);
-  // Known types resolve to localized labels; anything the API invents later
-  // falls back to the raw key (never a next-intl missing-key throw).
-  const typeLabel =
-    (
-      {
-        mosque: t('types.mosque'),
-        shrine: t('types.shrine'),
-        holy_site: t('types.holy_site'),
-        museum: t('types.museum'),
-        other: t('types.other'),
-      } as Record<string, string>
-    )[view.type] ?? view.type;
+  // Type labels/emoji come from the CRM `places.types` setting; anything
+  // the API invents later falls back to the raw key (never a next-intl
+  // missing-key throw).
+  const siteConfig = await getSiteConfig();
+  const label = typeLabel(siteConfig.placeTypes, view.type, locale);
+  const emoji = typeEmoji(siteConfig.placeTypes, view.type);
+  const cover = coverImage(view);
+  const embed = view.videoUrl ? videoEmbedUrl(view.videoUrl) : null;
 
   return (
     <div className="page-wrap place-detail">
@@ -84,12 +82,33 @@ export default async function PlaceDetailPage({
       </Link>
       <h1 className="page-title">{view.name}</h1>
       <p className="page-subtitle">
-        <span className="place-type-badge">{typeLabel}</span>
+        <span className="place-type-badge">
+          {emoji} {label}
+        </span>
       </p>
+
+      {view.images.length > 0 ? (
+        <div className="place-gallery">
+          {view.images.map((im) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={im.url} className="place-detail-img" src={im.url} alt={im.caption || view.name} loading="lazy" />
+          ))}
+        </div>
+      ) : cover ? (
+        // cover passed safeImageUrl (http(s) only) in the view layer.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="place-detail-img" src={cover} alt={view.name} loading="lazy" />
+      ) : null}
 
       {view.description ? <p className="place-desc">{view.description}</p> : null}
 
       <dl className="place-meta">
+        {view.city ? (
+          <div>
+            <dt>{t('cityLabel')}</dt>
+            <dd>{view.city}</dd>
+          </div>
+        ) : null}
         <div>
           <dt>{t('coordinatesLabel')}</dt>
           <dd dir="ltr">
@@ -105,6 +124,26 @@ export default async function PlaceDetailPage({
           </Link>
           <p className="place-tour-hint">{t('view360Hint')}</p>
         </div>
+      ) : null}
+
+      {view.videoUrl ? (
+        embed ? (
+          <div className="place-tour">
+            <iframe
+              title={view.name}
+              src={embed}
+              loading="lazy"
+              allowFullScreen
+              style={{ width: '100%', height: '360px', border: 0, borderRadius: '0.6rem' }}
+            />
+          </div>
+        ) : (
+          <div className="place-tour">
+            <a className="place-tour-link" href={view.videoUrl} target="_blank" rel="noreferrer">
+              {t('videoLinkFallback')}
+            </a>
+          </div>
+        )
       ) : null}
     </div>
   );
