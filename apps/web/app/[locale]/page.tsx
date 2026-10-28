@@ -191,6 +191,8 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
       items={articlesRes.ok ? articlesRes.res.items : []}
       title={tArticles("homeTitle")}
       showAllLabel={tArticles("showAll")}
+      sliderPrev={homeLabels.card.sliderPrev}
+      sliderNext={homeLabels.card.sliderNext}
     />
   );
 
