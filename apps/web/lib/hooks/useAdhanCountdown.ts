@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ADHAN_LOCATION_KEY,
   clientPrayerTimes,
+  findCity,
   formatCountdown,
   formatHijri,
   loadSavedLocation,
@@ -139,6 +140,23 @@ export function useAdhanCountdown(settings: AdhanSettings, locale = 'fa') {
     const saved = loadSavedLocation();
     if (saved) {
       void loadFor(saved);
+    } else if (settingsRef.current.defaultCity) {
+      const city = findCity(settingsRef.current.defaultCity);
+      if (city) {
+        void loadFor({ lat: city.lat, lng: city.lng, label: null, source: 'default' });
+      } else if (
+        settingsRef.current.defaultLat !== null &&
+        settingsRef.current.defaultLng !== null
+      ) {
+        void loadFor({
+          lat: settingsRef.current.defaultLat,
+          lng: settingsRef.current.defaultLng,
+          label: null,
+          source: 'default',
+        });
+      } else {
+        setState((s) => ({ ...s, status: 'needs_location' }));
+      }
     } else if (
       settingsRef.current.defaultLat !== null &&
       settingsRef.current.defaultLng !== null
