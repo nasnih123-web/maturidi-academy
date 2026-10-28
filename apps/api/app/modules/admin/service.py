@@ -277,7 +277,9 @@ async def update_settings(
             continue  # بدون تغییر
         try:
             plaintext = encode_setting_value(meta["type"], raw_value, key)
-        except ValueError as exc:
+        except (ValueError, TypeError) as exc:
+            # TypeError covers validators that reject a wrong-typed value
+            # (TRY004); both map to the same client-facing 400, never a 500.
             raise APIError(400, "invalid_setting_value", f"{key}: {exc}")
         await stage_setting(db, key, plaintext)
         changed.append(key)

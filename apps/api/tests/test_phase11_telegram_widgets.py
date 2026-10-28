@@ -234,7 +234,7 @@ def _place_payload(**kw):
         "description": _L("توضیح تست"),
         "lat": 36.2880,
         "lng": 59.6157,
-        "type": "shrine",
+        "type": "pilgrimage",
     }
     d.update(kw)
     return d
@@ -327,8 +327,11 @@ async def test_places_seed_data():
     assert (31.7689, 35.2137) in coords  # مسجد الاقصی
     names = " ".join(p["name"]["fa"] for p in sp.PLACES)
     assert "مسجد الحرام" in names and "الاقصی" in names
-    assert all(p["type"] in ("mosque", "shrine", "holy_site", "museum", "other")
+    assert all(p["type"] in ("mosque", "shrine", "holy_site", "museum", "other", "haramain", "pilgrimage", "library")
                for p in sp.PLACES)
+    by_coords = {(p["lat"], p["lng"]): p["type"] for p in sp.PLACES}
+    assert by_coords[(21.4225, 39.8262)] == "haramain"  # مسجد الحرام
+    assert by_coords[(24.4672, 39.6111)] == "haramain"  # مسجد النبی
 
 
 # ---------------------------------------------------------------------------
@@ -1126,3 +1129,159 @@ async def test_admin_library_source_type_filter(tc):
     assert mine[0]["source_ref"]["channel"] == "testchan"
     # آیتم upload نباید در فیلتر telegram_import بیاید
     assert all(i["title"]["fa"] != "آپلود دستی" for i in items)
+
+
+# ---------------------------------------------------------------------------
+# نقشه (overnight/w10): ثبت عمومی (draft-only) + شهر/تصویر
+# ---------------------------------------------------------------------------
+
+
+async def test_places_submission_is_draft_only_and_city_image_roundtrip(tc):
+    client = tc["client"]
+    # ثبت عمومی بدون احراز هویت
+    r = await client.post(
+        f"{BASE}/places/submissions",
+        json=_place_payload(
+            city="تربت جام",
+            image_url="https://example.org/mosque.jpg",
+        ),
+    )
+    assert r.status_code == 201, r.text
+    sub = r.json()
+    assert sub["workflow_status"] == "draft"
+    assert sub["city"] == "تربت جام"
+    assert sub["image_url"] == "https://example.org/mosque.jpg"
+    # draft در فهرست عمومی دیده نمی‌شود (فهرست ممکن است اماکن منتشرشدهٔ
+    # تست‌های دیگر همین فایل را داشته باشد؛ مهم غیبت همین draft است).
+    r = await client.get(f"{BASE}/places")
+    assert sub["id"] not in [it["id"] for it in r.json()["items"]]
+    # نشانی تصویر غیر http(s) رد می‌شود
+    r = await client.post(
+        f"{BASE}/places/submissions",
+        json=_place_payload(image_url="javascript:alert(1)"),
+    )
+    assert r.status_code == 422, r.text
+    # مدیر: ویرایش شهر/تصویر + انتشار → در خروجی عمومی می‌آیند
+    admin = await _make_user(tc, ("places.manage",))
+    r = await client.patch(
+        f"{BASE}/admin/places/{sub['id']}",
+        json={"city": "مشهد", "image_url": None},
+        headers=admin,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["city"] == "مشهد"
+    assert r.json()["image_url"] is None
+    for target in ("in_review", "approved", "published"):
+        r = await client.post(
+            f"{BASE}/admin/places/{sub['id']}/transition",
+            json={"target": target}, headers=admin,
+        )
+        assert r.status_code == 200, (target, r.text)
+    r = await client.get(f"{BASE}/places/{sub['id']}")
+    assert r.status_code == 200
+    assert r.json()["city"] == "مشهد"
+
+
+async def test_places_globe_gallery_video_url_and_types(tc):
+    """Globe phase: gallery + regular video round-trip, serializable 422s,
+    settings-driven custom types, and the legacy-type keep rule."""
+    import json
+
+    from sqlalchemy import delete
+
+    from app.core.platform_settings import reset_settings_cache, stage_setting
+    from app.models.models import PlatformSetting, ReligiousPlace
+
+    client = tc["client"]
+    admin = await _make_user(tc, ("places.manage",))
+
+    # گالری + ویدیوی معمولی در ایجاد ادمین round-trip می‌شوند
+    r = await client.post(
+        f"{BASE}/admin/places",
+        json=_place_payload(
+            type="pilgrimage",
+            images=[
+                {"url": "https://example.org/a.jpg", "caption": "نما"},
+                {"url": "https://example.org/b.jpg", "caption": ""},
+            ],
+            video_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        ),
+        headers=admin,
+    )
+    assert r.status_code == 201, r.text
+    place = r.json()
+    assert [im["url"] for im in place["images"]] == [
+        "https://example.org/a.jpg", "https://example.org/b.jpg"]
+    assert place["images"][0]["caption"] == "نما"
+    assert place["video_url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+    # ویدیوی غیر http(s) با 422 قابل‌سریالایز رد می‌شود (نه 500)
+    r = await client.post(
+        f"{BASE}/admin/places",
+        json=_place_payload(video_url="javascript:alert(1)"),
+        headers=admin,
+    )
+    assert r.status_code == 422, r.text
+    r.json()  # must parse: proves no raw exception leaked into the body
+
+    # نوع ناشناخته هم 422 قابل‌سریالایز می‌دهد (نه 500 از ctx)
+    r = await client.post(
+        f"{BASE}/admin/places",
+        json=_place_payload(type="not_a_type"),
+        headers=admin,
+    )
+    assert r.status_code == 422, r.text
+    r.json()
+
+    # نوع سفارشی از تنظیم places.types پذیرفته می‌شود
+    custom = [
+        {"key": "mosque", "emoji": "🕌", "fa": "مسجد", "ar": "مسجد", "en": "Mosque"},
+        {"key": "haramain", "emoji": "🕋", "fa": "حرمین", "ar": "الحرمان", "en": "Haramain"},
+        {"key": "library", "emoji": "📚", "fa": "کتابخانه", "ar": "مكتبة", "en": "Library"},
+        {"key": "museum", "emoji": "🏛️", "fa": "موزه", "ar": "متحف", "en": "Museum"},
+        {"key": "pilgrimage", "emoji": "🌙", "fa": "زیارتی", "ar": "زيارة", "en": "Pilgrimage"},
+        {"key": "other", "emoji": "📍", "fa": "سایر", "ar": "أخرى", "en": "Other"},
+        {"key": "tekke", "emoji": "🛖", "fa": "تکیه", "ar": "تكية", "en": "Tekke"},
+    ]
+    try:
+        async with tc["maker"]() as db:
+            await stage_setting(db, "places.types", json.dumps(custom, ensure_ascii=False))
+            await db.commit()
+        reset_settings_cache()
+        r = await client.post(
+            f"{BASE}/admin/places",
+            json=_place_payload(type="tekke"),
+            headers=admin,
+        )
+        assert r.status_code == 201, r.text
+        assert r.json()["type"] == "tekke"
+    finally:
+        async with tc["maker"]() as db:
+            await db.execute(delete(PlatformSetting).where(PlatformSetting.key == "places.types"))
+            await db.commit()
+        reset_settings_cache()
+
+    # قانون legacy: ردیف قدیمی holy_site بدون تغییر نوع، قابل ویرایش است
+    async with tc["maker"]() as db:
+        legacy = ReligiousPlace(
+            name=_L("مسجد قدیمی"), description=None, lat=31.7689, lng=35.2137,
+            type="holy_site", workflow_status="draft", version=1,
+        )
+        db.add(legacy)
+        await db.commit()
+        legacy_id = str(legacy.id)
+    r = await client.patch(
+        f"{BASE}/admin/places/{legacy_id}",
+        json={"city": "قدس"},
+        headers=admin,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["type"] == "holy_site"
+    assert r.json()["city"] == "قدس"
+    # ولی تغییر نوع به مقدار ناشناخته رد می‌شود
+    r = await client.patch(
+        f"{BASE}/admin/places/{legacy_id}",
+        json={"type": "not_a_type"},
+        headers=admin,
+    )
+    assert r.status_code == 422, r.text

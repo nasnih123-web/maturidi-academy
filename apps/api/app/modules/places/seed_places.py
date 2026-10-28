@@ -28,7 +28,7 @@ PLACES: list[dict] = [
         },
         "lat": 21.4225,
         "lng": 39.8262,
-        "type": "holy_site",
+        "type": "haramain",
     },
     {
         "name": {"fa": "مسجد النبی", "ar": "المسجد النبوي", "en": "Al-Masjid an-Nabawi"},
@@ -39,7 +39,7 @@ PLACES: list[dict] = [
         },
         "lat": 24.4672,
         "lng": 39.6111,
-        "type": "holy_site",
+        "type": "haramain",
     },
     {
         "name": {"fa": "حرم امام رضا علیه‌السلام", "ar": "مرقد الإمام الرضا عليه السلام", "en": "Imam Reza Shrine"},

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.platform_settings import get_settings_version, get_typed_setting
 from app.models.models import Theme
+from app.modules.places.types import DEFAULT_PLACE_TYPES
 
 router = APIRouter(prefix="/api/v1", tags=["meta"])
 
@@ -23,6 +24,9 @@ _PUBLIC_SETTING_KEYS = (
     "hero.ar",
     "hero.en",
     "home.sections",
+    "places.popup",
+    "places.types",
+    "places.globe",
 )
 
 _PUBLIC_DEFAULTS: dict[str, object] = {
@@ -34,6 +38,9 @@ _PUBLIC_DEFAULTS: dict[str, object] = {
     "hero.ar": None,
     "hero.en": None,
     "home.sections": [],
+    "places.popup": {"show_image": True, "show_description": True, "show_type": True, "show_city": True},
+    "places.types": [dict(t) for t in DEFAULT_PLACE_TYPES],
+    "places.globe": {"defaultLat": 21.4225, "defaultLng": 39.8262, "defaultAltitude": 2.5, "defaultMode": "satellite", "autoRotate": False},
 }
 
 

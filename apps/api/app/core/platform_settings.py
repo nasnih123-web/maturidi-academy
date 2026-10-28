@@ -50,6 +50,16 @@ SETTING_DEFS: dict[str, dict] = {
     "payment.webhook_secret": {"type": "secret", "sensitive": True, "label": "رمز امضای وبهوک درگاه (HMAC)"},
     "payment.callback_url": {"type": "string", "sensitive": False, "label": "آدرس بازگشت پیش‌فرض درگاه (callback)"},
     "map.key": {"type": "secret", "sensitive": True, "label": "کلید نقشه"},
+    # --- maps phase (overnight/w10): CRM control of the public map popup.
+    # Shape: {"show_image": bool, "show_description": bool,
+    #         "show_type": bool, "show_city": bool}; all default true.
+    "places.popup": {"type": "json", "sensitive": False, "label": "شکل پاپ‌آپ نقشهٔ اماکن"},
+    # --- globe phase: CRM-extensible place types + default globe view.
+    # places.types: [{"key", "emoji", "fa", "ar", "en"}]; validated at write
+    # time (see _validate_json_setting). places.globe: {defaultLat,
+    # defaultLng, defaultAltitude, defaultMode, autoRotate}.
+    "places.types": {"type": "json", "sensitive": False, "label": "انواع مکان (کرهٔ سه‌بعدی)"},
+    "places.globe": {"type": "json", "sensitive": False, "label": "نمای پیش‌فرض کرهٔ سه‌بعدی"},
     "email.smtp_password": {"type": "secret", "sensitive": True, "label": "رمز SMTP ایمیل"},
     "sms.api_key": {"type": "secret", "sensitive": True, "label": "کلید API پیامک"},
     # --- فاز ۱۴: هوش تجاری ---
@@ -427,6 +437,95 @@ def _validate_adhan_defaults(value: Any) -> dict:
     return {"calculation_method": method, "madhab": madhab}
 
 
+# --- Globe phase: CRM-extensible place types + default globe view --------
+# Validators return the canonical value; the places service re-parses with
+# parse_place_types (defensive) so a stored value can never break reads.
+
+def _validate_place_types(value: Any) -> list:
+    if not isinstance(value, list):
+        raise TypeError("places.types must be a list")
+    if not value:
+        raise ValueError("places.types must be a non-empty list")
+    out: list[dict] = []
+    seen: set[str] = set()
+    for raw in value:
+        if not isinstance(raw, dict):
+            raise TypeError("places.types entries must be objects")
+        key = raw.get("key")
+        if not isinstance(key, str) or not key.strip() or len(key) > 32:
+            raise ValueError("places.types entry needs a non-empty key (<=32 chars)")
+        key = key.strip()
+        if key in seen:
+            continue
+        seen.add(key)
+        unknown = set(raw) - {"key", "emoji", "fa", "ar", "en"}
+        if unknown:
+            raise ValueError(f"places.types entry: unknown fields {sorted(unknown)}")
+        emoji = raw.get("emoji")
+        out.append({
+            "key": key,
+            "emoji": emoji if isinstance(emoji, str) and emoji.strip() else "📍",
+            "fa": raw.get("fa") if isinstance(raw.get("fa"), str) and raw.get("fa") else key,
+            "ar": raw.get("ar") if isinstance(raw.get("ar"), str) and raw.get("ar") else key,
+            "en": raw.get("en") if isinstance(raw.get("en"), str) and raw.get("en") else key,
+        })
+    if not out:
+        raise ValueError("places.types must contain at least one type")
+    return out
+
+
+_GLOBE_MODES = ("satellite", "simple", "dark", "topology")
+
+
+def _validate_globe(value: Any) -> dict:
+    if not isinstance(value, dict):
+        raise TypeError("places.globe must be an object")
+    unknown = set(value) - {
+        "defaultLat", "defaultLng", "defaultAltitude", "defaultMode", "autoRotate",
+    }
+    if unknown:
+        raise ValueError(f"places.globe: unknown fields {sorted(unknown)}")
+    out = {
+        "defaultLat": 21.4225,
+        "defaultLng": 39.8262,
+        "defaultAltitude": 2.5,
+        "defaultMode": "satellite",
+        "autoRotate": False,
+    }
+    lat = value.get("defaultLat")
+    if lat is not None:
+        if isinstance(lat, bool) or not isinstance(lat, (int, float)):
+            raise TypeError("places.globe.defaultLat must be a number")
+        if not -90 <= lat <= 90:
+            raise ValueError("places.globe.defaultLat must be in -90..90")
+        out["defaultLat"] = float(lat)
+    lng = value.get("defaultLng")
+    if lng is not None:
+        if isinstance(lng, bool) or not isinstance(lng, (int, float)):
+            raise TypeError("places.globe.defaultLng must be a number")
+        if not -180 <= lng <= 180:
+            raise ValueError("places.globe.defaultLng must be in -180..180")
+        out["defaultLng"] = float(lng)
+    alt = value.get("defaultAltitude")
+    if alt is not None:
+        if isinstance(alt, bool) or not isinstance(alt, (int, float)):
+            raise TypeError("places.globe.defaultAltitude must be a number")
+        if not 0.1 <= alt <= 10:
+            raise ValueError("places.globe.defaultAltitude must be in 0.1..10")
+        out["defaultAltitude"] = float(alt)
+    mode = value.get("defaultMode")
+    if mode is not None:
+        if mode not in _GLOBE_MODES:
+            raise ValueError(f"places.globe.defaultMode must be one of {'|'.join(_GLOBE_MODES)}")
+        out["defaultMode"] = mode
+    rot = value.get("autoRotate")
+    if rot is not None:
+        if not isinstance(rot, bool):
+            raise TypeError("places.globe.autoRotate must be a boolean")
+        out["autoRotate"] = rot
+    return out
+
+
 def _validate_json_setting(key: str, value: Any) -> Any:
     """اعتبارسنج اختصاصی هر کلید json — خروجی canonical."""
     if key == "particles":
@@ -456,6 +555,11 @@ def _validate_json_setting(key: str, value: Any) -> Any:
         return _validate_munajat_window(value)
     if key == "adhan.defaults":
         return _validate_adhan_defaults(value)
+    # --- Globe phase: place types + default globe view ---
+    if key == "places.types":
+        return _validate_place_types(value)
+    if key == "places.globe":
+        return _validate_globe(value)
     # --- فاز ۶: تنظیمات AI ---
     if key == "ai.provider":
         if value not in ("none", "claude"):
