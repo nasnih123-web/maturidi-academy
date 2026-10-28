@@ -16,9 +16,47 @@ from app.core import workflow
 from app.core.audit import log_audit
 from app.core.errors import APIError
 from app.core.events import emit_event
+from app.core.platform_settings import get_typed_setting
 from app.models.models import LibraryItem, ReligiousPlace, User
 
 from .schemas import PlaceCreate, PlaceUpdate
+from .types import DEFAULT_PLACE_TYPES, parse_place_types, type_keys
+
+
+async def _allowed_types(db: AsyncSession) -> set[str]:
+    """Live type keys from the CRM ``places.types`` setting.
+
+    Any failure (missing setting, malformed stored value) falls back to
+    the defaults — a bad setting must never break place registration.
+    """
+    try:
+        raw = await get_typed_setting(db, "places.types", None)
+    except Exception:  # noqa: BLE001 - any settings failure (DB, decrypt,
+        # malformed JSON) must fall back to defaults, never break places
+        return type_keys(DEFAULT_PLACE_TYPES)
+    if raw is None:
+        return type_keys(DEFAULT_PLACE_TYPES)
+    return type_keys(parse_place_types(raw))  # defensive: never raises
+
+
+async def _check_type(
+    db: AsyncSession, place_type: str | None, *, keep: str | None = None,
+) -> None:
+    """Reject unknown types with a serializable 422.
+
+    ``keep`` is the row's existing type: an update that does not change
+    the type is never rejected, so legacy rows (``shrine`` / ``holy_site``)
+    stay editable until an admin retypes them.
+    """
+    if place_type is None:
+        return
+    if keep is not None and place_type == keep:
+        return
+    if place_type not in await _allowed_types(db):
+        raise APIError(
+            422, "unknown_place_type",
+            f"نوع مکان ناشناخته است: {place_type}",
+        )
 
 
 def _utcnow() -> datetime:
@@ -33,7 +71,11 @@ def _out(place: ReligiousPlace) -> dict:
         "lat": place.lat,
         "lng": place.lng,
         "type": place.type,
+        "city": place.city,
+        "image_url": place.image_url,
+        "images": place.images,
         "video_360_id": place.video_360_id,
+        "video_url": place.video_url,
         "workflow_status": place.workflow_status,
         "version": place.version,
         "created_at": place.created_at,
@@ -65,13 +107,18 @@ async def create_place(
     ip: str | None = None, user_agent: str | None = None,
 ) -> dict:
     await _check_360(db, data.video_360_id)
+    await _check_type(db, data.type)
     place = ReligiousPlace(
         name=data.name.model_dump(),
         description=data.description.model_dump() if data.description else None,
         lat=data.lat,
         lng=data.lng,
         type=data.type,
+        city=(data.city or None),
+        image_url=data.image_url,
+        images=[img.model_dump() for img in data.images] if data.images else None,
         video_360_id=data.video_360_id,
+        video_url=data.video_url,
         workflow_status=workflow.DRAFT,
         version=1,
         created_by=actor.id,
@@ -90,6 +137,50 @@ async def create_place(
         actor_id=actor.id,
         actor_type="admin",
         action="places.create",
+        entity_type="religious_place",
+        entity_id=str(place.id),
+        new_values={"type": place.type, "lat": place.lat, "lng": place.lng},
+        ip=ip,
+        user_agent=user_agent,
+    )
+    await db.commit()
+    await db.refresh(place)
+    return _out(place)
+
+
+async def submit_place(
+    db: AsyncSession, data, *, ip: str | None = None, user_agent: str | None = None,
+) -> dict:
+    """Anonymous registration (maps phase): a draft only. The CRM reviews it
+    through the normal §9 workflow; nothing submitted here ever reaches the
+    public map or detail page until an admin publishes it."""
+    await _check_type(db, data.type)
+    place = ReligiousPlace(
+        name=data.name.model_dump(),
+        description=data.description.model_dump() if data.description else None,
+        lat=data.lat,
+        lng=data.lng,
+        type=data.type,
+        city=(data.city or None),
+        image_url=data.image_url,
+        workflow_status=workflow.DRAFT,
+        version=1,
+        submitted_by=None,
+    )
+    db.add(place)
+    await db.flush()
+    await emit_event(
+        db,
+        aggregate_type="religious_place",
+        aggregate_id=str(place.id),
+        event_type="place.submitted",
+        payload={"type": place.type, "lat": place.lat, "lng": place.lng},
+    )
+    await log_audit(
+        db,
+        actor_id=None,
+        actor_type="public",
+        action="places.submit",
         entity_type="religious_place",
         entity_id=str(place.id),
         new_values={"type": place.type, "lat": place.lat, "lng": place.lng},
@@ -159,13 +250,16 @@ async def update_place(
     patch = data.model_dump(exclude_unset=True)
     if "video_360_id" in patch:
         await _check_360(db, patch["video_360_id"])
+    if "type" in patch:
+        await _check_type(db, patch["type"], keep=place.type)
     old = {"name": place.name, "lat": place.lat, "lng": place.lng,
            "type": place.type, "workflow_status": place.workflow_status}
     for key, value in patch.items():
         if key in ("name", "description") and value is not None:
             setattr(place, key, dict(value))
-        elif value is not None or key == "video_360_id":
-            # video_360_id صریحاً null هم قابل پاک‌شدن است
+        elif value is not None or key in ("video_360_id", "city", "image_url", "images", "video_url"):
+            # video_360_id / city / image_url / images / video_url صریحاً
+            # null هم قابل پاک‌شدن‌اند
             setattr(place, key, value)
     place.version = (place.version or 1) + 1
     place.updated_at = _utcnow()

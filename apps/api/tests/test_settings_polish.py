@@ -394,6 +394,11 @@ async def test_settings_public_returns_whitelisted_keys(tc, db_session):
         "hero.ar",
         "hero.en",
         "home.sections",
+        # maps phase: CRM-controlled map popup shape (public by design).
+        "places.popup",
+        # globe phase: extensible place types + default globe view.
+        "places.types",
+        "places.globe",
     }
     assert set(body["settings"].keys()) == expected
     # هیچ کلید حساسی لو نرفته

@@ -54,6 +54,22 @@ async def list_places(
     return {"items": items, "total": total}
 
 
+@places_router.post("/submissions", response_model=schemas.PlaceOut, status_code=201)
+async def submit_place(
+    body: schemas.PlaceSubmission,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public place registration. Anonymous, draft-only: the place is NOT
+    published and NOT listed publicly until a CRM admin reviews + publishes
+    it through the §9 workflow. Location comes from the visitor (browser
+    geolocation on the register form, or manual coordinates/city fallback)."""
+    return await service.submit_place(
+        db, body, ip=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+
+
 @places_router.get("/{place_id}", response_model=schemas.PlaceOut)
 async def get_place(place_id: UUID, db: AsyncSession = Depends(get_db)):
     return await service.get_place(db, place_id, published_only=True)

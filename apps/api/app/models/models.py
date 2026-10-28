@@ -1590,6 +1590,17 @@ class ReligiousPlace(Base):
     lat: Mapped[float] = mapped_column(Float, nullable=False, index=True)
     lng: Mapped[float] = mapped_column(Float, nullable=False, index=True)
     type: Mapped[str] = mapped_column(String(32), default="mosque", index=True)
+    # Maps phase (overnight/w10): free-text city label (manual fallback when
+    # geolocation is unavailable — NOT geocoded) and an optional image URL
+    # shown on the detail page and, per CRM popup settings, in map popups.
+    city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # Globe phase: image gallery (list of {url, caption}, http(s) only) and
+    # a regular-video URL (YouTube/Vimeo/Aparat embeds on the web). The
+    # gallery is JSONB, not a separate table: no FK, no backfill, and the
+    # cover stays image_url (web falls back to images[0] when it is null).
+    images: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    video_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     video_360_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("library_items.id"), nullable=True
     )
