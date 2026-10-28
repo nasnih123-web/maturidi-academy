@@ -8,10 +8,13 @@
  * and behavior as the shared Slider primitive (scroll by ~one viewport,
  * snap, keyboard arrows, page dots below the rail).
  *
- * Difference from the shared Slider, per spec: the prev/next buttons live
- * in the header, grouped with the show-all link on the opposite side
- * from the title (header stays space-between). Cards are unchanged
- * (ftw-card). Renders nothing when there is nothing to show.
+ * Layout matches the shared Slider primitive exactly: the header holds
+ * only the title and the show-all link (space-between); the prev/next
+ * buttons sit BELOW the rail, flanking the page dots. Cards are equal
+ * height: each slide is a flex column and the card grows to fill it
+ * (same effect as the fatwa slider's equal-height rule, without a
+ * section-id-scoped CSS rule — this component owns its own section).
+ * Renders nothing when there is nothing to show.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -96,19 +99,12 @@ export function ArticlesSlider({
             marginInlineStart: "auto",
             display: "flex",
             alignItems: "center",
-            gap: "0.5rem",
             alignSelf: "center",
           }}
         >
           <Link href={`/${locale}/articles`} className="section-cta">
             {showAllLabel} {ctaArrow}
           </Link>
-          <button type="button" onClick={() => scrollBy(-1)} aria-label={sliderPrev} className="slider-nav-btn">
-            ‹
-          </button>
-          <button type="button" onClick={() => scrollBy(1)} aria-label={sliderNext} className="slider-nav-btn">
-            ›
-          </button>
         </div>
       </div>
       <div role="region" aria-roledescription="carousel" aria-label={title}>
@@ -133,8 +129,8 @@ export function ArticlesSlider({
           className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {items.map((item) => (
-            <li key={item.slug} className="shrink-0 snap-start" style={{ width: SLIDE_W, maxWidth: "85vw" }}>
-              <article className="ftw-card" style={{ flex: "0 0 clamp(15rem, 22vw, 19rem)" }}>
+            <li key={item.slug} className="flex shrink-0 snap-start flex-col" style={{ width: SLIDE_W, maxWidth: "85vw" }}>
+              <article className="ftw-card flex-1">
                 <Link
                   href={`/${locale}/articles/${encodeURIComponent(item.slug)}`}
                   className="ftw-card-link"
@@ -153,6 +149,9 @@ export function ArticlesSlider({
           ))}
         </ul>
         <div className="mt-3 flex items-center justify-center gap-4">
+          <button type="button" onClick={() => scrollBy(-1)} aria-label={sliderPrev} className="slider-nav-btn">
+            ‹
+          </button>
           <span className="slider-dots">
             {Array.from({ length: Math.min(pages, 8) }).map((_, i) => (
               <button
@@ -165,6 +164,9 @@ export function ArticlesSlider({
               />
             ))}
           </span>
+          <button type="button" onClick={() => scrollBy(1)} aria-label={sliderNext} className="slider-nav-btn">
+            ›
+          </button>
         </div>
       </div>
     </section>
