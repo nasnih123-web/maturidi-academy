@@ -79,8 +79,10 @@ def _short_name(address: dict, display_name: str) -> str | None:
 
 
 def _place_from_item(item: dict) -> dict:
-    address = item.get("address") if isinstance(item.get("address"), dict) else {}
-    display_name = item.get("display_name") if isinstance(item.get("display_name"), str) else ""
+    raw_address = item.get("address")
+    address: dict = raw_address if isinstance(raw_address, dict) else {}
+    raw_display_name = item.get("display_name")
+    display_name: str = raw_display_name if isinstance(raw_display_name, str) else ""
     try:
         lat = float(item["lat"])
         lng = float(item["lon"])
