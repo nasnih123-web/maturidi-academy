@@ -617,7 +617,8 @@ def test_adhan_defaults_validation(key, value, ok):
 
         parsed = _json.loads(out)
         assert parsed["calculation_method"] in (
-            "isna", "mwl", "egypt", "karachi", "makkah", "jafari",
+            "council", "tehran", "isna", "mwl", "egypt", "karachi", "makkah",
+            "qom", "jafari",
         )
         assert parsed["madhab"] in ("shafi", "hanafi")
     else:

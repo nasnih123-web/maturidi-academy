@@ -1,13 +1,24 @@
 """محاسبهٔ اوقات نماز — پیاده‌سازی pure-Python الگوریتم PrayTimes.
 
-روش‌ها: isna (۱۵/۱۵)، mwl (۱۸/۱۷)، egypt (۱۹.۵/۱۷.۵)، karachi (۱۸/۱۸)،
-makkah/umm-al-qura (فجر ۱۸.۵، عشا = غروب + ۹۰ دقیقه)، jafari (۱۶/۴/۱۴).
-عصر: shafi (factor=1) / hanafi (factor=2).
+روش‌ها (زاویه‌ها برحسب درجه؛ مرجع هر روش در فیلد authority):
+- council: مصوبهٔ مجمع فقه اهل سنت ایران — فجر ۱۵، عشاء ۱۵ (پیش‌فرض آکادمی؛
+  مبنای جدول رسمی تربت جام، اثبات عددی ۲۰۲۶-۱۰-۲۸).
+- tehran: مؤسسهٔ ژئوفیزیک دانشگاه تهران، روش صدا و سیما — ۱۷٫۷/۱۴، مغرب ۴٫۵.
+  ستارهٔ تهران: عشاء ۱۴ قرارداد کتابخانه‌ای است، نه تعریف اثبات‌شدهٔ ژئوفیزیک.
+- egypt: مرکز مطالعات مصر — ۱۹٫۵/۱۷٫۵. karachi: دانشگاه علوم اسلامی کراچی — ۱۸/۱۸.
+- makkah/umm-al-qura: فجر ۱۸٫۵، عشا = مغرب + ۹۰ دقیقه (۱۲۰ در رمضان).
+- qom: مؤسسهٔ لواء قم — ۱۶/۱۴، مغرب ۴. jafari: همان اعداد قم با برچسب جعفری.
+- isna: جامعهٔ اسلامی شمال آمریکا — ۱۵/۱۵. mwl: باشگاه مسلمانان دنیا — ۱۸/۱۷.
+- turkmen: مجمع فقه ترکمن صحرا — درجهٔ منتشرشده ندارد؛ API هرگز عدد حدسی
+  برنمی‌گرداند و ۴۲۲ adhan_method_unavailable می‌دهد.
+عصر: shafi (factor=1) / hanafi (factor=2) — مذهب فقط عصر را عوض می‌کند.
 
 این محاسبات نجومی است، نه قاعدهٔ فقهی — §۱۵.۵ (ممنوعیت هاردکد قواعد فقهی)
 شامل آن نمی‌شود. زمان‌ها به‌صورت رشتهٔ «HH:MM» در افست زمانیِ درخواستی
 (`tz`، ساعت اعشاری مثل ‎+3.5) برمی‌گردند؛ اگر `tz` داده نشود، UTC است.
 DST دستی با `tz` کنترل می‌شود (مستندات endpoint).
+در عرض‌های قطبی که رویداد وجود ندارد، نزدیک‌ترین عرض ممکن به کار می‌رود
+(عرض به‌سمت استوا کوچک می‌شود تا cos زاویهٔ ساعتی در بازه شود) — هرگز NaN.
 """
 from __future__ import annotations
 
@@ -18,26 +29,77 @@ _D2R = math.pi / 180.0
 _R2D = 180.0 / math.pi
 
 
+class AdhanMethodUnavailable(ValueError):
+    """روش زاویهٔ منتشرشده ندارد — محاسبه با عدد حدسی ممنوع است."""
+
+
 # --- پارامترهای روش‌ها (زاویه‌ها برحسب درجه) ---
 METHODS: dict[str, dict] = {
-    "isna": {"label": "ISNA (North America)", "fajr": 15.0, "isha": 15.0},
-    "mwl": {"label": "Muslim World League", "fajr": 18.0, "isha": 17.0},
-    "egypt": {"label": "Egyptian General Authority of Survey", "fajr": 19.5, "isha": 17.5},
+    "council": {
+        "label": "Majma Fiqh Ahl al-Sunnah of Iran (Arefan Jam default)",
+        "authority": "مصوبهٔ مجمع فقه اهل سنت ایران",
+        "fajr": 15.0,
+        "isha": 15.0,
+        "note": "پیش‌فرض آکادمی؛ مبنای جدول رسمی تربت جام (اثبات عددی ۲۰۲۶-۱۰-۲۸).",
+    },
+    "tehran": {
+        "label": "Institute of Geophysics, University of Tehran (IRIB method)",
+        "authority": "مؤسسهٔ ژئوفیزیک دانشگاه تهران (روش صدا و سیما)",
+        "fajr": 17.7,
+        "isha": 14.0,
+        "maghrib": 4.5,
+        "note": "ستارهٔ تهران: عشاء ۱۴ قرارداد کتابخانه‌ای است، نه تعریف اثبات‌شدهٔ ژئوفیزیک.",
+    },
+    "isna": {
+        "label": "ISNA (North America)",
+        "authority": "Islamic Society of North America",
+        "fajr": 15.0,
+        "isha": 15.0,
+    },
+    "mwl": {
+        "label": "Muslim World League",
+        "authority": "Muslim World League",
+        "fajr": 18.0,
+        "isha": 17.0,
+    },
+    "egypt": {
+        "label": "Egyptian General Authority of Survey",
+        "authority": "Egyptian General Authority of Survey",
+        "fajr": 19.5,
+        "isha": 17.5,
+    },
     "karachi": {
         "label": "University of Islamic Sciences, Karachi",
+        "authority": "University of Islamic Sciences, Karachi",
         "fajr": 18.0,
         "isha": 18.0,
     },
     "makkah": {
         "label": "Umm al-Qura, Makkah",
+        "authority": "Umm al-Qura, Makkah",
         "fajr": 18.5,
         "isha_minutes": 90,  # عشا = مغرب + ۹۰ دقیقه
+        "isha_minutes_ramadan": 120,  # در رمضان ۱۲۰ دقیقه
     },
-    "jafari": {
-        "label": "Shia Ithna-Ansari (Jafari)",
+    "qom": {
+        "label": "Leva Institute, Qom",
+        "authority": "مؤسسهٔ لواء قم",
         "fajr": 16.0,
         "maghrib": 4.0,
         "isha": 14.0,
+    },
+    "jafari": {
+        "label": "Shia Ithna-Ansari (Jafari)",
+        "authority": "Ja'fari convention",
+        "fajr": 16.0,
+        "maghrib": 4.0,
+        "isha": 14.0,
+    },
+    "turkmen": {
+        "label": "Majma Fiqh of Turkmen Sahra",
+        "authority": "مجمع فقه ترکمن صحرا",
+        "available": False,
+        "note": "درجه‌های منتشرشده هنوز تأیید نشده‌اند؛ تا رسیدن منبع، محاسبه انجام نمی‌شود.",
     },
 }
 
@@ -92,13 +154,15 @@ def _sun_position(jd: float) -> tuple[float, float]:
 class _Calculator:
     """هستهٔ محاسبه برای یک مختصات/تاریخ — فرمول‌های استاندارد PrayTimes."""
 
-    def __init__(self, lat: float, lng: float, tz: float, method: str, madhab: str):
+    def __init__(self, lat: float, lng: float, tz: float, method: str, madhab: str,
+                 ramadan: bool = False):
         self.lat = lat
         self.lng = lng
         self.tz = tz
         self.params = METHODS[method]
         self.asr_factor = MADRABS[madhab]
         self.method = method
+        self.ramadan = ramadan
 
     def _mid_day(self, time: float, jdn: float) -> float:
         _, eqt = _sun_position(jdn + time)
@@ -107,12 +171,24 @@ class _Calculator:
     def _sun_angle_time(self, angle: float, time: float, jdn: float, direction: str) -> float:
         decl, _ = _sun_position(jdn + time)
         noon = self._mid_day(time, jdn)
-        lat_r = self.lat * _D2R
-        decl_r = decl * _D2R
-        cos_t = (
-            -math.sin(angle * _D2R) - math.sin(lat_r) * math.sin(decl_r)
-        ) / (math.cos(lat_r) * math.cos(decl_r))
-        cos_t = max(-1.0, min(1.0, cos_t))
+        # عرض‌های قطبی: اگر رویداد در عرض داده‌شده وجود ندارد، نزدیک‌ترین
+        # عرض ممکن (به‌سمت استوا) به کار می‌رود — خروجی همیشه متناهی است.
+        lat_eff = self.lat
+        cos_t = 0.0
+        for _ in range(80):
+            lat_r = lat_eff * _D2R
+            decl_r = decl * _D2R
+            cos_t = (
+                -math.sin(angle * _D2R) - math.sin(lat_r) * math.sin(decl_r)
+            ) / (math.cos(lat_r) * math.cos(decl_r))
+            if -1.0 <= cos_t <= 1.0:
+                break
+            if abs(lat_eff) < 1.0:
+                cos_t = max(-1.0, min(1.0, cos_t))
+                break
+            lat_eff *= 0.97
+        else:
+            cos_t = max(-1.0, min(1.0, cos_t))
         t = (1.0 / 15.0) * math.acos(cos_t) * _R2D
         return noon + (-t if direction == "ccw" else t)
 
@@ -150,8 +226,9 @@ class _Calculator:
                 ) / 24.0
             else:
                 n["maghrib"] = n["sunset"]
-            if "isha_minutes" in p:  # umm al-qura
-                n["isha"] = n["maghrib"] + (p["isha_minutes"] / 60.0) / 24.0
+            if "isha_minutes" in p:  # umm al-qura (در رمضان ۱۲۰ دقیقه)
+                minutes = p["isha_minutes_ramadan"] if self.ramadan and "isha_minutes_ramadan" in p else p["isha_minutes"]
+                n["isha"] = n["maghrib"] + (minutes / 60.0) / 24.0
             else:
                 n["isha"] = self._sun_angle_time(p["isha"], t["isha"], jdn, "cw") / 24.0
             t = n
@@ -192,15 +269,27 @@ def prayer_times(
     tz: float = 0.0,
     method: str = "mwl",
     madhab: str = "shafi",
+    ramadan: bool | None = None,
 ) -> dict[str, str]:
     """اوقات نماز برای یک روز/مختصات — خروجی رشته‌های HH:MM.
 
     ValueError برای method/madhab نامعتبر (روتر به ۴۲۲ تبدیل می‌کند).
+    AdhanMethodUnavailable برای روش بدون زاویهٔ منتشرشده (روتر: ۴۲۲
+    adhan_method_unavailable). ramadan=None یعنی تشخیص خودکار با تقویم
+    جدولی اسلامی (مرز ماه ممکن است تا یک روز با اعلام رسمی فرق کند).
     """
     if method not in METHODS:
         raise ValueError(f"unknown adhan method: {method}")
+    if not METHODS[method].get("available", True):
+        raise AdhanMethodUnavailable(
+            f"adhan method has no published angles yet: {method}"
+        )
     if madhab not in MADRABS:
         raise ValueError(f"unknown madhab: {madhab}")
-    raw = _Calculator(lat, lng, tz, method, madhab).compute(day)
+    if ramadan is None:
+        from . import adhan_data
+
+        ramadan = adhan_data.is_ramadan(day)
+    raw = _Calculator(lat, lng, tz, method, madhab, ramadan).compute(day)
     order = ["imsak", "fajr", "sunrise", "dhuhr", "asr", "maghrib", "isha", "midnight"]
     return {k: _fmt(raw[k]) for k in order}

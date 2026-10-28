@@ -132,7 +132,10 @@ class TasbihTodayOut(BaseModel):
 # --- اذان ---
 
 
-AdhanMethod = Literal["isna", "mwl", "egypt", "karachi", "makkah", "jafari"]
+AdhanMethod = Literal[
+    "council", "tehran", "isna", "mwl", "egypt", "karachi", "makkah",
+    "qom", "jafari", "turkmen",
+]
 Madhab = Literal["shafi", "hanafi"]
 
 
@@ -156,3 +159,48 @@ class AdhanTimesOut(BaseModel):
     method_label: str
     madhab: str
     times: AdhanTimes
+    city: str | None = None
+    source: str = "computed"
+    sources: dict[str, str] = {}
+
+
+class AdhanDayTimes(BaseModel):
+    date: date
+    source: str
+    times: AdhanTimes
+
+
+class AdhanRangeOut(BaseModel):
+    start: date
+    end: date
+    city: str | None
+    latitude: float
+    longitude: float
+    timezone_offset: float
+    method: str
+    madhab: str
+    days: list[AdhanDayTimes]
+
+
+class AdhanMethodOption(BaseModel):
+    id: str
+    label: str
+    authority: str
+    fajr: float | None
+    isha: float | None
+    maghrib: float | None
+    isha_minutes: int | None
+    isha_minutes_ramadan: int | None
+    available: bool
+    note: str
+
+
+class AdhanCityOption(BaseModel):
+    slug: str
+    lat: float
+    lng: float
+
+
+class AdhanOptionsOut(BaseModel):
+    methods: list[AdhanMethodOption]
+    cities: list[AdhanCityOption]

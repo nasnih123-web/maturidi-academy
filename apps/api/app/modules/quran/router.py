@@ -18,6 +18,8 @@ from app.modules.auth.dependencies import get_current_user
 from . import service
 from .schemas import (
     AdhanMethod,
+    AdhanOptionsOut,
+    AdhanRangeOut,
     AdhanTimesOut,
     AyahOut,
     DhikrTotalOut,
@@ -218,19 +220,53 @@ async def today_totals(
 
 @adhan_router.get("/times", response_model=AdhanTimesOut)
 async def adhan_times(
-    lat: float = Query(..., ge=-90.0, le=90.0, description="عرض جغرافیایی"),
-    lng: float = Query(..., ge=-180.0, le=180.0, description="طول جغرافیایی"),
-    method: AdhanMethod = Query(default="mwl", description="isna|mwl|egypt|karachi|makkah|jafari"),
-    madhab: Madhab = Query(default="shafi", description="shafi|hanafi (عصر)"),
+    lat: float | None = Query(default=None, ge=-90.0, le=90.0, description="عرض جغرافیایی"),
+    lng: float | None = Query(default=None, ge=-180.0, le=180.0, description="طول جغرافیایی"),
+    city: str | None = Query(default=None, description="نام شهر از GET /adhan/options؛ با شهر، lat/lng لازم نیست"),
+    method: AdhanMethod = Query(default="council", description="council|tehran|isna|mwl|egypt|karachi|makkah|qom|jafari|turkmen"),
+    madhab: Madhab = Query(default="hanafi", description="shafi|hanafi (فقط عصر)"),
     day: date | None = Query(default=None, description="پیش‌فرض: امروز UTC"),
+    date_: date | None = Query(default=None, alias="date", description="نام مستعار day"),
     tz: float = Query(default=0.0, ge=-12.0, le=14.0,
                       description="افست ساعت محلی از UTC (مثل ‎+3.5)؛ DST دستی"),
+    ramadan: bool | None = Query(default=None, description="فقط ام‌القری: True یعنی عشاء ۱۲۰ دقیقه؛ None یعنی تشخیص خودکار"),
 ):
-    """اوقات نماز — محاسبهٔ pure-Python (الگوریتم PrayTimes)؛ زمان‌ها HH:MM محلی."""
+    """اوقات نماز — محاسبهٔ pure-Python (الگوریتم PrayTimes)؛ زمان‌ها HH:MM محلی.
+
+    تربت جام + روش council از جدول رسمی ۳۶۵روزه می‌آید (source=table)؛ بقیهٔ
+    ترکیب‌ها محاسبهٔ نجومی‌اند. روش turkmen زاویهٔ منتشرشده ندارد و ۴۲۲ می‌دهد.
+    """
     from datetime import datetime
 
-    target = day or datetime.now(UTC).date()
+    target = day or date_ or datetime.now(UTC).date()
     data = service.get_adhan_times(
-        day=target, lat=lat, lng=lng, tz=tz, method=method, madhab=madhab
+        day=target, lat=lat, lng=lng, tz=tz, method=method, madhab=madhab,
+        city=city, ramadan=ramadan,
     )
     return AdhanTimesOut(**data)
+
+
+@adhan_router.get("/range", response_model=AdhanRangeOut)
+async def adhan_range(
+    start: date = Query(..., description="شروع بازه (میلادی)"),
+    end: date = Query(..., description="پایان بازه (میلادی)؛ حداکثر ۳۶۶ روز"),
+    lat: float | None = Query(default=None, ge=-90.0, le=90.0),
+    lng: float | None = Query(default=None, ge=-180.0, le=180.0),
+    city: str | None = Query(default=None, description="نام شهر از GET /adhan/options"),
+    method: AdhanMethod = Query(default="council"),
+    madhab: Madhab = Query(default="hanafi"),
+    tz: float = Query(default=0.0, ge=-12.0, le=14.0),
+    ramadan: bool | None = Query(default=None),
+):
+    """بازهٔ اوقات برای نماهای هفته/ماه/سال — هر روز source خودش را دارد."""
+    data = service.get_adhan_range(
+        start=start, end=end, lat=lat, lng=lng, tz=tz, method=method,
+        madhab=madhab, city=city, ramadan=ramadan,
+    )
+    return AdhanRangeOut(**data)
+
+
+@adhan_router.get("/options", response_model=AdhanOptionsOut)
+async def adhan_options():
+    """فهرست روش‌ها (با زاویه و مرجع) و شهرها — مرجع واحد فرانت و CRM."""
+    return AdhanOptionsOut(**service.get_adhan_options())

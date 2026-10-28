@@ -2,6 +2,7 @@ import React from "react";
 import { Badge, Button } from "@maturidi/ui-web";
 import { LOCALES, useI18n, type Locale } from "../lib/i18n";
 import {
+  ADHAN_CITIES,
   ADHAN_METHODS,
   DEFAULT_ADHAN,
   DEFAULT_MUNAJAT_WINDOW,
@@ -40,7 +41,7 @@ import {
  *                   quran.show_tafsir, quran.highlight_mode, quran.font_size,
  *                   quran.playback
  *   3. Munajat   → munajat.enabled, munajat.window
- *   4. Adhan     → adhan.defaults (pending backend registration)
+ *   4. Adhan     → adhan.defaults (registered in SETTING_DEFS)
  *
  * Values are sent to PUT /api/v1/admin/settings as parsed JSON values
  * (dict/list/bool/str/number) — that is what the backend validators expect
@@ -707,10 +708,6 @@ function AdhanPanel(): React.ReactElement {
         <span className="panel-hint">{t("quran.adhanHint")}</span>
       </div>
 
-      <p className="hint" style={{ marginTop: 0 }}>
-        {t("quran.adhanPending")}
-      </p>
-
       <div className="field">
         <label htmlFor="adhan-method">{t("quran.adhanMethod")}</label>
         <select
@@ -749,6 +746,24 @@ function AdhanPanel(): React.ReactElement {
             </label>
           ))}
         </div>
+      </div>
+
+      <div className="field">
+        <label htmlFor="adhan-city">{t("quran.adhanDefaultCity")}</label>
+        <select
+          id="adhan-city"
+          className="input"
+          style={{ maxWidth: "320px" }}
+          value={adhan.default_city}
+          onChange={(e) => setAdhan((a) => ({ ...a, default_city: e.target.value }))}
+        >
+          {ADHAN_CITIES.map((c) => (
+            <option key={c} value={c}>
+              {t(`quran.city_${c}`)}
+            </option>
+          ))}
+        </select>
+        <span className="hint">{t("quran.adhanDefaultCityHint")}</span>
       </div>
 
       <SaveRow

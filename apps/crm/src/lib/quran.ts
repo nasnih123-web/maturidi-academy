@@ -24,9 +24,9 @@ import { readSettingsMap } from "./appearance";
  *   quran.playback           {autoplay: bool, repeat: "off"|"ayah"|"surah"}
  *   munajat.enabled          bool
  *   munajat.window           {start: "HH:MM", end: "HH:MM"}
- *   adhan.defaults           {calculation_method, madhab} — NOT registered in
- *                            SETTING_DEFS yet (backend track TODO); the panel
- *                            is wired and says so honestly.
+ *   adhan.defaults           {calculation_method, madhab, default_city} —
+ *                            registered in SETTING_DEFS
+ *                            (apps/api/app/core/platform_settings.py).
  *
  * Provider catalogs come ONLY from GET /api/v1/quran/providers:
  *   {providers: [{id, name, base_url, active}], active_provider, text_edition,
@@ -304,20 +304,25 @@ export function parseMunajatWindow(raw: string | null | undefined): MunajatWindo
 
 /**
  * Adhan calculation-method ids — the API's own enum values
- * (`AdhanMethod` on GET /api/v1/adhan/times, Track 1).
- * TODO: prefer a server-exposed list when the backend adds one.
+ * (`AdhanMethod` on GET /api/v1/adhan/times, Track 1). `turkmen` is
+ * deliberately NOT listed: it has no published angles yet and the backend
+ * validator rejects it as a default.
  */
-export const ADHAN_METHODS = ["isna", "mwl", "egypt", "karachi", "makkah", "jafari"] as const;
+export const ADHAN_METHODS = ["council", "tehran", "isna", "mwl", "egypt", "karachi", "makkah", "qom", "jafari"] as const;
 export type AdhanMethod = (typeof ADHAN_METHODS)[number];
+
+/** City slugs for the adhan default city — same list as GET /adhan/options. */
+export const ADHAN_CITIES = ["torbat-e-jam", "khaf", "taybad", "mashhad", "zahedan", "gonbad-e-kavus", "tehran"] as const;
 
 export type Madhab = "shafi" | "hanafi";
 
 export interface AdhanDefaults {
   calculation_method: string;
   madhab: Madhab;
+  default_city: string;
 }
 
-export const DEFAULT_ADHAN: AdhanDefaults = { calculation_method: "", madhab: "hanafi" };
+export const DEFAULT_ADHAN: AdhanDefaults = { calculation_method: "", madhab: "hanafi", default_city: "torbat-e-jam" };
 
 export function parseAdhanDefaults(raw: string | null | undefined): AdhanDefaults {
   const v = decodeJson(raw);
@@ -326,5 +331,6 @@ export function parseAdhanDefaults(raw: string | null | undefined): AdhanDefault
   return {
     calculation_method: typeof r.calculation_method === "string" ? r.calculation_method : "",
     madhab: r.madhab === "shafi" ? "shafi" : "hanafi",
+    default_city: typeof r.default_city === "string" && r.default_city ? r.default_city : "torbat-e-jam",
   };
 }
