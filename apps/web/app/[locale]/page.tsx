@@ -196,6 +196,11 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
     />
   );
 
+  // Globe phase: the nearby_map homepage slot is a preview card + link to
+  // /places. The homepage no longer fetches places (the 3D globe is too
+  // heavy for it, and the slot previously pulled up to 500 places on
+  // every homepage load).
+
   return (
     <>
       {themeCss ? <style>{themeCss}</style> : null}
