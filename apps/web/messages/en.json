@@ -356,86 +356,70 @@
     "stripPrefix": "until",
     "stripSetup": "Prayer times",
     "methods": {
-    "council": {
-          "name": "Resolution of the Fiqh Council of Ahl al-Sunnah of Iran",
-          "authority": "Fiqh Council of Ahl al-Sunnah of Iran",
-          "note": "Academy default; basis of the official Torbat-e Jam table."
+      "council": {
+        "name": "Resolution of the Fiqh Council of Ahl al-Sunnah of Iran",
+        "authority": "Fiqh Council of Ahl al-Sunnah of Iran",
+        "note": "Academy default; basis of the official Torbat-e Jam table."
+      },
+      "tehran": {
+        "name": "Institute of Geophysics, University of Tehran",
+        "authority": "IRIB method",
+        "note": "Isha 14° is a library convention, not a proven Geophysics definition."
+      },
+      "isna": {
+        "name": "Islamic Society of North America",
+        "authority": "ISNA",
+        "note": ""
+      },
+      "mwl": {
+        "name": "Muslim World League",
+        "authority": "Muslim World League",
+        "note": ""
+      },
+      "egypt": {
+        "name": "Egyptian General Authority of Survey",
+        "authority": "Egyptian General Authority of Survey",
+        "note": ""
+      },
+      "karachi": {
+        "name": "University of Islamic Sciences, Karachi",
+        "authority": "University of Islamic Sciences, Karachi",
+        "note": ""
+      },
+      "makkah": {
+        "name": "Umm al-Qura, Makkah",
+        "authority": "Umm al-Qura",
+        "note": "Isha 90 minutes after Maghrib; 120 in Ramadan."
+      },
+      "qom": {
+        "name": "Leva Institute, Qom",
+        "authority": "Leva Institute, Qom",
+        "note": ""
+      },
+      "jafari": {
+        "name": "Ja'fari",
+        "authority": "Ja'fari convention",
+        "note": ""
+      }
     },
-    "tehran": {
-          "name": "Institute of Geophysics, University of Tehran",
-          "authority": "IRIB method",
-          "note": "Isha 14° is a library convention, not a proven Geophysics definition."
-    },
-    "isna": {
-          "name": "Islamic Society of North America",
-          "authority": "ISNA",
-          "note": ""
-    },
-    "mwl": {
-          "name": "Muslim World League",
-          "authority": "Muslim World League",
-          "note": ""
-    },
-    "egypt": {
-          "name": "Egyptian General Authority of Survey",
-          "authority": "Egyptian General Authority of Survey",
-          "note": ""
-    },
-    "karachi": {
-          "name": "University of Islamic Sciences, Karachi",
-          "authority": "University of Islamic Sciences, Karachi",
-          "note": ""
-    },
-    "makkah": {
-          "name": "Umm al-Qura, Makkah",
-          "authority": "Umm al-Qura",
-          "note": "Isha 90 minutes after Maghrib; 120 in Ramadan."
-    },
-    "qom": {
-          "name": "Leva Institute, Qom",
-          "authority": "Leva Institute, Qom",
-          "note": ""
-    },
-    "jafari": {
-          "name": "Ja'fari",
-          "authority": "Ja'fari convention",
-          "note": ""
-    },
-    "turkmen": {
-          "name": "Fiqh Council of Turkmen Sahra",
-          "authority": "Fiqh Council of Turkmen Sahra",
-          "note": "Published angles are not confirmed yet."
-    }
-},
     "cities": {
-    "torbat-e-jam": "Torbat-e Jam",
-    "khaf": "Khaf",
-    "taybad": "Taybad",
-    "mashhad": "Mashhad",
-    "zahedan": "Zahedan",
-    "gonbad-e-kavus": "Gonbad-e Kavus",
-    "tehran": "Tehran"
-},
+      "torbat-e-jam": "Torbat-e Jam",
+      "khaf": "Khaf",
+      "taybad": "Taybad",
+      "mashhad": "Mashhad",
+      "zahedan": "Zahedan",
+      "gonbad-e-kavus": "Gonbad-e Kavus",
+      "tehran": "Tehran"
+    },
     "madhabLabel": "Madhab (Asr time)",
     "madhabHanafi": "Hanafi",
     "madhabShafi": "Shafi'i",
     "madhabNote": "Madhab changes Asr only; Fajr, Dhuhr, Maghrib and Isha do not depend on madhab.",
-    "citySelectLabel": "City",
     "useMyLocation": "My location",
-    "customLocation": "Custom location (GPS)",
-    "customLocationHint": "Your device coordinates; no city is saved.",
     "tabWeek": "Week",
     "tabMonth": "Month",
     "tabYear": "Year",
     "diffLabel": "Difference vs default today",
-    "sourceTable": "Official table",
-    "sourceComputed": "Astronomical computation",
-    "sourceMixed": "Table + computation",
-    "transparencyTitle": "Where do these times come from?",
-    "transparencyMethod": "Method",
-    "transparencyAsr": "Asr factor",
-    "trueDawnNote": "Fajr begins only at true dawn (the spreading horizontal light); false dawn (the fading vertical column) has no legal effect.",
-    "scholarNote": "The angles and texts on this page need scholarly review before public use.",
     "loading": "Loading prayer times…",
     "loadFailed": "Could not load prayer times; try again.",
     "retry": "Retry",
@@ -446,19 +430,28 @@
     "methodUnavailable": "This method has no confirmed angles yet and cannot be computed.",
     "maghribSunset": "sunset",
     "jalaliMonths": [
-    "Farvardin",
-    "Ordibehesht",
-    "Khordad",
-    "Tir",
-    "Mordad",
-    "Shahrivar",
-    "Mehr",
-    "Aban",
-    "Azar",
-    "Dey",
-    "Bahman",
-    "Esfand"
-]
+      "Farvardin",
+      "Ordibehesht",
+      "Khordad",
+      "Tir",
+      "Mordad",
+      "Shahrivar",
+      "Mehr",
+      "Aban",
+      "Azar",
+      "Dey",
+      "Bahman",
+      "Esfand"
+    ],
+    "locationLabel": "Location",
+    "searchPlaceholder": "Type a city or village name…",
+    "searching": "Searching…",
+    "searchNoResults": "No place found.",
+    "searchFailed": "Search failed; try again.",
+    "gpsLocating": "Locating…",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "selectDayHint": "To see the full times, pick a day."
   },
   "munajat": {
     "toggleOn": "Night theme: on",

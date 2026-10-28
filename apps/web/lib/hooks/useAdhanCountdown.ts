@@ -3,8 +3,12 @@
 /**
  * useAdhanCountdown — ticking countdown to the next prayer.
  *
- * Fetches times from GET /api/v1/adhan/times for the user's location
- * (GPS → manual → settings default → none) and ticks every second.
+ * Fetches times from GET /api/v1/adhan/times for the user's location and
+ * ticks every second. Resolution order: saved place (ma.adhan_choice) →
+ * legacy browser location (ma.adhan_location) → auto-locate once per
+ * session (shared helper in lib/adhan.ts) → needs_location. There is NO
+ * default city and no server-side coordinate fallback: with no place the
+ * strip shows the honest needs-location state, never invented times.
  * Pure time math lives in lib/adhan.ts; this hook owns the polling +
  * location lifecycle. When no location and no API, state is `unavailable`
  * — the component renders a setup prompt, never fake times.
@@ -13,11 +17,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ADHAN_LOCATION_KEY,
   clientPrayerTimes,
-  findCity,
   formatCountdown,
   formatHijri,
+  loadAdhanChoice,
   loadSavedLocation,
   nextPrayer,
+  requestBrowserLocationOnce,
   saveLocation,
   type AdhanTimes,
   type NextPrayer,
@@ -91,7 +96,9 @@ export function useAdhanCountdown(settings: AdhanSettings, locale = 'fa') {
     [tick],
   );
 
-  /** Ask the browser for GPS (permission-gated). Never called automatically. */
+  /** Ask the browser for GPS (permission-gated, user-initiated button).
+   *  The once-per-session automatic attempt lives in
+   *  requestBrowserLocationOnce, not here. */
   const useGps = useCallback(async () => {
     if (!('geolocation' in navigator)) {
       setState((s) => ({ ...s, status: 'needs_location', error: 'gps_unsupported' }));
@@ -137,38 +144,40 @@ export function useAdhanCountdown(settings: AdhanSettings, locale = 'fa') {
   }, []);
 
   useEffect(() => {
-    const saved = loadSavedLocation();
-    if (saved) {
-      void loadFor(saved);
-    } else if (settingsRef.current.defaultCity) {
-      const city = findCity(settingsRef.current.defaultCity);
-      if (city) {
-        void loadFor({ lat: city.lat, lng: city.lng, label: null, source: 'default' });
-      } else if (
-        settingsRef.current.defaultLat !== null &&
-        settingsRef.current.defaultLng !== null
-      ) {
-        void loadFor({
-          lat: settingsRef.current.defaultLat,
-          lng: settingsRef.current.defaultLng,
-          label: null,
-          source: 'default',
-        });
-      } else {
-        setState((s) => ({ ...s, status: 'needs_location' }));
-      }
-    } else if (
-      settingsRef.current.defaultLat !== null &&
-      settingsRef.current.defaultLng !== null
-    ) {
+    const choice = loadAdhanChoice();
+    if (choice) {
       void loadFor({
-        lat: settingsRef.current.defaultLat,
-        lng: settingsRef.current.defaultLng,
-        label: null,
-        source: 'default',
+        lat: choice.place.lat,
+        lng: choice.place.lng,
+        label: choice.place.name,
+        source: 'manual',
       });
     } else {
-      setState((s) => ({ ...s, status: 'needs_location' }));
+      const legacy = loadSavedLocation();
+      if (legacy) {
+        void loadFor(legacy);
+      } else {
+        // No saved place anywhere: auto-locate once per session (shared
+        // helper — the strip and the /adhan page coordinate through it).
+        // While the prompt is pending the strip renders nothing (`locating`,
+        // never a fake fallback); denial → honest needs_location state.
+        setState((s) => ({ ...s, status: 'locating', error: null }));
+        void requestBrowserLocationOnce({
+          method: settingsRef.current.method,
+          madhab: settingsRef.current.madhab,
+        }).then((place) => {
+          if (place) {
+            void loadFor({
+              lat: place.lat,
+              lng: place.lng,
+              label: place.name,
+              source: 'manual',
+            });
+          } else {
+            setState((s) => ({ ...s, status: 'needs_location' }));
+          }
+        });
+      }
     }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);

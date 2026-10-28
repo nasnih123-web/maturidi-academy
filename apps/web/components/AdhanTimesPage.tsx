@@ -5,18 +5,19 @@
  *
  * Server shell (page.tsx) only passes settings + translations; every time
  * on this page comes from GET /api/v1/adhan/* — the web NEVER computes or
- * invents times. Selection (city, method, madhab) is saved to localStorage
+ * invents times. Selection (place, method, madhab) is saved to localStorage
  * (ma.adhan_choice) so the header strip on every page follows it live.
  *
  * Sections: today's hero (6 cards + live countdown + Jalali/Qamari/Miladi
  * dates) → method selector cards (with today's minute-difference vs the
- * council default) → madhab toggle (Asr only) → city selector + GPS →
- * week/month/year timetable tabs → transparency block.
+ * council default) → madhab toggle (Asr only) → location (worldwide search
+ * + GPS reverse-geocode, no city field) → week/month/year timetable tabs.
+ * The method cards already carry each method's details, so there is no
+ * separate transparency block and no per-source note on this page.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ADHAN_CITIES,
-  findCity,
+  ADHAN_CHOICE_EVENT,
   formatCountdown,
   formatHijri,
   getAdhanOptions,
@@ -25,14 +26,18 @@ import {
   loadAdhanChoice,
   localTzOffset,
   nextPrayer,
+  requestBrowserLocationOnce,
+  reversePlace,
   saveAdhanChoice,
+  searchPlaces,
   type AdhanChoice,
   type AdhanDay,
   type AdhanMethodOption,
   type AdhanOptions,
+  type AdhanPlace,
   type AdhanTimes,
+  type GeocodePlace,
   type PrayerName,
-  type PrayerTimings,
 } from '@/lib/adhan';
 import type { AdhanSettings } from '@/lib/settings';
 import {
@@ -61,10 +66,13 @@ export interface AdhanTimesPageLabels {
   madhabHanafi: string;
   madhabShafi: string;
   madhabNote: string;
-  citySelectLabel: string;
+  locationLabel: string;
+  searchPlaceholder: string;
+  searching: string;
+  searchNoResults: string;
+  searchFailed: string;
   useMyLocation: string;
-  customLocation: string;
-  customLocationHint: string;
+  gpsLocating: string;
   tabWeek: string;
   tabMonth: string;
   tabYear: string;
@@ -72,14 +80,6 @@ export interface AdhanTimesPageLabels {
   cities: Record<string, string>;
   jalaliMonths: string[];
   diffLabel: string;
-  sourceTable: string;
-  sourceComputed: string;
-  sourceMixed: string;
-  transparencyTitle: string;
-  transparencyMethod: string;
-  transparencyAsr: string;
-  trueDawnNote: string;
-  scholarNote: string;
   loading: string;
   loadFailed: string;
   retry: string;
@@ -94,29 +94,19 @@ export interface AdhanTimesPageLabels {
   gpsDenied: string;
   gpsUnsupported: string;
   timesFailed: string;
+  needsLocation: string;
+  prevMonth: string;
+  nextMonth: string;
+  selectDayHint: string;
 }
 
 const HERO_ORDER: PrayerName[] = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
 const DEFAULT_METHOD = 'council';
 
 interface Selection {
-  city: string | null;
-  lat: number;
-  lng: number;
+  place: AdhanPlace;
   method: string;
   madhab: string;
-}
-
-function selectionFromSettings(settings: AdhanSettings): Selection {
-  const city = findCity(settings.defaultCity);
-  if (city) {
-    return { city: city.slug, lat: city.lat, lng: city.lng, method: settings.method, madhab: settings.madhab };
-  }
-  if (settings.defaultLat !== null && settings.defaultLng !== null) {
-    return { city: null, lat: settings.defaultLat, lng: settings.defaultLng, method: settings.method, madhab: settings.madhab };
-  }
-  const torbat = findCity('torbat-e-jam') ?? ADHAN_CITIES[0];
-  return { city: torbat.slug, lat: torbat.lat, lng: torbat.lng, method: settings.method, madhab: settings.madhab };
 }
 
 function minutesDiff(a: string, b: string): number | null {
@@ -155,6 +145,18 @@ function methodSummary(
   return parts.join(' · ');
 }
 
+/** Display name for a place: localized city name for legacy slugs, else the
+ *  Nominatim short name as-is. Null when the place has no name at all. */
+function placeName(place: AdhanPlace, cities: Record<string, string>): string | null {
+  if (!place.name) return null;
+  return cities[place.name] ?? place.name;
+}
+
+/** Coordinates label used when a place has no name (GPS reverse gave none). */
+function coordsLabel(place: AdhanPlace): string {
+  return `${place.lat.toFixed(4)}, ${place.lng.toFixed(4)}`;
+}
+
 export function AdhanTimesPage({
   locale,
   settings,
@@ -166,32 +168,57 @@ export function AdhanTimesPage({
 }) {
   const [options, setOptions] = useState<AdhanOptions | null>(null);
   const [optionsError, setOptionsError] = useState(false);
-  const [sel, setSel] = useState<Selection>(() => selectionFromSettings(settings));
+  // Null until a place exists: there is NO default city and no fallback
+  // location. The restore effect below resolves saved choice → shared
+  // once-per-session auto-locate → still null (honest needs-location state).
+  const [sel, setSel] = useState<Selection | null>(null);
   const [today, setToday] = useState<AdhanTimes | null>(null);
   const [todayError, setTodayError] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Record<string, { fajr: number | null; isha: number | null }>>({});
   const [tab, setTab] = useState<'week' | 'month' | 'year'>('week');
+  const [viewMonth, setViewMonth] = useState(() => {
+    const j = toJalali(new Date());
+    return { y: j.y, m: j.m };
+  });
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [range, setRange] = useState<AdhanDay[] | null>(null);
   const [rangeError, setRangeError] = useState(false);
-  const [rangeMeta, setRangeMeta] = useState<{ start: string; end: string } | null>(null);
   const [rangeRetry, setRangeRetry] = useState(0);
   const [now, setNow] = useState(() => new Date());
   const [gpsError, setGpsError] = useState<string | null>(null);
+  const [gpsLocating, setGpsLocating] = useState(false);
   const [choiceLoaded, setChoiceLoaded] = useState(false);
   const selRef = useRef(sel);
   selRef.current = sel;
+
+  // Place search (debounced autocomplete, worldwide via the API proxy).
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<GeocodePlace[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchSeq = useRef(0);
 
   const todayIso = useMemo(() => toISODate(new Date()), []);
   const jalaliToday: JalaliDate = useMemo(() => toJalali(new Date()), []);
   const miladiLine = useMemo(() => {
     try {
-      const tag = locale === 'fa' ? 'fa-IR' : locale === 'ar' ? 'ar-SA' : 'en';
+      // fa-IR's DEFAULT calendar is Jalali, so the Gregorian line must force
+      // the Gregorian calendar explicitly — otherwise it renders the same
+      // Jalali date as the Shamsi line. Same for ar-SA (Islamic default).
+      const tag =
+        locale === 'fa'
+          ? 'fa-IR-u-ca-gregory'
+          : locale === 'ar'
+            ? 'ar-SA-u-ca-gregory'
+            : 'en-u-ca-gregory';
       return new Intl.DateTimeFormat(tag, { dateStyle: 'long' }).format(new Date());
     } catch {
       return todayIso;
     }
   }, [locale, todayIso]);
   const qamariLine = useMemo(() => formatHijri(locale) || '', [locale]);
+  const weekdayTag = locale === 'fa' ? 'fa-IR' : locale === 'ar' ? 'ar-SA' : 'en';
 
   // Ticking clock for the countdown + day/night gradient.
   useEffect(() => {
@@ -199,7 +226,7 @@ export function AdhanTimesPage({
     return () => clearInterval(id);
   }, []);
 
-  // Load the method/city catalog once.
+  // Load the method catalog once.
   useEffect(() => {
     let cancelled = false;
     getAdhanOptions()
@@ -214,43 +241,105 @@ export function AdhanTimesPage({
     };
   }, []);
 
+  // Patch the selection only when one exists (all patching controls render
+  // only while sel is non-null; GPS/search construct a full selection).
+  const updateSel = useCallback((patch: Partial<Selection>) => {
+    setSel((s) => (s ? { ...s, ...patch } : s));
+  }, []);
+
   // Restore the saved choice once (client-only; avoids hydration mismatch).
+  // With no saved choice, auto-locate once per session via the shared
+  // helper (same helper the banner strip uses — concurrent callers share
+  // one attempt, so strip + page never double-prompt). Still null after
+  // that means: denied/unavailable → honest needs-location state; the
+  // search + GPS controls below stay usable to fix it. Also listen for
+  // ma:adhan-choice so a strip-side success reaches this page live.
   useEffect(() => {
-    const saved = loadAdhanChoice();
-    if (saved) {
-      const city = saved.city ? findCity(saved.city) : null;
-      setSel({
-        city: city ? city.slug : null,
-        lat: city ? city.lat : saved.lat,
-        lng: city ? city.lng : saved.lng,
-        method: saved.method,
-        madhab: saved.madhab,
+    const applySaved = () => {
+      const saved = loadAdhanChoice();
+      if (!saved) return;
+      // Equality guard: the persist effect below re-saves (and re-fires
+      // this event) on every sel change — without this check the page
+      // would loop save → event → setSel → save forever.
+      const cur = selRef.current;
+      if (
+        cur &&
+        cur.place.lat === saved.place.lat &&
+        cur.place.lng === saved.place.lng &&
+        cur.place.name === saved.place.name &&
+        cur.method === saved.method &&
+        cur.madhab === saved.madhab
+      ) {
+        return;
+      }
+      setSel({ place: saved.place, method: saved.method, madhab: saved.madhab });
+    };
+    applySaved();
+    if (!loadAdhanChoice()) {
+      void requestBrowserLocationOnce({
+        method: settings.method,
+        madhab: settings.madhab,
+      }).then((place) => {
+        if (place) {
+          setSel({ place, method: settings.method, madhab: settings.madhab });
+        }
       });
     }
+    window.addEventListener(ADHAN_CHOICE_EVENT, applySaved);
     setChoiceLoaded(true);
-  }, []);
+    return () => window.removeEventListener(ADHAN_CHOICE_EVENT, applySaved);
+  }, [settings.method, settings.madhab]);
 
   // Persist every selection change so the header strip follows it live.
   useEffect(() => {
-    if (!choiceLoaded) return;
+    if (!choiceLoaded || !sel) return;
     const choice: AdhanChoice = {
-      city: sel.city,
-      lat: sel.lat,
-      lng: sel.lng,
+      place: sel.place,
       method: sel.method,
       madhab: sel.madhab,
     };
     saveAdhanChoice(choice);
   }, [sel, choiceLoaded]);
 
+  // Debounced place search: min 2 chars, 300ms, stale responses ignored.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults([]);
+      setSearchOpen(false);
+      setSearchError(false);
+      return;
+    }
+    setSearching(true);
+    setSearchError(false);
+    const seq = ++searchSeq.current;
+    const id = setTimeout(() => {
+      searchPlaces(q)
+        .then((r) => {
+          if (searchSeq.current !== seq) return;
+          setResults(r);
+          setSearchOpen(true);
+        })
+        .catch(() => {
+          if (searchSeq.current !== seq) return;
+          setResults([]);
+          setSearchError(true);
+          setSearchOpen(true);
+        })
+        .finally(() => {
+          if (searchSeq.current === seq) setSearching(false);
+        });
+    }, 300);
+    return () => clearTimeout(id);
+  }, [query]);
+
   const loadToday = useCallback(async (s: Selection) => {
     setTodayError(null);
     try {
       const t = await getAdhanTimesForChoice({
         day: toISODate(new Date()),
-        city: s.city,
-        lat: s.city ? undefined : s.lat,
-        lng: s.city ? undefined : s.lng,
+        lat: s.place.lat,
+        lng: s.place.lng,
         method: s.method,
         madhab: s.madhab,
         tz: localTzOffset(),
@@ -264,7 +353,7 @@ export function AdhanTimesPage({
 
   // Today's times + per-method diffs vs the council default.
   useEffect(() => {
-    if (!choiceLoaded) return;
+    if (!choiceLoaded || !sel) return;
     void loadToday(sel);
     if (!options) return;
     const tz = localTzOffset();
@@ -272,9 +361,8 @@ export function AdhanTimesPage({
     const fetchOne = (method: string) =>
       getAdhanTimesForChoice({
         day,
-        city: sel.city,
-        lat: sel.city ? undefined : sel.lat,
-        lng: sel.city ? undefined : sel.lng,
+        lat: sel.place.lat,
+        lng: sel.place.lng,
         method,
         madhab: sel.madhab,
         tz,
@@ -314,36 +402,44 @@ export function AdhanTimesPage({
       return { start: toISODate(start), end: toISODate(addDays(start, 6)) };
     }
     if (tab === 'month') {
-      const j = toJalali(nowDate);
-      const start = fromJalali(j.y, j.m, 1);
-      return { start: toISODate(start), end: toISODate(addDays(start, jalaliMonthLength(j.y, j.m) - 1)) };
+      const start = fromJalali(viewMonth.y, viewMonth.m, 1);
+      const len = jalaliMonthLength(viewMonth.y, viewMonth.m);
+      return { start: toISODate(start), end: toISODate(addDays(start, len - 1)) };
     }
     const j = toJalali(nowDate);
     const start = fromJalali(j.y, 1, 1);
     const end = addDays(fromJalali(j.y + 1, 1, 1), -1);
     return { start: toISODate(start), end: toISODate(end) };
-  }, [tab]);
+  }, [tab, viewMonth]);
 
   useEffect(() => {
-    if (!choiceLoaded) return;
+    if (!choiceLoaded || !sel) return;
     setRangeError(false);
     setRange(null);
     getAdhanRange({
       start: rangeSpan.start,
       end: rangeSpan.end,
-      city: sel.city,
-      lat: sel.city ? undefined : sel.lat,
-      lng: sel.city ? undefined : sel.lng,
+      lat: sel.place.lat,
+      lng: sel.place.lng,
       method: sel.method,
       madhab: sel.madhab,
       tz: localTzOffset(),
     })
       .then((r) => {
         setRange(r.days);
-        setRangeMeta({ start: r.start, end: r.end });
+        if (tab === 'month') {
+          // Preselect today when it is inside this month, else nothing.
+          const todayRow = r.days.find((d) => d.date === todayIso);
+          if (todayRow) {
+            const [y, m, dd] = todayRow.date.split('-').map(Number);
+            setSelectedDay(toJalali(new Date(y, m - 1, dd)).d);
+          } else {
+            setSelectedDay(null);
+          }
+        }
       })
       .catch(() => setRangeError(true));
-  }, [rangeSpan, sel, choiceLoaded, rangeRetry]);
+  }, [rangeSpan, sel, choiceLoaded, rangeRetry, tab, todayIso]);
 
   const next = today ? nextPrayer(today.timings, now) : null;
   const isDay = useMemo(() => {
@@ -365,21 +461,93 @@ export function AdhanTimesPage({
       setGpsError('gps_unsupported');
       return;
     }
+    setGpsLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setSel((s) => ({ ...s, city: null, lat: pos.coords.latitude, lng: pos.coords.longitude }));
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        // Reverse-geocode for a name; a naming failure never blocks times.
+        // (User-initiated GPS: not gated by the once-per-session guard.)
+        reversePlace(lat, lng)
+          .then((p) => {
+            const place = { name: p.name, lat, lng };
+            setSel((s) => (s ? { ...s, place } : { place, method: settings.method, madhab: settings.madhab }));
+          })
+          .catch(() => {
+            const place = { name: null, lat, lng };
+            setSel((s) => (s ? { ...s, place } : { place, method: settings.method, madhab: settings.madhab }));
+          })
+          .finally(() => setGpsLocating(false));
       },
-      () => setGpsError('gps_denied'),
+      () => {
+        setGpsLocating(false);
+        setGpsError('gps_denied');
+      },
       { timeout: 10000, maximumAge: 600000 },
     );
+  }, [settings.method, settings.madhab]);
+
+  const pickPlace = useCallback(
+    (p: GeocodePlace) => {
+      const place = { name: p.name, lat: p.lat, lng: p.lng };
+      setSel((s) => (s ? { ...s, place } : { place, method: settings.method, madhab: settings.madhab }));
+      setQuery('');
+      setResults([]);
+      setSearchOpen(false);
+    },
+    [settings.method, settings.madhab],
+  );
+
+  const goToMonth = useCallback((y: number, m: number) => {
+    setViewMonth({ y, m });
+    setSelectedDay(null);
+    setTab('month');
   }, []);
 
-  const selectedMethod = options?.methods.find((m) => m.id === sel.method) ?? null;
-  const selectedCityName = sel.city
-    ? (labels.cities[sel.city] ?? sel.city)
-    : labels.customLocation;
+  const shiftMonth = useCallback(
+    (delta: number) => {
+      setViewMonth((v) => {
+        let { y, m } = v;
+        m += delta;
+        if (m < 1) {
+          y -= 1;
+          m = 12;
+        } else if (m > 12) {
+          y += 1;
+          m = 1;
+        }
+        return { y, m };
+      });
+      setSelectedDay(null);
+    },
+    [],
+  );
 
-  const yearGroups = useMemo(() => {
+  const heroPlaceName = sel ? placeName(sel.place, labels.cities) : null;
+  const currentPlaceDisplay = sel ? (heroPlaceName ?? coordsLabel(sel.place)) : '';
+
+  // Month grid data: Jalali day number → range day (month tab only).
+  const monthDays = useMemo(() => {
+    const map = new Map<number, AdhanDay>();
+    if (tab !== 'month' || !range) return map;
+    for (const d of range) {
+      const [y, m, dd] = d.date.split('-').map(Number);
+      const j = toJalali(new Date(y, m - 1, dd));
+      if (j.y === viewMonth.y && j.m === viewMonth.m) map.set(j.d, d);
+    }
+    return map;
+  }, [tab, range, viewMonth]);
+
+  const monthFirstOffset = useMemo(() => {
+    const first = fromJalali(viewMonth.y, viewMonth.m, 1);
+    return (first.getDay() + 1) % 7; // Saturday-first blanks
+  }, [viewMonth]);
+
+  const monthLen = jalaliMonthLength(viewMonth.y, viewMonth.m);
+  const selectedDayData = selectedDay !== null ? monthDays.get(selectedDay) : undefined;
+
+  // Year tab: 12 month cards grouped client-side by Jalali month.
+  const yearCards = useMemo(() => {
     if (tab !== 'year' || !range) return [];
     const groups = new Map<string, AdhanDay[]>();
     for (const d of range) {
@@ -391,55 +559,29 @@ export function AdhanTimesPage({
       groups.set(key, arr);
     }
     return [...groups.entries()].map(([key, days]) => {
-      const [, mm] = key.split('/');
-      return { key, monthName: labels.jalaliMonths[Number(mm) - 1] ?? key, days };
+      const [yy, mm] = key.split('/').map(Number);
+      return {
+        key,
+        year: yy,
+        month: mm,
+        monthName: labels.jalaliMonths[mm - 1] ?? key,
+        first: days[0],
+      };
     });
   }, [tab, range, labels.jalaliMonths]);
 
-  const sourceLabel = (source: string): string =>
-    source === 'table'
-      ? labels.sourceTable
-      : source === 'mixed'
-        ? labels.sourceMixed
-        : labels.sourceComputed;
-
-  const renderTable = (days: AdhanDay[], highlightToday: boolean) => (
-    <div className="adhan-table-wrap">
-      <table className="adhan-table">
-        <thead>
-          <tr>
-            <th>{labels.jalaliLabel}</th>
-            <th>{labels.miladiLabel}</th>
-            {HERO_ORDER.map((p) => (
-              <th key={p}>{labels.prayers[p]}</th>
-            ))}
-            <th>{labels.transparencyMethod}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {days.map((d) => {
-            const [y, m, dd] = d.date.split('-').map(Number);
-            const j = toJalali(new Date(y, m - 1, dd));
-            const isToday = highlightToday && d.date === todayIso;
-            return (
-              <tr key={d.date} className={isToday ? 'adhan-today-row' : undefined}>
-                <td>
-                  {formatJalali(j)}
-                  {isToday ? ` (${labels.tableToday})` : ''}
-                </td>
-                <td dir="ltr">{d.date}</td>
-                {HERO_ORDER.map((p) => (
-                  <td key={p} dir="ltr">
-                    {d.times[p]}
-                  </td>
-                ))}
-                <td>{sourceLabel(d.source)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+  const weekDayName = useCallback(
+    (iso: string): string => {
+      try {
+        const [y, m, dd] = iso.split('-').map(Number);
+        return new Intl.DateTimeFormat(weekdayTag, { weekday: 'long' }).format(
+          new Date(y, m - 1, dd),
+        );
+      } catch {
+        return iso;
+      }
+    },
+    [weekdayTag],
   );
 
   return (
@@ -449,7 +591,8 @@ export function AdhanTimesPage({
         <div className="section-head">
           <h1>{labels.title}</h1>
           <p className="section-sub">
-            {labels.subtitle} — {selectedCityName}
+            {labels.subtitle}
+            {heroPlaceName ? ` — ${heroPlaceName}` : ''}
           </p>
         </div>
         <div className="adhan-dates">
@@ -463,10 +606,30 @@ export function AdhanTimesPage({
             {labels.miladiLabel}: {miladiLine}
           </span>
         </div>
-        {todayError ? (
+        {!choiceLoaded ? (
+          <div className="adhan-skeleton" aria-label={labels.loading}>
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
+        ) : !sel ? (
+          <p className="adhan-hint" role="status">
+            {labels.needsLocation}
+          </p>
+        ) : todayError ? (
           <div className="adhan-error" role="alert">
             {labels.timesFailed}{' '}
-            <button type="button" className="adhan-btn" onClick={() => void loadToday(selRef.current)}>
+            <button
+              type="button"
+              className="adhan-btn"
+              onClick={() => {
+                const s = selRef.current;
+                if (s) void loadToday(s);
+              }}
+            >
               {labels.retry}
             </button>
           </div>
@@ -480,34 +643,29 @@ export function AdhanTimesPage({
             <span />
           </div>
         ) : (
-          <>
-            <div className="adhan-hero-grid">
-              {HERO_ORDER.map((p) => (
-                <div
-                  key={p}
-                  className={`adhan-card${next?.name === p ? ' adhan-card-next' : ''}`}
-                >
-                  <span className="adhan-card-name">{labels.prayers[p]}</span>
-                  <span className="adhan-card-time" dir="ltr">
-                    {today.timings[p]}
+          <div className="adhan-hero-grid">
+            {HERO_ORDER.map((p) => (
+              <div
+                key={p}
+                className={`adhan-card${next?.name === p ? ' adhan-card-next' : ''}`}
+              >
+                <span className="adhan-card-name">{labels.prayers[p]}</span>
+                <span className="adhan-card-time" dir="ltr">
+                  {today.timings[p]}
+                </span>
+                {next?.name === p ? (
+                  <span className="adhan-card-count" role="timer" aria-label={labels.countdownAria}>
+                    {labels.stripPrefix} {formatCountdown(next.inSeconds)}
                   </span>
-                  {next?.name === p ? (
-                    <span className="adhan-card-count" role="timer" aria-label={labels.countdownAria}>
-                      {labels.stripPrefix} {formatCountdown(next.inSeconds)}
-                    </span>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-            <p className="adhan-source-note">
-              {sourceLabel(today.source)}
-              {today.city ? ` · ${labels.cities[today.city] ?? today.city}` : ''}
-            </p>
-          </>
+                ) : null}
+              </div>
+            ))}
+          </div>
         )}
       </section>
 
-      {/* Method selector */}
+      {/* Method selector — only once a place exists (no silent fallback). */}
+      {sel ? (
       <section className="adhan-section" aria-label={labels.methodLabel}>
         <div className="section-head">
           <h2>{labels.methodLabel}</h2>
@@ -535,7 +693,7 @@ export function AdhanTimesPage({
                   className={`adhan-method-card${selected ? ' adhan-method-selected' : ''}`}
                   disabled={!m.available}
                   aria-pressed={selected}
-                  onClick={() => setSel((s) => ({ ...s, method: m.id }))}
+                  onClick={() => updateSel({ method: m.id })}
                 >
                   <span className="adhan-method-name">{meta?.name ?? m.label}</span>
                   <span className="adhan-method-auth">{meta?.authority ?? m.authority}</span>
@@ -556,9 +714,12 @@ export function AdhanTimesPage({
           </div>
         )}
       </section>
+      ) : null}
 
-      {/* Madhab + city */}
+      {/* Madhab + location — the location field always renders: it is how
+          a visitor without a place fixes the needs-location state. */}
       <section className="adhan-section adhan-controls" aria-label={labels.madhabLabel}>
+        {sel ? (
         <div className="adhan-field">
           <span className="adhan-field-label">{labels.madhabLabel}</span>
           <div role="radiogroup" aria-label={labels.madhabLabel} className="adhan-radios">
@@ -567,7 +728,7 @@ export function AdhanTimesPage({
                 type="radio"
                 name="adhan-madhab"
                 checked={sel.madhab === 'hanafi'}
-                onChange={() => setSel((s) => ({ ...s, madhab: 'hanafi' }))}
+                onChange={() => updateSel({ madhab: 'hanafi' })}
               />{' '}
               {labels.madhabHanafi}
             </label>
@@ -576,41 +737,76 @@ export function AdhanTimesPage({
                 type="radio"
                 name="adhan-madhab"
                 checked={sel.madhab === 'shafi'}
-                onChange={() => setSel((s) => ({ ...s, madhab: 'shafi' }))}
+                onChange={() => updateSel({ madhab: 'shafi' })}
               />{' '}
               {labels.madhabShafi}
             </label>
           </div>
           <p className="adhan-hint">{labels.madhabNote}</p>
         </div>
+        ) : null}
         <div className="adhan-field">
-          <label className="adhan-field-label" htmlFor="adhan-city">
-            {labels.citySelectLabel}
-          </label>
-          <select
-            id="adhan-city"
-            className="adhan-select"
-            value={sel.city ?? '__custom'}
-            onChange={(e) => {
-              const slug = e.target.value;
-              if (slug === '__custom') return;
-              const c = findCity(slug) ?? ADHAN_CITIES.find((x) => x.slug === slug);
-              if (c) setSel((s) => ({ ...s, city: c.slug, lat: c.lat, lng: c.lng }));
-            }}
-          >
-            {(options?.cities ?? ADHAN_CITIES).map((c) => (
-              <option key={c.slug} value={c.slug}>
-                {labels.cities[c.slug] ?? c.slug}
-              </option>
-            ))}
-            {sel.city === null ? (
-              <option value="__custom">{labels.customLocation}</option>
+          <span className="adhan-field-label">{labels.locationLabel}</span>
+          {sel ? (
+          <p className="adhan-place-current" dir="auto">
+            {currentPlaceDisplay}
+          </p>
+          ) : null}
+          <div className="adhan-search">
+            <input
+              type="search"
+              className="adhan-search-input"
+              value={query}
+              placeholder={labels.searchPlaceholder}
+              aria-label={labels.searchPlaceholder}
+              onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => {
+                if (results.length > 0 || searchError) setSearchOpen(true);
+              }}
+              onBlur={() => {
+                // Delay so a click on a result still lands before close.
+                setTimeout(() => setSearchOpen(false), 150);
+              }}
+            />
+            {searchOpen ? (
+              <div className="adhan-search-results" role="listbox">
+                {searching ? (
+                  <p className="adhan-search-state">{labels.searching}</p>
+                ) : searchError ? (
+                  <p className="adhan-search-state" role="alert">
+                    {labels.searchFailed}
+                  </p>
+                ) : results.length === 0 ? (
+                  <p className="adhan-search-state">{labels.searchNoResults}</p>
+                ) : (
+                  results.map((r) => (
+                    <button
+                      key={`${r.lat},${r.lng},${r.display_name}`}
+                      type="button"
+                      className="adhan-search-item"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => pickPlace(r)}
+                    >
+                      <span className="adhan-search-item-name">
+                        {r.name ?? r.display_name}
+                      </span>
+                      {r.display_name ? (
+                        <span className="adhan-search-item-sub">{r.display_name}</span>
+                      ) : null}
+                    </button>
+                  ))
+                )}
+              </div>
             ) : null}
-          </select>
-          <button type="button" className="adhan-btn" onClick={useGps}>
-            {labels.useMyLocation}
+          </div>
+          <button
+            type="button"
+            className="adhan-btn"
+            onClick={useGps}
+            disabled={gpsLocating}
+          >
+            {gpsLocating ? labels.gpsLocating : labels.useMyLocation}
           </button>
-          {sel.city === null ? <p className="adhan-hint">{labels.customLocationHint}</p> : null}
           {gpsError ? (
             <p className="adhan-error" role="alert">
               {gpsError === 'gps_denied' ? labels.gpsDenied : labels.gpsUnsupported}
@@ -619,7 +815,8 @@ export function AdhanTimesPage({
         </div>
       </section>
 
-      {/* Timetable tabs */}
+      {/* Timetable tabs — only once a place exists (no silent fallback). */}
+      {sel ? (
       <section className="adhan-section" aria-label={labels.tabWeek}>
         <div className="adhan-tabs" role="tablist">
           {(
@@ -635,17 +832,19 @@ export function AdhanTimesPage({
               role="tab"
               aria-selected={tab === id}
               className={`adhan-tab${tab === id ? ' adhan-tab-active' : ''}`}
-              onClick={() => setTab(id)}
+              onClick={() => {
+                if (id === 'month') {
+                  const j = toJalali(new Date());
+                  setViewMonth({ y: j.y, m: j.m });
+                  setSelectedDay(null);
+                }
+                setTab(id);
+              }}
             >
               {text}
             </button>
           ))}
         </div>
-        {rangeMeta ? (
-          <p className="adhan-range-meta" dir="ltr">
-            {rangeMeta.start} → {rangeMeta.end}
-          </p>
-        ) : null}
         {rangeError ? (
           <div className="adhan-error" role="alert">
             {labels.loadFailed}{' '}
@@ -663,44 +862,130 @@ export function AdhanTimesPage({
             <span />
             <span />
           </div>
-        ) : tab === 'year' ? (
-          <div className="adhan-year">
-            {yearGroups.map((g) => (
-              <section key={g.key} className="adhan-year-month">
-                <h3>{g.monthName}</h3>
-                {renderTable(g.days, true)}
-              </section>
-            ))}
+        ) : tab === 'week' ? (
+          <div className="adhan-week-rail">
+            {range.map((d) => {
+              const [y, m, dd] = d.date.split('-').map(Number);
+              const j = toJalali(new Date(y, m - 1, dd));
+              const isToday = d.date === todayIso;
+              return (
+                <article
+                  key={d.date}
+                  className={`adhan-day-card${isToday ? ' adhan-day-today' : ''}`}
+                >
+                  <header className="adhan-day-head">
+                    <span className="adhan-day-weekday">{weekDayName(d.date)}</span>
+                    <span className="adhan-day-date">{formatJalali(j)}</span>
+                    {isToday ? <span className="adhan-day-badge">{labels.tableToday}</span> : null}
+                  </header>
+                  <dl className="adhan-day-times">
+                    {HERO_ORDER.map((p) => (
+                      <div key={p} className="adhan-day-time-row">
+                        <dt>{labels.prayers[p]}</dt>
+                        <dd dir="ltr">{d.times[p]}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </article>
+              );
+            })}
+          </div>
+        ) : tab === 'month' ? (
+          <div>
+            <div className="adhan-cal-nav">
+              <button type="button" className="adhan-btn" onClick={() => shiftMonth(-1)}>
+                {labels.prevMonth}
+              </button>
+              <h3>
+                {labels.jalaliMonths[viewMonth.m - 1]} {viewMonth.y}
+              </h3>
+              <button type="button" className="adhan-btn" onClick={() => shiftMonth(1)}>
+                {labels.nextMonth}
+              </button>
+            </div>
+            <div className="adhan-cal-grid" role="grid">
+              {Array.from({ length: monthFirstOffset }).map((_, i) => (
+                <span key={`blank-${i}`} className="adhan-cal-blank" />
+              ))}
+              {Array.from({ length: monthLen }).map((_, i) => {
+                const dayNum = i + 1;
+                const day = monthDays.get(dayNum);
+                const isToday =
+                  day !== undefined && day.date === todayIso;
+                const isSelected = selectedDay === dayNum;
+                return (
+                  <button
+                    key={dayNum}
+                    type="button"
+                    className={`adhan-cal-cell${isToday ? ' adhan-cal-today' : ''}${isSelected ? ' adhan-cal-selected' : ''}`}
+                    disabled={!day}
+                    aria-pressed={isSelected}
+                    onClick={() => setSelectedDay(dayNum)}
+                  >
+                    <span className="adhan-cal-num">{dayNum}</span>
+                    {day ? (
+                      <>
+                        <span className="adhan-cal-fajr" dir="ltr">
+                          {day.times.fajr}
+                        </span>
+                        <span className="adhan-cal-maghrib" dir="ltr">
+                          {day.times.maghrib}
+                        </span>
+                      </>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedDayData ? (
+              <div className="adhan-cal-detail">
+                <h4>
+                  {formatJalali(
+                    toJalali(
+                      new Date(
+                        Number(selectedDayData.date.split('-')[0]),
+                        Number(selectedDayData.date.split('-')[1]) - 1,
+                        Number(selectedDayData.date.split('-')[2]),
+                      ),
+                    ),
+                  )}
+                  {selectedDayData.date === todayIso ? ` (${labels.tableToday})` : ''}
+                </h4>
+                <dl className="adhan-cal-detail-grid">
+                  {HERO_ORDER.map((p) => (
+                    <div key={p} className="adhan-day-time-row">
+                      <dt>{labels.prayers[p]}</dt>
+                      <dd dir="ltr">{selectedDayData.times[p]}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ) : (
+              <p className="adhan-hint">{labels.selectDayHint}</p>
+            )}
           </div>
         ) : (
-          renderTable(range, true)
+          <div className="adhan-year-cards">
+            {yearCards.map((g) => (
+              <button
+                key={g.key}
+                type="button"
+                className="adhan-month-card"
+                onClick={() => goToMonth(g.year, g.month)}
+              >
+                <span className="adhan-month-card-name">
+                  {g.monthName} {g.year}
+                </span>
+                <span className="adhan-month-card-times">
+                  {labels.prayers.fajr} <span dir="ltr">{g.first.times.fajr}</span> ·{' '}
+                  {labels.prayers.maghrib} <span dir="ltr">{g.first.times.maghrib}</span>
+                </span>
+              </button>
+            ))}
+          </div>
         )}
       </section>
-
-      {/* Transparency */}
-      <section className="adhan-section adhan-transparency" aria-label={labels.transparencyTitle}>
-        <div className="section-head">
-          <h2>{labels.transparencyTitle}</h2>
-        </div>
-        {selectedMethod ? (
-          <dl className="adhan-facts">
-            <div>
-              <dt>{labels.transparencyMethod}</dt>
-              <dd>
-                {labels.methods[selectedMethod.id]?.name ?? selectedMethod.label} —{' '}
-                {labels.methods[selectedMethod.id]?.authority ?? selectedMethod.authority} —{' '}
-                {methodSummary(selectedMethod, labels)}
-              </dd>
-            </div>
-            <div>
-              <dt>{labels.transparencyAsr}</dt>
-              <dd>{sel.madhab === 'hanafi' ? '×2' : '×1'}</dd>
-            </div>
-          </dl>
-        ) : null}
-        <p>{labels.trueDawnNote}</p>
-        <p>{labels.scholarNote}</p>
-      </section>
+      ) : null}
     </div>
   );
 }

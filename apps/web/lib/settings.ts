@@ -103,20 +103,22 @@ export interface MunajatSettings {
  *  method ∈ {council,tehran,isna,mwl,egypt,karachi,makkah,qom,jafari};
  *  madhab ∈ {shafi,hanafi} (backend enum — invalid values fall back to the
  *  defaults). The CRM writes the `adhan.defaults` dict
- *  {calculation_method, madhab, default_city}; the flat adhan.method /
- *  adhan.madhab / adhan.default_lat / adhan.default_lng keys are the legacy
- *  shape and still win when the dict is absent. */
+ *  {calculation_method, madhab}; the flat adhan.method / adhan.madhab keys
+ *  are the legacy shape and still win when the dict is absent.
+ *  There is NO default city anymore: `default_city` in old stored dicts is
+ *  ignored (legacy tolerance, never an error). `defaultLat`/`defaultLng`
+ *  are still parsed for tolerance but are NEVER used as fallbacks — with
+ *  no saved place, the strip/page auto-locate once per session, else show
+ *  the honest needs-location state. */
 export interface AdhanSettings {
   /** Calculation method id (backend-defined). */
   method: string;
   /** Madhab for Asr ("shafi" | "hanafi"). */
   madhab: string;
-  /** Fallback coordinates when the user shares no location. */
+  /** Parsed for legacy tolerance only — never used as a location fallback. */
   defaultLat: number | null;
+  /** Parsed for legacy tolerance only — never used as a location fallback. */
   defaultLng: number | null;
-  /** Default city slug (e.g. "torbat-e-jam") — resolved to coordinates by the
-   *  strip/page via the ADHAN_CITIES list; null = no city default. */
-  defaultCity: string | null;
 }
 
 export interface SiteConfig {
@@ -300,7 +302,6 @@ export const DEFAULT_ADHAN: AdhanSettings = {
   madhab: 'hanafi',
   defaultLat: null,
   defaultLng: null,
-  defaultCity: 'torbat-e-jam',
 };
 
 function strList(v: unknown): string[] {
@@ -363,8 +364,8 @@ function parseAdhanSettings(get: (key: string) => unknown): AdhanSettings {
       : get('adhan.method');
   const madhabRaw =
     typeof defaultsObj?.madhab === 'string' ? defaultsObj.madhab : get('adhan.madhab');
-  const cityRaw =
-    typeof defaultsObj?.default_city === 'string' ? defaultsObj.default_city : null;
+  // LEGACY TOLERANCE: an old `adhan.defaults` dict may still carry
+  // `default_city` — it is simply ignored here (never an error).
   const method =
     typeof methodRaw === 'string' && ADHAN_METHODS.includes(methodRaw.toLowerCase())
       ? methodRaw.toLowerCase()
@@ -380,7 +381,6 @@ function parseAdhanSettings(get: (key: string) => unknown): AdhanSettings {
     madhab,
     defaultLat: lat !== null && lat >= -90 && lat <= 90 ? lat : null,
     defaultLng: lng !== null && lng >= -180 && lng <= 180 ? lng : null,
-    defaultCity: cityRaw && cityRaw.trim() ? cityRaw : DEFAULT_ADHAN.defaultCity,
   };
 }
 
