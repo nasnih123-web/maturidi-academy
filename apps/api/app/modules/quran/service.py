@@ -28,6 +28,8 @@ from app.models.models import (
 from app.modules.sync.service import record_entity_change
 
 from . import adhan as adhan_calc
+from . import adhan_data
+from . import jalali as jalali_mod
 from . import providers as quran_providers
 from .surahs import SURAHS, get_surah
 
@@ -45,7 +47,7 @@ _DEFAULTS: dict[str, object] = {
     "quran.playback": {"autoplay": False, "repeat": "off"},
     "munajat.enabled": True,
     "munajat.window": {"start": "02:00", "end": "05:00"},
-    "adhan.defaults": {"calculation_method": "mwl", "madhab": "shafi"},
+    "adhan.defaults": {"calculation_method": "council", "madhab": "hanafi", "default_city": "torbat-e-jam"},
 }
 
 _NOTES_CURSOR_LIMIT = 50
@@ -560,30 +562,171 @@ async def today_totals(db: AsyncSession, user: User) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _to_minutes(hhmm: str) -> int:
+    hh, mm = hhmm.split(":")
+    return int(hh) * 60 + int(mm)
+
+
+def _fmt_minutes(total: int) -> str:
+    total %= 24 * 60
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def _resolve_location(*, city: str | None, lat: float | None, lng: float | None):
+    """شهر → مختصات مرکز شهر؛ بدون شهر، lat/lng صریح لازم است."""
+    if city is not None:
+        if city not in adhan_data.CITIES:
+            raise APIError(400, "invalid_city", f"شهر ناشناخته: {city}")
+        c = adhan_data.CITIES[city]
+        return city, c["lat"], c["lng"]
+    if lat is None or lng is None:
+        raise APIError(400, "missing_location", "شهر یا مختصات (lat/lng) لازم است")
+    return None, lat, lng
+
+
+def _table_day_times(day: date, *, madhab: str, tz: float) -> dict | None:
+    """یک روز از جدول تربت جام — فقط وقتی ردیف جدول وجود دارد.
+
+    شش زمان اصلی از جدول می‌آید؛ امساک (فجر − ۱۰ دقیقه) و نیمه‌شب (میانگین
+    مغرب و فجر فردا) مشتق‌شده‌اند. عصر شافعی در جدول نیست و همان روز با
+    موتور نجومی محاسبه می‌شود (sources آن را computed نشان می‌دهد).
+    برای ۱۲-۳۰ (که جدول ندارد) None برمی‌گردد تا مسیر محاسبه به کار رود.
+    """
+    from datetime import timedelta
+
+    _, jm, jd = jalali_mod.to_jalali(day)
+    row = adhan_data.torbat_row(f"{jm:02d}-{jd:02d}")
+    if row is None:
+        return None
+    fajr, sunrise, dhuhr, asr_table, maghrib, isha = row
+    city = adhan_data.CITIES[adhan_data.TORBAT_CITY]
+    if madhab == "hanafi":
+        asr, asr_source = asr_table, "table"
+    else:
+        comp = adhan_calc.prayer_times(
+            day, city["lat"], city["lng"], tz=tz, method="council", madhab="shafi"
+        )
+        asr, asr_source = comp["asr"], "computed"
+    next_j = jalali_mod.to_jalali(day + timedelta(days=1))
+    next_row = adhan_data.torbat_row(f"{next_j[1]:02d}-{next_j[2]:02d}")
+    next_fajr = _to_minutes(next_row[0]) if next_row else _to_minutes(fajr)
+    maghrib_min = _to_minutes(maghrib)
+    end = next_fajr + 24 * 60 if next_fajr < maghrib_min else next_fajr
+    times = {
+        "imsak": _fmt_minutes(_to_minutes(fajr) - 10),
+        "fajr": fajr,
+        "sunrise": sunrise,
+        "dhuhr": dhuhr,
+        "asr": asr,
+        "maghrib": maghrib,
+        "isha": isha,
+        "midnight": _fmt_minutes((maghrib_min + end) // 2),
+    }
+    sources = {
+        "fajr": "table",
+        "sunrise": "table",
+        "dhuhr": "table",
+        "asr": asr_source,
+        "maghrib": "table",
+        "isha": "table",
+        "imsak": "derived",
+        "midnight": "derived",
+    }
+    source = "table" if asr_source == "table" else "mixed"
+    return {"times": times, "sources": sources, "source": source}
+
+
 def get_adhan_times(
-    *, day: date, lat: float, lng: float, tz: float, method: str, madhab: str
+    *, day: date, lat: float | None = None, lng: float | None = None,
+    tz: float, method: str, madhab: str, city: str | None = None,
+    ramadan: bool | None = None,
 ) -> dict:
-    if not -90.0 <= lat <= 90.0:
+    city_slug, lat_v, lng_v = _resolve_location(city=city, lat=lat, lng=lng)
+    if not -90.0 <= lat_v <= 90.0:
         raise APIError(400, "invalid_latitude", "عرض جغرافیایی باید بین ‎−۹۰ و ۹۰ باشد")
-    if not -180.0 <= lng <= 180.0:
+    if not -180.0 <= lng_v <= 180.0:
         raise APIError(400, "invalid_longitude", "طول جغرافیایی باید بین ‎−۱۸۰ و ۱۸۰ باشد")
     if not -12.0 <= tz <= 14.0:
         raise APIError(400, "invalid_timezone", "افست زمانی باید بین ‎−۱۲ و ‎+۱۴ باشد")
     try:
+        if city_slug == adhan_data.TORBAT_CITY and method == adhan_data.TORBAT_TABLE_METHOD:
+            tabled = _table_day_times(day, madhab=madhab, tz=tz)
+            if tabled is not None:
+                return {
+                    "date": day,
+                    "latitude": lat_v,
+                    "longitude": lng_v,
+                    "timezone_offset": tz,
+                    "method": method,
+                    "method_label": adhan_calc.METHODS[method]["label"],
+                    "madhab": madhab,
+                    "times": tabled["times"],
+                    "city": city_slug,
+                    "source": tabled["source"],
+                    "sources": tabled["sources"],
+                }
         times = adhan_calc.prayer_times(
-            day, lat, lng, tz=tz, method=method, madhab=madhab
+            day, lat_v, lng_v, tz=tz, method=method, madhab=madhab, ramadan=ramadan
         )
+    except adhan_calc.AdhanMethodUnavailable as exc:
+        raise APIError(422, "adhan_method_unavailable", str(exc))
     except ValueError as exc:
         raise APIError(400, "invalid_adhan_params", str(exc))
     return {
         "date": day,
-        "latitude": lat,
-        "longitude": lng,
+        "latitude": lat_v,
+        "longitude": lng_v,
         "timezone_offset": tz,
         "method": method,
         "method_label": adhan_calc.METHODS[method]["label"],
         "madhab": madhab,
         "times": times,
+        "city": city_slug,
+        "source": "computed",
+        "sources": {k: "computed" for k in ("fajr", "sunrise", "dhuhr", "asr", "maghrib", "isha")}
+        | {"imsak": "derived", "midnight": "derived"},
+    }
+
+
+def get_adhan_range(
+    *, start: date, end: date, lat: float | None = None, lng: float | None = None,
+    tz: float, method: str, madhab: str, city: str | None = None,
+    ramadan: bool | None = None,
+) -> dict:
+    """بازهٔ اوقات — حداکثر ۳۶۶ روز (یک سال جلالی کبیسه)."""
+    from datetime import timedelta
+
+    if end < start:
+        raise APIError(400, "invalid_range", "تاریخ پایان باید پس از تاریخ شروع باشد")
+    if (end - start).days > 365:
+        raise APIError(422, "range_too_long", "بازه حداکثر ۳۶۶ روز است")
+    city_slug, lat_v, lng_v = _resolve_location(city=city, lat=lat, lng=lng)
+    days = []
+    cur = start
+    while cur <= end:
+        one = get_adhan_times(
+            day=cur, lat=lat_v, lng=lng_v, tz=tz, method=method, madhab=madhab,
+            city=city_slug, ramadan=ramadan,
+        )
+        days.append({"date": cur, "source": one["source"], "times": one["times"]})
+        cur += timedelta(days=1)
+    return {
+        "start": start,
+        "end": end,
+        "city": city_slug,
+        "latitude": lat_v,
+        "longitude": lng_v,
+        "timezone_offset": tz,
+        "method": method,
+        "madhab": madhab,
+        "days": days,
+    }
+
+
+def get_adhan_options() -> dict:
+    return {
+        "methods": adhan_data.method_options(),
+        "cities": adhan_data.city_options(),
     }
 
 

@@ -1638,3 +1638,66 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
 .ftw-share-count { font-size: 0.9rem; color: hsl(var(--text-secondary)); }
 .ftw-share-row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
 .ftw-share-btn { padding: 0.35rem 0.8rem; border-radius: 0.5rem; cursor: pointer; }
+
+/* prayer-times page (/adhan) — Academy component language, mobile-first */
+.adhan-page { display: flex; flex-direction: column; gap: 2rem; max-width: 72rem; margin: 0 auto; padding: 0 1rem 2rem; }
+.adhan-day { background: linear-gradient(180deg, rgba(212, 175, 55, 0.1), transparent 42%); }
+.adhan-night { background: linear-gradient(180deg, rgba(23, 58, 94, 0.35), transparent 42%); }
+.adhan-dates { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; color: hsl(var(--text-secondary)); font-size: 0.9rem; }
+.adhan-hero-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem; margin-top: 1rem; }
+@media (min-width: 640px) { .adhan-hero-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1024px) { .adhan-hero-grid { grid-template-columns: repeat(6, 1fr); } }
+.adhan-card { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; padding: 1rem 0.5rem; border: 1px solid rgba(212, 175, 55, 0.25); border-radius: var(--radius-lg); background: rgba(7, 35, 28, 0.55); }
+.adhan-card-name { font-size: 0.85rem; color: hsl(var(--text-secondary)); }
+.adhan-card-time { font-size: 1.4rem; font-weight: 800; font-variant-numeric: tabular-nums; color: #ede6d6; }
+.adhan-card-count { font-size: 0.85rem; font-variant-numeric: tabular-nums; color: #e5c07b; }
+.adhan-card-next { border-color: rgba(212, 175, 55, 0.8); animation: adhan-pulse 2.4s ease-in-out infinite; }
+@keyframes adhan-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0); }
+  50% { box-shadow: 0 0 24px 2px rgba(212, 175, 55, 0.35); }
+}
+.adhan-source-note { color: hsl(var(--text-secondary)); font-size: 0.85rem; }
+.adhan-section { display: flex; flex-direction: column; gap: 1rem; }
+.adhan-methods { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+@media (min-width: 768px) { .adhan-methods { grid-template-columns: repeat(2, 1fr); } }
+.adhan-method-card { display: flex; flex-direction: column; gap: 0.3rem; text-align: start; padding: 1rem; border: 1px solid rgba(212, 175, 55, 0.25); border-radius: var(--radius-lg); background: rgba(7, 35, 28, 0.55); color: hsl(var(--text-primary)); cursor: pointer; font: inherit; transition: border-color 0.2s ease, background 0.2s ease; }
+.adhan-method-card:hover:not(:disabled) { border-color: rgba(212, 175, 55, 0.6); }
+.adhan-method-selected { border-color: rgba(212, 175, 55, 0.9); background: rgba(212, 175, 55, 0.12); }
+.adhan-method-card:disabled { opacity: 0.55; cursor: not-allowed; }
+.adhan-method-name { font-weight: 700; }
+.adhan-method-auth { font-size: 0.85rem; color: hsl(var(--text-secondary)); }
+.adhan-method-angles { font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.adhan-method-diff { font-size: 0.85rem; color: #e5c07b; font-variant-numeric: tabular-nums; }
+.adhan-method-note { font-size: 0.8rem; color: hsl(var(--text-muted)); }
+.adhan-controls { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+@media (min-width: 768px) { .adhan-controls { grid-template-columns: repeat(2, 1fr); } }
+.adhan-field { display: flex; flex-direction: column; gap: 0.5rem; }
+.adhan-field-label { font-weight: 700; font-size: 0.9rem; }
+.adhan-radios { display: flex; gap: 1rem; flex-wrap: wrap; }
+.adhan-radios label { display: flex; align-items: center; gap: 0.4rem; cursor: pointer; }
+.adhan-select { max-width: 22rem; padding: 0.5rem 0.7rem; border-radius: var(--radius-sm); border: 1px solid rgba(212, 175, 55, 0.3); background: rgba(7, 35, 28, 0.7); color: hsl(var(--text-primary)); font: inherit; }
+.adhan-btn { align-self: flex-start; padding: 0.5rem 1.1rem; border-radius: var(--radius-md); border: 1px solid rgba(212, 175, 55, 0.45); background: rgba(212, 175, 55, 0.14); color: #e5c07b; cursor: pointer; font-size: 0.9rem; }
+.adhan-hint { margin: 0; font-size: 0.85rem; color: hsl(var(--text-secondary)); }
+.adhan-page .adhan-error { margin: 0.5rem 0; }
+.adhan-tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid rgba(212, 175, 55, 0.25); }
+.adhan-tab { padding: 0.6rem 1.2rem; border: none; border-bottom: 2px solid transparent; background: none; color: hsl(var(--text-secondary)); cursor: pointer; font: inherit; transition: color 0.2s ease, border-color 0.2s ease; }
+.adhan-tab-active { color: #e5c07b; border-bottom-color: #e5c07b; }
+.adhan-range-meta { margin: 0; color: hsl(var(--text-muted)); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.adhan-table-wrap { overflow-x: auto; animation: adhan-fadein 0.25s ease; }
+@keyframes adhan-fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.adhan-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.adhan-table th, .adhan-table td { padding: 0.45rem 0.6rem; border-bottom: 1px solid rgba(212, 175, 55, 0.15); text-align: start; white-space: nowrap; }
+.adhan-table th { color: hsl(var(--text-secondary)); font-size: 0.8rem; }
+.adhan-table td { font-variant-numeric: tabular-nums; }
+.adhan-today-row { background: rgba(212, 175, 55, 0.12); font-weight: 700; }
+.adhan-year { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+@media (min-width: 1024px) { .adhan-year { grid-template-columns: repeat(2, 1fr); } }
+.adhan-year-month h3 { color: #e5c07b; margin: 0 0 0.5rem; }
+.adhan-transparency p { color: hsl(var(--text-secondary)); }
+.adhan-facts { margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.adhan-facts div { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.adhan-facts dt { font-weight: 700; }
+.adhan-facts dd { margin: 0; }
+.adhan-skeleton { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.adhan-skeleton span { flex: 1 1 8rem; height: 4.5rem; border-radius: var(--radius-lg); background: linear-gradient(100deg, rgba(212, 175, 55, 0.08), rgba(212, 175, 55, 0.2), rgba(212, 175, 55, 0.08)); background-size: 200% 100%; animation: adhan-shimmer 1.4s ease infinite; }
+@keyframes adhan-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }

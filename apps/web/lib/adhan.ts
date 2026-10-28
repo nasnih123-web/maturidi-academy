@@ -36,6 +36,9 @@ export interface AdhanTimes {
   method: string;
   methodLabel: string;
   madhab: string;
+  city: string | null;
+  source: string;
+  sources: Record<string, string>;
 }
 
 export type PrayerName = keyof PrayerTimings;
@@ -86,6 +89,12 @@ function parseTimes(body: Record<string, unknown>): AdhanTimes {
     method: str(body?.method),
     methodLabel: str(body?.method_label),
     madhab: str(body?.madhab),
+    city: typeof body?.city === 'string' ? body.city : null,
+    source: str(body?.source) || 'computed',
+    sources:
+      body?.sources && typeof body.sources === 'object'
+        ? (body.sources as Record<string, string>)
+        : {},
   };
 }
 
@@ -235,4 +244,234 @@ export function saveLocation(loc: SavedLocation): void {
   } catch {
     /* storage full/blocked — non-fatal */
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Prayer-times page (cities, user choice, options, range)             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * City-center coordinates — the same list as the API (adhan_data.CITIES).
+ * Duplicated here only so the header strip can resolve the CRM default
+ * city without an extra fetch on every page; the API remains the source
+ * of truth for computation.
+ */
+export interface AdhanCity {
+  slug: string;
+  lat: number;
+  lng: number;
+}
+
+export const ADHAN_CITIES: AdhanCity[] = [
+  { slug: 'torbat-e-jam', lat: 35.24306, lng: 60.625 },
+  { slug: 'khaf', lat: 34.5723, lng: 60.144 },
+  { slug: 'taybad', lat: 34.74, lng: 60.78 },
+  { slug: 'mashhad', lat: 36.297, lng: 59.606 },
+  { slug: 'zahedan', lat: 29.496, lng: 60.862 },
+  { slug: 'gonbad-e-kavus', lat: 37.255, lng: 55.1714 },
+  { slug: 'tehran', lat: 35.6892, lng: 51.389 },
+];
+
+export function findCity(slug: string | null): AdhanCity | null {
+  if (!slug) return null;
+  return ADHAN_CITIES.find((c) => c.slug === slug) ?? null;
+}
+
+/**
+ * The user's saved page choice (v1 persistence: browser localStorage only —
+ * no account-settings schema is invented). The header strip listens for
+ * ADHAN_CHOICE_EVENT and re-reads this key so the banner follows the page
+ * live, on every page, without a reload.
+ */
+export const ADHAN_CHOICE_KEY = 'ma.adhan_choice';
+export const ADHAN_CHOICE_EVENT = 'ma:adhan-choice';
+
+export interface AdhanChoice {
+  city: string | null;
+  lat: number;
+  lng: number;
+  method: string;
+  madhab: string;
+}
+
+export function loadAdhanChoice(): AdhanChoice | null {
+  try {
+    const raw = window.localStorage.getItem(ADHAN_CHOICE_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    if (
+      typeof o.lat !== 'number' ||
+      typeof o.lng !== 'number' ||
+      typeof o.method !== 'string' ||
+      typeof o.madhab !== 'string'
+    ) {
+      return null;
+    }
+    return {
+      city: typeof o.city === 'string' ? o.city : null,
+      lat: o.lat,
+      lng: o.lng,
+      method: o.method,
+      madhab: o.madhab,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveAdhanChoice(choice: AdhanChoice): void {
+  try {
+    window.localStorage.setItem(ADHAN_CHOICE_KEY, JSON.stringify(choice));
+    window.dispatchEvent(new Event(ADHAN_CHOICE_EVENT));
+  } catch {
+    /* storage full/blocked — non-fatal */
+  }
+}
+
+export interface AdhanMethodOption {
+  id: string;
+  label: string;
+  authority: string;
+  fajr: number | null;
+  isha: number | null;
+  maghrib: number | null;
+  isha_minutes: number | null;
+  isha_minutes_ramadan: number | null;
+  available: boolean;
+  note: string;
+}
+
+export interface AdhanOptions {
+  methods: AdhanMethodOption[];
+  cities: AdhanCity[];
+}
+
+async function fetchAdhanJson(path: string): Promise<Record<string, unknown>> {
+  const base = apiBaseUrl();
+  let res: Response;
+  try {
+    res = await fetch(`${base}${path}`, { headers: { Accept: 'application/json' } });
+  } catch (err) {
+    throw new Error(`adhan API unreachable: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!res.ok) throw new Error(`adhan API → ${res.status}`);
+  return (await res.json()) as Record<string, unknown>;
+}
+
+/** GET /api/v1/adhan/options — methods (angles, authority) + cities. */
+export async function getAdhanOptions(): Promise<AdhanOptions> {
+  const body = await fetchAdhanJson('/api/v1/adhan/options');
+  const methods = (Array.isArray(body.methods) ? body.methods : []).map((m) => {
+    const r = m as Record<string, unknown>;
+    const num = (v: unknown): number | null =>
+      typeof v === 'number' && Number.isFinite(v) ? v : null;
+    return {
+      id: typeof r.id === 'string' ? r.id : '',
+      label: typeof r.label === 'string' ? r.label : '',
+      authority: typeof r.authority === 'string' ? r.authority : '',
+      fajr: num(r.fajr),
+      isha: num(r.isha),
+      maghrib: num(r.maghrib),
+      isha_minutes: num(r.isha_minutes),
+      isha_minutes_ramadan: num(r.isha_minutes_ramadan),
+      available: r.available !== false,
+      note: typeof r.note === 'string' ? r.note : '',
+    };
+  });
+  const cities = (Array.isArray(body.cities) ? body.cities : []).map((c) => {
+    const r = c as Record<string, unknown>;
+    return {
+      slug: typeof r.slug === 'string' ? r.slug : '',
+      lat: typeof r.lat === 'number' ? r.lat : 0,
+      lng: typeof r.lng === 'number' ? r.lng : 0,
+    };
+  });
+  return { methods, cities };
+}
+
+export interface AdhanDay {
+  date: string;
+  source: string;
+  times: PrayerTimings;
+}
+
+export interface AdhanRange {
+  start: string;
+  end: string;
+  city: string | null;
+  method: string;
+  madhab: string;
+  days: AdhanDay[];
+}
+
+function parseRangeTimes(t: unknown): PrayerTimings {
+  const r = (t ?? {}) as Record<string, unknown>;
+  const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+  return {
+    imsak: str(r.imsak),
+    fajr: str(r.fajr),
+    sunrise: str(r.sunrise),
+    dhuhr: str(r.dhuhr),
+    asr: str(r.asr),
+    maghrib: str(r.maghrib),
+    isha: str(r.isha),
+    midnight: str(r.midnight),
+  };
+}
+
+/** GET /api/v1/adhan/range — week/month/year timetables. */
+export async function getAdhanRange(params: {
+  start: string;
+  end: string;
+  city?: string | null;
+  lat?: number;
+  lng?: number;
+  method: string;
+  madhab: string;
+  tz?: number;
+}): Promise<AdhanRange> {
+  const q = new URLSearchParams({ start: params.start, end: params.end });
+  if (params.city) q.set('city', params.city);
+  if (params.lat !== undefined) q.set('lat', String(params.lat));
+  if (params.lng !== undefined) q.set('lng', String(params.lng));
+  q.set('method', params.method);
+  q.set('madhab', params.madhab);
+  q.set('tz', String(params.tz ?? localTzOffset()));
+  const body = await fetchAdhanJson(`/api/v1/adhan/range?${q.toString()}`);
+  return {
+    start: typeof body.start === 'string' ? body.start : params.start,
+    end: typeof body.end === 'string' ? body.end : params.end,
+    city: typeof body.city === 'string' ? body.city : null,
+    method: typeof body.method === 'string' ? body.method : params.method,
+    madhab: typeof body.madhab === 'string' ? body.madhab : params.madhab,
+    days: (Array.isArray(body.days) ? body.days : []).map((d) => {
+      const r = d as Record<string, unknown>;
+      return {
+        date: typeof r.date === 'string' ? r.date : '',
+        source: typeof r.source === 'string' ? r.source : 'computed',
+        times: parseRangeTimes(r.times),
+      };
+    }),
+  };
+}
+
+/** GET /api/v1/adhan/times with a city (or explicit coordinates). */
+export async function getAdhanTimesForChoice(params: {
+  day: string;
+  city?: string | null;
+  lat?: number;
+  lng?: number;
+  method: string;
+  madhab: string;
+  tz?: number;
+}): Promise<AdhanTimes> {
+  const q = new URLSearchParams({ date: params.day });
+  if (params.city) q.set('city', params.city);
+  if (params.lat !== undefined) q.set('lat', String(params.lat));
+  if (params.lng !== undefined) q.set('lng', String(params.lng));
+  q.set('method', params.method);
+  q.set('madhab', params.madhab);
+  q.set('tz', String(params.tz ?? localTzOffset()));
+  const body = await fetchAdhanJson(`/api/v1/adhan/times?${q.toString()}`);
+  return parseTimes(body);
 }

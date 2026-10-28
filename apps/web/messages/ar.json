@@ -108,6 +108,10 @@
       {
         "href": "/voice",
         "label": "المساعد الصوتي"
+      },
+      {
+        "href": "/adhan",
+        "label": "أوقات الصلاة"
       }
     ],
     "navAria": "التنقل الرئيسي",
@@ -350,7 +354,111 @@
     "invalidCoords": "الإحداثيات غير صالحة.",
     "countdownAria": "العدّ التنازلي للصلاة القادمة",
     "stripPrefix": "حتى",
-    "stripSetup": "مواقيت الصلاة"
+    "stripSetup": "مواقيت الصلاة",
+    "methods": {
+    "council": {
+          "name": "قرار مجمع فقه أهل السنة في إيران",
+          "authority": "مجمع فقه أهل السنة في إيران",
+          "note": "الافتراضي في الأكاديمية؛ أساس جدول تربت جام الرسمي."
+    },
+    "tehran": {
+          "name": "معهد الجيوفيزياء بجامعة طهران",
+          "authority": "طريقة الإذاعة والتلفزيون",
+          "note": "عشاء ١٤° اتفاق مكتبي، وليس تعريفاً مثبتاً للمعهد."
+    },
+    "isna": {
+          "name": "الجمعية الإسلامية في أمريكا الشمالية",
+          "authority": "ISNA",
+          "note": ""
+    },
+    "mwl": {
+          "name": "رابطة العالم الإسلامي",
+          "authority": "Muslim World League",
+          "note": ""
+    },
+    "egypt": {
+          "name": "مركز الدراسات المصري",
+          "authority": "Egyptian General Authority of Survey",
+          "note": ""
+    },
+    "karachi": {
+          "name": "جامعة العلوم الإسلامية في كراتشي",
+          "authority": "University of Islamic Sciences, Karachi",
+          "note": ""
+    },
+    "makkah": {
+          "name": "أم القرى، مكة",
+          "authority": "Umm al-Qura",
+          "note": "العشاء بعد ٩٠ دقيقة من المغرب؛ وفي رمضان ١٢٠ دقيقة."
+    },
+    "qom": {
+          "name": "معهد لواء قم",
+          "authority": "معهد لواء قم",
+          "note": ""
+    },
+    "jafari": {
+          "name": "جعفري",
+          "authority": "Ja'fari convention",
+          "note": ""
+    },
+    "turkmen": {
+          "name": "مجمع فقه تركمان صحرا",
+          "authority": "مجمع فقه تركمان صحرا",
+          "note": "الدرجات المنشورة لم تؤكَّد بعد."
+    }
+},
+    "cities": {
+    "torbat-e-jam": "تربت جام",
+    "khaf": "خواف",
+    "taybad": "تايباد",
+    "mashhad": "مشهد",
+    "zahedan": "زاهدان",
+    "gonbad-e-kavus": "كنبد كاووس",
+    "tehran": "طهران"
+},
+    "madhabLabel": "المذهب (وقت العصر)",
+    "madhabHanafi": "حنفي",
+    "madhabShafi": "شافعي",
+    "madhabNote": "المذهب يغيّر وقت العصر فقط؛ الفجر والظهر والمغرب والعشاء لا تتأثر بالمذهب.",
+    "citySelectLabel": "المدينة",
+    "useMyLocation": "موقعي",
+    "customLocation": "موقع مخصص (GPS)",
+    "customLocationHint": "إحداثيات جهازك؛ لا تُحفظ مدينة.",
+    "tabWeek": "الأسبوع",
+    "tabMonth": "الشهر",
+    "tabYear": "السنة",
+    "diffLabel": "الفرق عن الافتراضي اليوم",
+    "sourceTable": "جدول رسمي",
+    "sourceComputed": "حساب فلكي",
+    "sourceMixed": "جدول + حساب",
+    "transparencyTitle": "من أين جاءت هذه الأوقات؟",
+    "transparencyMethod": "الطريقة",
+    "transparencyAsr": "عامل العصر",
+    "trueDawnNote": "الفجر يبدأ بالفجر الصادق فقط (النور الأفقي المنتشر)؛ الفجر الكاذب (العمود العمودي الزائل) لا أثر شرعي له.",
+    "scholarNote": "الزوايا والنصوص في هذه الصفحة تحتاج إلى مراجعة علمية قبل الاستخدام العام.",
+    "loading": "جارٍ جلب الأوقات…",
+    "loadFailed": "تعذّر جلب الأوقات؛ حاول مجدداً.",
+    "retry": "إعادة المحاولة",
+    "jalaliLabel": "شمسي",
+    "miladiLabel": "ميلادي",
+    "qamariLabel": "قمري",
+    "tableToday": "اليوم",
+    "methodUnavailable": "هذه الطريقة ليس لها درجات مؤكدة بعد ولا يمكن حسابها.",
+    "maghribSunset": "الغروب",
+    "jalaliMonths": [
+    "فروردين",
+    "ارديبهشت",
+    "خرداد",
+    "تير",
+    "مرداد",
+    "شهريور",
+    "مهر",
+    "آبان",
+    "آذر",
+    "دي",
+    "بهمن",
+    "اسفند"
+]
   },
   "munajat": {
     "toggleOn": "الوضع الليلي: مفعّل",
