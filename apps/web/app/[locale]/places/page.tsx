@@ -1,10 +1,12 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getAllPlaces } from '@/lib/places';
-import { PLACE_TYPES, toPlaceView, type PlaceView } from '@/lib/places-view';
+import { getSiteConfig } from '@/lib/settings';
+import { toPlaceView, type PlaceView } from '@/lib/places-view';
 import { EmptyState } from '@/components/EmptyState';
-import type { PlacesMapLabels } from '@/components/PlacesMap';
-import { PlacesMap } from '@/components/PlacesMapLazy';
+import { GlobeExplorer } from '@/components/GlobeExplorerLazy';
+import type { GlobeExplorerLabels } from '@/components/GlobeExplorer';
 
 export async function generateMetadata({
   params,
@@ -18,12 +20,13 @@ export async function generateMetadata({
 }
 
 /**
- * Religious places map (Phase 11).
+ * Religious places globe (globe phase).
  *
- * Thin RSC shell: server-fetches all published places (GET /api/v1/places),
- * resolves LocalizedText to plain strings, then mounts the code-split Leaflet
- * map. Leaflet (~150KB) never enters the homepage bundle. API failure or an
- * empty catalogue renders an honest state instead of a fake map.
+ * Thin RSC shell: server-fetches all published places (GET /api/v1/places)
+ * plus the CRM globe settings (default view, place types, popup shape),
+ * resolves LocalizedText to plain strings, then mounts the code-split 3D
+ * globe. three.js never enters the homepage bundle. API failure or an
+ * empty catalogue renders an honest state instead of a fake globe.
  */
 export default async function PlacesPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -38,35 +41,65 @@ export default async function PlacesPage({ params }: { params: Promise<{ locale:
   } catch {
     failed = true;
   }
+  // Globe settings are CRM-controlled; a settings failure keeps the
+  // Kaaba-centered defaults instead of breaking the globe.
+  const siteConfig = await getSiteConfig();
 
-  const typeLabels = Object.fromEntries(PLACE_TYPES.map((k) => [k, t(`types.${k}`)])) as Record<
-    string,
-    string
-  >;
-
-  const labels: PlacesMapLabels = {
-    mapAria: t('mapAria'),
-    filterLabel: t('filterLabel'),
-    all: t('types.all'),
-    openDetail: t('openDetail'),
+  const labels: GlobeExplorerLabels = {
+    legendTitle: t('legendTitle'),
+    allTypes: t('types.all'),
+    modeSatellite: t('modeSatellite'),
+    modeSimple: t('modeSimple'),
+    modeDark: t('modeDark'),
+    modeTopology: t('modeTopology'),
+    searchPlaceholder: t('searchPlaceholder'),
+    searchNoResults: t('searchNoResults'),
+    myLocation: t('myLocation'),
+    locating: t('locating'),
+    located: t('located'),
+    locationDenied: t('locationDenied'),
+    locationUnsupported: t('locationUnsupported'),
+    autoRotateOn: t('autoRotateOn'),
+    autoRotateOff: t('autoRotateOff'),
+    qiblaFromHere: t('qiblaFromHere'),
+    qiblaInfo: t.raw('qiblaInfo'),
+    qiblaArcLabel: t('qiblaArcLabel'),
+    closePanel: t('closePanel'),
+    galleryPrev: t('galleryPrev'),
+    galleryNext: t('galleryNext'),
+    galleryCounter: t.raw('galleryCounter'),
+    video360: t('view360'),
+    videoRegular: t('videoRegular'),
+    videoLinkFallback: t('videoLinkFallback'),
+    viewDetail: t('viewDetail'),
+    cityLabel: t('cityLabel'),
+    typeLabel: t('typeLabel'),
     loading: t('loading'),
-    loadFailed: t('loadFailed'),
-    retry: t('retry'),
-    // t.raw: the component substitutes {n} itself; t() without values would
-    // raise FORMATTING_ERROR and render the key.
-    resultsCount: t.raw('resultsCount'),
   };
 
   return (
     <div className="page-wrap">
       <h1 className="page-title">{t('title')}</h1>
       <p className="page-subtitle">{t('subtitle')}</p>
+      <p className="place-register-cta">
+        <Link className="place-tour-link" href={`/${locale}/places/register`}>
+          {t('registerCta')}
+        </Link>
+        <span className="place-register-hint">{t('registerHint')}</span>
+      </p>
       {failed ? (
         <EmptyState title={t('loadFailed')} hint={t('loadFailedHint')} />
       ) : views.length === 0 ? (
         <EmptyState title={t('noPlaces')} hint={t('noPlacesHint')} />
       ) : (
-        <PlacesMap locale={locale} places={views} typeLabels={typeLabels} labels={labels} />
+        <GlobeExplorer
+          locale={locale}
+          places={views}
+          typeDefs={siteConfig.placeTypes}
+          popupConfig={siteConfig.placesPopup}
+          globeSettings={siteConfig.globe}
+          labels={labels}
+        />
       )}
     </div>
   );

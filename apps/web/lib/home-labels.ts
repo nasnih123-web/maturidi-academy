@@ -56,7 +56,7 @@ export function buildHomeLabels(t: T): HomeSectionsLabels {
       sliderNext: t('card.sliderNext'),
     },
     quoteAria: t('quoteAria'),
-    mapNote: t('mapNote'),
+    mapLink: t('mapLink'),
     search: buildSearchLabels(t),
     emptyFallback: t('emptyFallback'),
     donateCtaLabel: t('donateCtaLabel'),

@@ -1,8 +1,14 @@
 import { getApiBaseUrl } from './api';
 import { safeHref } from './section-data';
 import type { Locale } from './types';
+import {
+  DEFAULT_PLACE_TYPES,
+  parsePlaceTypes,
+  type PlaceTypeDef,
+} from './places-view';
+import { isGlobeMode, type GlobeMode } from './places-globe';
 
-export type { Locale };
+export type { Locale, PlaceTypeDef };
 
 /**
  * Server-side platform_settings client (RSC only — never imported from
@@ -121,12 +127,50 @@ export interface AdhanSettings {
   defaultLng: number | null;
 }
 
+/** Maps phase: CRM-controlled shape of map popups (`places.popup` setting). */
+export interface PlacesPopupSettings {
+  showImage: boolean;
+  showDescription: boolean;
+  showType: boolean;
+  showCity: boolean;
+}
+
+export const DEFAULT_PLACES_POPUP: PlacesPopupSettings = {
+  showImage: true,
+  showDescription: true,
+  showType: true,
+  showCity: true,
+};
+
+/** Globe phase: CRM-controlled default globe view (`places.globe` setting). */
+export interface PlacesGlobeSettings {
+  defaultLat: number;
+  defaultLng: number;
+  defaultAltitude: number;
+  defaultMode: GlobeMode;
+  autoRotate: boolean;
+}
+
+export const DEFAULT_PLACES_GLOBE: PlacesGlobeSettings = {
+  defaultLat: 21.4225,
+  defaultLng: 39.8262,
+  defaultAltitude: 2.5,
+  defaultMode: 'satellite',
+  autoRotate: false,
+};
+
 export interface SiteConfig {
   version: number;
   updatedAt: string | null;
   particles: ParticlesSettings;
   fonts: Record<Locale, UploadedFont | null>;
   hero: Record<Locale, HeroSettings | null>;
+  /** Maps phase — defaults to all fields shown when the key is absent. */
+  placesPopup: PlacesPopupSettings;
+  /** Globe phase — CRM-extensible place types (`places.types` setting). */
+  placeTypes: PlaceTypeDef[];
+  /** Globe phase — default globe view (`places.globe` setting). */
+  globe: PlacesGlobeSettings;
   /**
    * Ordered homepage slots. `null` = the `home.sections` key is missing or
    * empty → the homepage keeps today's behavior (API order + SPECS).
@@ -153,6 +197,9 @@ export function defaultSiteConfig(): SiteConfig {
     particles: { ...DEFAULT_PARTICLES },
     fonts: { fa: null, ar: null, en: null },
     hero: { fa: null, ar: null, en: null },
+    placesPopup: { ...DEFAULT_PLACES_POPUP },
+    placeTypes: [...DEFAULT_PLACE_TYPES],
+    globe: { ...DEFAULT_PLACES_GLOBE },
     homeSections: null,
     quran: { ...DEFAULT_QURAN },
     munajat: { ...DEFAULT_MUNAJAT },
@@ -384,6 +431,30 @@ function parseAdhanSettings(get: (key: string) => unknown): AdhanSettings {
   };
 }
 
+function parsePlacesPopup(v: unknown): PlacesPopupSettings {
+  const o = asObject(v);
+  if (!o) return { ...DEFAULT_PLACES_POPUP };
+  return {
+    showImage: bool(o.show_image, true),
+    showDescription: bool(o.show_description, true),
+    showType: bool(o.show_type, true),
+    showCity: bool(o.show_city, true),
+  };
+}
+
+function parsePlacesGlobe(v: unknown): PlacesGlobeSettings {
+  const o = asObject(v);
+  if (!o) return { ...DEFAULT_PLACES_GLOBE };
+  const mode = isGlobeMode(o.defaultMode) ? o.defaultMode : DEFAULT_PLACES_GLOBE.defaultMode;
+  return {
+    defaultLat: num(o.defaultLat, DEFAULT_PLACES_GLOBE.defaultLat, -90, 90),
+    defaultLng: num(o.defaultLng, DEFAULT_PLACES_GLOBE.defaultLng, -180, 180),
+    defaultAltitude: num(o.defaultAltitude, DEFAULT_PLACES_GLOBE.defaultAltitude, 0.1, 10),
+    defaultMode: mode,
+    autoRotate: bool(o.autoRotate, false),
+  };
+}
+
 /**
  * Normalize the settings payload. Accepts the documented envelope
  * `{ settings: {<key>: <value>, …}, version, updated_at }`, a legacy
@@ -420,6 +491,9 @@ export function parseSiteConfig(body: unknown): SiteConfig {
     cfg.hero[l] = parseHero(get(`hero.${l}`));
   }
   cfg.homeSections = parseHomeSections(get('home.sections'));
+  cfg.placesPopup = parsePlacesPopup(get('places.popup'));
+  cfg.placeTypes = parsePlaceTypes(get('places.types'));
+  cfg.globe = parsePlacesGlobe(get('places.globe'));
   cfg.quran = parseQuranSettings(get);
   cfg.munajat = parseMunajatSettings(get);
   cfg.adhan = parseAdhanSettings(get);

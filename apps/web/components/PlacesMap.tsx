@@ -11,8 +11,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import {
+  DEFAULT_POPUP_CONFIG,
   filterPlacesByType,
   presentTypes,
+  type PlacesPopupConfig,
   type PlaceView,
 } from '@/lib/places-view';
 
@@ -45,11 +47,17 @@ export function PlacesMap({
   places,
   typeLabels,
   labels,
+  popupConfig = DEFAULT_POPUP_CONFIG,
 }: {
   locale: string;
   places: PlaceView[];
   typeLabels: Record<string, string>;
   labels: PlacesMapLabels;
+  /**
+   * CRM-controlled popup shape (`places.popup` setting). Defaults to every
+   * field shown; the places page passes the live site config.
+   */
+  popupConfig?: PlacesPopupConfig;
 }) {
   const dir = locale === 'en' ? 'ltr' : 'rtl';
   const [filter, setFilter] = useState('all');
@@ -115,9 +123,30 @@ export function PlacesMap({
         popupAnchor: [0, -14],
       });
       const typeLabel = typeLabels[p.type] ?? p.type;
+      // Popup content is built from already-sanitized pieces: text is
+      // escaped, and the image URL passed safeImageUrl (http(s) only) in
+      // the view layer — a hostile URL can never become an attribute here.
+      const img =
+        popupConfig.showImage && p.imageUrl
+          ? `<img class="pp-img" src="${esc(p.imageUrl)}" alt="" loading="lazy" />`
+          : '';
+      const meta =
+        popupConfig.showType || (popupConfig.showCity && p.city)
+          ? `<span class="pp-type">${[
+              popupConfig.showType ? esc(typeLabel) : '',
+              popupConfig.showCity && p.city ? esc(p.city) : '',
+            ]
+              .filter(Boolean)
+              .join(' · ')}</span>`
+          : '';
+      const desc =
+        popupConfig.showDescription && p.description
+          ? `<p class="pp-desc">${esc(p.description)}</p>`
+          : '';
       const html =
-        `<div class="place-popup"><strong>${esc(p.name)}</strong>` +
-        `<span class="pp-type">${esc(typeLabel)}</span>` +
+        `<div class="place-popup">${img}<strong>${esc(p.name)}</strong>` +
+        meta +
+        desc +
         `<a class="pp-link" href="/${esc(locale)}/places/${esc(p.id)}">${esc(labels.openDetail)}</a></div>`;
       L.marker([p.lat, p.lng], { icon, title: p.name, keyboard: true })
         .bindPopup(html)
@@ -130,7 +159,7 @@ export function PlacesMap({
     } else if (filtered.length === 1) {
       map.setView([filtered[0].lat, filtered[0].lng], 13);
     }
-  }, [filtered, ready, locale, typeLabels, labels.openDetail]);
+  }, [filtered, ready, locale, typeLabels, labels.openDetail, popupConfig]);
 
   const countText = labels.resultsCount.replace('{n}', String(filtered.length));
 
