@@ -403,7 +403,7 @@ def _validate_munajat_window(value: Any) -> dict:
     return out
 
 
-_ADHAN_METHODS = ("council", "tehran", "isna", "mwl", "egypt", "karachi", "makkah", "qom", "jafari")
+_ADHAN_METHODS = ("council", "tehran", "isna", "mwl", "egypt", "karachi", "makkah", "qom", "jafari", "france")
 _ADHAN_MADHABS = ("shafi", "hanafi")
 
 

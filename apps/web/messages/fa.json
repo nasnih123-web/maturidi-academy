@@ -400,6 +400,11 @@
         "name": "جعفری",
         "authority": "Ja'fari convention",
         "note": ""
+      },
+      "france": {
+        "name": "اتحادیهٔ سازمان‌های اسلامی فرانسه (UOIF)",
+        "authority": "Union of Islamic Organizations of France",
+        "note": "فجر و عشا ۱۲ درجه؛ مناسب عرض‌های جغرافیایی بالای اروپا."
       }
     },
     "cities": {

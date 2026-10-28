@@ -307,7 +307,7 @@ export function parseMunajatWindow(raw: string | null | undefined): MunajatWindo
  * Adhan calculation-method ids — the API's own enum values
  * (`AdhanMethod` on GET /api/v1/adhan/times, Track 1).
  */
-export const ADHAN_METHODS = ["council", "tehran", "isna", "mwl", "egypt", "karachi", "makkah", "qom", "jafari"] as const;
+export const ADHAN_METHODS = ["council", "tehran", "isna", "mwl", "egypt", "karachi", "makkah", "qom", "jafari", "france"] as const;
 export type AdhanMethod = (typeof ADHAN_METHODS)[number];
 
 /** City slugs for the adhan default city — same list as GET /adhan/options. */

@@ -100,7 +100,7 @@ export interface MunajatSettings {
 }
 
 /** Public settings contract for the adhan widget.
- *  method ∈ {council,tehran,isna,mwl,egypt,karachi,makkah,qom,jafari};
+ *  method ∈ {council,tehran,isna,mwl,egypt,karachi,makkah,qom,jafari,france};
  *  madhab ∈ {shafi,hanafi} (backend enum — invalid values fall back to the
  *  defaults). The CRM writes the `adhan.defaults` dict
  *  {calculation_method, madhab}; the flat adhan.method / adhan.madhab keys
@@ -294,7 +294,7 @@ export const DEFAULT_MUNAJAT: MunajatSettings = {
   ambientAudioUrl: null,
 };
 
-const ADHAN_METHODS = ['council', 'tehran', 'isna', 'mwl', 'egypt', 'karachi', 'makkah', 'qom', 'jafari'];
+const ADHAN_METHODS = ['council', 'tehran', 'isna', 'mwl', 'egypt', 'karachi', 'makkah', 'qom', 'jafari', 'france'];
 const ADHAN_MADHABS = ['shafi', 'hanafi'];
 
 export const DEFAULT_ADHAN: AdhanSettings = {
