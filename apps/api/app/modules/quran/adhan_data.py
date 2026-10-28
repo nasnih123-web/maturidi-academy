@@ -32,6 +32,26 @@ CITIES: dict[str, dict] = {
 
 TORBAT_CITY = "torbat-e-jam"
 TORBAT_TABLE_METHOD = "council"
+# جدول تربت جام برای مختصاتِ نزدیکِ مرکز شهر هم به کار می‌رود — همان شعاع
+# ۳۵ کیلومتری که اپ عارفان جام برای جایگزینی جدول به کار می‌برد. صفحه دیگر
+# فیلد شهر ندارد و فقط lat/lng می‌فرستد، پس نزدیکی با فاصلهٔ هوایی (haversine)
+# سنجیده می‌شود، نه با نام شهر.
+TORBAT_TABLE_RADIUS_KM = 35.0
+
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """فاصلهٔ هوایی بین دو مختصات (کیلومتر)."""
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlmb = math.radians(lng2 - lng1)
+    a = math.sin(dphi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlmb / 2.0) ** 2
+    return 2 * 6371.0 * math.asin(math.sqrt(a))
+
+
+def near_torbat(lat: float, lng: float) -> bool:
+    """آیا این مختصات در شعاع جدول تربت جام است؟"""
+    c = CITIES[TORBAT_CITY]
+    return _haversine_km(lat, lng, c["lat"], c["lng"]) <= TORBAT_TABLE_RADIUS_KM
 
 _TABLE_PATH = os.path.join(os.path.dirname(__file__), "torbat_jam_table.json")
 _table_cache: dict | None = None

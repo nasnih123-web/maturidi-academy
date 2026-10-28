@@ -356,86 +356,70 @@
     "stripPrefix": "تا",
     "stripSetup": "اوقات شرعی",
     "methods": {
-    "council": {
-          "name": "مصوبهٔ مجمع فقه اهل سنت ایران",
-          "authority": "مجمع فقه اهل سنت ایران",
-          "note": "پیش‌فرض آکادمی؛ مبنای جدول رسمی تربت جام."
+      "council": {
+        "name": "مصوبهٔ مجمع فقه اهل سنت ایران",
+        "authority": "مجمع فقه اهل سنت ایران",
+        "note": "پیش‌فرض آکادمی؛ مبنای جدول رسمی تربت جام."
+      },
+      "tehran": {
+        "name": "مؤسسهٔ ژئوفیزیک دانشگاه تهران",
+        "authority": "روش صدا و سیما",
+        "note": "عشاء ۱۴ درجه قرارداد کتابخانه‌ای است، نه تعریف اثبات‌شدهٔ ژئوفیزیک."
+      },
+      "isna": {
+        "name": "جامعهٔ اسلامی شمال آمریکا",
+        "authority": "ISNA",
+        "note": ""
+      },
+      "mwl": {
+        "name": "باشگاه مسلمانان دنیا",
+        "authority": "Muslim World League",
+        "note": ""
+      },
+      "egypt": {
+        "name": "مرکز مطالعات مصر",
+        "authority": "Egyptian General Authority of Survey",
+        "note": ""
+      },
+      "karachi": {
+        "name": "دانشگاه علوم اسلامی کراچی",
+        "authority": "University of Islamic Sciences, Karachi",
+        "note": ""
+      },
+      "makkah": {
+        "name": "ام‌القری، مکه",
+        "authority": "Umm al-Qura",
+        "note": "عشاء ۹۰ دقیقه پس از مغرب؛ در رمضان ۱۲۰ دقیقه."
+      },
+      "qom": {
+        "name": "مؤسسهٔ لواء قم",
+        "authority": "مؤسسهٔ لواء قم",
+        "note": ""
+      },
+      "jafari": {
+        "name": "جعفری",
+        "authority": "Ja'fari convention",
+        "note": ""
+      }
     },
-    "tehran": {
-          "name": "مؤسسهٔ ژئوفیزیک دانشگاه تهران",
-          "authority": "روش صدا و سیما",
-          "note": "عشاء ۱۴ درجه قرارداد کتابخانه‌ای است، نه تعریف اثبات‌شدهٔ ژئوفیزیک."
-    },
-    "isna": {
-          "name": "جامعهٔ اسلامی شمال آمریکا",
-          "authority": "ISNA",
-          "note": ""
-    },
-    "mwl": {
-          "name": "باشگاه مسلمانان دنیا",
-          "authority": "Muslim World League",
-          "note": ""
-    },
-    "egypt": {
-          "name": "مرکز مطالعات مصر",
-          "authority": "Egyptian General Authority of Survey",
-          "note": ""
-    },
-    "karachi": {
-          "name": "دانشگاه علوم اسلامی کراچی",
-          "authority": "University of Islamic Sciences, Karachi",
-          "note": ""
-    },
-    "makkah": {
-          "name": "ام‌القری، مکه",
-          "authority": "Umm al-Qura",
-          "note": "عشاء ۹۰ دقیقه پس از مغرب؛ در رمضان ۱۲۰ دقیقه."
-    },
-    "qom": {
-          "name": "مؤسسهٔ لواء قم",
-          "authority": "مؤسسهٔ لواء قم",
-          "note": ""
-    },
-    "jafari": {
-          "name": "جعفری",
-          "authority": "Ja'fari convention",
-          "note": ""
-    },
-    "turkmen": {
-          "name": "مجمع فقه ترکمن صحرا",
-          "authority": "مجمع فقه ترکمن صحرا",
-          "note": "درجه‌های منتشرشده هنوز تأیید نشده‌اند."
-    }
-},
     "cities": {
-    "torbat-e-jam": "تربت جام",
-    "khaf": "خواف",
-    "taybad": "تایباد",
-    "mashhad": "مشهد",
-    "zahedan": "زاهدان",
-    "gonbad-e-kavus": "گنبد کاووس",
-    "tehran": "تهران"
-},
+      "torbat-e-jam": "تربت جام",
+      "khaf": "خواف",
+      "taybad": "تایباد",
+      "mashhad": "مشهد",
+      "zahedan": "زاهدان",
+      "gonbad-e-kavus": "گنبد کاووس",
+      "tehran": "تهران"
+    },
     "madhabLabel": "مذهب (وقت عصر)",
     "madhabHanafi": "حنفی",
     "madhabShafi": "شافعی",
     "madhabNote": "مذهب فقط وقت عصر را عوض می‌کند؛ فجر، ظهر، مغرب و عشاء به مذهب وابسته نیستند.",
-    "citySelectLabel": "شهر",
     "useMyLocation": "موقعیت من",
-    "customLocation": "موقعیت دلخواه (GPS)",
-    "customLocationHint": "مختصات دستگاه شما؛ شهری ذخیره نمی‌شود.",
     "tabWeek": "هفته",
     "tabMonth": "ماه",
     "tabYear": "سال",
     "diffLabel": "اختلاف با پیش‌فرض امروز",
-    "sourceTable": "جدول رسمی",
-    "sourceComputed": "محاسبهٔ نجومی",
-    "sourceMixed": "جدول + محاسبه",
-    "transparencyTitle": "این اوقات از کجا آمده؟",
-    "transparencyMethod": "روش",
-    "transparencyAsr": "عامل عصر",
-    "trueDawnNote": "فجر فقط با صبح صادق (نور افقی گسترش‌یابنده) شروع می‌شود؛ صبح کاذب (ستون عمودی محوشونده) هیچ اثر شرعی ندارد.",
-    "scholarNote": "زاویه‌ها و متن‌های این صفحه پیش از استفادهٔ عمومی به بازبینی علمی نیاز دارند.",
     "loading": "در حال دریافت اوقات…",
     "loadFailed": "دریافت اوقات ممکن نشد؛ دوباره تلاش کنید.",
     "retry": "تلاش مجدد",
@@ -446,19 +430,28 @@
     "methodUnavailable": "این روش هنوز درجهٔ تأییدشده ندارد و قابل محاسبه نیست.",
     "maghribSunset": "غروب",
     "jalaliMonths": [
-    "فروردین",
-    "اردیبهشت",
-    "خرداد",
-    "تیر",
-    "مرداد",
-    "شهریور",
-    "مهر",
-    "آبان",
-    "آذر",
-    "دی",
-    "بهمن",
-    "اسفند"
-]
+      "فروردین",
+      "اردیبهشت",
+      "خرداد",
+      "تیر",
+      "مرداد",
+      "شهریور",
+      "مهر",
+      "آبان",
+      "آذر",
+      "دی",
+      "بهمن",
+      "اسفند"
+    ],
+    "locationLabel": "موقعیت مکانی",
+    "searchPlaceholder": "نام شهر یا روستا را بنویسید…",
+    "searching": "در حال جست‌وجو…",
+    "searchNoResults": "مکانی پیدا نشد.",
+    "searchFailed": "جست‌وجو ممکن نشد؛ دوباره تلاش کنید.",
+    "gpsLocating": "در حال دریافت موقعیت…",
+    "prevMonth": "ماه قبل",
+    "nextMonth": "ماه بعد",
+    "selectDayHint": "برای دیدن اوقات کامل، یک روز را انتخاب کنید."
   },
   "munajat": {
     "toggleOn": "تم شبانه: روشن",

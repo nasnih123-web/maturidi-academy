@@ -2,9 +2,6 @@ import React from "react";
 import { Badge, Button } from "@maturidi/ui-web";
 import { LOCALES, useI18n, type Locale } from "../lib/i18n";
 import {
-  ADHAN_CITIES,
-  ADHAN_METHODS,
-  DEFAULT_ADHAN,
   DEFAULT_MUNAJAT_WINDOW,
   DEFAULT_PLAYBACK,
   QURAN_SETTINGS_KEYS,
@@ -12,7 +9,6 @@ import {
   isTimeString,
   moveString,
   parseActiveLanguages,
-  parseAdhanDefaults,
   parseFlag,
   parseFontSize,
   parseHighlightMode,
@@ -23,9 +19,7 @@ import {
   useQuranProvidersQuery,
   useQuranSettingsQuery,
   useWriteQuranKeys,
-  type AdhanDefaults,
   type HighlightMode,
-  type Madhab,
   type MunajatWindow,
   type PlaybackConfig,
   type RepeatMode,
@@ -34,14 +28,15 @@ import {
 /**
  * Quran management (مدیریت قرآن) — super_admin only.
  *
- * Four configuration areas backed by platform_settings (Phase 5, json type,
+ * Three configuration areas backed by platform_settings (Phase 5, json type,
  * keys as registered by the Track 1 backend — see lib/quran.ts):
  *   1. Providers → quran.provider, quran.translations, quran.tafsirs, quran.reciters
  *   2. Display   → quran.active_languages, quran.show_translation,
  *                   quran.show_tafsir, quran.highlight_mode, quran.font_size,
  *                   quran.playback
  *   3. Munajat   → munajat.enabled, munajat.window
- *   4. Adhan     → adhan.defaults (registered in SETTING_DEFS)
+ * (Adhan moved to its own section — pages/Adhan.tsx, route /adhan —
+ * since 2026-10-28; it is no longer a tab here.)
  *
  * Values are sent to PUT /api/v1/admin/settings as parsed JSON values
  * (dict/list/bool/str/number) — that is what the backend validators expect
@@ -51,27 +46,26 @@ import {
  * There is deliberately no text-editing affordance for ayahs anywhere here.
  */
 
-type QuranTab = "providers" | "display" | "munajat" | "adhan";
-const TABS: QuranTab[] = ["providers", "display", "munajat", "adhan"];
+type QuranTab = "providers" | "display" | "munajat";
+const TABS: QuranTab[] = ["providers", "display", "munajat"];
 
 const TAB_KEY: Record<QuranTab, string> = {
   providers: "quran.tabProviders",
   display: "quran.tabDisplay",
   munajat: "quran.tabMunajat",
-  adhan: "quran.tabAdhan",
 };
 
 function initialTab(): QuranTab {
   try {
     const t = new URLSearchParams(window.location.search).get("tab");
-    if (t === "display" || t === "munajat" || t === "adhan" || t === "providers") return t;
+    if (t === "display" || t === "munajat" || t === "providers") return t;
   } catch {
     // ignore
   }
   return "providers";
 }
 
-function SaveRow({
+export function SaveRow({
   pending,
   savedTick,
   error,
@@ -670,118 +664,6 @@ function MunajatPanel(): React.ReactElement {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* adhan                                                               */
-/* ------------------------------------------------------------------ */
-
-const MADHABS: { id: Madhab; key: string }[] = [
-  { id: "hanafi", key: "quran.madhabHanafi" },
-  { id: "shafi", key: "quran.madhabShafi" },
-];
-
-function AdhanPanel(): React.ReactElement {
-  const { t } = useI18n();
-  const settings = useQuranSettingsQuery();
-  const writer = useWriteQuranKeys();
-  const [adhan, setAdhan] = React.useState<AdhanDefaults>(DEFAULT_ADHAN);
-  const [savedTick, setSavedTick] = React.useState(0);
-
-  React.useEffect(() => {
-    if (settings.data) setAdhan(parseAdhanDefaults(settings.data[QURAN_SETTINGS_KEYS.adhanDefaults]));
-  }, [settings.data]);
-
-  if (settings.isLoading) return <div className="empty">{t("common.loading")}</div>;
-  if (settings.isError)
-    return (
-      <div className="empty">
-        <p>{t("common.error")}</p>
-        <Button size="sm" variant="secondary" onClick={() => settings.refetch()}>
-          {t("common.retry")}
-        </Button>
-      </div>
-    );
-
-  return (
-    <section className="panel" aria-label={t("quran.tabAdhan")}>
-      <div className="panel-head">
-        <h2>{t("quran.tabAdhan")}</h2>
-        <span className="panel-hint">{t("quran.adhanHint")}</span>
-      </div>
-
-      <div className="field">
-        <label htmlFor="adhan-method">{t("quran.adhanMethod")}</label>
-        <select
-          id="adhan-method"
-          className="input"
-          style={{ maxWidth: "320px" }}
-          value={adhan.calculation_method}
-          onChange={(e) => setAdhan((a) => ({ ...a, calculation_method: e.target.value }))}
-        >
-          <option value="">{t("quran.selectPlaceholder")}</option>
-          {ADHAN_METHODS.map((m) => (
-            <option key={m} value={m}>
-              {t(`quran.method_${m}`)} ({m})
-            </option>
-          ))}
-        </select>
-        <span className="hint">{t("quran.adhanMethodHint")}</span>
-      </div>
-
-      <div className="field">
-        <span className="field-label">{t("quran.adhanMadhab")}</span>
-        <div
-          style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}
-          role="radiogroup"
-          aria-label={t("quran.adhanMadhab")}
-        >
-          {MADHABS.map((m) => (
-            <label className="check-row" key={m.id}>
-              <input
-                type="radio"
-                name="adhan-madhab"
-                checked={adhan.madhab === m.id}
-                onChange={() => setAdhan((a) => ({ ...a, madhab: m.id }))}
-              />
-              {t(m.key)}
-            </label>
-          ))}
-        </div>
-      </div>
-
-      <div className="field">
-        <label htmlFor="adhan-city">{t("quran.adhanDefaultCity")}</label>
-        <select
-          id="adhan-city"
-          className="input"
-          style={{ maxWidth: "320px" }}
-          value={adhan.default_city}
-          onChange={(e) => setAdhan((a) => ({ ...a, default_city: e.target.value }))}
-        >
-          {ADHAN_CITIES.map((c) => (
-            <option key={c} value={c}>
-              {t(`quran.city_${c}`)}
-            </option>
-          ))}
-        </select>
-        <span className="hint">{t("quran.adhanDefaultCityHint")}</span>
-      </div>
-
-      <SaveRow
-        pending={writer.isPending}
-        savedTick={savedTick}
-        error={writer.isError ? writer.error : null}
-        onSave={() =>
-          writer.mutate(
-            { [QURAN_SETTINGS_KEYS.adhanDefaults]: adhan },
-            { onSuccess: () => setSavedTick((n) => n + 1) },
-          )
-        }
-      />
-    </section>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* page                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -836,7 +718,6 @@ export default function Quran(): React.ReactElement {
       {tab === "providers" && <ProvidersPanel />}
       {tab === "display" && <DisplayPanel />}
       {tab === "munajat" && <MunajatPanel />}
-      {tab === "adhan" && <AdhanPanel />}
     </div>
   );
 }

@@ -85,6 +85,7 @@ const NAV_GROUPS: NavGroupDef[] = [
     groupKey: "nav.groupSystem",
     items: [
       { to: "/quran", labelKey: "nav.quran", icon: "M4 19.5A2.5 2.5 0 016.5 17H20M6.5 2A2.5 2.5 0 014 4.5v15A2.5 2.5 0 006.5 22H20V2H6.5zM9 7h7M9 11h5", superAdmin: true },
+      { to: "/adhan", labelKey: "nav.adhan", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zM12 7v5l3 2", superAdmin: true },
       { to: "/sync", labelKey: "nav.sync", icon: "M4 4v6h6M20 20v-6h-6M20 9a8 8 0 00-14.9-3M4 15a8 8 0 0014.9 3", superAdmin: true },
       { to: "/settings", labelKey: "nav.settings", icon: "M12 8a4 4 0 100 8 4 4 0 000-8zM3 12h3M18 12h3M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1", superAdmin: true },
       { to: "/settings/security", labelKey: "nav.security", icon: "M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6zM9.5 12l2 2 3.5-4", superAdmin: false },

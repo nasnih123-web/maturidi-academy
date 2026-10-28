@@ -310,7 +310,7 @@ async def seed_platform_settings_defaults(db: AsyncSession) -> list[str]:
         "quran.playback": {"autoplay": False, "repeat": "off"},
         "munajat.enabled": True,
         "munajat.window": {"start": "02:00", "end": "05:00"},
-        "adhan.defaults": {"calculation_method": "council", "madhab": "hanafi", "default_city": "torbat-e-jam"},
+        "adhan.defaults": {"calculation_method": "council", "madhab": "hanafi"},
         # --- فاز ۶: موتور فتوای هوشمند ---
         "ai.provider": "none",
         "ai.claude_model": "claude-sonnet-4-5",

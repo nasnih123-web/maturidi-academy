@@ -282,14 +282,25 @@ export function findCity(slug: string | null): AdhanCity | null {
  * no account-settings schema is invented). The header strip listens for
  * ADHAN_CHOICE_EVENT and re-reads this key so the banner follows the page
  * live, on every page, without a reload.
+ *
+ * Shape (v2): { place: { name, lat, lng }, method, madhab } — the page has
+ * no city field anymore; the user picks any place on Earth by search or GPS.
+ * Back-compat: old choices { city, lat, lng, ... } resolve via findCity to
+ * that city's coordinates with the slug as the name (the page renders the
+ * localized city name for slugs); old lat/lng-only choices load with a null
+ * name (the page then shows the coordinates as the label).
  */
 export const ADHAN_CHOICE_KEY = 'ma.adhan_choice';
 export const ADHAN_CHOICE_EVENT = 'ma:adhan-choice';
 
-export interface AdhanChoice {
-  city: string | null;
+export interface AdhanPlace {
+  name: string | null;
   lat: number;
   lng: number;
+}
+
+export interface AdhanChoice {
+  place: AdhanPlace;
   method: string;
   madhab: string;
 }
@@ -299,21 +310,35 @@ export function loadAdhanChoice(): AdhanChoice | null {
     const raw = window.localStorage.getItem(ADHAN_CHOICE_KEY);
     if (!raw) return null;
     const o = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof o.method !== 'string' || typeof o.madhab !== 'string') return null;
+    const p = o.place as Record<string, unknown> | undefined;
     if (
-      typeof o.lat !== 'number' ||
-      typeof o.lng !== 'number' ||
-      typeof o.method !== 'string' ||
-      typeof o.madhab !== 'string'
+      p &&
+      (typeof p.name === 'string' || p.name === null) &&
+      typeof p.lat === 'number' &&
+      typeof p.lng === 'number'
     ) {
-      return null;
+      return { place: { name: p.name, lat: p.lat, lng: p.lng }, method: o.method, madhab: o.madhab };
     }
-    return {
-      city: typeof o.city === 'string' ? o.city : null,
-      lat: o.lat,
-      lng: o.lng,
-      method: o.method,
-      madhab: o.madhab,
-    };
+    // Old shape: { city, lat, lng }.
+    if (typeof o.lat === 'number' && typeof o.lng === 'number') {
+      if (typeof o.city === 'string') {
+        const city = findCity(o.city);
+        if (city) {
+          return {
+            place: { name: city.slug, lat: city.lat, lng: city.lng },
+            method: o.method,
+            madhab: o.madhab,
+          };
+        }
+      }
+      return {
+        place: { name: null, lat: o.lat, lng: o.lng },
+        method: o.method,
+        madhab: o.madhab,
+      };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -326,6 +351,76 @@ export function saveAdhanChoice(choice: AdhanChoice): void {
   } catch {
     /* storage full/blocked — non-fatal */
   }
+}
+
+/**
+ * Auto-locate once per session — the single shared entry-point helper used
+ * by BOTH the site-wide banner strip and the /adhan page.
+ *
+ * There is NO default city anymore and times never silently fall back to
+ * any city: when no saved place exists, the first caller in the session
+ * asks the browser for geolocation exactly once (sessionStorage guard, so
+ * navigation never re-prompts; a previous denial is never re-prompted).
+ * Concurrent callers (strip + page mounting together) share one in-flight
+ * promise, so the page never shows needs-location while the strip's prompt
+ * is still open. On success the place is reverse-geocoded to a name, saved
+ * as the choice (ADHAN_CHOICE_EVENT notifies every listener), and returned;
+ * a naming failure still returns the coordinates with a null name. On
+ * denial/unavailability it resolves null — callers then show the honest
+ * needs-location state (linking to /adhan search), never invented times.
+ */
+const GEO_ATTEMPT_KEY = 'ma.adhan_geo_attempted';
+let geoAttempt: Promise<AdhanPlace | null> | null = null;
+
+export function requestBrowserLocationOnce(opts: {
+  method: string;
+  madhab: string;
+}): Promise<AdhanPlace | null> {
+  const saved = loadAdhanChoice();
+  if (saved) return Promise.resolve(saved.place);
+  if (geoAttempt) return geoAttempt;
+  try {
+    if (window.sessionStorage.getItem(GEO_ATTEMPT_KEY) === '1') {
+      return Promise.resolve(null);
+    }
+  } catch {
+    /* sessionStorage blocked — fall through to a single attempt */
+  }
+  if (!('geolocation' in navigator)) {
+    try {
+      window.sessionStorage.setItem(GEO_ATTEMPT_KEY, '1');
+    } catch {
+      /* ignore */
+    }
+    return Promise.resolve(null);
+  }
+  geoAttempt = new Promise((resolve) => {
+    try {
+      window.sessionStorage.setItem(GEO_ATTEMPT_KEY, '1');
+    } catch {
+      /* ignore */
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const finish = (name: string | null) => {
+          const place: AdhanPlace = { name, lat, lng };
+          saveAdhanChoice({ place, method: opts.method, madhab: opts.madhab });
+          resolve(place);
+        };
+        // Reverse-geocode for a display name; a naming failure never blocks
+        // the times — the coordinates themselves become the label.
+        reversePlace(lat, lng).then(
+          (p) => finish(p.name),
+          () => finish(null),
+        );
+      },
+      () => resolve(null),
+      { timeout: 10000, maximumAge: 600000 },
+    );
+  });
+  return geoAttempt;
 }
 
 export interface AdhanMethodOption {
@@ -474,4 +569,46 @@ export async function getAdhanTimesForChoice(params: {
   q.set('tz', String(params.tz ?? localTzOffset()));
   const body = await fetchAdhanJson(`/api/v1/adhan/times?${q.toString()}`);
   return parseTimes(body);
+}
+
+/* ------------------------------------------------------------------ */
+/* Place search / reverse-geocode (Nominatim proxy — worldwide)        */
+/* ------------------------------------------------------------------ */
+
+export interface GeocodePlace {
+  name: string | null;
+  display_name: string;
+  lat: number;
+  lng: number;
+}
+
+function parseGeocodePlace(r: unknown): GeocodePlace {
+  const o = (r ?? {}) as Record<string, unknown>;
+  return {
+    name: typeof o.name === 'string' ? o.name : null,
+    display_name: typeof o.display_name === 'string' ? o.display_name : '',
+    lat: typeof o.lat === 'number' ? o.lat : 0,
+    lng: typeof o.lng === 'number' ? o.lng : 0,
+  };
+}
+
+/** GET /api/v1/adhan/geocode?q=... — up to 8 matches, worldwide. */
+export async function searchPlaces(q: string): Promise<GeocodePlace[]> {
+  const body = await fetchAdhanJson(
+    `/api/v1/adhan/geocode?${new URLSearchParams({ q }).toString()}`,
+  );
+  const results = Array.isArray(body.results) ? body.results : [];
+  return results.map(parseGeocodePlace);
+}
+
+/**
+ * GET /api/v1/adhan/reverse?lat=&lng= — a place name for GPS coordinates.
+ * A null name is NOT an error: callers still set the times from the
+ * coordinates and show the coordinates as the label.
+ */
+export async function reversePlace(lat: number, lng: number): Promise<GeocodePlace> {
+  const body = await fetchAdhanJson(
+    `/api/v1/adhan/reverse?${new URLSearchParams({ lat: String(lat), lng: String(lng) }).toString()}`,
+  );
+  return parseGeocodePlace(body);
 }

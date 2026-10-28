@@ -56,7 +56,12 @@ export function AdhanCountdown({
     const applyChoice = () => {
       const choice = loadAdhanChoice();
       if (!choice) return;
-      saveLocation({ lat: choice.lat, lng: choice.lng, label: null, source: 'manual' });
+      saveLocation({
+        lat: choice.place.lat,
+        lng: choice.place.lng,
+        label: choice.place.name,
+        source: 'manual',
+      });
       setOverride(choice);
       setReloadTick((n) => n + 1);
     };

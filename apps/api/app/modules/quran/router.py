@@ -23,6 +23,8 @@ from .schemas import (
     AdhanTimesOut,
     AyahOut,
     DhikrTotalOut,
+    GeocodePlaceOut,
+    GeocodeSearchOut,
     Madhab,
     NoteIn,
     NoteListOut,
@@ -223,7 +225,7 @@ async def adhan_times(
     lat: float | None = Query(default=None, ge=-90.0, le=90.0, description="عرض جغرافیایی"),
     lng: float | None = Query(default=None, ge=-180.0, le=180.0, description="طول جغرافیایی"),
     city: str | None = Query(default=None, description="نام شهر از GET /adhan/options؛ با شهر، lat/lng لازم نیست"),
-    method: AdhanMethod = Query(default="council", description="council|tehran|isna|mwl|egypt|karachi|makkah|qom|jafari|turkmen"),
+    method: AdhanMethod = Query(default="council", description="council|tehran|isna|mwl|egypt|karachi|makkah|qom|jafari"),
     madhab: Madhab = Query(default="hanafi", description="shafi|hanafi (فقط عصر)"),
     day: date | None = Query(default=None, description="پیش‌فرض: امروز UTC"),
     date_: date | None = Query(default=None, alias="date", description="نام مستعار day"),
@@ -233,8 +235,8 @@ async def adhan_times(
 ):
     """اوقات نماز — محاسبهٔ pure-Python (الگوریتم PrayTimes)؛ زمان‌ها HH:MM محلی.
 
-    تربت جام + روش council از جدول رسمی ۳۶۵روزه می‌آید (source=table)؛ بقیهٔ
-    ترکیب‌ها محاسبهٔ نجومی‌اند. روش turkmen زاویهٔ منتشرشده ندارد و ۴۲۲ می‌دهد.
+    روش council + مختصاتِ نزدیکِ تربت جام از جدول رسمی ۳۶۵روزه می‌آید
+    (source=table)؛ بقیهٔ ترکیب‌ها محاسبهٔ نجومی‌اند.
     """
     from datetime import datetime
 
@@ -270,3 +272,23 @@ async def adhan_range(
 async def adhan_options():
     """فهرست روش‌ها (با زاویه و مرجع) و شهرها — مرجع واحد فرانت و CRM."""
     return AdhanOptionsOut(**service.get_adhan_options())
+
+
+@adhan_router.get("/geocode", response_model=GeocodeSearchOut)
+async def adhan_geocode(
+    q: str = Query(..., min_length=1, max_length=200, description="عبارت جست‌وجوی مکان"),
+):
+    """جست‌وجوی مکان در سراسر جهان (پروکسی Nominatim) — برای بخش موقعیت صفحه.
+
+    خطای بالادست ۵۰۲ می‌دهد؛ هرگز نتیجهٔ جعلی برنمی‌گرداند.
+    """
+    return GeocodeSearchOut(**service.search_places(q))
+
+
+@adhan_router.get("/reverse", response_model=GeocodePlaceOut)
+async def adhan_reverse(
+    lat: float = Query(..., ge=-90.0, le=90.0, description="عرض جغرافیایی"),
+    lng: float = Query(..., ge=-180.0, le=180.0, description="طول جغرافیایی"),
+):
+    """نام مکان برای مختصات GPS — نبودِ نام خطا نیست (name برابر None)."""
+    return GeocodePlaceOut(**service.reverse_place(lat, lng))

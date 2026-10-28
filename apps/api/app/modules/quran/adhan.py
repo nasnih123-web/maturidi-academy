@@ -9,8 +9,6 @@
 - makkah/umm-al-qura: فجر ۱۸٫۵، عشا = مغرب + ۹۰ دقیقه (۱۲۰ در رمضان).
 - qom: مؤسسهٔ لواء قم — ۱۶/۱۴، مغرب ۴. jafari: همان اعداد قم با برچسب جعفری.
 - isna: جامعهٔ اسلامی شمال آمریکا — ۱۵/۱۵. mwl: باشگاه مسلمانان دنیا — ۱۸/۱۷.
-- turkmen: مجمع فقه ترکمن صحرا — درجهٔ منتشرشده ندارد؛ API هرگز عدد حدسی
-  برنمی‌گرداند و ۴۲۲ adhan_method_unavailable می‌دهد.
 عصر: shafi (factor=1) / hanafi (factor=2) — مذهب فقط عصر را عوض می‌کند.
 
 این محاسبات نجومی است، نه قاعدهٔ فقهی — §۱۵.۵ (ممنوعیت هاردکد قواعد فقهی)
@@ -27,10 +25,6 @@ from datetime import date
 
 _D2R = math.pi / 180.0
 _R2D = 180.0 / math.pi
-
-
-class AdhanMethodUnavailable(ValueError):
-    """روش زاویهٔ منتشرشده ندارد — محاسبه با عدد حدسی ممنوع است."""
 
 
 # --- پارامترهای روش‌ها (زاویه‌ها برحسب درجه) ---
@@ -94,12 +88,6 @@ METHODS: dict[str, dict] = {
         "fajr": 16.0,
         "maghrib": 4.0,
         "isha": 14.0,
-    },
-    "turkmen": {
-        "label": "Majma Fiqh of Turkmen Sahra",
-        "authority": "مجمع فقه ترکمن صحرا",
-        "available": False,
-        "note": "درجه‌های منتشرشده هنوز تأیید نشده‌اند؛ تا رسیدن منبع، محاسبه انجام نمی‌شود.",
     },
 }
 
@@ -274,16 +262,11 @@ def prayer_times(
     """اوقات نماز برای یک روز/مختصات — خروجی رشته‌های HH:MM.
 
     ValueError برای method/madhab نامعتبر (روتر به ۴۲۲ تبدیل می‌کند).
-    AdhanMethodUnavailable برای روش بدون زاویهٔ منتشرشده (روتر: ۴۲۲
-    adhan_method_unavailable). ramadan=None یعنی تشخیص خودکار با تقویم
+    ramadan=None یعنی تشخیص خودکار با تقویم
     جدولی اسلامی (مرز ماه ممکن است تا یک روز با اعلام رسمی فرق کند).
     """
     if method not in METHODS:
         raise ValueError(f"unknown adhan method: {method}")
-    if not METHODS[method].get("available", True):
-        raise AdhanMethodUnavailable(
-            f"adhan method has no published angles yet: {method}"
-        )
     if madhab not in MADRABS:
         raise ValueError(f"unknown madhab: {madhab}")
     if ramadan is None:

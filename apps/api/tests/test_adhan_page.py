@@ -95,17 +95,24 @@ def test_adhan_defaults_validation_extended():
     assert parsed == {
         "calculation_method": "council",
         "madhab": "hanafi",
-        "default_city": "torbat-e-jam",
     }
     out = encode_setting_value(
         "json",
-        {"calculation_method": "tehran", "madhab": "shafi", "default_city": "khaf"},
+        {"calculation_method": "tehran", "madhab": "shafi"},
         "adhan.defaults",
     )
-    assert json.loads(out)["default_city"] == "khaf"
-    for bad in (
-        {"calculation_method": "turkmen", "madhab": "hanafi"},
+    assert json.loads(out) == {"calculation_method": "tehran", "madhab": "shafi"}
+    # LEGACY TOLERANCE: old stored dicts with default_city parse cleanly,
+    # the city simply ignored (never an error, never written back).
+    for legacy in (
+        {"calculation_method": "tehran", "madhab": "shafi", "default_city": "khaf"},
         {"calculation_method": "council", "madhab": "hanafi", "default_city": ""},
+    ):
+        out = encode_setting_value("json", legacy, "adhan.defaults")
+        assert "default_city" not in json.loads(out)
+    for bad in (
+        {"calculation_method": "nope", "madhab": "hanafi"},
+        {"calculation_method": "council", "madhab": "nope"},
         {"calculation_method": "council", "madhab": "hanafi", "surprise": 1},
     ):
         with pytest.raises(ValueError):
@@ -161,15 +168,15 @@ async def test_times_torbat_other_method_is_computed(tc):
     assert r.json()["source"] == "computed"
 
 
-async def test_times_turkmen_is_unavailable_not_invented(tc):
+async def test_times_unknown_method_is_rejected_by_validation(tc):
+    """روش ناشناخته → ۴۲۲ اعتبارسنجی FastAPI (بدون عدد حدسی، بدون مسیر محاسبه)."""
     client = tc["client"]
     r = await client.get(
         f"{BASE}/adhan/times",
-        params={"city": "torbat-e-jam", "method": "turkmen", "madhab": "hanafi",
+        params={"city": "torbat-e-jam", "method": "nope", "madhab": "hanafi",
                 "day": "2026-03-21", "tz": 3.5},
     )
     assert r.status_code == 422, r.text
-    assert r.json()["error"]["code"] == "adhan_method_unavailable"
 
 
 async def test_times_invalid_city_and_missing_location(tc):
@@ -255,8 +262,9 @@ async def test_options_lists_methods_and_cities(tc):
     assert by_id["council"]["fajr"] == 15.0 and by_id["council"]["isha"] == 15.0
     assert by_id["tehran"]["fajr"] == 17.7 and by_id["tehran"]["isha"] == 14.0
     assert by_id["tehran"]["maghrib"] == 4.5
-    assert by_id["turkmen"]["available"] is False
-    assert by_id["turkmen"]["fajr"] is None
+    # روش حذف‌شده به دستور کاربر هیچ ردیفی ندارد: فهرست دقیقاً همان ۹ روش است.
+    assert set(by_id) == {"council", "tehran", "isna", "mwl", "egypt",
+                          "karachi", "makkah", "qom", "jafari"}
     cities = {c["slug"]: c for c in body["cities"]}
     assert cities["torbat-e-jam"]["lat"] == 35.24306
     assert cities["torbat-e-jam"]["lng"] == 60.625
@@ -284,3 +292,136 @@ async def test_high_latitude_times_are_finite(tc):
     for v in r.json()["times"].values():
         hh, mm = v.split(":")
         assert 0 <= int(hh) <= 23 and 0 <= int(mm) <= 59
+
+
+# ---------------------------------------------------------------------------
+# جست‌وجوی مکان (Nominatim — شبکه همیشه mock است، هرگز زنده نیست)
+# ---------------------------------------------------------------------------
+
+
+def _geocode_module():
+    from app.modules.quran import geocode
+
+    return geocode
+
+
+def _search_item(display, lat, lon, address):
+    item = {"display_name": display, "lat": str(lat), "lon": str(lon)}
+    if address is not None:
+        item["address"] = address
+    return item
+
+
+async def test_geocode_search_short_name_chain(tc, monkeypatch):
+    g = _geocode_module()
+    calls = []
+
+    def fake_http(path, params):
+        calls.append((path, params["q"]))
+        return [
+            _search_item("X village, County, State", 35.1, 60.5,
+                         {"village": "X village", "county": "County"}),
+            _search_item("Y town, County, State", 35.2, 60.6,
+                         {"town": "Y town", "county": "County"}),
+            _search_item("Z County, State", 35.3, 60.7, {"county": "Z County"}),
+        ]
+
+    monkeypatch.setattr(g, "_http_get", fake_http)
+    client = tc["client"]
+    r = await client.get(f"{BASE}/adhan/geocode", params={"q": "chain-probe-xyz"})
+    assert r.status_code == 200, r.text
+    results = r.json()["results"]
+    assert [x["name"] for x in results] == ["X village", "Y town", "Z County"]
+    assert results[0]["lat"] == 35.1 and results[0]["lng"] == 60.5
+    assert calls[0][0] == "/search"
+
+
+async def test_geocode_search_no_address_falls_back_to_display_name(tc, monkeypatch):
+    g = _geocode_module()
+    monkeypatch.setattr(
+        g, "_http_get",
+        lambda path, params: [_search_item("Nameless Place, Region", 10.0, 20.0, None)],
+    )
+    client = tc["client"]
+    r = await client.get(f"{BASE}/adhan/geocode", params={"q": "fallback-probe-xyz"})
+    assert r.status_code == 200, r.text
+    assert r.json()["results"][0]["name"] == "Nameless Place"
+
+
+async def test_geocode_search_upstream_failure_is_502(tc, monkeypatch):
+    g = _geocode_module()
+
+    def boom(path, params):
+        raise g.GeocodeUpstreamError("nominatim down")
+
+    monkeypatch.setattr(g, "_http_get", boom)
+    client = tc["client"]
+    r = await client.get(f"{BASE}/adhan/geocode", params={"q": "failure-probe-xyz"})
+    assert r.status_code == 502, r.text
+    assert r.json()["error"]["code"] == "geocode_upstream_unavailable"
+
+
+async def test_geocode_reverse_name_and_no_name(tc, monkeypatch):
+    g = _geocode_module()
+    monkeypatch.setattr(
+        g, "_http_get",
+        lambda path, params: _search_item(
+            "Khaf, Razavi Khorasan, Iran", 34.5723, 60.144,
+            {"town": "Khaf", "county": "Khaf"}),
+    )
+    client = tc["client"]
+    r = await client.get(f"{BASE}/adhan/reverse", params={"lat": 34.5723, "lng": 60.144})
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == "Khaf"
+    monkeypatch.setattr(
+        g, "_http_get",
+        lambda path, params: {"display_name": "", "lat": "0.0", "lon": "0.0"},
+    )
+    r = await client.get(f"{BASE}/adhan/reverse", params={"lat": 0.0, "lng": 0.0})
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] is None  # نبودِ نام خطا نیست
+
+
+# ---------------------------------------------------------------------------
+# نزدیکی به تربت جام (شعاع ۳۵ کیلومتر) بدون فیلد شهر
+# ---------------------------------------------------------------------------
+
+
+async def test_times_near_torbat_coords_serve_table(tc):
+    """مختصات ~۲۰ کیلومتری تربت جام + council → جدول (بدون پارامتر city)."""
+    client = tc["client"]
+    r = await client.get(
+        f"{BASE}/adhan/times",
+        params={"lat": 35.10, "lng": 60.50, "method": "council", "madhab": "hanafi",
+                "day": "2026-03-21", "tz": 3.5},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["source"] == "table"
+    assert body["city"] is None
+    for i, name in enumerate(SIX):
+        assert body["times"][name] == TABLE_ROW_0101[i], name
+
+
+async def test_times_far_coords_with_council_are_computed(tc):
+    """تهران + council → محاسبه (خارج از شعاع جدول)."""
+    client = tc["client"]
+    r = await client.get(
+        f"{BASE}/adhan/times",
+        params={"lat": 35.6892, "lng": 51.389, "method": "council", "madhab": "hanafi",
+                "day": "2026-03-21", "tz": 3.5},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["source"] == "computed"
+
+
+async def test_times_esfand_30_via_coords_falls_back_to_computation(tc):
+    """۱۴۰۸-۱۲-۳۰ با مختصات تربت جام → computed (جدول ۱۲-۳۰ ندارد)."""
+    client = tc["client"]
+    r = await client.get(
+        f"{BASE}/adhan/times",
+        params={"lat": 35.24306, "lng": 60.625, "method": "council", "madhab": "hanafi",
+                "day": "2030-03-20", "tz": 3.5},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["source"] == "computed"
