@@ -230,6 +230,7 @@ export function PlacesGlobe({
   const [myLoc, setMyLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [locStatus, setLocStatus] = useState<'idle' | 'busy' | 'ok' | 'denied' | 'unsupported' | 'error'>('idle');
   const [qibla, setQibla] = useState<Qibla | null>(null);
+  const [qiblaDiag, setQiblaDiag] = useState('');
   const [autoRotate, setAutoRotate] = useState(globeSettings.autoRotate);
   const [mapError, setMapError] = useState(false);
   const [tileFallback, setTileFallback] = useState(false);
@@ -273,9 +274,41 @@ export function PlacesGlobe({
     return places.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
   }, [places, query]);
 
+  // TEMPORARY diagnostic: surfaces the qibla layer state in the bar so
+  // a missing arc can be told apart from an added-but-invisible one.
+  // Reads only; changes nothing. Removed once the arc renders.
+  const refreshQiblaDiag = (error?: unknown): void => {
+    const map = mapRef.current;
+    if (!map) {
+      setQiblaDiag('diag: map=none');
+      return;
+    }
+    try {
+      const loaded = map.isStyleLoaded();
+      const vis = (id: string): string => {
+        if (!loaded || !map.getLayer(id)) return 'missing';
+        const v = map.getLayoutProperty(id, 'visibility');
+        return typeof v === 'string' ? v : 'default';
+      };
+      const err = error instanceof Error ? error.message : error ? String(error) : '';
+      setQiblaDiag(
+        `diag: style=${loaded ? 'loaded' : 'loading'} zoom=${map.getZoom().toFixed(1)} ` +
+          `srcArc=${map.getSource('qibla-arc') ? 'yes' : 'no'} ` +
+          `srcKaaba=${map.getSource('qibla-kaaba') ? 'yes' : 'no'} ` +
+          `casing=${vis('qibla-arc-casing')} arc=${vis('qibla-arc')} dot=${vis('qibla-kaaba')}` +
+          (err ? ` err=${err.slice(0, 120)}` : ''),
+      );
+    } catch (e) {
+      setQiblaDiag(`diag: read-failed ${e instanceof Error ? e.message : String(e)}`.slice(0, 200));
+    }
+  };
+
   const addQiblaLayer = (q: Qibla): void => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map || !map.isStyleLoaded()) {
+      refreshQiblaDiag();
+      return;
+    }
     try {
       const lineData = {
         type: 'Feature' as const,
@@ -322,10 +355,12 @@ export function PlacesGlobe({
           paint: { 'circle-color': '#e8c766', 'circle-radius': 6, 'circle-stroke-width': 2, 'circle-stroke-color': '#12161d' },
         });
       }
+      refreshQiblaDiag();
     } catch (e) {
       // Never let a layer failure blank the page: the bar still shows
       // the bearing/distance, and the error stays in the console.
       console.error('qibla layer failed', e);
+      refreshQiblaDiag(e);
     }
   };
 
@@ -578,6 +613,7 @@ export function PlacesGlobe({
     if (!map) return;
     if (!qibla) {
       removeQiblaLayer();
+      setQiblaDiag('');
       return;
     }
     // If the style is still loading, the persistent style.load handler
@@ -682,6 +718,12 @@ export function PlacesGlobe({
             .replace('{km}', String(qiblaDistanceKm(qibla.fromLat, qibla.fromLng)))}
           {' — '}
           {qibla.fromName}
+          {qiblaDiag ? (
+            <>
+              <br />
+              {qiblaDiag}
+            </>
+          ) : null}
         </p>
       ) : null}
 
