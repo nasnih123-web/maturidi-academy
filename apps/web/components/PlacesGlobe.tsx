@@ -117,7 +117,7 @@ function PlacesPanel({
       <div className="places-panel-head">
         <h3>{place.name}</h3>
         <button type="button" className="places-panel-close" onClick={onClose} aria-label={labels.closePanel}>
-          \u00d7
+          ×
         </button>
       </div>
       {popupConfig.showImage && images.length > 0 ? (
@@ -553,9 +553,16 @@ export function PlacesGlobe({
         el.className = 'globe-marker globe-marker-me';
         el.textContent = '📍';
         el.title = labels.myLocation;
-        meMarkerRef.current = new maplibregl.Marker({ element: el }).addTo(map);
+        // Position BEFORE addTo: addTo() positions the marker immediately,
+        // and an unpositioned marker throws the LngLatLike error (proven
+        // from the user's console + maplibre-gl source). Place markers
+        // already use this order.
+        meMarkerRef.current = new maplibregl.Marker({ element: el })
+          .setLngLat([myLoc.lng, myLoc.lat])
+          .addTo(map);
+      } else {
+        meMarkerRef.current.setLngLat([myLoc.lng, myLoc.lat]);
       }
-      meMarkerRef.current.setLngLat([myLoc.lng, myLoc.lat]);
     } else if (meMarkerRef.current) {
       meMarkerRef.current.remove();
       meMarkerRef.current = null;
