@@ -220,6 +220,9 @@ export function PlacesGlobe({
   const tileFallbackRef = useRef(false);
   const pointerDownRef = useRef(false);
   const qiblaRef = useRef<Qibla | null>(null);
+  // First qibla-layer add error, kept forever: later error-free
+  // refreshes must not overwrite it, or a mid-add throw leaves no trace.
+  const firstQiblaErrorRef = useRef('');
   const firstModeRef = useRef(true);
 
   const [mode, setMode] = useState<GlobeMode>(globeSettings.defaultMode);
@@ -231,6 +234,7 @@ export function PlacesGlobe({
   const [locStatus, setLocStatus] = useState<'idle' | 'busy' | 'ok' | 'denied' | 'unsupported' | 'error'>('idle');
   const [qibla, setQibla] = useState<Qibla | null>(null);
   const [qiblaDiag, setQiblaDiag] = useState('');
+  const [qiblaDiag2, setQiblaDiag2] = useState('');
   const [autoRotate, setAutoRotate] = useState(globeSettings.autoRotate);
   const [mapError, setMapError] = useState(false);
   const [tileFallback, setTileFallback] = useState(false);
@@ -281,9 +285,51 @@ export function PlacesGlobe({
     const map = mapRef.current;
     if (!map) {
       setQiblaDiag('diag: map=none');
+      setQiblaDiag2('');
       return;
     }
     try {
+      // Third diagnostic line first: which part of Style.loaded() keeps
+      // the style "loading" at steady state. All internals are read
+      // defensively: anything unavailable becomes an error text, never
+      // a crash (this function must never blank the page).
+      let diag2 = '';
+      try {
+        const style = (map as unknown as { style?: {
+          _loaded?: boolean;
+          _updatedSources?: Record<string, string>;
+          tileManagers?: Record<string, { loaded?: () => boolean }>;
+          imageManager?: { isLoaded?: () => boolean };
+        } }).style;
+        const parsed = style ? (style._loaded ? 'yes' : 'no') : 'no-style';
+        const updated = style && style._updatedSources
+          ? Object.keys(style._updatedSources).join(',') || 'none'
+          : 'n/a';
+        const tm: string[] = [];
+        if (style && style.tileManagers) {
+          for (const id of Object.keys(style.tileManagers)) {
+            let l = '?';
+            try {
+              const m = style.tileManagers[id];
+              l = m && typeof m.loaded === 'function' ? (m.loaded() ? 'loaded' : 'loading') : 'n/a';
+            } catch {
+              l = 'err';
+            }
+            tm.push(`${id}=${l}`);
+          }
+        }
+        let img = '?';
+        try {
+          const im = style?.imageManager;
+          img = im && typeof im.isLoaded === 'function' ? (im.isLoaded() ? 'loaded' : 'loading') : 'n/a';
+        } catch {
+          img = 'err';
+        }
+        diag2 = `diag2: parsed=${parsed} updatedSources=${updated} tileManagers=${tm.length ? tm.join(',') : 'none'} images=${img}`;
+      } catch (e) {
+        diag2 = `diag2: read-failed ${e instanceof Error ? e.message : String(e)}`.slice(0, 200);
+      }
+      setQiblaDiag2(diag2);
       const loaded = map.isStyleLoaded();
       const vis = (id: string): string => {
         // Read the layer directly: gating on loaded() made every layer
@@ -293,7 +339,11 @@ export function PlacesGlobe({
         const v = map.getLayoutProperty(id, 'visibility');
         return typeof v === 'string' ? v : 'default';
       };
-      const err = error instanceof Error ? error.message : error ? String(error) : '';
+      // Keep the FIRST add error: later error-free refreshes (early
+      // returns, idle refreshes) used to overwrite it with nothing.
+      const incoming = error instanceof Error ? error.message : error ? String(error) : '';
+      if (incoming && !firstQiblaErrorRef.current) firstQiblaErrorRef.current = incoming;
+      const err = firstQiblaErrorRef.current;
       setQiblaDiag(
         `diag: style=${loaded ? 'loaded' : 'loading'} zoom=${map.getZoom().toFixed(1)} ` +
           `srcArc=${map.getSource('qibla-arc') ? 'yes' : 'no'} ` +
@@ -633,6 +683,10 @@ export function PlacesGlobe({
     if (!qibla) {
       removeQiblaLayer();
       setQiblaDiag('');
+      // Mirror the diag clear: a stale first-error must not survive
+      // into a fresh qibla session and mislead the next reading.
+      setQiblaDiag2('');
+      firstQiblaErrorRef.current = '';
       return;
     }
     // If the style is still loading, the persistent style.load handler
@@ -741,6 +795,12 @@ export function PlacesGlobe({
             <>
               <br />
               {qiblaDiag}
+            </>
+          ) : null}
+          {qiblaDiag2 ? (
+            <>
+              <br />
+              {qiblaDiag2}
             </>
           ) : null}
         </p>
