@@ -225,7 +225,7 @@ async def adhan_times(
     lat: float | None = Query(default=None, ge=-90.0, le=90.0, description="عرض جغرافیایی"),
     lng: float | None = Query(default=None, ge=-180.0, le=180.0, description="طول جغرافیایی"),
     city: str | None = Query(default=None, description="نام شهر از GET /adhan/options؛ با شهر، lat/lng لازم نیست"),
-    method: AdhanMethod = Query(default="council", description="council|tehran|isna|mwl|egypt|karachi|makkah|qom|jafari"),
+    method: AdhanMethod = Query(default="council", description="council|tehran|isna|mwl|egypt|karachi|makkah|qom|jafari|france"),
     madhab: Madhab = Query(default="hanafi", description="shafi|hanafi (فقط عصر)"),
     day: date | None = Query(default=None, description="پیش‌فرض: امروز UTC"),
     date_: date | None = Query(default=None, alias="date", description="نام مستعار day"),

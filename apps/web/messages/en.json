@@ -400,6 +400,11 @@
         "name": "Ja'fari",
         "authority": "Ja'fari convention",
         "note": ""
+      },
+      "france": {
+        "name": "Union of Islamic Organizations of France (UOIF)",
+        "authority": "Union of Islamic Organizations of France",
+        "note": "Fajr and Isha at 12°; suited to high European latitudes."
       }
     },
     "cities": {

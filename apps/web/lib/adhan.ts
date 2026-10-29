@@ -8,7 +8,7 @@ import type { AdhanSettings } from './settings';
  * Track 1) — the web NEVER invents times.
  *
  * Wire contract (source of truth: apps/api/app/modules/quran/{router,schemas}.py):
- * - GET /api/v1/adhan/times?lat=<f>&lng=<f>&method=<isna|mwl|egypt|karachi|makkah|jafari>
+ * - GET /api/v1/adhan/times?lat=<f>&lng=<f>&method=<council|tehran|isna|mwl|egypt|karachi|makkah|qom|jafari|france>
  *       &madhab=<shafi|hanafi>&day=<YYYY-MM-DD>&tz=<utc-offset-hours>
  *     → { date, latitude, longitude, timezone_offset, method, method_label,
  *         madhab, times: { imsak, fajr, sunrise, dhuhr, asr, maghrib, isha, midnight } }

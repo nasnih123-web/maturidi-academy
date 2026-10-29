@@ -168,6 +168,34 @@ async def test_times_torbat_other_method_is_computed(tc):
     assert r.json()["source"] == "computed"
 
 
+async def test_times_france_method_valid_and_ordered_vs_isna(tc):
+    """فرانسه/UOIF (۱۲/۱۲) در برابر ISNA (۱۵/۱۵): زاویهٔ کوچک‌تر یعنی فجر
+    دیرتر و عشا زودتر؛ و عصر تابع مذهب می‌ماند (تغییری در منطق عصر نیست)."""
+    client = tc["client"]
+    base = {"lat": 35.6892, "lng": 51.3890, "day": "2026-10-19", "tz": 3.5}
+    fr = await client.get(
+        f"{BASE}/adhan/times",
+        params={**base, "method": "france", "madhab": "hanafi"},
+    )
+    assert fr.status_code == 200, fr.text
+    fr_body = fr.json()
+    assert fr_body["method"] == "france"
+    assert set(fr_body["times"]) == {"imsak", "fajr", "sunrise", "dhuhr",
+                                     "asr", "maghrib", "isha", "midnight"}
+    isna = (await client.get(
+        f"{BASE}/adhan/times",
+        params={**base, "method": "isna", "madhab": "hanafi"},
+    )).json()["times"]
+    fr_times = fr_body["times"]
+    assert _to_min(fr_times["fajr"]) > _to_min(isna["fajr"])
+    assert _to_min(fr_times["isha"]) < _to_min(isna["isha"])
+    # بقیهٔ اوقات (طلوع، ظهر، مغرب) به روش وابسته نیستند.
+    assert fr_times["sunrise"] == isna["sunrise"]
+    assert fr_times["dhuhr"] == isna["dhuhr"]
+    assert fr_times["maghrib"] == isna["maghrib"]
+    assert fr_times["asr"] == isna["asr"]
+
+
 async def test_times_unknown_method_is_rejected_by_validation(tc):
     """روش ناشناخته → ۴۲۲ اعتبارسنجی FastAPI (بدون عدد حدسی، بدون مسیر محاسبه)."""
     client = tc["client"]
@@ -262,9 +290,11 @@ async def test_options_lists_methods_and_cities(tc):
     assert by_id["council"]["fajr"] == 15.0 and by_id["council"]["isha"] == 15.0
     assert by_id["tehran"]["fajr"] == 17.7 and by_id["tehran"]["isha"] == 14.0
     assert by_id["tehran"]["maghrib"] == 4.5
-    # روش حذف‌شده به دستور کاربر هیچ ردیفی ندارد: فهرست دقیقاً همان ۹ روش است.
+    assert by_id["france"]["fajr"] == 12.0 and by_id["france"]["isha"] == 12.0
+    # روش حذف‌شده به دستور کاربر هیچ ردیفی ندارد: فهرست دقیقاً همان ۱۰ روش است
+    # (۹ روش پیشین + فرانسه/UOIF که در همین تغییر اضافه شد).
     assert set(by_id) == {"council", "tehran", "isna", "mwl", "egypt",
-                          "karachi", "makkah", "qom", "jafari"}
+                          "karachi", "makkah", "qom", "jafari", "france"}
     cities = {c["slug"]: c for c in body["cities"]}
     assert cities["torbat-e-jam"]["lat"] == 35.24306
     assert cities["torbat-e-jam"]["lng"] == 60.625

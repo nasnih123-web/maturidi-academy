@@ -134,7 +134,7 @@ class TasbihTodayOut(BaseModel):
 
 AdhanMethod = Literal[
     "council", "tehran", "isna", "mwl", "egypt", "karachi", "makkah",
-    "qom", "jafari",
+    "qom", "jafari", "france",
 ]
 Madhab = Literal["shafi", "hanafi"]
 
