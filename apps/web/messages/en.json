@@ -1283,6 +1283,7 @@
     "galleryNext": "Next",
     "galleryCounter": "{i} of {n}",
     "showAll": "Show all",
+    "mapLoadError": "The map could not be loaded; please refresh the page.",
     "videoRegular": "Video",
     "videoLinkFallback": "Watch video",
     "viewDetail": "Detail page",
