@@ -4,17 +4,19 @@
  * PlacesGlobe — the MapLibre places page (globe-fixes phase).
  *
  * A MapLibre GL globe (globe projection, free raster tile sources) with
- * emoji markers for published places, a corner legend (symbol + label per
- * type, click to toggle that type), a tile-mode switcher, name search, a
- * visible places list (click a name to fly to it), a "show all" view fit,
- * a "my location" button with a qibla arc to the Kaaba, and a full-details
- * popup on the globe page itself (gallery, videos, description, city,
- * type, qibla button). Nothing navigates away to a separate detail page.
+ * dot markers at far zoom (emoji symbols when zoomed in), a tile-mode
+ * switcher, name search, a categorized collapsible places list (click a
+ * name to fly to it, per-type filter toggles), a "show all" view fit,
+ * a "my location" button with a qibla arc to the Kaaba, and a full-page
+ * details panel on the globe page itself (gallery, videos, description,
+ * city, type, qibla button). Nothing navigates away to a separate page.
  *
  * Pure presentation: all data arrives as props from the RSC shell; the
  * only logic here is view state + the pure math in lib/places-globe.
  * The qibla arc is a GeoJSON great-circle line layer — the old
  * three-globe arcs path (which blanked the canvas when drawn) is gone.
+ * Satellite tiles come from Google (Esri blocks some regions); if
+ * satellite tiles fail in bulk, the globe falls back to the simple mode.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
@@ -33,8 +35,11 @@ import { videoEmbedUrl } from '@/lib/video-embed';
 import type { PlacesGlobeSettings } from '@/lib/settings';
 
 export interface PlacesGlobeLabels {
-  legendTitle: string;
   allTypes: string;
+  tileFallbackNotice: string;
+  locationError: string;
+  toggleTypeFilter: string;
+  closePanel: string;
   modeSatellite: string;
   modeSimple: string;
   modeDark: string;
@@ -77,143 +82,117 @@ const MODE_LABEL_KEYS: { mode: GlobeMode; key: keyof PlacesGlobeLabels }[] = [
 ];
 
 /**
- * Build the popup's DOM imperatively (no React root inside the MapLibre
- * popup): user strings go through textContent only, never innerHTML, and
- * image/video URLs are already allowlisted upstream (safeImageUrl /
- * videoEmbedUrl). Gallery prev/next rewrite the <img> src in place.
+ * Full-page place panel: replaces the old 340px MapLibre popup, which
+ * rendered half off-screen for markers near the globe edge. The panel
+ * covers the whole explorer, scrolls, and closes with an x; the qibla
+ * button closes it too, so the map and the arc stay visible.
  */
-function buildPopupDom(
-  place: PlaceView,
-  popupConfig: PlacesPopupConfig,
-  typeDefs: PlaceTypeDef[],
-  locale: string,
-  labels: PlacesGlobeLabels,
-  onQibla: (place: PlaceView) => void,
-): HTMLElement {
-  const root = document.createElement('div');
-  root.className = 'places-popup';
-  const title = document.createElement('h3');
-  title.textContent = place.name;
-  root.appendChild(title);
-
+function PlacesPanel({
+  place,
+  popupConfig,
+  typeDefs,
+  locale,
+  labels,
+  onQibla,
+  onClose,
+}: {
+  place: PlaceView;
+  popupConfig: PlacesPopupConfig;
+  typeDefs: PlaceTypeDef[];
+  locale: string;
+  labels: PlacesGlobeLabels;
+  onQibla: (place: PlaceView) => void;
+  onClose: () => void;
+}) {
   const images =
     place.images.length > 0
       ? place.images
       : coverImage(place)
         ? [{ url: coverImage(place) as string, caption: '' }]
         : [];
-  if (popupConfig.showImage && images.length > 0) {
-    const gallery = document.createElement('div');
-    gallery.className = 'places-popup-gallery';
-    const img = document.createElement('img');
-    img.src = images[0].url;
-    img.alt = images[0].caption || place.name;
-    img.loading = 'lazy';
-    gallery.appendChild(img);
-    if (images.length > 1) {
-      let idx = 0;
-      const nav = document.createElement('div');
-      nav.className = 'places-popup-gallery-nav';
-      const prev = document.createElement('button');
-      prev.type = 'button';
-      prev.textContent = labels.galleryPrev;
-      const counter = document.createElement('span');
-      const render = (): void => {
-        img.src = images[idx].url;
-        img.alt = images[idx].caption || place.name;
-        counter.textContent = labels.galleryCounter
-          .replace('{i}', String(idx + 1))
-          .replace('{n}', String(images.length));
-      };
-      prev.addEventListener('click', () => {
-        idx = (idx - 1 + images.length) % images.length;
-        render();
-      });
-      const next = document.createElement('button');
-      next.type = 'button';
-      next.textContent = labels.galleryNext;
-      next.addEventListener('click', () => {
-        idx = (idx + 1) % images.length;
-        render();
-      });
-      render();
-      nav.append(prev, counter, next);
-      gallery.appendChild(nav);
-    }
-    root.appendChild(gallery);
-  }
-
-  if (popupConfig.showDescription && place.description) {
-    const desc = document.createElement('p');
-    desc.className = 'place-desc';
-    desc.textContent = place.description;
-    root.appendChild(desc);
-  }
-
-  const meta = document.createElement('dl');
-  meta.className = 'place-meta';
-  if (popupConfig.showType) {
-    const row = document.createElement('div');
-    const dt = document.createElement('dt');
-    dt.textContent = labels.typeLabel;
-    const dd = document.createElement('dd');
-    dd.textContent = `${typeEmoji(typeDefs, place.type)} ${typeLabel(typeDefs, place.type, locale)}`;
-    row.append(dt, dd);
-    meta.appendChild(row);
-  }
-  if (popupConfig.showCity && place.city) {
-    const row = document.createElement('div');
-    const dt = document.createElement('dt');
-    dt.textContent = labels.cityLabel;
-    const dd = document.createElement('dd');
-    dd.textContent = place.city;
-    row.append(dt, dd);
-    meta.appendChild(row);
-  }
-  if (meta.childElementCount > 0) root.appendChild(meta);
-
-  if (place.video360Id) {
-    const p = document.createElement('p');
-    const a = document.createElement('a');
-    a.className = 'place-tour-link';
-    a.href = `/${locale}/library/${place.video360Id}`;
-    a.textContent = labels.video360;
-    p.appendChild(a);
-    root.appendChild(p);
-  }
-  if (place.videoUrl) {
-    const embed = videoEmbedUrl(place.videoUrl);
-    if (embed) {
-      const frame = document.createElement('iframe');
-      frame.title = place.name;
-      frame.src = embed;
-      frame.loading = 'lazy';
-      frame.allowFullscreen = true;
-      frame.style.width = '100%';
-      frame.style.height = '220px';
-      frame.style.border = '0';
-      frame.style.borderRadius = '0.6rem';
-      root.appendChild(frame);
-    } else {
-      const p = document.createElement('p');
-      const a = document.createElement('a');
-      a.className = 'place-tour-link';
-      a.href = place.videoUrl;
-      a.target = '_blank';
-      a.rel = 'noreferrer';
-      a.textContent = labels.videoLinkFallback;
-      p.appendChild(a);
-      root.appendChild(p);
-    }
-  }
-
-  const qiblaBtn = document.createElement('button');
-  qiblaBtn.type = 'button';
-  qiblaBtn.className = 'globe-tool-btn';
-  qiblaBtn.textContent = labels.qiblaFromHere;
-  qiblaBtn.addEventListener('click', () => onQibla(place));
-  root.appendChild(qiblaBtn);
-  return root;
+  const [idx, setIdx] = useState(0);
+  const videoEmbed = place.videoUrl ? videoEmbedUrl(place.videoUrl) : null;
+  return (
+    <div className="places-panel" role="dialog" aria-label={place.name}>
+      <div className="places-panel-head">
+        <h3>{place.name}</h3>
+        <button type="button" className="places-panel-close" onClick={onClose} aria-label={labels.closePanel}>
+          \u00d7
+        </button>
+      </div>
+      {popupConfig.showImage && images.length > 0 ? (
+        <div className="places-panel-gallery">
+          <img src={images[idx].url} alt={images[idx].caption || place.name} loading="lazy" />
+          {images.length > 1 ? (
+            <div className="places-panel-gallery-nav">
+              <button type="button" onClick={() => setIdx((i) => (i - 1 + images.length) % images.length)}>
+                {labels.galleryPrev}
+              </button>
+              <span>
+                {labels.galleryCounter.replace('{i}', String(idx + 1)).replace('{n}', String(images.length))}
+              </span>
+              <button type="button" onClick={() => setIdx((i) => (i + 1) % images.length)}>
+                {labels.galleryNext}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {popupConfig.showDescription && place.description ? (
+        <p className="place-desc">{place.description}</p>
+      ) : null}
+      <dl className="place-meta">
+        {popupConfig.showType ? (
+          <div>
+            <dt>{labels.typeLabel}</dt>
+            <dd>
+              {typeEmoji(typeDefs, place.type)} {typeLabel(typeDefs, place.type, locale)}
+            </dd>
+          </div>
+        ) : null}
+        {popupConfig.showCity && place.city ? (
+          <div>
+            <dt>{labels.cityLabel}</dt>
+            <dd>{place.city}</dd>
+          </div>
+        ) : null}
+      </dl>
+      {place.video360Id ? (
+        <p>
+          <a className="place-tour-link" href={`/${locale}/library/${place.video360Id}`}>
+            {labels.video360}
+          </a>
+        </p>
+      ) : null}
+      {place.videoUrl ? (
+        videoEmbed ? (
+          <iframe
+            title={place.name}
+            src={videoEmbed}
+            loading="lazy"
+            allowFullScreen
+            className="places-panel-video"
+          />
+        ) : (
+          <p>
+            <a className="place-tour-link" href={place.videoUrl} target="_blank" rel="noreferrer">
+              {labels.videoLinkFallback}
+            </a>
+          </p>
+        )
+      ) : null}
+      <button
+        type="button"
+        className="globe-tool-btn"
+        onClick={() => {
+          onQibla(place);
+          onClose();
+        }}
+      >
+        {labels.qiblaFromHere}
+      </button>
+    </div>
+  );
 }
 
 export function PlacesGlobe({
@@ -235,9 +214,10 @@ export function PlacesGlobe({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const meMarkerRef = useRef<maplibregl.Marker | null>(null);
-  const popupRef = useRef<maplibregl.Popup | null>(null);
-  const suppressPopupCloseRef = useRef(false);
-  const popupOpenRef = useRef(false);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const modeRef = useRef<GlobeMode>(globeSettings.defaultMode);
+  const tileErrorCountRef = useRef(0);
+  const tileFallbackRef = useRef(false);
   const pointerDownRef = useRef(false);
   const qiblaRef = useRef<Qibla | null>(null);
   const firstModeRef = useRef(true);
@@ -248,10 +228,12 @@ export function PlacesGlobe({
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [myLoc, setMyLoc] = useState<{ lat: number; lng: number } | null>(null);
-  const [locStatus, setLocStatus] = useState<'idle' | 'busy' | 'ok' | 'denied' | 'unsupported'>('idle');
+  const [locStatus, setLocStatus] = useState<'idle' | 'busy' | 'ok' | 'denied' | 'unsupported' | 'error'>('idle');
   const [qibla, setQibla] = useState<Qibla | null>(null);
   const [autoRotate, setAutoRotate] = useState(globeSettings.autoRotate);
   const [mapError, setMapError] = useState(false);
+  const [tileFallback, setTileFallback] = useState(false);
+  const [openCats, setOpenCats] = useState<ReadonlySet<string>>(new Set());
 
   const visiblePlaces = useMemo(
     () => places.filter((p) => !hiddenTypes.has(p.type)),
@@ -264,6 +246,27 @@ export function PlacesGlobe({
     return m;
   }, [places]);
 
+  const groups = useMemo(
+    () =>
+      typeDefs
+        .map((def) => ({
+          def,
+          items: visiblePlaces.filter((p) => p.type === def.key),
+          total: counts.get(def.key) ?? 0,
+        }))
+        .filter((g) => g.total > 0),
+    [typeDefs, visiblePlaces, counts],
+  );
+
+  const toggleCat = (key: string): void => {
+    setOpenCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   const searchResults = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
@@ -273,59 +276,88 @@ export function PlacesGlobe({
   const addQiblaLayer = (q: Qibla): void => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
-    const lineData = {
-      type: 'Feature' as const,
-      properties: {},
-      geometry: { type: 'LineString' as const, coordinates: greatCircleToKaaba(q.fromLat, q.fromLng) },
-    };
-    const existing = map.getSource('qibla-arc') as maplibregl.GeoJSONSource | undefined;
-    if (existing) {
-      existing.setData(lineData);
-      return;
-    }
-    map.addSource('qibla-arc', { type: 'geojson', data: lineData });
-    map.addLayer({
-      id: 'qibla-arc',
-      type: 'line',
-      source: 'qibla-arc',
-      paint: { 'line-color': '#e8c766', 'line-width': 3, 'line-opacity': 0.95 },
-    });
-    map.addSource('qibla-kaaba', {
-      type: 'geojson',
-      data: {
+    try {
+      const lineData = {
         type: 'Feature' as const,
         properties: {},
-        geometry: { type: 'Point' as const, coordinates: [KAABA.lng, KAABA.lat] },
-      },
-    });
-    map.addLayer({
-      id: 'qibla-kaaba',
-      type: 'circle',
-      source: 'qibla-kaaba',
-      paint: { 'circle-color': '#e8c766', 'circle-radius': 6, 'circle-stroke-width': 2, 'circle-stroke-color': '#12161d' },
-    });
+        geometry: { type: 'LineString' as const, coordinates: greatCircleToKaaba(q.fromLat, q.fromLng) },
+      };
+      const arcSource = map.getSource('qibla-arc') as maplibregl.GeoJSONSource | undefined;
+      if (arcSource) arcSource.setData(lineData);
+      else map.addSource('qibla-arc', { type: 'geojson', data: lineData });
+      // Casing first (wide, dark, translucent) so the gold line stays
+      // visible on any imagery. Each layer is added only if missing, so
+      // a half-added state (source without layer) repairs itself.
+      if (!map.getLayer('qibla-arc-casing')) {
+        map.addLayer({
+          id: 'qibla-arc-casing',
+          type: 'line',
+          source: 'qibla-arc',
+          paint: { 'line-color': '#12161d', 'line-width': 8, 'line-opacity': 0.55 },
+        });
+      }
+      if (!map.getLayer('qibla-arc')) {
+        map.addLayer({
+          id: 'qibla-arc',
+          type: 'line',
+          source: 'qibla-arc',
+          paint: { 'line-color': '#e8c766', 'line-width': 4, 'line-opacity': 0.95 },
+        });
+      }
+      if (!map.getSource('qibla-kaaba')) {
+        map.addSource('qibla-kaaba', {
+          type: 'geojson',
+          data: {
+            type: 'Feature' as const,
+            properties: {},
+            geometry: { type: 'Point' as const, coordinates: [KAABA.lng, KAABA.lat] },
+          },
+        });
+      }
+      if (!map.getLayer('qibla-kaaba')) {
+        map.addLayer({
+          id: 'qibla-kaaba',
+          type: 'circle',
+          source: 'qibla-kaaba',
+          paint: { 'circle-color': '#e8c766', 'circle-radius': 6, 'circle-stroke-width': 2, 'circle-stroke-color': '#12161d' },
+        });
+      }
+    } catch (e) {
+      // Never let a layer failure blank the page: the bar still shows
+      // the bearing/distance, and the error stays in the console.
+      console.error('qibla layer failed', e);
+    }
   };
 
   const removeQiblaLayer = (): void => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
-    if (map.getLayer('qibla-arc')) map.removeLayer('qibla-arc');
-    if (map.getLayer('qibla-kaaba')) map.removeLayer('qibla-kaaba');
-    if (map.getSource('qibla-arc')) map.removeSource('qibla-arc');
-    if (map.getSource('qibla-kaaba')) map.removeSource('qibla-kaaba');
+    try {
+      if (map.getLayer('qibla-arc')) map.removeLayer('qibla-arc');
+      if (map.getLayer('qibla-arc-casing')) map.removeLayer('qibla-arc-casing');
+      if (map.getLayer('qibla-kaaba')) map.removeLayer('qibla-kaaba');
+      if (map.getSource('qibla-arc')) map.removeSource('qibla-arc');
+      if (map.getSource('qibla-kaaba')) map.removeSource('qibla-kaaba');
+    } catch (e) {
+      console.error('qibla layer removal failed', e);
+    }
   };
 
   const fitArc = (fromLat: number, fromLng: number): void => {
     const map = mapRef.current;
     if (!map) return;
-    if (qiblaDistanceKm(fromLat, fromLng) < 50) {
-      map.flyTo({ center: [fromLng, fromLat], zoom: 10, duration: 1500 });
-      return;
+    try {
+      if (qiblaDistanceKm(fromLat, fromLng) < 50) {
+        map.flyTo({ center: [fromLng, fromLat], zoom: 10, duration: 1500 });
+        return;
+      }
+      const bounds = new maplibregl.LngLatBounds();
+      bounds.extend([fromLng, fromLat]);
+      bounds.extend([KAABA.lng, KAABA.lat]);
+      map.fitBounds(bounds, { padding: 80, maxZoom: 6, duration: 1500 });
+    } catch (e) {
+      console.error('qibla camera move failed', e);
     }
-    const bounds = new maplibregl.LngLatBounds();
-    bounds.extend([fromLng, fromLat]);
-    bounds.extend([KAABA.lng, KAABA.lat]);
-    map.fitBounds(bounds, { padding: 80, maxZoom: 6, duration: 1500 });
   };
 
   const selectPlace = (place: PlaceView): void => {
@@ -354,6 +386,16 @@ export function PlacesGlobe({
     });
   };
 
+  const changeMode = (m: GlobeMode): void => {
+    modeRef.current = m;
+    if (m === 'satellite') {
+      tileErrorCountRef.current = 0;
+      tileFallbackRef.current = false;
+      setTileFallback(false);
+    }
+    setMode(m);
+  };
+
   const showQiblaFromPlace = (place: PlaceView): void => {
     setQibla({ fromLat: place.lat, fromLng: place.lng, fromName: place.name });
     fitArc(place.lat, place.lng);
@@ -367,12 +409,19 @@ export function PlacesGlobe({
     setLocStatus('busy');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        setMyLoc({ lat, lng });
-        setLocStatus('ok');
-        setQibla({ fromLat: lat, fromLng: lng, fromName: labels.myLocation });
-        fitArc(lat, lng);
+        try {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setMyLoc({ lat, lng });
+          setLocStatus('ok');
+          setQibla({ fromLat: lat, fromLng: lng, fromName: labels.myLocation });
+          fitArc(lat, lng);
+        } catch (e) {
+          // A failure here used to blank the page; surface it as a
+          // status line instead, with the error in the console.
+          console.error('my location failed', e);
+          setLocStatus('error');
+        }
       },
       () => setLocStatus('denied'),
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 },
@@ -412,8 +461,31 @@ export function PlacesGlobe({
       setMapError(true);
       return;
     }
-    if (map.isStyleLoaded()) applyGlobeProjection(map);
-    else map.once('style.load', () => applyGlobeProjection(map));
+    const onStyleLoad = (): void => {
+      applyGlobeProjection(map);
+      if (qiblaRef.current) addQiblaLayer(qiblaRef.current);
+    };
+    if (map.isStyleLoaded()) onStyleLoad();
+    else map.on('style.load', onStyleLoad);
+    map.on('error', () => {
+      // Satellite tiles failing in bulk (e.g. a region block) must not
+      // leave a blank map: fall back to the simple mode once, with a
+      // notice. Other modes keep their errors visible in the console.
+      if (modeRef.current !== 'satellite' || tileFallbackRef.current) return;
+      tileErrorCountRef.current += 1;
+      if (tileErrorCountRef.current >= 8) {
+        tileFallbackRef.current = true;
+        setTileFallback(true);
+        setMode('simple');
+        modeRef.current = 'simple';
+      }
+    });
+    const updateFar = (): void => {
+      const frame = frameRef.current;
+      if (frame) frame.classList.toggle('globe-far', map.getZoom() < 5);
+    };
+    map.on('zoom', updateFar);
+    updateFar();
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
     mapRef.current = map;
     const onDown = (): void => {
@@ -445,11 +517,9 @@ export function PlacesGlobe({
     }
     const map = mapRef.current;
     if (!map) return;
+    // The persistent style.load handler from the creation effect
+    // re-applies the globe projection and the qibla arc.
     map.setStyle(globeStyle(mode));
-    map.once('style.load', () => {
-      applyGlobeProjection(map);
-      if (qiblaRef.current) addQiblaLayer(qiblaRef.current);
-    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
@@ -503,53 +573,11 @@ export function PlacesGlobe({
       removeQiblaLayer();
       return;
     }
+    // If the style is still loading, the persistent style.load handler
+    // adds the arc once it arrives (qiblaRef is already set above).
     if (map.isStyleLoaded()) addQiblaLayer(qibla);
-    else map.once('style.load', () => addQiblaLayer(qibla));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qibla]);
-
-  // Popup lifecycle. Programmatic removal (selection change / unmount)
-  // suppresses the close handler so it cannot clear the new selection;
-  // only the user's own × click clears it.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !selected) {
-      popupOpenRef.current = false;
-      return;
-    }
-    const place = selected;
-    const popup = new maplibregl.Popup({
-      closeButton: true,
-      maxWidth: '340px',
-      offset: 18,
-      className: 'places-globe-popup',
-    });
-    popup.setLngLat([place.lng, place.lat]);
-    popup.setDOMContent(
-      buildPopupDom(place, popupConfig, typeDefs, locale, labels, showQiblaFromPlace),
-    );
-    popup.on('close', () => {
-      if (suppressPopupCloseRef.current) {
-        suppressPopupCloseRef.current = false;
-        return;
-      }
-      popupRef.current = null;
-      popupOpenRef.current = false;
-      setSelected(null);
-    });
-    popup.addTo(map);
-    popupRef.current = popup;
-    popupOpenRef.current = true;
-    return () => {
-      if (popupRef.current === popup) {
-        suppressPopupCloseRef.current = true;
-        popup.remove();
-        popupRef.current = null;
-      }
-      popupOpenRef.current = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected]);
 
   // Auto-rotate: slowly advance center longitude. Paused while the user
   // holds the map or while a popup is open, so the popup never drifts away.
@@ -558,7 +586,7 @@ export function PlacesGlobe({
     let raf = 0;
     const step = (): void => {
       const map = mapRef.current;
-      if (map && !pointerDownRef.current && !popupOpenRef.current) {
+      if (map && !pointerDownRef.current && !selected) {
         const c = map.getCenter();
         map.jumpTo({ center: [c.lng + 0.02, c.lat] });
       }
@@ -566,7 +594,7 @@ export function PlacesGlobe({
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [autoRotate]);
+  }, [autoRotate, selected]);
 
   return (
     <div className="globe-explorer">
@@ -577,7 +605,7 @@ export function PlacesGlobe({
               key={m}
               type="button"
               className={mode === m ? 'globe-mode-btn active' : 'globe-mode-btn'}
-              onClick={() => setMode(m)}
+              onClick={() => changeMode(m)}
             >
               {labels[key]}
             </button>
@@ -638,6 +666,8 @@ export function PlacesGlobe({
       {locStatus === 'ok' ? <p className="hint" role="status">{labels.located}</p> : null}
       {locStatus === 'denied' ? <p className="hint" role="status">{labels.locationDenied}</p> : null}
       {locStatus === 'unsupported' ? <p className="hint" role="status">{labels.locationUnsupported}</p> : null}
+      {locStatus === 'error' ? <p className="hint" role="status">{labels.locationError}</p> : null}
+      {tileFallback ? <p className="hint" role="status">{labels.tileFallbackNotice}</p> : null}
       {qibla ? (
         <p className="hint globe-qibla-info" role="status">
           {labels.qiblaInfo
@@ -649,32 +679,9 @@ export function PlacesGlobe({
       ) : null}
 
       <div className="globe-layout">
-        <div className="globe-frame">
+        <div className="globe-frame" ref={frameRef}>
           {mapError ? <p className="hint" role="alert">{labels.mapLoadError}</p> : null}
           <div ref={containerRef} className="places-globe-map" />
-          <div className="globe-legend" aria-label={labels.legendTitle}>
-            <p className="globe-legend-title">{labels.legendTitle}</p>
-            <button type="button" className="globe-legend-row" onClick={() => setHiddenTypes(new Set())}>
-              <span aria-hidden>🌍</span> {labels.allTypes} ({places.length})
-            </button>
-            {typeDefs.map((def) => {
-              const n = counts.get(def.key) ?? 0;
-              if (n === 0) return null;
-              const hidden = hiddenTypes.has(def.key);
-              return (
-                <button
-                  key={def.key}
-                  type="button"
-                  className={hidden ? 'globe-legend-row hidden-type' : 'globe-legend-row'}
-                  onClick={() => toggleType(def.key)}
-                  aria-pressed={!hidden}
-                >
-                  <span aria-hidden>{def.emoji}</span>{' '}
-                  {locale === 'ar' ? def.ar : locale === 'en' ? def.en : def.fa} ({n})
-                </button>
-              );
-            })}
-          </div>
         </div>
 
         <div className="globe-places-list">
@@ -684,19 +691,67 @@ export function PlacesGlobe({
               {labels.showAll}
             </button>
           </div>
-          {visiblePlaces.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              className="globe-places-item"
-              onClick={() => selectPlace(p)}
-            >
-              <span aria-hidden>{typeEmoji(typeDefs, p.type)}</span> {p.name}
-              {p.city ? <span className="globe-places-city"> — {p.city}</span> : null}
-            </button>
-          ))}
+          <button type="button" className="globe-places-item" onClick={() => setHiddenTypes(new Set())}>
+            <span aria-hidden>🌍</span> {labels.allTypes} ({places.length})
+          </button>
+          {groups.map(({ def, items, total }) => {
+            const hidden = hiddenTypes.has(def.key);
+            const open = openCats.has(def.key);
+            const name = locale === 'ar' ? def.ar : locale === 'en' ? def.en : def.fa;
+            return (
+              <div key={def.key} className={hidden ? 'globe-places-cat hidden-cat' : 'globe-places-cat'}>
+                <div className="globe-places-cat-head">
+                  <button
+                    type="button"
+                    className="globe-places-cat-name"
+                    aria-expanded={open}
+                    onClick={() => toggleCat(def.key)}
+                  >
+                    <span aria-hidden>{open ? '▾' : '▸'}</span> {def.emoji} {name} ({total})
+                  </button>
+                  <button
+                    type="button"
+                    className="globe-places-cat-filter"
+                    aria-label={labels.toggleTypeFilter}
+                    aria-pressed={!hidden}
+                    onClick={() => toggleType(def.key)}
+                  >
+                    {hidden ? '🚫' : '👁'}
+                  </button>
+                </div>
+                {open && !hidden
+                  ? items.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="globe-places-item"
+                        onClick={() => selectPlace(p)}
+                      >
+                        <span aria-hidden>{typeEmoji(typeDefs, p.type)}</span> {p.name}
+                        {p.city ? <span className="globe-places-city"> — {p.city}</span> : null}
+                      </button>
+                    ))
+                  : null}
+              </div>
+            );
+          })}
         </div>
       </div>
+      {selected ? (
+        <PlacesPanel
+          key={selected.id}
+          place={selected}
+          popupConfig={popupConfig}
+          typeDefs={typeDefs}
+          locale={locale}
+          labels={labels}
+          onQibla={(place) => {
+            showQiblaFromPlace(place);
+            setSelected(null);
+          }}
+          onClose={() => setSelected(null)}
+        />
+      ) : null}
     </div>
   );
 }

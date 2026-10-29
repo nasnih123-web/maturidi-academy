@@ -101,14 +101,22 @@ export interface TileSourceDef {
 }
 
 /**
- * Free raster tile sources, one per mode — no API key. Esri's endpoint
- * takes /tile/{z}/{y}/{x} (row before column), so the placeholders are
- * written in that order; MapLibre substitutes each token by name.
+ * Free raster tile sources, one per mode — no API key. MapLibre
+ * substitutes each {z}/{x}/{y} token by name.
  */
 export const GLOBE_TILE_SOURCES: Record<GlobeMode, TileSourceDef> = {
   satellite: {
-    tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-    attribution: 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    // Google satellite tiles (no key). Esri's World_Imagery endpoint
+    // returns 403 for some regions (proven by the user's own console),
+    // so it cannot stay the satellite source; if these tiles fail in
+    // bulk, the globe falls back to the simple mode (see PlacesGlobe).
+    tiles: [
+      'https://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+      'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+      'https://mt2.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+      'https://mt3.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+    ],
+    attribution: 'Imagery © Google',
   },
   simple: {
     tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
