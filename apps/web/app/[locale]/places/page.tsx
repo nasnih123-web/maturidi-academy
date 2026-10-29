@@ -72,6 +72,7 @@ export default async function PlacesPage({ params }: { params: Promise<{ locale:
     typeLabel: t('typeLabel'),
     listTitle: t('listTitle'),
     showAll: t('showAll'),
+    mapLoadError: t('mapLoadError'),
   };
 
   return (

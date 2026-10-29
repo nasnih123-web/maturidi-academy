@@ -1283,6 +1283,7 @@
     "galleryNext": "بعدی",
     "galleryCounter": "{i} از {n}",
     "showAll": "نمایش همه",
+    "mapLoadError": "نقشه بارگذاری نشد؛ لطفاً صفحه را تازه‌سازی کنید.",
     "videoRegular": "ویدیو",
     "videoLinkFallback": "تماشای ویدیو",
     "viewDetail": "صفحهٔ جزئیات",

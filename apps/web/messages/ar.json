@@ -1283,6 +1283,7 @@
     "galleryNext": "التالي",
     "galleryCounter": "{i} من {n}",
     "showAll": "عرض الكل",
+    "mapLoadError": "تعذّر تحميل الخريطة؛ يرجى تحديث الصفحة.",
     "videoRegular": "فيديو",
     "videoLinkFallback": "مشاهدة الفيديو",
     "viewDetail": "صفحة التفاصيل",

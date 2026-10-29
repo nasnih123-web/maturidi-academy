@@ -60,6 +60,7 @@ export interface PlacesGlobeLabels {
   typeLabel: string;
   listTitle: string;
   showAll: string;
+  mapLoadError: string;
 }
 
 interface Qibla {
@@ -250,6 +251,7 @@ export function PlacesGlobe({
   const [locStatus, setLocStatus] = useState<'idle' | 'busy' | 'ok' | 'denied' | 'unsupported'>('idle');
   const [qibla, setQibla] = useState<Qibla | null>(null);
   const [autoRotate, setAutoRotate] = useState(globeSettings.autoRotate);
+  const [mapError, setMapError] = useState(false);
 
   const visiblePlaces = useMemo(
     () => places.filter((p) => !hiddenTypes.has(p.type)),
@@ -377,21 +379,41 @@ export function PlacesGlobe({
     );
   };
 
+  // Globe projection must only be applied once the style is loaded:
+  // setProjection before that throws "Style is not done loading", and
+  // an uncaught throw here used to kill the whole page. A failed
+  // projection now shows the fallback message instead.
+  const applyGlobeProjection = (m: maplibregl.Map): void => {
+    try {
+      m.setProjection({ type: 'globe' });
+    } catch {
+      setMapError(true);
+    }
+  };
+
   // Map creation — once. Pixel ratio is capped at 2 so mid-range phones
-  // do not render 3x pixels; the globe projection is set explicitly.
+  // do not render 3x pixels; the globe projection is applied once the
+  // style is ready (see applyGlobeProjection).
   useEffect(() => {
     const container = containerRef.current;
     if (!container || mapRef.current) return;
-    const map = new maplibregl.Map({
-      container,
-      style: globeStyle(globeSettings.defaultMode),
-      center: [globeSettings.defaultLng, globeSettings.defaultLat],
-      zoom: altitudeToZoom(globeSettings.defaultAltitude),
-      pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
-      attributionControl: { compact: true },
-      maxZoom: 18,
-    });
-    map.setProjection({ type: 'globe' });
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container,
+        style: globeStyle(globeSettings.defaultMode),
+        center: [globeSettings.defaultLng, globeSettings.defaultLat],
+        zoom: altitudeToZoom(globeSettings.defaultAltitude),
+        pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+        attributionControl: { compact: true },
+        maxZoom: 18,
+      });
+    } catch {
+      setMapError(true);
+      return;
+    }
+    if (map.isStyleLoaded()) applyGlobeProjection(map);
+    else map.once('style.load', () => applyGlobeProjection(map));
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
     mapRef.current = map;
     const onDown = (): void => {
@@ -414,8 +436,8 @@ export function PlacesGlobe({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Mode switch: setStyle drops custom sources/layers, so the qibla arc
-  // is re-added once the new style loads.
+  // Mode switch: setStyle drops custom sources/layers, so the globe
+  // projection and the qibla arc are re-applied once the new style loads.
   useEffect(() => {
     if (firstModeRef.current) {
       firstModeRef.current = false;
@@ -424,11 +446,10 @@ export function PlacesGlobe({
     const map = mapRef.current;
     if (!map) return;
     map.setStyle(globeStyle(mode));
-    if (qiblaRef.current) {
-      map.once('style.load', () => {
-        if (qiblaRef.current) addQiblaLayer(qiblaRef.current);
-      });
-    }
+    map.once('style.load', () => {
+      applyGlobeProjection(map);
+      if (qiblaRef.current) addQiblaLayer(qiblaRef.current);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
@@ -629,6 +650,7 @@ export function PlacesGlobe({
 
       <div className="globe-layout">
         <div className="globe-frame">
+          {mapError ? <p className="hint" role="alert">{labels.mapLoadError}</p> : null}
           <div ref={containerRef} className="places-globe-map" />
           <div className="globe-legend" aria-label={labels.legendTitle}>
             <p className="globe-legend-title">{labels.legendTitle}</p>
