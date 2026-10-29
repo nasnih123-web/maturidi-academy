@@ -46,8 +46,11 @@ export default async function PlacesPage({ params }: { params: Promise<{ locale:
   const siteConfig = await getSiteConfig();
 
   const labels: PlacesGlobeLabels = {
-    legendTitle: t('legendTitle'),
     allTypes: t('types.all'),
+    tileFallbackNotice: t('tileFallbackNotice'),
+    locationError: t('locationError'),
+    toggleTypeFilter: t('toggleTypeFilter'),
+    closePanel: t('closePanel'),
     modeSatellite: t('modeSatellite'),
     modeSimple: t('modeSimple'),
     modeDark: t('modeDark'),
