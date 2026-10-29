@@ -1,14 +1,12 @@
 {
   "dependencies": {
     "@maturidi/design-tokens": "file:../../packages/design-tokens",
-    "@types/three": "^0.186.0",
     "leaflet": "^1.9.4",
+    "maplibre-gl": "^6.16.0",
     "next": "16.4.2",
     "next-intl": "4.14.9",
     "react": "19.3.1",
-    "react-dom": "19.3.1",
-    "react-globe.gl": "^2.38.0",
-    "three": "^0.186.1"
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.4",

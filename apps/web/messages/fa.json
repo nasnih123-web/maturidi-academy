@@ -1258,6 +1258,7 @@
     }
   },
   "places": {
+    "listTitle": "فهرست اماکن",
     "metaTitle": "کرهٔ سه‌بعدی اماکن مذهبی",
     "metaDescription": "کرهٔ سه‌بعدی اماکن مذهبی آکادمی ماتریدی: مساجد، کتابخانه‌ها، اماکن زیارتی، حرمین شریفین و موزه‌های تأییدشده",
     "legendTitle": "راهنمای انواع مکان",
@@ -1281,6 +1282,7 @@
     "galleryPrev": "قبلی",
     "galleryNext": "بعدی",
     "galleryCounter": "{i} از {n}",
+    "showAll": "نمایش همه",
     "videoRegular": "ویدیو",
     "videoLinkFallback": "تماشای ویدیو",
     "viewDetail": "صفحهٔ جزئیات",

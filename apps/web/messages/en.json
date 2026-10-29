@@ -1258,6 +1258,7 @@
     }
   },
   "places": {
+    "listTitle": "Places list",
     "metaTitle": "3D globe of religious places",
     "metaDescription": "The Maturidi Academy 3D globe of religious places: verified mosques, libraries, pilgrimage sites, the Two Holy Mosques and museums",
     "legendTitle": "Place types guide",
@@ -1281,6 +1282,7 @@
     "galleryPrev": "Previous",
     "galleryNext": "Next",
     "galleryCounter": "{i} of {n}",
+    "showAll": "Show all",
     "videoRegular": "Video",
     "videoLinkFallback": "Watch video",
     "viewDetail": "Detail page",
