@@ -286,7 +286,10 @@ export function PlacesGlobe({
     try {
       const loaded = map.isStyleLoaded();
       const vis = (id: string): string => {
-        if (!loaded || !map.getLayer(id)) return 'missing';
+        // Read the layer directly: gating on loaded() made every layer
+        // read as 'missing' whenever tiles or source updates were
+        // pending, even when the layer existed.
+        if (!map.getLayer(id)) return 'missing';
         const v = map.getLayoutProperty(id, 'visibility');
         return typeof v === 'string' ? v : 'default';
       };
@@ -500,8 +503,24 @@ export function PlacesGlobe({
       applyGlobeProjection(map);
       if (qiblaRef.current) addQiblaLayer(qiblaRef.current);
     };
+    // Always listen: the previous else-only registration meant a style
+    // already loaded at creation never re-applied projection/arc after
+    // a later setStyle (mode switch), leaving the arc wiped forever.
+    map.on('style.load', onStyleLoad);
     if (map.isStyleLoaded()) onStyleLoad();
-    else map.on('style.load', onStyleLoad);
+    // Self-heal: the add path gates on isStyleLoaded(), which stays
+    // false while tiles or source updates are pending, and nothing
+    // retried a skipped add. On idle the map has settled, so restore
+    // any missing qibla layers/sources and refresh the diagnostic.
+    map.on('idle', () => {
+      if (!qiblaRef.current) return;
+      const m = mapRef.current;
+      if (!m) return;
+      if (!m.getLayer('qibla-arc') || !m.getLayer('qibla-arc-casing') || !m.getLayer('qibla-kaaba') || !m.getSource('qibla-arc') || !m.getSource('qibla-kaaba')) {
+        addQiblaLayer(qiblaRef.current);
+      }
+      refreshQiblaDiag();
+    });
     map.on('error', () => {
       // Satellite tiles failing in bulk (e.g. a region block) must not
       // leave a blank map: fall back to the simple mode once, with a
