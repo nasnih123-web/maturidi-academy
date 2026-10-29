@@ -1757,8 +1757,28 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
 .globe-search-results { position: absolute; inset-inline-start: 0; inset-inline-end: 0; top: calc(100% + 0.3rem); z-index: 30; background: #12161d; border: 1px solid rgba(229,192,123,0.4); border-radius: 0.6rem; padding: 0.4rem; display: grid; gap: 0.2rem; }
 .globe-search-item { text-align: start; background: transparent; color: inherit; border: 0; border-radius: 0.4rem; padding: 0.45rem 0.6rem; font: inherit; cursor: pointer; }
 .globe-search-item:hover { background: rgba(229,192,123,0.15); }
+.globe-layout { display: grid; gap: 0.9rem; }
+@media (min-width: 900px) {
+  .globe-layout { grid-template-columns: minmax(0, 1fr) 17rem; align-items: start; }
+}
 .globe-frame { position: relative; border: 1px solid rgba(229,192,123,0.35); border-radius: var(--radius-lg); overflow: hidden; background: radial-gradient(ellipse at center, #1b2536 0%, #0b0e13 70%); }
 .globe-frame canvas { display: block; }
+.places-globe-map { inline-size: 100%; block-size: 520px; }
+.globe-places-list { border: 1px solid rgba(229,192,123,0.35); border-radius: var(--radius-lg); padding: 0.9rem 1rem; background: #12161d; display: grid; gap: 0.25rem; align-content: start; max-block-size: 32rem; overflow-y: auto; }
+.globe-places-list-head { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; margin-block-end: 0.3rem; }
+.globe-places-list-head h2 { margin: 0; font-size: 1rem; color: #e5c07b; }
+.globe-places-item { text-align: start; background: transparent; color: inherit; border: 0; border-radius: 0.4rem; padding: 0.45rem 0.6rem; font: inherit; cursor: pointer; }
+.globe-places-item:hover { background: rgba(229,192,123,0.15); }
+.globe-places-city { color: hsl(var(--text-secondary)); font-size: 0.85rem; }
+.places-globe-popup .maplibregl-popup-content { background: #12161d; color: hsl(var(--text-primary)); border: 1px solid rgba(229,192,123,0.4); border-radius: 0.6rem; padding: 0.9rem 1rem; font-family: inherit; max-block-size: 70vh; overflow-y: auto; }
+.places-globe-popup .maplibregl-popup-close-button { color: #e5c07b; font-size: 1.2rem; padding: 0.2rem 0.5rem; }
+.places-globe-popup .maplibregl-popup-tip { border-top-color: #12161d !important; }
+.places-popup h3 { margin: 0 0 0.5rem; }
+.places-popup-gallery img { display: block; inline-size: 100%; max-block-size: 240px; object-fit: cover; border-radius: 0.6rem; border: 1px solid rgba(229,192,123,0.35); }
+.places-popup-gallery-nav { display: flex; justify-content: space-between; align-items: center; margin-block-start: 0.5rem; }
+.places-popup-gallery-nav button { background: transparent; color: #e5c07b; border: 1px solid rgba(229,192,123,0.4); border-radius: 0.5rem; padding: 0.3rem 0.8rem; font: inherit; cursor: pointer; }
+.places-globe-map .maplibregl-ctrl-attrib { background: rgba(11,14,19,0.7); color: #9aa3ad; font-size: 0.65rem; }
+.places-globe-map .maplibregl-ctrl-attrib a { color: #c9a959; }
 .globe-marker { font-size: 1.6rem; line-height: 1; cursor: pointer; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.8)); user-select: none; }
 .globe-marker-me { font-size: 1.4rem; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.8)) hue-rotate(160deg) saturate(3); }
 .globe-legend { position: absolute; inset-block-start: 0.8rem; inset-inline-start: 0.8rem; z-index: 20; background: rgba(11,14,19,0.85); border: 1px solid rgba(229,192,123,0.4); border-radius: 0.6rem; padding: 0.6rem 0.8rem; display: grid; gap: 0.25rem; max-inline-size: 13rem; }
@@ -1767,12 +1787,6 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
 .globe-legend-row:hover { background: rgba(229,192,123,0.15); }
 .globe-legend-row.hidden-type { opacity: 0.45; text-decoration: line-through; }
 .globe-qibla-info { color: #e5c07b; }
-.globe-panel { border: 1px solid rgba(229,192,123,0.4); border-radius: var(--radius-lg); padding: 1.1rem 1.2rem; background: #12161d; }
-.globe-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; }
-.globe-panel-head h2 { margin: 0; }
-.globe-gallery img { display: block; inline-size: 100%; max-block-size: 360px; object-fit: cover; border-radius: 0.6rem; border: 1px solid rgba(229,192,123,0.35); }
-.globe-gallery-nav { display: flex; justify-content: space-between; align-items: center; margin-block-start: 0.5rem; }
-.globe-gallery-nav button { background: transparent; color: #e5c07b; border: 1px solid rgba(229,192,123,0.4); border-radius: 0.5rem; padding: 0.3rem 0.8rem; font: inherit; cursor: pointer; }
 .place-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.8rem; margin-block-end: 1.2rem; }
 .place-gallery .place-detail-img { margin: 0; }
 .map-preview-card { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; border: 1px solid rgba(229,192,123,0.35); border-radius: var(--radius-lg); padding: 1.4rem 1.6rem; background: radial-gradient(ellipse at center, #1b2536 0%, #0b0e13 75%); }

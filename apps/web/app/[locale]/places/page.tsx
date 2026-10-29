@@ -5,8 +5,8 @@ import { getAllPlaces } from '@/lib/places';
 import { getSiteConfig } from '@/lib/settings';
 import { toPlaceView, type PlaceView } from '@/lib/places-view';
 import { EmptyState } from '@/components/EmptyState';
-import { GlobeExplorer } from '@/components/GlobeExplorerLazy';
-import type { GlobeExplorerLabels } from '@/components/GlobeExplorer';
+import { PlacesGlobe } from '@/components/PlacesGlobeLazy';
+import type { PlacesGlobeLabels } from '@/components/PlacesGlobe';
 
 export async function generateMetadata({
   params,
@@ -20,12 +20,12 @@ export async function generateMetadata({
 }
 
 /**
- * Religious places globe (globe phase).
+ * Religious places globe (MapLibre globe phase).
  *
  * Thin RSC shell: server-fetches all published places (GET /api/v1/places)
  * plus the CRM globe settings (default view, place types, popup shape),
- * resolves LocalizedText to plain strings, then mounts the code-split 3D
- * globe. three.js never enters the homepage bundle. API failure or an
+ * resolves LocalizedText to plain strings, then mounts the code-split
+ * MapLibre globe. MapLibre never enters the homepage bundle. API failure or an
  * empty catalogue renders an honest state instead of a fake globe.
  */
 export default async function PlacesPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -45,7 +45,7 @@ export default async function PlacesPage({ params }: { params: Promise<{ locale:
   // Kaaba-centered defaults instead of breaking the globe.
   const siteConfig = await getSiteConfig();
 
-  const labels: GlobeExplorerLabels = {
+  const labels: PlacesGlobeLabels = {
     legendTitle: t('legendTitle'),
     allTypes: t('types.all'),
     modeSatellite: t('modeSatellite'),
@@ -63,18 +63,15 @@ export default async function PlacesPage({ params }: { params: Promise<{ locale:
     autoRotateOff: t('autoRotateOff'),
     qiblaFromHere: t('qiblaFromHere'),
     qiblaInfo: t.raw('qiblaInfo'),
-    qiblaArcLabel: t('qiblaArcLabel'),
-    closePanel: t('closePanel'),
     galleryPrev: t('galleryPrev'),
     galleryNext: t('galleryNext'),
     galleryCounter: t.raw('galleryCounter'),
     video360: t('view360'),
-    videoRegular: t('videoRegular'),
     videoLinkFallback: t('videoLinkFallback'),
-    viewDetail: t('viewDetail'),
     cityLabel: t('cityLabel'),
     typeLabel: t('typeLabel'),
-    loading: t('loading'),
+    listTitle: t('listTitle'),
+    showAll: t('showAll'),
   };
 
   return (
@@ -92,7 +89,7 @@ export default async function PlacesPage({ params }: { params: Promise<{ locale:
       ) : views.length === 0 ? (
         <EmptyState title={t('noPlaces')} hint={t('noPlacesHint')} />
       ) : (
-        <GlobeExplorer
+        <PlacesGlobe
           locale={locale}
           places={views}
           typeDefs={siteConfig.placeTypes}
