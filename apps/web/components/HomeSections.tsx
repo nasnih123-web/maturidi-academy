@@ -12,7 +12,7 @@
  *  suggested_lessons→ ContentSection (course / academy / slider)
  *  fresh_library    → ContentSection (book / shelf / shelf)
  *  community        → ContentSection (community / discussion / grid)
- *  nearby_map       → MapPanel (honest placeholder until the map phase)
+ *  nearby_map       → MapPanel (small live mini-globe + link to /places)
  *  donation_banner  → DonateBanner (title/body/CTA from API)
  *  footer           → rendered by the page (outside <main>)
  * Any other key renders the generic ContentSection (article / magazine).
@@ -28,6 +28,7 @@ import {
   safeHref,
 } from "@/lib/section-data";
 import type { HeroSettings } from "@/lib/settings";
+import type { PlaceView } from "@/lib/places-view";
 import { specForSection } from "./sections/specs";
 import { Hero, type HeroCta } from "./Hero";
 import { StatusStrip, type StatusStripLabels } from "./StatusStrip";
@@ -84,6 +85,11 @@ export interface HomeSectionsProps {
    */
   fatwaSliderItems?: FatwaSliderItem[] | null;
   /**
+   * Published places for the `nearby_map` mini-globe dots. Null (or
+   * omitted) renders the globe with no dots — never a failure.
+   */
+  places?: PlaceView[] | null;
+  /**
    * Block rendered immediately after the community section (in section
    * order), e.g. the recent-articles slider. When no community section
    * renders (invisible or absent), it is appended at the end so it
@@ -98,12 +104,14 @@ export function HomeSectionRenderer({
   labels,
   heroOverride,
   fatwaSliderItems,
+  places,
 }: {
   section: HomeSection;
   locale: string;
   labels: HomeSectionsLabels;
   heroOverride?: HeroSettings | null;
   fatwaSliderItems?: FatwaSliderItem[] | null;
+  places?: PlaceView[] | null;
 }) {
   const id = `home-section-${section.key}`;
   const title = pickText(section.title, locale);
@@ -180,6 +188,7 @@ export function HomeSectionRenderer({
                 title={title}
                 subtitle={subtitle}
                 linkLabel={labels.mapLink}
+                places={places}
               />
             );
           }
@@ -270,7 +279,7 @@ export function HomeSectionRenderer({
         }
 }
 
-export function HomeSections({ sections, locale, labels, heroOverride, fatwaSliderItems, afterCommunity }: HomeSectionsProps) {
+export function HomeSections({ sections, locale, labels, heroOverride, fatwaSliderItems, places, afterCommunity }: HomeSectionsProps) {
   const ordered = [...sections]
     .filter((s) => s.visible !== false)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -286,6 +295,7 @@ export function HomeSections({ sections, locale, labels, heroOverride, fatwaSlid
             labels={labels}
             heroOverride={heroOverride}
             fatwaSliderItems={fatwaSliderItems}
+            places={places}
           />
           {section.key === "community" ? afterCommunity : null}
         </Fragment>

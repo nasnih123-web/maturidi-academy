@@ -1,12 +1,19 @@
 import Link from 'next/link';
 
+import { MiniGlobe } from './MiniGlobeLazy';
+import type { PlaceView } from '@/lib/places-view';
+
 /**
- * Homepage nearby_map slot — globe phase.
+ * Homepage nearby_map slot — batch 2: a small live globe instead of
+ * the old preview card + link.
  *
- * A preview card + link to the full 3D globe at /places. The globe is
- * deliberately NOT embedded here: three.js is heavy, and the previous
- * live-map slot fetched up to 500 places on every homepage load. The
- * full experience (markers, legend, search, qibla) lives on /places.
+ * Layout: the section head carries the title only; the description
+ * (subtitle) sits beside the globe, not under the title — the layout
+ * complaint from the 14:41 batch. The body lives inside
+ * .section-inner, the single width container every homepage section
+ * body uses, so this section can never exceed the other sections'
+ * width. The globe itself is lazy (MiniGlobeLazy) and the link beside
+ * it leads to the full experience on /places.
  */
 export function MapPanel({
   sectionId,
@@ -14,26 +21,30 @@ export function MapPanel({
   title,
   subtitle,
   linkLabel,
+  places,
 }: {
   sectionId: string;
   locale: string;
   title?: string | null;
   subtitle?: string | null;
   linkLabel: string;
+  places?: PlaceView[] | null;
 }) {
   return (
     <section id={sectionId} className="home-section map-preview">
       <div className="section-head">
         {title ? <h2>{title}</h2> : null}
-        {subtitle ? <p className="section-subtitle">{subtitle}</p> : null}
       </div>
-      <div className="map-preview-card">
-        <span className="map-preview-globe" aria-hidden>
-          🌍
-        </span>
-        <Link className="btn-primary" href={`/${locale}/places`}>
-          {linkLabel}
-        </Link>
+      <div className="section-inner">
+        <div className="map-places-layout">
+          <MiniGlobe places={places ?? []} />
+          <div className="map-places-text">
+            {subtitle ? <p className="map-places-desc">{subtitle}</p> : null}
+            <Link className="btn-primary" href={`/${locale}/places`}>
+              {linkLabel}
+            </Link>
+          </div>
+        </div>
       </div>
     </section>
   );
