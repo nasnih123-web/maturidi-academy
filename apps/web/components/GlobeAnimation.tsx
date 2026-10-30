@@ -2,32 +2,39 @@
 
 import { useEffect, useRef } from 'react';
 
+import { WORLD_LAND } from '@/lib/world-countries';
+
 /**
  * GlobeAnimation — the homepage اماکن slot's animated globe.
  *
- * Replaces the live MapLibre mini-globe (PR #77), which rendered as a
- * black box on the deployed homepage. This is pure canvas: no tiles,
- * no worker, no network, nothing that can come back black. It cycles
+ * Pure canvas: no tiles, no worker, no network, nothing that can
+ * come back black (it replaced the PR #77 live mini-globe, which
+ * rendered as a black box on the deployed homepage). It cycles
  * through six stylised globe models in the language of the owner's
- * reference screenshots — glowing network spheres with dots, arcs and
- * orbit rings on a dark ground — never a map tile, never a satellite
- * or simple-map style.
+ * reference screenshots — glowing spheres with dots, arcs and orbit
+ * rings on a transparent ground — never a map tile.
  *
- * One engine, six palettes/decorations; rotation is a longitude
- * offset advancing every frame, so the graticule, dots and arcs all
- * turn together. Models crossfade every few seconds. Respects
- * prefers-reduced-motion (one static frame, no loop). Decorative
- * only: the section heading and the link beside it carry the meaning,
- * so the canvas is aria-hidden.
+ * Countries revision: the graticule wireframe is GONE. The sphere
+ * now carries the real map of the countries — land polygons from
+ * world-atlas countries-110m, simplified to ~1° (Douglas-Peucker),
+ * antimeridian-split, Antarctica excluded (not a country), 152
+ * polygons / 206 rings / ~23 KB — projected orthographically with
+ * the same rotation as the dots and arcs, clipped to the sphere.
+ * One engine, six palettes/decorations; models crossfade every few
+ * seconds. Respects prefers-reduced-motion (one static frame, no
+ * loop). Decorative only: the section heading and the link beside
+ * it carry the meaning, so the canvas is aria-hidden.
  */
 
 interface GlobeModel {
-  /** Sphere gradient: rim → lit centre. */
+  /** Sphere gradient: rim → lit centre (the ocean). */
   sphere: [string, string];
   /** Outer glow colour. */
   glow: string;
-  /** Graticule stroke colour. */
-  grid: string;
+  /** Land fill colour. */
+  land: string;
+  /** Land outline colour. */
+  landStroke: string;
   /** Surface dot colour. */
   dot: string;
   /** Arc stroke colour. */
@@ -44,7 +51,8 @@ const MODELS: GlobeModel[] = [
     // Neon network (blue/cyan, dense dots + arcs).
     sphere: ['#0e7490', '#38bdf8'],
     glow: 'rgba(56, 189, 248, 0.55)',
-    grid: 'rgba(125, 211, 252, 0.35)',
+    land: 'rgba(165, 243, 252, 0.9)',
+    landStroke: 'rgba(34, 211, 238, 0.5)',
     dot: '#a5f3fc',
     arc: 'rgba(34, 211, 238, 0.85)',
     rings: [],
@@ -52,10 +60,11 @@ const MODELS: GlobeModel[] = [
     arcs: 5,
   },
   {
-    // Circuit copper (amber on dark, sparser grid).
+    // Circuit copper (amber on dark, sparser dots).
     sphere: ['#92400e', '#f59e0b'],
     glow: 'rgba(245, 158, 11, 0.5)',
-    grid: 'rgba(253, 230, 138, 0.28)',
+    land: 'rgba(253, 230, 138, 0.9)',
+    landStroke: 'rgba(251, 191, 36, 0.5)',
     dot: '#fde68a',
     arc: 'rgba(251, 191, 36, 0.8)',
     rings: [],
@@ -66,7 +75,8 @@ const MODELS: GlobeModel[] = [
     // Holographic rings (cyan + magenta tilted orbits).
     sphere: ['#155e75', '#22d3ee'],
     glow: 'rgba(34, 211, 238, 0.5)',
-    grid: 'rgba(165, 243, 252, 0.3)',
+    land: 'rgba(207, 250, 254, 0.9)',
+    landStroke: 'rgba(34, 211, 238, 0.5)',
     dot: '#cffafe',
     arc: 'rgba(232, 121, 249, 0.85)',
     rings: [
@@ -80,7 +90,8 @@ const MODELS: GlobeModel[] = [
     // Golden lamp globe (warm amber glow).
     sphere: ['#78350f', '#fbbf24'],
     glow: 'rgba(251, 191, 36, 0.55)',
-    grid: 'rgba(254, 243, 199, 0.3)',
+    land: 'rgba(254, 243, 199, 0.9)',
+    landStroke: 'rgba(251, 191, 36, 0.5)',
     dot: '#fef3c7',
     arc: 'rgba(253, 224, 71, 0.8)',
     rings: [],
@@ -91,7 +102,8 @@ const MODELS: GlobeModel[] = [
     // Ice digital (pale blue on deep navy).
     sphere: ['#0c4a6e', '#bae6fd'],
     glow: 'rgba(186, 230, 253, 0.5)',
-    grid: 'rgba(224, 242, 254, 0.32)',
+    land: 'rgba(240, 249, 255, 0.92)',
+    landStroke: 'rgba(125, 211, 252, 0.5)',
     dot: '#f0f9ff',
     arc: 'rgba(125, 211, 252, 0.85)',
     rings: [],
@@ -102,7 +114,8 @@ const MODELS: GlobeModel[] = [
     // Pink data rings (magenta/cyan orbits).
     sphere: ['#701a75', '#e879f9'],
     glow: 'rgba(232, 121, 249, 0.5)',
-    grid: 'rgba(245, 208, 254, 0.3)',
+    land: 'rgba(253, 244, 255, 0.9)',
+    landStroke: 'rgba(232, 121, 249, 0.5)',
     dot: '#fdf4ff',
     arc: 'rgba(34, 211, 238, 0.85)',
     rings: [{ color: 'rgba(232, 121, 249, 0.9)', tilt: -0.3 }],
@@ -168,14 +181,13 @@ export function GlobeAnimation() {
     const cy = SIZE / 2;
     const R = SIZE * 0.36;
 
-    /** Orthographic projection of a lat/lng point at rotation theta. */
-    function project(d: Dot, theta: number): { x: number; y: number; front: number } | null {
-      const lon = d.lng + theta;
-      const c = Math.cos(lon);
-      const x = cx + R * Math.cos(d.lat) * Math.sin(lon);
-      const y = cy - R * Math.sin(d.lat);
-      if (c <= 0) return null;
-      return { x, y, front: c };
+    /** Orthographic projection of a lng/lat point at rotation theta. */
+    function project(lng: number, lat: number, theta: number): { x: number; y: number; front: number } | null {
+      const lon = ((lng * Math.PI) / 180 + theta) % (Math.PI * 2);
+      const la = (lat * Math.PI) / 180;
+      const z = Math.cos(la) * Math.cos(lon);
+      if (z <= 0) return null;
+      return { x: cx + R * Math.cos(la) * Math.sin(lon), y: cy - R * Math.sin(la), front: z };
     }
 
     function drawScene(model: GlobeModel, layout: (typeof layouts)[number], theta: number, time: number, alpha: number): void {
@@ -192,7 +204,7 @@ export function GlobeAnimation() {
       g.arc(cx, cy, R, 0, Math.PI * 2);
       g.fill();
       g.restore();
-      // Sphere body, lit from the top-left.
+      // Sphere body, lit from the top-left (the ocean).
       const sphere = g.createRadialGradient(cx - R * 0.35, cy - R * 0.35, R * 0.1, cx, cy, R);
       sphere.addColorStop(0, model.sphere[1]);
       sphere.addColorStop(1, model.sphere[0]);
@@ -200,32 +212,42 @@ export function GlobeAnimation() {
       g.beginPath();
       g.arc(cx, cy, R, 0, Math.PI * 2);
       g.fill();
-      // Graticule, clipped to the sphere.
+      // Land polygons, clipped to the sphere. Behind-limb points
+      // break the path (pen up) so nothing draws across the far side.
       g.save();
       g.beginPath();
       g.arc(cx, cy, R, 0, Math.PI * 2);
       g.clip();
-      g.strokeStyle = model.grid;
-      g.lineWidth = 1;
-      for (let k = 0; k < 12; k++) {
-        const lon = (k / 12) * Math.PI * 2 + theta;
-        const rx = Math.abs(R * Math.cos(lon));
-        if (rx < 1) continue;
-        g.beginPath();
-        g.ellipse(cx, cy, rx, R, 0, 0, Math.PI * 2);
-        g.stroke();
-      }
-      for (let k = -2; k <= 2; k++) {
-        const lat = (k / 3) * (Math.PI / 2) * 0.66;
-        const y = cy - R * Math.sin(lat);
-        const rx = R * Math.cos(lat);
-        g.beginPath();
-        g.ellipse(cx, y, rx, R * 0.16, 0, 0, Math.PI * 2);
-        g.stroke();
+      for (const poly of WORLD_LAND) {
+        const path = new Path2D();
+        for (const ring of poly) {
+          let penDown = false;
+          for (const [lng, lat] of ring) {
+            const p = project(lng, lat, theta);
+            if (!p) {
+              penDown = false;
+              continue;
+            }
+            if (!penDown) {
+              path.moveTo(p.x, p.y);
+              penDown = true;
+            } else {
+              path.lineTo(p.x, p.y);
+            }
+          }
+          // No closePath: fill auto-closes each visible stretch, and
+          // stroke then shows only true coastline segments, never a
+          // chord across a hidden gap or an antimeridian cut.
+        }
+        g.fillStyle = model.land;
+        g.fill(path, 'evenodd');
+        g.strokeStyle = model.landStroke;
+        g.lineWidth = 1;
+        g.stroke(path);
       }
       // Surface dots (front side only, brighter toward the centre).
       for (const d of layout.dots) {
-        const p = project(d, theta);
+        const p = project((d.lng * 180) / Math.PI, (d.lat * 180) / Math.PI, theta);
         if (!p) continue;
         g.globalAlpha = alpha * (0.35 + 0.65 * p.front);
         g.fillStyle = model.dot;
@@ -240,8 +262,8 @@ export function GlobeAnimation() {
       g.setLineDash([7, 9]);
       g.lineDashOffset = -time * 0.03;
       for (const arc of layout.arcs) {
-        const a = project(layout.dots[arc.a], theta);
-        const b = project(layout.dots[arc.b], theta);
+        const a = project((layout.dots[arc.a].lng * 180) / Math.PI, (layout.dots[arc.a].lat * 180) / Math.PI, theta);
+        const b = project((layout.dots[arc.b].lng * 180) / Math.PI, (layout.dots[arc.b].lat * 180) / Math.PI, theta);
         if (!a || !b) continue;
         const mx = (a.x + b.x) / 2;
         const my = (a.y + b.y) / 2 - R * 0.35;
