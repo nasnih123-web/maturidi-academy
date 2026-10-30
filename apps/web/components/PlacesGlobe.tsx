@@ -249,7 +249,6 @@ export function PlacesGlobe({
   const [myLoc, setMyLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [locStatus, setLocStatus] = useState<'idle' | 'busy' | 'ok' | 'denied' | 'unsupported' | 'error'>('idle');
   const [qibla, setQibla] = useState<Qibla | null>(null);
-  const [qiblaDiag, setQiblaDiag] = useState('');
   const [autoRotate, setAutoRotate] = useState(globeSettings.autoRotate);
   const [mapError, setMapError] = useState(false);
   const [tileFallback, setTileFallback] = useState(false);
@@ -293,44 +292,9 @@ export function PlacesGlobe({
     return places.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
   }, [places, query]);
 
-  // TEMPORARY diagnostic: surfaces the qibla layer state in the bar so
-  // a missing arc can be told apart from an added-but-invisible one.
-  // Reads only; changes nothing. Removed once the arc renders.
-  const refreshQiblaDiag = (error?: unknown): void => {
-    const map = mapRef.current;
-    if (!map) {
-      setQiblaDiag('diag: map=none');
-      return;
-    }
-    try {
-      const loaded = map.isStyleLoaded();
-      const vis = (id: string): string => {
-        // Read the layer directly: gating on loaded() made every layer
-        // read as 'missing' whenever tiles or source updates were
-        // pending, even when the layer existed.
-        if (!map.getLayer(id)) return 'missing';
-        const v = map.getLayoutProperty(id, 'visibility');
-        return typeof v === 'string' ? v : 'default';
-      };
-      const err = error instanceof Error ? error.message : error ? String(error) : '';
-      setQiblaDiag(
-        `diag: style=${loaded ? 'loaded' : 'loading'} zoom=${map.getZoom().toFixed(1)} ` +
-          `srcArc=${map.getSource('qibla-arc') ? 'yes' : 'no'} ` +
-          `srcKaaba=${map.getSource('qibla-kaaba') ? 'yes' : 'no'} ` +
-          `casing=${vis('qibla-arc-casing')} arc=${vis('qibla-arc')} dot=${vis('qibla-kaaba')}` +
-          (err ? ` err=${err.slice(0, 120)}` : ''),
-      );
-    } catch (e) {
-      setQiblaDiag(`diag: read-failed ${e instanceof Error ? e.message : String(e)}`.slice(0, 200));
-    }
-  };
-
   const addQiblaLayer = (q: Qibla): void => {
     const map = mapRef.current;
-    if (!map) {
-      refreshQiblaDiag();
-      return;
-    }
+    if (!map) return;
     // Gate on the actually necessary condition only: Style.addLayer
     // requires just a parsed style (_checkLoaded), not the full loaded()
     // (parsed + all tiles + all workers). The old full-loaded() gate
@@ -383,12 +347,10 @@ export function PlacesGlobe({
           paint: { 'circle-color': '#e8c766', 'circle-radius': 6, 'circle-stroke-width': 2, 'circle-stroke-color': '#12161d' },
         });
       }
-      refreshQiblaDiag();
     } catch (e) {
       // Never let a layer failure blank the page: the bar still shows
       // the bearing/distance, and the error stays in the console.
       console.error('qibla layer failed', e);
-      refreshQiblaDiag(e);
     }
   };
 
@@ -477,8 +439,12 @@ export function PlacesGlobe({
           const lng = pos.coords.longitude;
           setMyLoc({ lat, lng });
           setLocStatus('ok');
-          setQibla({ fromLat: lat, fromLng: lng, fromName: labels.myLocation });
-          fitArc(lat, lng);
+          // Locate-only: finding my position must NOT draw the qibla
+          // arc. The arc draws only from the panel's qibla button, so
+          // the user chooses when the line appears. Fly to the spot
+          // (same camera move as tapping a place) so the marker is
+          // actually visible instead of a route-wide zoom with no line.
+          mapRef.current?.flyTo({ center: [lng, lat], zoom: 12, duration: 1500 });
         } catch (e) {
           // A failure here used to blank the page; surface it as a
           // status line instead, with the error in the console.
@@ -544,7 +510,6 @@ export function PlacesGlobe({
       if (!m.getLayer('qibla-arc') || !m.getLayer('qibla-arc-casing') || !m.getLayer('qibla-kaaba') || !m.getSource('qibla-arc') || !m.getSource('qibla-kaaba')) {
         addQiblaLayer(qiblaRef.current);
       }
-      refreshQiblaDiag();
     });
     map.on('error', () => {
       // Satellite tiles failing in bulk (e.g. a region block) must not
@@ -657,7 +622,6 @@ export function PlacesGlobe({
     if (!map) return;
     if (!qibla) {
       removeQiblaLayer();
-      setQiblaDiag('');
       return;
     }
     // addQiblaLayer itself tolerates a not-yet-parsed style (its try
@@ -763,12 +727,6 @@ export function PlacesGlobe({
             .replace('{km}', String(qiblaDistanceKm(qibla.fromLat, qibla.fromLng)))}
           {' — '}
           {qibla.fromName}
-          {qiblaDiag ? (
-            <>
-              <br />
-              {qiblaDiag}
-            </>
-          ) : null}
         </p>
       ) : null}
 
