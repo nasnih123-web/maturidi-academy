@@ -1,19 +1,19 @@
 import Link from 'next/link';
 
-import { MiniGlobe } from './MiniGlobeLazy';
-import type { PlaceView } from '@/lib/places-view';
+import { GlobeAnimation } from './GlobeAnimation';
 
 /**
- * Homepage nearby_map slot — batch 2: a small live globe instead of
- * the old preview card + link.
+ * Homepage nearby_map slot — batch 2, animation revision: a small
+ * code-drawn animated globe instead of the live MapLibre mini-globe
+ * (PR #77), which rendered as a black box on the deployed homepage.
  *
- * Layout: the section head carries the title only; the description
- * (subtitle) sits beside the globe, not under the title — the layout
- * complaint from the 14:41 batch. The body lives inside
- * .section-inner, the single width container every homepage section
- * body uses, so this section can never exceed the other sections'
- * width. The globe itself is lazy (MiniGlobeLazy) and the link beside
- * it leads to the full experience on /places.
+ * The animation is pure canvas — no tiles, no worker, no network —
+ * cycling through six stylised globe models in the owner's reference
+ * style, at a small size. The section head carries the title only;
+ * the description (subtitle) sits beside the globe, and the body
+ * lives inside .section-inner, the single width container every
+ * homepage section body uses. The link beside it leads to the full
+ * experience on /places.
  */
 export function MapPanel({
   sectionId,
@@ -21,14 +21,12 @@ export function MapPanel({
   title,
   subtitle,
   linkLabel,
-  places,
 }: {
   sectionId: string;
   locale: string;
   title?: string | null;
   subtitle?: string | null;
   linkLabel: string;
-  places?: PlaceView[] | null;
 }) {
   return (
     <section id={sectionId} className="home-section map-preview">
@@ -37,7 +35,7 @@ export function MapPanel({
       </div>
       <div className="section-inner">
         <div className="map-places-layout">
-          <MiniGlobe places={places ?? []} />
+          <GlobeAnimation />
           <div className="map-places-text">
             {subtitle ? <p className="map-places-desc">{subtitle}</p> : null}
             <Link className="btn-primary" href={`/${locale}/places`}>
