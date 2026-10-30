@@ -798,6 +798,7 @@ export default function Places(): React.ReactElement {
   );
   const [editing, setEditing] = React.useState<ReligiousPlace | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState<ReligiousPlace | null>(null);
+  const [deleteError, setDeleteError] = React.useState('');
 
   const listQuery = usePlaces(filters);
   const transitionMut = useTransitionPlace();
@@ -983,7 +984,7 @@ export default function Places(): React.ReactElement {
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => setConfirmDelete(p)}
+                        onClick={() => { setDeleteError(''); setConfirmDelete(p); }}
                       >
                         {t("common.delete")}
                       </Button>
@@ -1022,11 +1023,20 @@ export default function Places(): React.ReactElement {
               <CardHeader><CardTitle>{t("places11.deleteTitle")}</CardTitle></CardHeader>
               <CardContent>
                 <p className="hint" dir="auto">{t("places11.deleteConfirm")}</p>
+                {deleteError ? (
+                  <p className="form-error">{deleteError}</p>
+                ) : null}
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <Button
                     disabled={deleteMut.isPending}
                     onClick={() =>
-                      void deleteMut.mutateAsync(confirmDelete.id).then(() => setConfirmDelete(null))
+                      void deleteMut.mutateAsync(confirmDelete.id)
+                        .then(() => setConfirmDelete(null))
+                        // Previously a failed delete left the dialog open
+                        // with no message at all — the button looked dead.
+                        // Surface the real reason (e.g. draft-only rule)
+                        // so the admin knows the archive-first path.
+                        .catch((e: unknown) => setDeleteError(errText(e)))
                     }
                   >
                     {t("common.delete")}
