@@ -1820,18 +1820,14 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
    radius, padding, soft gold shadow) but with a TRANSPARENT
    background — no fill, no backdrop blur. Grid columns mirror
    automatically in rtl (fa/ar) vs ltr (en). */
-.map-places-frame { width: min(21rem, calc(100% - 2rem)); margin-inline: auto; border: 1px solid rgba(212, 175, 55, 0.35); border-radius: var(--radius-lg); background: transparent; padding: 2.4rem 1.6rem; box-shadow: 0 0 24px rgba(212, 175, 55, 0.08); }
-/* Compact card: single column on mobile (globe on top, text + link
-   below, centered); a horizontal rectangle with the side-by-side
-   grid on desktop, where the frame is wide enough for it. */
-.map-places-layout { display: grid; grid-template-columns: 1fr; gap: clamp(1.2rem, 3vw, 2.5rem); align-items: center; }
-@media (min-width: 721px) {
-  .map-places-frame { width: min(45rem, calc(100% - 2rem)); }
-  .map-places-layout { grid-template-columns: 1.05fr 1fr; }
-}
+.map-places-frame { width: min(45rem, calc(100% - 2rem)); margin-inline: auto; border: 1px solid rgba(212, 175, 55, 0.35); border-radius: var(--radius-lg); background: transparent; padding: 2.4rem 1.6rem; box-shadow: 0 0 24px rgba(212, 175, 55, 0.08); }
+/* Layout EXACTLY as before (side-by-side grid, collapsing to one
+   column at ≤720px); the ONLY frame change is the reduced,
+   centered width above. */
+.map-places-layout { display: grid; grid-template-columns: 1.05fr 1fr; gap: clamp(1.2rem, 3vw, 2.5rem); align-items: center; }
 .map-places-text { display: flex; flex-direction: column; gap: 1rem; align-items: flex-start; min-inline-size: 0; }
 @media (max-width: 720px) {
-  .map-places-text { align-items: center; text-align: center; }
+  .map-places-layout { grid-template-columns: 1fr; }
 }
 .map-places-desc { margin: 0; color: hsl(var(--text-muted)); line-height: 2; }
 .globe-anim-frame { width: min(100%, 280px); margin-inline: auto; aspect-ratio: 1 / 1; border-radius: var(--radius-lg); overflow: hidden; background: transparent; border: 0; }

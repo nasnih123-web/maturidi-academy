@@ -13,7 +13,7 @@ import { GlobeAnimation } from './GlobeAnimation';
  * Like every other homepage section, the section head (title) sits
  * OUTSIDE the content box: section > .section-inner > section-head +
  * .map-places-frame. The frame holds ONLY the globe, the description
- * (subtitle) below it, and the link to the full experience on
+ * (subtitle) beside it, and the link to the full experience on
  * /places. The body lives inside .section-inner, the single width
  * container every homepage section body uses.
  */
