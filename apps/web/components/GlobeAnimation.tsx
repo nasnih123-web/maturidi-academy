@@ -181,12 +181,8 @@ export function GlobeAnimation() {
     function drawScene(model: GlobeModel, layout: (typeof layouts)[number], theta: number, time: number, alpha: number): void {
       g.save();
       g.globalAlpha = alpha;
-      // Ground.
-      const bg = g.createRadialGradient(cx, cy, R * 0.2, cx, cy, R * 1.35);
-      bg.addColorStop(0, '#101827');
-      bg.addColorStop(1, '#0b0e13');
-      g.fillStyle = bg;
-      g.fillRect(0, 0, SIZE, SIZE);
+      // No ground fill: the canvas stays transparent so the page
+      // background shows through around the sphere (owner request).
       // Glow.
       g.save();
       g.shadowColor = model.glow;
