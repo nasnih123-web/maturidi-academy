@@ -24,6 +24,7 @@ import {
 import { formatDualHijri } from '@/lib/fatwa-topics';
 import { ArticleBody } from '@/components/ArticleBody';
 import { ArticleShareButtons } from '@/components/ArticleShareButtons';
+import { Slider } from '@/components/Slider';
 
 export async function generateMetadata({
   params,
@@ -161,9 +162,19 @@ export default async function ArticleDetailPage({
           {related && related.items.length > 0 ? (
             <section>
               <h2>{t('relatedTitle')}</h2>
-              <div className="ftw-related">
+              <Slider
+                config={{
+                  slideWidth: 'clamp(15rem, 22vw, 19rem)',
+                  labels: {
+                    prev: t('sliderPrev'),
+                    next: t('sliderNext'),
+                    region: t('relatedTitle'),
+                  },
+                  className: 'ftw-related-slider',
+                }}
+              >
                 {related.items.map((item) => (
-                  <article key={item.slug} className="ftw-card ftw-card-sm">
+                  <article key={item.slug} className="ftw-card">
                     <Link href={`/${locale}/articles/${encodeURIComponent(item.slug)}`} className="ftw-card-link">
                       {item.featuredImageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -180,7 +191,7 @@ export default async function ArticleDetailPage({
                     </Link>
                   </article>
                 ))}
-              </div>
+              </Slider>
             </section>
           ) : null}
         </div>
