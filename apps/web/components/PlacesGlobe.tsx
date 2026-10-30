@@ -34,6 +34,25 @@ import { coverImage, typeEmoji, typeLabel, type PlaceTypeDef, type PlaceView, ty
 import { videoEmbedUrl } from '@/lib/video-embed';
 import type { PlacesGlobeSettings } from '@/lib/settings';
 
+// MapLibre's GeoJSON rendering runs in a module worker whose file the
+// library locates dynamically (./maplibre-gl-worker.mjs relative to its
+// own module URL). No bundler can trace that dynamic URL, so Next never
+// emits the file and the runtime URL 404s to an HTML page — the exact
+// "module script with non-JavaScript MIME type text/html" + "Worker
+// failed to load" errors seen on this page. A dead worker silently kills
+// every GeoJSON feature (the qibla arc) while raster tiles, DOM markers
+// and pure-math UI keep working, and it leaves Style.loaded() false
+// forever, which gated every arc add. Point the worker at a
+// bundler-emitted asset instead, before any map exists. If the bundler
+// cannot resolve it, this falls back to the library default.
+if (typeof window !== 'undefined') {
+  try {
+    maplibregl.setWorkerUrl(new URL('maplibre-gl/dist/maplibre-gl-worker.mjs', import.meta.url).toString());
+  } catch {
+    // Keep the library default; the failure stays visible in the console.
+  }
+}
+
 export interface PlacesGlobeLabels {
   allTypes: string;
   tileFallbackNotice: string;
@@ -308,10 +327,16 @@ export function PlacesGlobe({
 
   const addQiblaLayer = (q: Qibla): void => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) {
+    if (!map) {
       refreshQiblaDiag();
       return;
     }
+    // Gate on the actually necessary condition only: Style.addLayer
+    // requires just a parsed style (_checkLoaded), not the full loaded()
+    // (parsed + all tiles + all workers). The old full-loaded() gate
+    // silently dropped every add while any tile or worker update was
+    // pending — and with a dead worker, that was forever. A not-yet-
+    // parsed style still throws inside the try below and is caught.
     try {
       const lineData = {
         type: 'Feature' as const,
@@ -508,10 +533,10 @@ export function PlacesGlobe({
     // a later setStyle (mode switch), leaving the arc wiped forever.
     map.on('style.load', onStyleLoad);
     if (map.isStyleLoaded()) onStyleLoad();
-    // Self-heal: the add path gates on isStyleLoaded(), which stays
-    // false while tiles or source updates are pending, and nothing
-    // retried a skipped add. On idle the map has settled, so restore
-    // any missing qibla layers/sources and refresh the diagnostic.
+    // Self-heal: if qibla is set but any layer/source is missing, retry
+    // the add when the map goes idle. (Previously this retried the same
+    // full-loaded() gate and could never rescue a stuck style; the gate
+    // now lives only on a parsed style inside addQiblaLayer.)
     map.on('idle', () => {
       if (!qiblaRef.current) return;
       const m = mapRef.current;
@@ -635,9 +660,10 @@ export function PlacesGlobe({
       setQiblaDiag('');
       return;
     }
-    // If the style is still loading, the persistent style.load handler
-    // adds the arc once it arrives (qiblaRef is already set above).
-    if (map.isStyleLoaded()) addQiblaLayer(qibla);
+    // addQiblaLayer itself tolerates a not-yet-parsed style (its try
+    // catches the throw), and the persistent style.load handler retries
+    // once the style arrives (qiblaRef is already set above).
+    addQiblaLayer(qibla);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qibla]);
 
