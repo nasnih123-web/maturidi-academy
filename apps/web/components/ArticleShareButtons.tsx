@@ -10,6 +10,7 @@
  */
 import { useState } from 'react';
 import { apiBaseUrl } from '@/lib/api-base';
+import { TelegramIcon, WhatsappIcon } from '@/components/ShareIcons';
 
 export interface ArticleShareLabels {
   share: string;
@@ -96,9 +97,11 @@ export function ArticleShareButtons({
       <div className="ftw-share-row">
         <span>{labels.share}</span>
         <button type="button" className="ftw-share-btn" onClick={onTelegram}>
+          <TelegramIcon />
           {labels.telegram}
         </button>
         <button type="button" className="ftw-share-btn" onClick={onWhatsapp}>
+          <WhatsappIcon />
           {labels.whatsapp}
         </button>
         <button type="button" className="ftw-share-btn" onClick={onCopy}>

@@ -1658,8 +1658,18 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
 .ftw-share { border: 1px solid rgba(212, 175, 55, 0.35); border-radius: var(--radius-lg); padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; box-shadow: 0 0 24px rgba(212, 175, 55, 0.08); }
 .ftw-share-count { font-size: 0.9rem; color: #e5c07b; font-weight: 700; }
 .ftw-share-row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
-.ftw-share-btn { padding: 0.45rem 0.9rem; border-radius: 0.5rem; cursor: pointer; background: rgba(7, 35, 28, 0.55); color: #e5c07b; border: 1px solid rgba(212, 175, 55, 0.35); font-weight: 650; transition: background var(--dur-base), color var(--dur-base), border-color var(--dur-base), transform var(--dur-base); }
-.ftw-share-btn:hover { background: linear-gradient(135deg, #b8912c, #d4af37); color: #06120e; border-color: transparent; transform: translateY(-1px); }
+.ftw-share-btn { position: relative; isolation: isolate; overflow: hidden; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.9rem; border-radius: 0.5rem; cursor: pointer; background: rgba(7, 35, 28, 0.55); color: #e5c07b; border: 1px solid rgba(212, 175, 55, 0.35); font-weight: 650; box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35); transition: color 0.45s ease, border-color 0.45s ease, transform 0.15s ease, box-shadow 0.3s ease; }
+/* Hover animation, three layers: (1) slow color change (0.45s
+   transitions); (2) gold background sliding in from the start side
+   (right in RTL) via a ::before sweep — it paints above the dark
+   button background but below the text/icon because it is z-index -1
+   inside the button's own stacking context; (3) press/3D: hover lifts
+   the button and deepens its shadow, :active drops it back down and
+   collapses the shadow for a pressed feel. */
+.ftw-share-btn::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(135deg, #b8912c, #d4af37); transform: scaleX(0); transform-origin: right center; transition: transform 0.45s ease; }
+.ftw-share-btn:hover { color: #06120e; border-color: transparent; transform: translateY(-1px); box-shadow: 0 4px 14px rgba(212, 175, 55, 0.35), 0 2px 0 rgba(0, 0, 0, 0.35); }
+.ftw-share-btn:hover::before { transform: scaleX(1); }
+.ftw-share-btn:active { transform: translateY(1px); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35), 0 0 8px rgba(212, 175, 55, 0.25); }
 
 /* prayer-times page (/adhan) — Academy component language, mobile-first */
 .adhan-page { display: flex; flex-direction: column; gap: 2rem; max-width: 72rem; margin: 0 auto; padding: 0 1rem 2rem; }
