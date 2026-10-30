@@ -1833,13 +1833,16 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
 @media (min-width: 721px) {
   .map-places-frame { height: 350px; }
 }
-@media (max-width: 768px) {
-  .map-places-text { align-items: center; text-align: center; }
-}
 .map-places-layout { display: grid; grid-template-columns: 1.05fr 1fr; gap: clamp(1.2rem, 3vw, 2.5rem); align-items: center; }
 .map-places-text { display: flex; flex-direction: column; gap: 1rem; align-items: flex-start; min-inline-size: 0; }
 @media (max-width: 720px) {
   .map-places-layout { grid-template-columns: 1fr; }
+}
+/* Mobile text centered (≤768px covers the user's 720–768px phone
+   viewport too). Placed AFTER the base .map-places-text rule so it
+   wins at equal specificity. */
+@media (max-width: 768px) {
+  .map-places-text { align-items: center; text-align: center; }
 }
 .map-places-desc { margin: 0; color: hsl(var(--text-muted)); line-height: 2; }
 .globe-anim-frame { width: min(100%, 280px); margin-inline: auto; aspect-ratio: 1 / 1; border-radius: var(--radius-lg); overflow: hidden; background: transparent; border: 0; }
