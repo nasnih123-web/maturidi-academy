@@ -184,7 +184,7 @@ HOME_SECTIONS_SEED: list[dict] = [
     {
         "key": "nearby_map",
         "sort_order": 8,
-        "title": _L("نقشهٔ نزدیک", "الخريطة القريبة", "Nearby Map"),
+        "title": _L("اماکن", "الخريطة القريبة", "Nearby Map"),
         "subtitle": _L(
             "مساجد و مراکز آموزشی نزدیک شما",
             "المساجد والمراكز التعليمية القريبة منك",
