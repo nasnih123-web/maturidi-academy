@@ -33,25 +33,9 @@ import {
 import { coverImage, typeEmoji, typeLabel, type PlaceTypeDef, type PlaceView, type PlacesPopupConfig } from '@/lib/places-view';
 import { videoEmbedUrl } from '@/lib/video-embed';
 import type { PlacesGlobeSettings } from '@/lib/settings';
-
-// MapLibre's GeoJSON rendering runs in a module worker whose file the
-// library locates dynamically (./maplibre-gl-worker.mjs relative to its
-// own module URL). No bundler can trace that dynamic URL, so Next never
-// emits the file and the runtime URL 404s to an HTML page — the exact
-// "module script with non-JavaScript MIME type text/html" + "Worker
-// failed to load" errors seen on this page. A dead worker silently kills
-// every GeoJSON feature (the qibla arc) while raster tiles, DOM markers
-// and pure-math UI keep working, and it leaves Style.loaded() false
-// forever, which gated every arc add. Point the worker at a
-// bundler-emitted asset instead, before any map exists. If the bundler
-// cannot resolve it, this falls back to the library default.
-if (typeof window !== 'undefined') {
-  try {
-    maplibregl.setWorkerUrl(new URL('maplibre-gl/dist/maplibre-gl-worker.mjs', import.meta.url).toString());
-  } catch {
-    // Keep the library default; the failure stays visible in the console.
-  }
-}
+// Shared worker setup (side effect): must run before any map exists.
+// See apps/web/lib/maplibre-worker.ts for the PR #75 mechanism.
+import '@/lib/maplibre-worker';
 
 export interface PlacesGlobeLabels {
   allTypes: string;

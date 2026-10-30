@@ -16,6 +16,8 @@ import {
 import { buildHomeLabels } from "@/lib/home-labels";
 import { getFatwaListServer } from "@/lib/fatwa-topics";
 import { getArticleListServer } from "@/lib/articles";
+import { getAllPlaces } from "@/lib/places";
+import { toPlaceView } from "@/lib/places-view";
 import { themeCssText } from "@/lib/theme";
 import { ArticlesSlider } from "@/components/ArticlesSlider";
 import { HomeSections, HomeSectionRenderer } from "@/components/HomeSections";
@@ -89,7 +91,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
   let themeCss = "";
   let apiFailed = false;
 
-  const [homeRes, announcements, banners, calTheme, quotes, siteConfig, fatwaRes, articlesRes] = await Promise.all([
+  const [homeRes, announcements, banners, calTheme, quotes, siteConfig, fatwaRes, articlesRes, placeViews] = await Promise.all([
     getHomeSections().then(
       (res) => ({ ok: true as const, res }),
       () => ({ ok: false as const }),
@@ -122,6 +124,14 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
     }).then(
       (res) => ({ ok: true as const, res }),
       () => ({ ok: false as const }),
+    ),
+    // Homepage mini-globe dots — published places from the public
+    // endpoint. Non-throwing: on failure the globe renders with no
+    // dots (the link beside it still works). Only coordinates, names
+    // and types cross to the client — no galleries or videos.
+    getAllPlaces().then(
+      (items) => items.map((p) => toPlaceView(p, (["fa", "ar", "en"].includes(locale) ? locale : "fa"))),
+      () => [],
     ),
   ]);
 
@@ -196,10 +206,9 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
     />
   );
 
-  // Globe phase: the nearby_map homepage slot is a preview card + link to
-  // /places. The homepage no longer fetches places (the 3D globe is too
-  // heavy for it, and the slot previously pulled up to 500 places on
-  // every homepage load).
+  // Batch 2: the nearby_map homepage slot is a small live mini-globe
+  // (lazy chunk, dots only) + link to /places. The full explorer
+  // (markers, list, search, qibla) still lives on /places only.
 
   return (
     <>
@@ -243,6 +252,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
                 labels={homeLabels}
                 heroOverride={heroOverride}
                 fatwaSliderItems={fatwaSliderItems}
+                places={placeViews}
                 afterCommunity={articlesSlider}
               />
             </>
@@ -253,6 +263,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
               labels={homeLabels}
               heroOverride={heroOverride}
               fatwaSliderItems={fatwaSliderItems}
+              places={placeViews}
               afterCommunity={articlesSlider}
             />
           )}

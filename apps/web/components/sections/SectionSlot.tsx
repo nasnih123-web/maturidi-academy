@@ -16,6 +16,7 @@ import { Fragment, type ReactNode } from 'react';
 import type { HomeSection } from '@/lib/types';
 import type { HomeSlotSetting, HeroSettings } from '@/lib/settings';
 import { HomeSectionRenderer, type FatwaSliderItem, type HomeSectionsLabels } from '../HomeSections';
+import type { PlaceView } from '@/lib/places-view';
 import { isVariantEligibleSection } from './specs';
 import { VariantRenderer, isVariantId } from './VariantRenderer';
 
@@ -26,6 +27,7 @@ export function SectionSlot({
   labels,
   heroOverride,
   fatwaSliderItems,
+  places,
 }: {
   section: HomeSection;
   slot: HomeSlotSetting;
@@ -33,6 +35,7 @@ export function SectionSlot({
   labels: HomeSectionsLabels;
   heroOverride: HeroSettings | null;
   fatwaSliderItems?: FatwaSliderItem[] | null;
+  places?: PlaceView[] | null;
 }) {
   // The fatwa slider always comes from the public published-topics
   // endpoint — a variant must not silently revert it to section JSON.
@@ -44,6 +47,7 @@ export function SectionSlot({
         labels={labels}
         heroOverride={heroOverride}
         fatwaSliderItems={fatwaSliderItems}
+        places={places}
       />
     );
   }
@@ -61,6 +65,7 @@ export function SectionSlot({
       labels={labels}
       heroOverride={heroOverride}
       fatwaSliderItems={fatwaSliderItems}
+      places={places}
     />
   );
 }
@@ -79,6 +84,7 @@ export function ComposedSections({
   labels,
   heroOverride,
   fatwaSliderItems,
+  places,
   afterCommunity,
 }: {
   sections: HomeSection[];
@@ -87,6 +93,7 @@ export function ComposedSections({
   labels: HomeSectionsLabels;
   heroOverride: HeroSettings | null;
   fatwaSliderItems?: FatwaSliderItem[] | null;
+  places?: PlaceView[] | null;
   /**
    * Block rendered immediately after the community section (in slots
    * order), e.g. the recent-articles slider. When no community slot
@@ -119,6 +126,7 @@ export function ComposedSections({
               labels={labels}
               heroOverride={heroOverride}
               fatwaSliderItems={fatwaSliderItems}
+              places={places}
             />
             {slot.id === "community" ? afterCommunity : null}
           </Fragment>
