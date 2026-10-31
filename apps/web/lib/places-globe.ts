@@ -60,15 +60,17 @@ function toVec(lat: number, lng: number): Vec3 {
 
 /**
  * Great-circle polyline from (lat,lng) to the Kaaba as [lng, lat] pairs
- * for a GeoJSON LineString. Spherical interpolation (slerp); a straight
+ * for a GeoJSON MultiLineString. Spherical interpolation (slerp); a straight
  * two-point line would cut through the globe on a sphere projection.
+ * Split at the antimeridian (see splitAtAntimeridian): without the split,
+ * a path crossing ±180° would be drawn wrapping around the world.
  */
-export function greatCircleToKaaba(lat: number, lng: number, segments = 64): Array<[number, number]> {
+export function greatCircleToKaaba(lat: number, lng: number, segments = 64): Array<Array<[number, number]>> {
   const p0 = toVec(lat, lng);
   const p1 = toVec(KAABA.lat, KAABA.lng);
   const dot = Math.min(1, Math.max(-1, p0[0] * p1[0] + p0[1] * p1[1] + p0[2] * p1[2]));
   const omega = Math.acos(dot);
-  if (omega < 1e-9) return [[lng, lat], [KAABA.lng, KAABA.lat]];
+  if (omega < 1e-9) return [[[lng, lat], [KAABA.lng, KAABA.lat]]];
   const sinOmega = Math.sin(omega);
   const pts: Array<[number, number]> = [];
   for (let i = 0; i <= segments; i++) {
@@ -80,7 +82,54 @@ export function greatCircleToKaaba(lat: number, lng: number, segments = 64): Arr
     const z = Math.min(1, Math.max(-1, a * p0[2] + b * p1[2]));
     pts.push([toDeg(Math.atan2(y, x)), toDeg(Math.asin(z))]);
   }
-  return pts;
+  return splitAtAntimeridian(pts);
+}
+
+/**
+ * Split a [lng, lat] polyline at the antimeridian (±180°) into segments
+ * for a GeoJSON MultiLineString. A great-circle path crossing ±180° makes
+ * atan2 wrap (e.g. 179.9 -> -179.9); drawn as one LineString, MapLibre
+ * would connect those two points with a segment wrapping around the whole
+ * world. Splitting at the crossing — with the latitude interpolated at
+ * ±180° — keeps the arc on the short path. One segment is returned when
+ * the path never crosses.
+ */
+export function splitAtAntimeridian(pts: Array<[number, number]>): Array<Array<[number, number]>> {
+  if (pts.length === 0) return [];
+  const segments: Array<Array<[number, number]>> = [];
+  let current: Array<[number, number]> = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const [prevLng, prevLat] = pts[i - 1];
+    const [lng, lat] = pts[i];
+    const d = lng - prevLng;
+    if (Math.abs(d) <= 180) {
+      current.push([lng, lat]);
+      continue;
+    }
+    // Crossing: unwrap the new longitude so the step is the short way,
+    // find where the segment meets ±180°, and break there.
+    const unwrapped = d > 0 ? lng - 360 : lng + 360;
+    const edge = prevLng > 0 ? 180 : -180;
+    const f = (edge - prevLng) / (unwrapped - prevLng);
+    const crossLat = prevLat + f * (lat - prevLat);
+    current.push([edge, crossLat]);
+    segments.push(current);
+    current = [[-edge, crossLat], [lng, lat]];
+  }
+  segments.push(current);
+  return segments;
+}
+
+/**
+ * True only for a per-tile load failure on a map 'error' event. MapLibre
+ * attaches the failed tile to exactly those events (tile_manager _loadTile
+ * fires ErrorEvent(err, {tile}); it bubbles tileManager -> style -> map,
+ * and the map's own _onStyleError is typed ErrorEvent & {tile?: unknown}).
+ * Worker, style and source errors carry no tile, so they must never count
+ * toward the satellite tile fallback.
+ */
+export function isTileErrorEvent(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && (e as { tile?: unknown }).tile != null;
 }
 
 /**
