@@ -90,6 +90,12 @@ export interface QuranSettings {
   showTafsir: boolean;
   /** "word" | "ayah" — highlight granularity hint for the audio player. */
   highlightMode: 'word' | 'ayah';
+  /** Display madhhab id (quran.madhhab_default; CRM default 'hanafi'). */
+  madhhabDefault: string;
+  /** Player default speed (quran.player_default_speed), 0.5–2. */
+  playerDefaultSpeed: number;
+  /** Whether the player bar shows the reciter photo block (quran.player_show_photo). */
+  playerShowPhoto: boolean;
 }
 
 /** Public settings contract for the night-munajat calm theme.
@@ -332,6 +338,9 @@ export const DEFAULT_QURAN: QuranSettings = {
   showTranslation: true,
   showTafsir: false,
   highlightMode: 'ayah',
+  madhhabDefault: 'hanafi',
+  playerDefaultSpeed: 1,
+  playerShowPhoto: true,
 };
 
 export const DEFAULT_MUNAJAT: MunajatSettings = {
@@ -366,11 +375,20 @@ function strList(v: unknown): string[] {
   return v.filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
 }
 
+const QURAN_MADHHABS = ['hanafi', 'shafii', 'maliki', 'hanbali'];
+
+function parsePlayerSpeed(v: unknown, fallback: number): number {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(2, Math.max(0.5, n));
+}
+
 function parseQuranSettings(get: (key: string) => unknown): QuranSettings {
   const translations = strList(get('quran.translations'));
   const tafsirs = strList(get('quran.tafsirs'));
   const reciters = strList(get('quran.reciters'));
   const mode = get('quran.highlight_mode') === 'word' ? 'word' : 'ayah';
+  const madhhab = get('quran.madhhab_default');
   return {
     defaultTranslation: translations[0] ?? null,
     defaultTafsir: tafsirs[0] ?? null,
@@ -378,6 +396,10 @@ function parseQuranSettings(get: (key: string) => unknown): QuranSettings {
     showTranslation: bool(get('quran.show_translation'), true),
     showTafsir: bool(get('quran.show_tafsir'), false),
     highlightMode: mode,
+    madhhabDefault:
+      typeof madhhab === 'string' && QURAN_MADHHABS.includes(madhhab) ? madhhab : 'hanafi',
+    playerDefaultSpeed: parsePlayerSpeed(get('quran.player_default_speed'), 1),
+    playerShowPhoto: bool(get('quran.player_show_photo'), true),
   };
 }
 

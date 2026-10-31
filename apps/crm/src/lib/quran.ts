@@ -22,6 +22,9 @@ import { readSettingsMap } from "./appearance";
  *   quran.highlight_mode     "word" | "ayah" | "off"
  *   quran.font_size          number 12..72
  *   quran.playback           {autoplay: bool, repeat: "off"|"ayah"|"surah"}
+ *   quran.madhhab_default    "hanafi"|"shafii"|"maliki"|"hanbali" (Phase 1)
+ *   quran.player_default_speed number 0.5..2 (Phase 1)
+ *   quran.player_show_photo  bool (Phase 1)
  *   munajat.enabled          bool
  *   munajat.window           {start: "HH:MM", end: "HH:MM"}
  *   adhan.defaults           {calculation_method, madhab} — registered
@@ -55,6 +58,9 @@ export const QURAN_SETTINGS_KEYS = {
   highlightMode: "quran.highlight_mode",
   fontSize: "quran.font_size",
   playback: "quran.playback",
+  madhhabDefault: "quran.madhhab_default",
+  playerDefaultSpeed: "quran.player_default_speed",
+  playerShowPhoto: "quran.player_show_photo",
   munajatEnabled: "munajat.enabled",
   munajatWindow: "munajat.window",
   adhanDefaults: "adhan.defaults",
@@ -270,6 +276,33 @@ export function parsePlayback(raw: string | null | undefined): PlaybackConfig {
     autoplay: r.autoplay === true,
     repeat: r.repeat === "ayah" || r.repeat === "surah" ? r.repeat : "off",
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Quran Phase 1: display madhhab + player defaults                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Display madhhab ids — the API's own enum values
+ * (`quran.madhhab_default` validator). NOT the adhan `Madhab` type
+ * ("shafi"|"hanafi", Asr time only) — a different concept.
+ */
+export const QURAN_MADHHABS = ["hanafi", "shafii", "maliki", "hanbali"] as const;
+export type QuranMadhhab = (typeof QURAN_MADHHABS)[number];
+
+/** quran.madhhab_default — one of the four ids, default "hanafi". */
+export function parseMadhhabDefault(raw: string | null | undefined): QuranMadhhab {
+  const v = decodeJson(raw);
+  return typeof v === "string" && (QURAN_MADHHABS as readonly string[]).includes(v)
+    ? (v as QuranMadhhab)
+    : "hanafi";
+}
+
+/** quran.player_default_speed — number, server range 0.5..2. */
+export function parsePlayerSpeed(raw: string | null | undefined): number {
+  const v = decodeJson(raw);
+  if (typeof v !== "number" || Number.isNaN(v)) return 1;
+  return clamp(v, 0.5, 2);
 }
 
 /* ------------------------------------------------------------------ */

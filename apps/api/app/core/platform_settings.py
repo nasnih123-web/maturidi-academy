@@ -87,6 +87,10 @@ SETTING_DEFS: dict[str, dict] = {
     "quran.highlight_mode": {"type": "json", "sensitive": False, "label": "حالت هایلایت (word|ayah|off)"},
     "quran.font_size": {"type": "json", "sensitive": False, "label": "اندازهٔ پایهٔ فونت قرآن"},
     "quran.playback": {"type": "json", "sensitive": False, "label": "رفتار پخش صوت"},
+    # --- فاز قرآن ۱: مذهب پیش‌فرض نمایش + پیش‌فرض‌های پخش‌کننده ---
+    "quran.madhhab_default": {"type": "json", "sensitive": False, "label": "مذهب پیش‌فرض نمایش قرآن"},
+    "quran.player_default_speed": {"type": "json", "sensitive": False, "label": "سرعت پیش‌فرض پخش قرآن"},
+    "quran.player_show_photo": {"type": "json", "sensitive": False, "label": "نمایش عکس قاری در پخش‌کننده"},
     "munajat.enabled": {"type": "json", "sensitive": False, "label": "فعال‌بودن مناجات شبانه"},
     "munajat.window": {"type": "json", "sensitive": False, "label": "پنجرهٔ زمانی مناجات"},
     "adhan.defaults": {"type": "json", "sensitive": False, "label": "پیش‌فرض محاسبهٔ اذان (روش + مذهب)"},
@@ -395,6 +399,29 @@ def _validate_playback(value: Any) -> dict:
     return {"autoplay": autoplay, "repeat": repeat}
 
 
+# --- فاز قرآن ۱: مذهب پیش‌فرض نمایش + پیش‌فرض‌های پخش‌کننده ---
+
+_QURAN_MADHHABS = ("hanafi", "shafii", "maliki", "hanbali")
+
+
+def _validate_madhhab_default(value: Any) -> str:
+    if value not in _QURAN_MADHHABS:
+        raise ValueError(
+            f"quran.madhhab_default must be one of {'|'.join(_QURAN_MADHHABS)}"
+        )
+    return value
+
+
+def _validate_player_speed(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        # TRY004: wrong-typed values raise TypeError; the settings PUT path
+        # maps both ValueError and TypeError to the same client 400.
+        raise TypeError("quran.player_default_speed must be a number")
+    if not 0.5 <= value <= 2:
+        raise ValueError("quran.player_default_speed must be between 0.5 and 2")
+    return float(value)
+
+
 _HHMM = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 
@@ -551,6 +578,12 @@ def _validate_json_setting(key: str, value: Any) -> Any:
         return _validate_font_size(value)
     if key == "quran.playback":
         return _validate_playback(value)
+    if key == "quran.madhhab_default":
+        return _validate_madhhab_default(value)
+    if key == "quran.player_default_speed":
+        return _validate_player_speed(value)
+    if key == "quran.player_show_photo":
+        return _validate_flag(key, value)
     if key == "munajat.window":
         return _validate_munajat_window(value)
     if key == "adhan.defaults":

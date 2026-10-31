@@ -815,6 +815,36 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .ayah-note-save:disabled { opacity: 0.45; cursor: default; }
 .quran-ayah-jump { margin-top: 1.5rem; font-size: 0.8rem; color: hsl(var(--text-muted)); }
 
+/* Quran Phase 1: tabs, madhhab selector, sajda badge, fawasil note, extended player */
+.quran-fawasil-note { margin: 0.3rem 0 0; font-size: 0.8rem; color: hsl(var(--text-muted)); }
+.quran-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid rgba(212, 175, 55, 0.25); }
+.quran-tab { padding: 0.6rem 1.2rem; border: 0; border-bottom: 2px solid transparent; background: none; color: hsl(var(--text-secondary)); font-size: 0.95rem; cursor: pointer; }
+.quran-tab:hover { color: #e5c07b; }
+.quran-tab-active { color: #e5c07b; border-bottom-color: #d4af37; font-weight: 700; }
+.quran-placeholder { padding: 2rem 1rem; border: 1px dashed rgba(212, 175, 55, 0.4); border-radius: var(--radius-lg); text-align: center; color: hsl(var(--text-secondary)); line-height: 2; }
+.quran-madhhab { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: hsl(var(--text-secondary)); }
+.quran-madhhab select { padding: 0.4rem 0.6rem; border-radius: var(--radius-sm); border: 1px solid rgba(212, 175, 55, 0.3); background: rgba(7, 35, 28, 0.7); color: hsl(var(--text-primary)); }
+.ayah-sajda { color: #e5c07b; font-size: 1.1rem; margin-inline-start: 0.5rem; }
+.quran-player-meta { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.7rem; }
+.quran-reciter-photo { width: 2.5rem; height: 2.5rem; border-radius: 999px; object-fit: cover; border: 1px solid rgba(212, 175, 55, 0.4); }
+.quran-reciter-photo-empty { display: inline-flex; align-items: center; justify-content: center; background: rgba(212, 175, 55, 0.14); color: #e5c07b; font-size: 1.1rem; }
+.quran-player-reciter { font-size: 0.9rem; color: hsl(var(--text-primary)); }
+.quran-player-surah { font-size: 1rem; color: #e5c07b; }
+.quran-step-btn { width: 2.5rem; height: 2.5rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.4); background: transparent; color: #e5c07b; font-size: 1rem; cursor: pointer; }
+.quran-step-btn:hover:not(:disabled) { background: rgba(212, 175, 55, 0.15); }
+.quran-step-btn:disabled { opacity: 0.45; cursor: default; }
+.quran-player-settings { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: 0.7rem; }
+.quran-speed, .quran-volume { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: hsl(var(--text-secondary)); }
+.quran-speed select { padding: 0.3rem 0.5rem; border-radius: var(--radius-sm); border: 1px solid rgba(212, 175, 55, 0.3); background: rgba(7, 35, 28, 0.7); color: hsl(var(--text-primary)); }
+.quran-volume input[type="range"] { width: 8rem; accent-color: #d4af37; }
+/* Phone widths: the player bar sticks to the bottom; the reader gets
+   bottom padding so the bar never covers the last ayah. 768px matches
+   the user's phone layout viewport (720–768 CSS px). */
+@media (max-width: 768px) {
+  .quran-reader { padding-bottom: 11rem; }
+  .quran-player { position: fixed; inset-inline: 0; bottom: 0; z-index: 40; margin-bottom: 0; border-radius: 0; border-inline: 0; border-bottom: 0; }
+}
+
 /* tasbih */
 .tasbih-presets { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
 .tasbih-preset { padding: 0.55rem 1.1rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.35); background: transparent; color: hsl(var(--text-secondary)); font-size: 1.05rem; cursor: pointer; }

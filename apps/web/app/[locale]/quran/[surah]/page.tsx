@@ -47,6 +47,8 @@ export default async function SurahPage({
   const providers = await getQuranProviders();
 
   // Providers config (CRM) wins; quran.* settings are the fallback.
+  // Madhhab/player defaults have no providers field — siteConfig is the
+  // source (CRM quran.madhhab_default / quran.player_* keys).
   const qs: QuranSettings = {
     defaultTranslation: searchParams.translation ?? providers?.translationEdition ?? siteConfig.quran.defaultTranslation,
     defaultTafsir: searchParams.tafsir ?? providers?.tafsirEdition ?? siteConfig.quran.defaultTafsir,
@@ -54,6 +56,9 @@ export default async function SurahPage({
     showTranslation: providers?.showTranslation ?? siteConfig.quran.showTranslation,
     showTafsir: providers?.showTafsir ?? siteConfig.quran.showTafsir,
     highlightMode: providers?.highlightMode ?? siteConfig.quran.highlightMode,
+    madhhabDefault: siteConfig.quran.madhhabDefault,
+    playerDefaultSpeed: siteConfig.quran.playerDefaultSpeed,
+    playerShowPhoto: siteConfig.quran.playerShowPhoto,
   };
   const reciters = providers?.reciters ?? [];
 
@@ -107,6 +112,32 @@ export default async function SurahPage({
           showTranslation: t('showTranslation'),
           showTafsir: t('showTafsir'),
           bismillah: t('bismillah'),
+          tabsLabel: t('tabsLabel'),
+          tabGeneral: t('tabGeneral'),
+          tabHifz: t('tabHifz'),
+          tabChildren: t('tabChildren'),
+          hifzPlaceholder: t('hifzPlaceholder'),
+          childrenPlaceholder: t('childrenPlaceholder'),
+          madhhabLabel: t('madhhabLabel'),
+          madhhabHanafi: t('madhhabHanafi'),
+          madhhabShafii: t('madhhabShafii'),
+          madhhabMaliki: t('madhhabMaliki'),
+          madhhabHanbali: t('madhhabHanbali'),
+          sajdaWajib: t('sajdaWajib'),
+          sajdaSunnah: t('sajdaSunnah'),
+          fawasilCount: t('fawasilCount'),
+          fawasilFallback: t('fawasilFallback'),
+          schoolKufi: t('schoolKufi'),
+          schoolBasri: t('schoolBasri'),
+          schoolMadani1: t('schoolMadani1'),
+          schoolMadani2: t('schoolMadani2'),
+          schoolMakki: t('schoolMakki'),
+          schoolShami: t('schoolShami'),
+          schoolHimsi: t('schoolHimsi'),
+          prevAyah: t('prevAyah'),
+          nextAyah: t('nextAyah'),
+          speedLabel: t('speedLabel'),
+          volumeLabel: t('volumeLabel'),
           playAyah: t('playAyah'),
           playing: t('playing'),
           translationLabel: t('translationLabel'),

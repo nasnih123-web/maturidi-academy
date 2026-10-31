@@ -12,8 +12,10 @@ import {
   parseFlag,
   parseFontSize,
   parseHighlightMode,
+  parseMadhhabDefault,
   parseMunajatWindow,
   parsePlayback,
+  parsePlayerSpeed,
   parseProviderId,
   parseStringList,
   useQuranProvidersQuery,
@@ -22,6 +24,7 @@ import {
   type HighlightMode,
   type MunajatWindow,
   type PlaybackConfig,
+  type QuranMadhhab,
   type RepeatMode,
 } from "../lib/quran";
 
@@ -33,7 +36,8 @@ import {
  *   1. Providers → quran.provider, quran.translations, quran.tafsirs, quran.reciters
  *   2. Display   → quran.active_languages, quran.show_translation,
  *                   quran.show_tafsir, quran.highlight_mode, quran.font_size,
- *                   quran.playback
+ *                   quran.playback, quran.madhhab_default,
+ *                   quran.player_default_speed, quran.player_show_photo
  *   3. Munajat   → munajat.enabled, munajat.window
  * (Adhan moved to its own section — pages/Adhan.tsx, route /adhan —
  * since 2026-10-28; it is no longer a tab here.)
@@ -386,6 +390,17 @@ const REPEAT_MODES: { id: RepeatMode; key: string }[] = [
   { id: "surah", key: "quran.repeatSurah" },
 ];
 
+/* Quran Phase 1: display madhhab options (adhan keys reused for the two
+   shared names; Maliki/Hanbali are new keys below). */
+const DISPLAY_MADHHABS: { id: QuranMadhhab; key: string }[] = [
+  { id: "hanafi", key: "quran.madhabHanafi" },
+  { id: "shafii", key: "quran.madhabShafi" },
+  { id: "maliki", key: "quran.madhabMaliki" },
+  { id: "hanbali", key: "quran.madhabHanbali" },
+];
+
+const PLAYER_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+
 function DisplayPanel(): React.ReactElement {
   const { t } = useI18n();
   const settings = useQuranSettingsQuery();
@@ -396,6 +411,9 @@ function DisplayPanel(): React.ReactElement {
   const [highlightMode, setHighlightMode] = React.useState<HighlightMode>("ayah");
   const [fontSize, setFontSize] = React.useState(20);
   const [playback, setPlayback] = React.useState<PlaybackConfig>({ ...DEFAULT_PLAYBACK });
+  const [madhhabDefault, setMadhhabDefault] = React.useState<QuranMadhhab>("hanafi");
+  const [playerSpeed, setPlayerSpeed] = React.useState(1);
+  const [playerShowPhoto, setPlayerShowPhoto] = React.useState(true);
   const [savedTick, setSavedTick] = React.useState(0);
 
   React.useEffect(() => {
@@ -416,6 +434,9 @@ function DisplayPanel(): React.ReactElement {
       );
       setFontSize(parseFontSize(settings.data[QURAN_SETTINGS_KEYS.fontSize]));
       setPlayback(parsePlayback(settings.data[QURAN_SETTINGS_KEYS.playback]));
+      setMadhhabDefault(parseMadhhabDefault(settings.data[QURAN_SETTINGS_KEYS.madhhabDefault]));
+      setPlayerSpeed(parsePlayerSpeed(settings.data[QURAN_SETTINGS_KEYS.playerDefaultSpeed]));
+      setPlayerShowPhoto(parseFlag(settings.data[QURAN_SETTINGS_KEYS.playerShowPhoto], true));
     }
   }, [settings.data]);
 
@@ -445,6 +466,9 @@ function DisplayPanel(): React.ReactElement {
         [QURAN_SETTINGS_KEYS.highlightMode]: highlightMode,
         [QURAN_SETTINGS_KEYS.fontSize]: Math.min(72, Math.max(12, fontSize || 20)),
         [QURAN_SETTINGS_KEYS.playback]: playback,
+        [QURAN_SETTINGS_KEYS.madhhabDefault]: madhhabDefault,
+        [QURAN_SETTINGS_KEYS.playerDefaultSpeed]: playerSpeed,
+        [QURAN_SETTINGS_KEYS.playerShowPhoto]: playerShowPhoto,
       },
       { onSuccess: () => setSavedTick((n) => n + 1) },
     );
@@ -554,6 +578,51 @@ function DisplayPanel(): React.ReactElement {
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="field">
+        <label htmlFor="quran-madhhab-default">{t("quran.madhhabDefault")}</label>
+        <select
+          id="quran-madhhab-default"
+          className="input"
+          style={{ maxWidth: "280px" }}
+          value={madhhabDefault}
+          onChange={(e) => setMadhhabDefault(e.target.value as QuranMadhhab)}
+        >
+          {DISPLAY_MADHHABS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {t(m.key)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="field">
+        <label htmlFor="quran-player-speed">{t("quran.playerDefaultSpeed")}</label>
+        <select
+          id="quran-player-speed"
+          className="input"
+          style={{ maxWidth: "280px" }}
+          value={playerSpeed}
+          onChange={(e) => setPlayerSpeed(Number(e.target.value))}
+        >
+          {PLAYER_SPEEDS.map((s) => (
+            <option key={s} value={s}>
+              {s}×
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="field">
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={playerShowPhoto}
+            onChange={(e) => setPlayerShowPhoto(e.target.checked)}
+          />
+          {t("quran.playerShowPhoto")}
+        </label>
       </div>
 
       <SaveRow
