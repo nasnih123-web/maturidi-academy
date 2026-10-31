@@ -25,6 +25,7 @@ import {
   altitudeToZoom,
   globeStyle,
   greatCircleToKaaba,
+  isTileErrorEvent,
   KAABA,
   qiblaBearing,
   qiblaDistanceKm,
@@ -289,7 +290,7 @@ export function PlacesGlobe({
       const lineData = {
         type: 'Feature' as const,
         properties: {},
-        geometry: { type: 'LineString' as const, coordinates: greatCircleToKaaba(q.fromLat, q.fromLng) },
+        geometry: { type: 'MultiLineString' as const, coordinates: greatCircleToKaaba(q.fromLat, q.fromLng) },
       };
       const arcSource = map.getSource('qibla-arc') as maplibregl.GeoJSONSource | undefined;
       if (arcSource) arcSource.setData(lineData);
@@ -495,10 +496,15 @@ export function PlacesGlobe({
         addQiblaLayer(qiblaRef.current);
       }
     });
-    map.on('error', () => {
+    map.on('error', (e) => {
       // Satellite tiles failing in bulk (e.g. a region block) must not
       // leave a blank map: fall back to the simple mode once, with a
-      // notice. Other modes keep their errors visible in the console.
+      // notice. Only per-tile failures count (see isTileErrorEvent):
+      // worker/style/source errors carry no tile, and counting them
+      // could flip the globe to simple mode for a failure that has
+      // nothing to do with the tiles. Other modes keep their errors
+      // visible in the console.
+      if (!isTileErrorEvent(e)) return;
       if (modeRef.current !== 'satellite' || tileFallbackRef.current) return;
       tileErrorCountRef.current += 1;
       if (tileErrorCountRef.current >= 8) {
