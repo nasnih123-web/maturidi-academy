@@ -34,7 +34,13 @@ export default async function SurahPage({
   searchParams: searchParamsPromise,
 }: {
   params: Promise<{ locale: string; surah: string }>;
-  searchParams: Promise<{ translation?: string; tafsir?: string; reciter?: string; ayah?: string }>;
+  searchParams: Promise<{
+    translation?: string;
+    tafsir?: string;
+    reciter?: string;
+    ayah?: string;
+    tab?: string;
+  }>;
 }) {
   const { locale, surah } = await params;
   const searchParams = await searchParamsPromise;
@@ -64,6 +70,9 @@ export default async function SurahPage({
 
   const ayahParam = searchParams.ayah ? Number(searchParams.ayah) : NaN;
   const initialAyah = Number.isInteger(ayahParam) && ayahParam >= 1 ? ayahParam : null;
+  // Index-card deep-link: only the three real tabs; anything else is عموم.
+  const initialTab =
+    searchParams.tab === 'hifz' || searchParams.tab === 'children' ? searchParams.tab : 'general';
 
   let view: Awaited<ReturnType<typeof getSurah>> | null = null;
   try {
@@ -97,6 +106,7 @@ export default async function SurahPage({
         reciters={reciters}
         settings={qs}
         initialAyah={initialAyah}
+        initialTab={initialTab}
         labels={{
           surahOf: t('surahOf'),
           reciterLabel: t('reciterLabel'),
@@ -138,6 +148,22 @@ export default async function SurahPage({
           nextAyah: t('nextAyah'),
           speedLabel: t('speedLabel'),
           volumeLabel: t('volumeLabel'),
+          modeLabel: t('modeLabel'),
+          modeAyah: t('modeAyah'),
+          modePage: t('modePage'),
+          modeSurah: t('modeSurah'),
+          modeJuz: t('modeJuz'),
+          prevPage: t('prevPage'),
+          nextPage: t('nextPage'),
+          prevJuz: t('prevJuz'),
+          nextJuz: t('nextJuz'),
+          pageCurrent: t('pageCurrent'),
+          juzCurrent: t('juzCurrent'),
+          pageDataMissing: t('pageDataMissing'),
+          juzDataMissing: t('juzDataMissing'),
+          ayahOf: t('ayahOf'),
+          surahTotalLabel: t('surahTotalLabel'),
+          waveformLabel: t('waveformLabel'),
           playAyah: t('playAyah'),
           playing: t('playing'),
           translationLabel: t('translationLabel'),

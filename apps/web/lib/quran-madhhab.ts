@@ -117,6 +117,13 @@ export interface DisplayAyah {
   standardIndex: number;
   /** True for the second card of the Fatiha 6+7 pair. */
   isPairSecond: boolean;
+  /**
+   * Words stripped from the FRONT of this card's text by
+   * stripBismillahFromFirst (Bismillah prefix only, first ayah only).
+   * Word-highlight indices (which count the original text) must be
+   * shifted by this amount — see wordIndexForCard.
+   */
+  strippedWords?: number;
 }
 
 export interface DisplayResult {
@@ -204,15 +211,71 @@ export function toDisplayAyahs(
   return { ayahs: out, bismillahAsHeader: true };
 }
 
+/* ------------------------------------------------------------------ */
+/* Bismillah header vs. embedded Bismillah (double-Bismillah fix)       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The provider's Uthmani text for ayah 1 of every surah except 9 embeds
+ * the Bismillah as its first four words, while the reader ALSO renders a
+ * Bismillah header — so the page showed Bismillah twice. When a header
+ * is shown, strip the embedded prefix from the FIRST display ayah only.
+ * Every other ayah is returned untouched (same reference), and when the
+ * prefix does not match, the input is returned unchanged.
+ *
+ * Matching is diacritic-insensitive: Uthmani spelling uses U+0671
+ * (superscript alef) and superscript marks that other renderings omit,
+ * so words are compared after stripping Arabic diacritics and mapping
+ * U+0671 to plain alef. The stripped copy keeps the ORIGINAL remaining
+ * words (orthography untouched) — only the prefix is removed.
+ * Never strips when the remainder would be empty.
+ */
+const BISMILLAH_NORMALIZED = 'بسم الله الرحمن الرحيم';
+
+function normalizeArabicWord(word: string): string {
+  return word
+    .replace(/[ٱ]/g, 'ا')
+    .replace(/[\u064B-\u0652\u0670\u0640]/g, '');
+}
+
+export function stripBismillahFromFirst(
+  displayAyahs: DisplayAyah[],
+  showHeader: boolean,
+): DisplayAyah[] {
+  if (!showHeader || displayAyahs.length === 0) return displayAyahs;
+  const first = displayAyahs[0];
+  const words = first.ayah.text.split(/\s+/).filter(Boolean);
+  if (words.length <= 4) return displayAyahs;
+  const prefix = words
+    .slice(0, 4)
+    .map(normalizeArabicWord)
+    .join(' ');
+  if (prefix !== BISMILLAH_NORMALIZED) return displayAyahs;
+  const stripped: DisplayAyah = {
+    ...first,
+    ayah: { ...first.ayah, text: words.slice(4).join(' ') },
+    strippedWords: 4,
+  };
+  return [stripped, ...displayAyahs.slice(1)];
+}
+
 /**
  * Map the playback hook's standard-ayah word index (1-based, -1 = n/a)
  * onto a display card's word space. For the Fatiha pair, words 1-4 belong
  * to display 6 and the rest to display 7 — this uses real provider
  * timings only; with no timings the hook reports -1 and nothing is
  * highlighted at word level.
+ * A Bismillah-stripped first card shifts indices down by the stripped
+ * word count (Bismillah words are not displayed, so they can never be
+ * the highlighted word).
  */
 export function wordIndexForCard(d: DisplayAyah, standardWordIndex: number): number {
   if (standardWordIndex < 1) return -1;
+  if (d.strippedWords) {
+    return standardWordIndex > d.strippedWords
+      ? standardWordIndex - d.strippedWords
+      : -1;
+  }
   if (d.isPairSecond) {
     return standardWordIndex > FATIHA_SPLIT_WORDS
       ? standardWordIndex - FATIHA_SPLIT_WORDS
