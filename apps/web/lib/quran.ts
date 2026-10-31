@@ -92,6 +92,13 @@ export interface Reciter {
   rewaya: string | null;
   /** Locale of the display name (fa/ar/en). */
   locale: string | null;
+  /**
+   * Portrait URL for the player bar. The providers payload carries no
+   * photo today, so this is null in practice and the player renders a
+   * neutral placeholder instead of a broken image. A CRM reciter-photo
+   * field (upload or URL) is a later-phase item, not Phase 1 scope.
+   */
+  photoUrl?: string | null;
 }
 
 /** Display configuration resolved from GET /api/v1/quran/providers. */
@@ -310,7 +317,7 @@ export async function getQuranProviders(): Promise<QuranDisplayConfig | null> {
     textEdition: typeof body.text_edition === 'string' ? body.text_edition : 'quran-uthmani',
     translationEdition: translations[0] ?? null,
     tafsirEdition: tafsirs[0] ?? null,
-    reciters: reciterIds.map((id) => ({ id, name: id, rewaya: null, locale: null })),
+    reciters: reciterIds.map((id) => ({ id, name: id, rewaya: null, locale: null, photoUrl: null })),
     activeReciter: reciterIds[0] ?? null,
   };
 }

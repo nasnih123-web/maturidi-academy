@@ -27,6 +27,7 @@ export function AyahCard({
   labels,
   notes,
   ayahHref,
+  sajdaTitle,
 }: {
   ayah: Ayah;
   surahNumber: number;
@@ -39,6 +40,11 @@ export function AyahCard({
   notes: React.ReactNode;
   /** Deep-link href for this ayah (e.g. /fa/quran/2?ayah=255). */
   ayahHref: string;
+  /**
+   * Sajda marker title (ruling included, e.g. "سجدهٔ تلاوت — واجب").
+   * Null = no sajda at this ayah under the selected madhhab.
+   */
+  sajdaTitle?: string | null;
 }) {
   const words = ayah.text.split(/\s+/).filter(Boolean);
   return (
@@ -58,6 +64,11 @@ export function AyahCard({
         >
           {ayah.number}
         </a>
+        {sajdaTitle ? (
+          <span className="ayah-sajda" title={sajdaTitle} aria-label={sajdaTitle}>
+            ۩
+          </span>
+        ) : null}
         <span className="ayah-actions">{notes}</span>
       </div>
 

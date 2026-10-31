@@ -54,12 +54,24 @@ interface AyahAudioPlan {
 
 export function useQuranPlayback(
   ayahs: Ayah[],
-  opts: { surahAudioUrl?: string | null; autoplay?: boolean } = {},
+  opts: {
+    surahAudioUrl?: string | null;
+    autoplay?: boolean;
+    /** Player default speed (CRM quran.player_default_speed), 0.5–2. */
+    initialRate?: number;
+    initialVolume?: number;
+  } = {},
 ) {
   const [state, setState] = useState<PlaybackState>(INITIAL);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const planRef = useRef<AyahAudioPlan | null>(null);
   const indexRef = useRef(0);
+  // Rate/volume live on the single element; refs mirror state so a
+  // lazily created element still picks up the current values.
+  const [rate, setRateState] = useState(() => clampRate(opts.initialRate ?? 1));
+  const [volume, setVolumeState] = useState(() => clampVolume(opts.initialVolume ?? 1));
+  const rateRef = useRef(rate);
+  const volumeRef = useRef(volume);
 
   const plan: AyahAudioPlan = useMemo(() => {
     const urls = ayahs.map((a) => a.audioUrl);
@@ -74,9 +86,25 @@ export function useQuranPlayback(
     if (!audioRef.current) {
       const el = new Audio();
       el.preload = 'none'; // performance budget: audio is lazy, never autoplay
+      el.playbackRate = rateRef.current;
+      el.volume = volumeRef.current;
       audioRef.current = el;
     }
     return audioRef.current;
+  }, []);
+
+  const setRate = useCallback((r: number) => {
+    const next = clampRate(r);
+    rateRef.current = next;
+    setRateState(next);
+    if (audioRef.current) audioRef.current.playbackRate = next;
+  }, []);
+
+  const setVolume = useCallback((v: number) => {
+    const next = clampVolume(v);
+    volumeRef.current = next;
+    setVolumeState(next);
+    if (audioRef.current) audioRef.current.volume = next;
   }, []);
 
   const updatePosition = useCallback(
@@ -228,7 +256,21 @@ export function useQuranPlayback(
     resume,
     stop,
     seek,
+    rate,
+    volume,
+    setRate,
+    setVolume,
   };
+}
+
+function clampRate(r: number): number {
+  if (!Number.isFinite(r)) return 1;
+  return Math.min(2, Math.max(0.5, r));
+}
+
+function clampVolume(v: number): number {
+  if (!Number.isFinite(v)) return 1;
+  return Math.min(1, Math.max(0, v));
 }
 
 function prefixSum(durations: (number | null)[], upto: number): number {

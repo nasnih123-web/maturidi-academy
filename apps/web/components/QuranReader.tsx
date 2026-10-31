@@ -12,6 +12,15 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuranPlayback, type PlaybackStatus } from '@/lib/hooks/useQuranPlayback';
 import type { Ayah, Reciter, SurahDetail } from '@/lib/quran';
+import { fawasilFor, type FawasilSchool } from '@/lib/quran-fawasil';
+import {
+  isSajda,
+  parseMadhhabId,
+  sajdaRuling,
+  toDisplayAyahs,
+  wordIndexForCard,
+  type MadhhabId,
+} from '@/lib/quran-madhhab';
 import type { QuranSettings } from '@/lib/settings';
 import { AyahCard, type AyahCardLabels } from './AyahCard';
 import { AyahNotes, type AyahNotesLabels } from './AyahNotes';
@@ -31,7 +40,39 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   showTranslation: string;
   showTafsir: string;
   bismillah: string;
+  tabsLabel: string;
+  tabGeneral: string;
+  tabHifz: string;
+  tabChildren: string;
+  hifzPlaceholder: string;
+  childrenPlaceholder: string;
+  madhhabLabel: string;
+  madhhabHanafi: string;
+  madhhabShafii: string;
+  madhhabMaliki: string;
+  madhhabHanbali: string;
+  sajdaWajib: string;
+  sajdaSunnah: string;
+  /** Template with %school% and %count% tokens (plain replace, not ICU). */
+  fawasilCount: string;
+  /** Template with %school%; shown only when the mapped school has no data. */
+  fawasilFallback: string;
+  schoolKufi: string;
+  schoolBasri: string;
+  schoolMadani1: string;
+  schoolMadani2: string;
+  schoolMakki: string;
+  schoolShami: string;
+  schoolHimsi: string;
+  prevAyah: string;
+  nextAyah: string;
+  speedLabel: string;
+  volumeLabel: string;
 }
+
+type QuranTab = 'general' | 'hifz' | 'children';
+
+const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
 const STATUS_KEY: Record<PlaybackStatus, 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error'> = {
   idle: 'idle',
@@ -63,21 +104,64 @@ export function QuranReader({
   const [reciterId, setReciterId] = useState<string>(settings.defaultReciter ?? reciters[0]?.id ?? '');
   const [showTranslation, setShowTranslation] = useState(settings.showTranslation);
   const [showTafsir, setShowTafsir] = useState(settings.showTafsir);
+  const [madhhab, setMadhhab] = useState<MadhhabId>(() => parseMadhhabId(settings.madhhabDefault));
+  const [activeTab, setActiveTab] = useState<QuranTab>('general');
+
+  // Display mapping (madhhab): Fatiha split, sajda markers, fawasil
+  // school. Playback itself keeps working on the STANDARD ayahs array —
+  // the hook never sees display numbers.
+  const display = useMemo(
+    () => toDisplayAyahs(surah.number, ayahs, madhhab),
+    [surah.number, ayahs, madhhab],
+  );
+  const fawasil = useMemo(() => fawasilFor(surah.number, madhhab), [surah.number, madhhab]);
+  const sajdaTitle = sajdaRuling(madhhab) === 'wajib' ? labels.sajdaWajib : labels.sajdaSunnah;
+
+  const SCHOOL_NAMES: Record<FawasilSchool, string> = {
+    kufi: labels.schoolKufi,
+    basri: labels.schoolBasri,
+    madani1: labels.schoolMadani1,
+    madani2: labels.schoolMadani2,
+    makki: labels.schoolMakki,
+    shami: labels.schoolShami,
+    himsi: labels.schoolHimsi,
+  };
+  const fawasilLine = labels.fawasilCount
+    .replace('%school%', SCHOOL_NAMES[fawasil.school])
+    .replace('%count%', fawasil.count !== null ? String(fawasil.count) : '–');
+  const fawasilFallbackLine = fawasil.fallback
+    ? labels.fawasilFallback.replace('%school%', SCHOOL_NAMES[fawasil.mappedSchool])
+    : null;
+
+  const MADHHAB_OPTIONS: { id: MadhhabId; label: string }[] = [
+    { id: 'hanafi', label: labels.madhhabHanafi },
+    { id: 'shafii', label: labels.madhhabShafii },
+    { id: 'maliki', label: labels.madhhabMaliki },
+    { id: 'hanbali', label: labels.madhhabHanbali },
+  ];
+
+  const currentReciter = reciters.find((r) => r.id === reciterId) ?? null;
 
   // Reciter switching is a data concern: the page would refetch with a new
   // reciter param. We reload the route so the RSC refetches with ?reciter=.
-  const { state, canPlay, playIndex, pause, resume, stop } = useQuranPlayback(ayahs, {
-    surahAudioUrl: surah.audioUrl,
-  });
+  const { state, canPlay, playIndex, pause, resume, stop, rate, volume, setRate, setVolume } =
+    useQuranPlayback(ayahs, {
+      surahAudioUrl: surah.audioUrl,
+      initialRate: settings.playerDefaultSpeed,
+    });
 
   const [highlightAyah, setHighlightAyah] = useState<number | null>(initialAyah);
 
   useEffect(() => {
-    if (initialAyah) {
-      const el = document.getElementById(`ayah-${initialAyah}`);
-      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    }
-  }, [initialAyah]);
+    if (!initialAyah) return;
+    // Deep-link numbers are STANDARD; scroll to the first display card
+    // with that standard number (the first pair card for Fatiha 7).
+    const target = display.ayahs.find((d) => d.standardNumber === initialAyah);
+    if (!target) return;
+    document
+      .getElementById(`ayah-${target.displayNumber}`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [initialAyah, display]);
 
   const statusKey = STATUS_KEY[state.status];
   const playing = statusKey === 'playing' || statusKey === 'loading';
@@ -91,10 +175,24 @@ export function QuranReader({
     if (state.ayahIndex < 0 || !playing) return;
     const ayah = ayahs[state.ayahIndex];
     if (!ayah) return;
+    const target = display.ayahs.find((d) => d.standardIndex === state.ayahIndex);
     document
-      .getElementById(`ayah-${ayah.number}`)
+      .getElementById(`ayah-${target ? target.displayNumber : ayah.number}`)
       ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [state.ayahIndex, playing, ayahs]);
+  }, [state.ayahIndex, playing, ayahs, display]);
+
+  // Step through DISPLAY cards (Fatiha pair = two steps, one audio file:
+  // stepping 6→7 or 7→6 replays standard 1:7 — the documented Phase 1
+  // simplification; a pair-as-one-step refinement is future work).
+  const currentDisplayIndex = display.ayahs.findIndex((d) => d.standardIndex === state.ayahIndex);
+  const stepAyah = (dir: 1 | -1): void => {
+    if (currentDisplayIndex < 0) {
+      if (dir === 1) playIndex(0);
+      return;
+    }
+    const next = display.ayahs[currentDisplayIndex + dir];
+    if (next) playIndex(next.standardIndex);
+  };
 
   const progressPct = useMemo(() => {
     if (!state.duration || state.duration <= 0) return 0;
@@ -117,6 +215,10 @@ export function QuranReader({
           <p className="quran-surah-sub">
             {surah.name} · {surah.englishName}
           </p>
+          <p className="quran-fawasil-note">
+            {fawasilLine}
+            {fawasilFallbackLine ? ` · ${fawasilFallbackLine}` : ''}
+          </p>
         </div>
         <nav className="quran-surah-nav" aria-label={`${surah.nameAr}`}>
           {surah.number > 1 ? (
@@ -132,6 +234,38 @@ export function QuranReader({
         </nav>
       </header>
 
+      <div className="quran-tabs" role="tablist" aria-label={labels.tabsLabel}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'general'}
+          className={activeTab === 'general' ? 'quran-tab quran-tab-active' : 'quran-tab'}
+          onClick={() => setActiveTab('general')}
+        >
+          {labels.tabGeneral}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'hifz'}
+          className={activeTab === 'hifz' ? 'quran-tab quran-tab-active' : 'quran-tab'}
+          onClick={() => setActiveTab('hifz')}
+        >
+          {labels.tabHifz}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'children'}
+          className={activeTab === 'children' ? 'quran-tab quran-tab-active' : 'quran-tab'}
+          onClick={() => setActiveTab('children')}
+        >
+          {labels.tabChildren}
+        </button>
+      </div>
+
+      {activeTab === 'general' ? (
+        <>
       <div className="quran-toolbar" role="toolbar" aria-label={surah.name}>
         {reciters.length > 0 ? (
           <label className="quran-reciter">
@@ -157,6 +291,17 @@ export function QuranReader({
             </select>
           </label>
         ) : null}
+
+        <label className="quran-madhhab">
+          <span>{labels.madhhabLabel}</span>
+          <select value={madhhab} onChange={(e) => setMadhhab(e.target.value as MadhhabId)}>
+            {MADHHAB_OPTIONS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <label className="quran-toggle">
           <input
@@ -187,7 +332,37 @@ export function QuranReader({
           <p className="quran-player-note">{labels.audioUnavailable}</p>
         ) : (
           <>
+            <div className="quran-player-meta">
+              {settings.playerShowPhoto ? (
+                currentReciter?.photoUrl ? (
+                  <img
+                    className="quran-reciter-photo"
+                    src={currentReciter.photoUrl}
+                    alt={currentReciter.name}
+                  />
+                ) : (
+                  <span className="quran-reciter-photo quran-reciter-photo-empty" aria-hidden="true">
+                    ♪
+                  </span>
+                )
+              ) : null}
+              {currentReciter ? (
+                <span className="quran-player-reciter">{currentReciter.name}</span>
+              ) : null}
+              <span className="quran-player-surah" lang="ar" dir="rtl">
+                {surah.nameAr}
+              </span>
+            </div>
             <div className="quran-player-controls">
+              <button
+                type="button"
+                className="quran-step-btn"
+                onClick={() => stepAyah(-1)}
+                aria-label={labels.prevAyah}
+                disabled={!canPlay}
+              >
+                ⏮
+              </button>
               {statusKey === 'playing' || statusKey === 'loading' ? (
                 <button type="button" className="quran-play-btn" onClick={pause} aria-label={labels.pause}>
                   ❚❚
@@ -206,6 +381,15 @@ export function QuranReader({
                   ▶
                 </button>
               )}
+              <button
+                type="button"
+                className="quran-step-btn"
+                onClick={() => stepAyah(1)}
+                aria-label={labels.nextAyah}
+                disabled={!canPlay}
+              >
+                ⏭
+              </button>
               <button type="button" className="quran-stop-btn" onClick={stop} aria-label={labels.stop}>
                 ■
               </button>
@@ -219,6 +403,34 @@ export function QuranReader({
                 <div className="quran-progress-fill" style={{ width: `${progressPct}%` }} />
               </div>
             </div>
+            <div className="quran-player-settings">
+              <label className="quran-speed">
+                <span>{labels.speedLabel}</span>
+                <select
+                  value={rate}
+                  onChange={(e) => setRate(Number(e.target.value))}
+                  aria-label={labels.speedLabel}
+                >
+                  {PLAYBACK_SPEEDS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}×
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="quran-volume">
+                <span>{labels.volumeLabel}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={volume}
+                  onChange={(e) => setVolume(Number(e.target.value))}
+                  aria-label={labels.volumeLabel}
+                />
+              </label>
+            </div>
             {state.status === 'error' ? (
               <p className="quran-player-note" role="alert">
                 {state.error === 'audio_missing' ? labels.audioUnavailable : labels.audioFailed}
@@ -228,33 +440,36 @@ export function QuranReader({
         )}
       </div>
 
-      {surah.bismillahPre && surah.number !== 1 && surah.number !== 9 ? (
+      {surah.bismillahPre && surah.number !== 9 && (surah.number !== 1 || display.bismillahAsHeader) ? (
         <p className="quran-bismillah" lang="ar" dir="rtl">
           {labels.bismillah}
         </p>
       ) : null}
 
       <div className="ayah-list">
-        {ayahs.map((ayah, i) => (
+        {display.ayahs.map((d) => (
           <AyahCard
-            key={ayah.number}
-            ayah={ayah}
+            key={d.displayNumber}
+            ayah={d.ayah}
             surahNumber={surah.number}
-            highlighted={state.ayahIndex === i || highlightAyah === ayah.number}
-            wordIndex={state.ayahIndex === i ? state.wordIndex : -1}
+            highlighted={state.ayahIndex === d.standardIndex || highlightAyah === d.standardNumber}
+            wordIndex={
+              state.ayahIndex === d.standardIndex ? wordIndexForCard(d, state.wordIndex) : -1
+            }
             showTranslation={showTranslation}
             showTafsir={showTafsir}
-            isCurrent={state.ayahIndex === i && playing}
+            isCurrent={state.ayahIndex === d.standardIndex && playing}
             labels={labels}
-            ayahHref={ayahLink(ayah.number)}
+            ayahHref={ayahLink(d.standardNumber)}
+            sajdaTitle={isSajda(surah.number, d.standardNumber, madhhab) ? sajdaTitle : null}
             notes={
               <AyahNotes
                 surah={surah.number}
-                ayahNumber={ayah.number}
+                ayahNumber={d.standardNumber}
                 locale={locale}
                 labels={labels}
-                onPlayAyah={() => playIndex(i)}
-                canPlay={Boolean(ayah.audioUrl)}
+                onPlayAyah={() => playIndex(d.standardIndex)}
+                canPlay={Boolean(d.ayah.audioUrl)}
               />
             }
           />
@@ -264,6 +479,12 @@ export function QuranReader({
       <div className="quran-ayah-jump">
         <span>{labels.ayahLink}</span>
       </div>
+        </>
+      ) : (
+        <div className="quran-placeholder" role="tabpanel">
+          <p>{activeTab === 'hifz' ? labels.hifzPlaceholder : labels.childrenPlaceholder}</p>
+        </div>
+      )}
     </div>
   );
 }
