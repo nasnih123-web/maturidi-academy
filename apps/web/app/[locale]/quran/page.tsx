@@ -61,6 +61,10 @@ export default async function QuranIndexPage({
           noResults: t('noResults'),
           meccan: t('meccan'),
           medinan: t('medinan'),
+          sectionsTitle: t('sectionsTitle'),
+          sectionGeneral: t('tabGeneral'),
+          sectionHifz: t('tabHifz'),
+          sectionChildren: t('tabChildren'),
         }}
       />
     </div>

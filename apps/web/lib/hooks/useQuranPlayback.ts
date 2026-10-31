@@ -72,6 +72,13 @@ export function useQuranPlayback(
   const [volume, setVolumeState] = useState(() => clampVolume(opts.initialVolume ?? 1));
   const rateRef = useRef(rate);
   const volumeRef = useRef(volume);
+  /**
+   * Total audio duration of the whole surah in seconds, or null when
+   * unknown. Per-ayah mode: sum of per-ayah metadata durations, set
+   * only when EVERY ayah resolved (a partial sum would mislead).
+   * Single-file mode: the file's own duration once its metadata loads.
+   */
+  const [surahDuration, setSurahDuration] = useState<number | null>(null);
 
   const plan: AyahAudioPlan = useMemo(() => {
     const urls = ayahs.map((a) => a.audioUrl);
@@ -92,6 +99,13 @@ export function useQuranPlayback(
     }
     return audioRef.current;
   }, []);
+
+  /**
+   * The single playback element, for the waveform visualizer only.
+   * The visualizer must never change src/volume/rate — it only reads
+   * through an AnalyserNode (or falls back when the data is tainted).
+   */
+  const getAudioElement = useCallback((): HTMLAudioElement | null => audioRef.current, []);
 
   const setRate = useCallback((r: number) => {
     const next = clampRate(r);
@@ -117,7 +131,16 @@ export function useQuranPlayback(
         const ayah = ayahs[i];
         const word =
           ayah?.wordTimings && ayah.wordTimings.length > 0 ? wordIndexAtTime(ayah.wordTimings, t) : -1;
-        setState((s) => ({ ...s, ayahIndex: i, wordIndex: word, currentTime: t }));
+        // Duration used to stay 0 in per-ayah mode (only the surah-file
+        // branch copied el.duration), so the progress bar never moved
+        // and no time could be shown. The element knows each ayah file.
+        setState((s) => ({
+          ...s,
+          ayahIndex: i,
+          wordIndex: word,
+          currentTime: t,
+          duration: Number.isFinite(el.duration) && el.duration > 0 ? el.duration : s.duration,
+        }));
       } else if (planNow.surahUrl) {
         const idx = ayahIndexAtTime(planNow.durations, t);
         const ayah = idx >= 0 ? ayahs[idx] : null;
@@ -155,21 +178,99 @@ export function useQuranPlayback(
     };
     const onError = () =>
       setState((s) => ({ ...s, status: 'error', error: 'audio_failed' }));
+    const onMeta = () => {
+      // Speed persistence: re-apply the selected rate whenever new
+      // media metadata loads — a fresh src must never silently
+      // restart at 1x. Duration here is what makes the time display
+      // and the progress bar work from the first seconds.
+      el.playbackRate = rateRef.current;
+      if (Number.isFinite(el.duration) && el.duration > 0) {
+        setState((s) => ({ ...s, duration: el.duration }));
+        if (!planRef.current?.perAyah) setSurahDuration(el.duration);
+      }
+    };
     el.addEventListener('timeupdate', onTime);
     el.addEventListener('play', onPlay);
     el.addEventListener('pause', onPause);
     el.addEventListener('ended', onEnded);
     el.addEventListener('error', onError);
+    el.addEventListener('loadedmetadata', onMeta);
     return () => {
       el.removeEventListener('timeupdate', onTime);
       el.removeEventListener('play', onPlay);
       el.removeEventListener('pause', onPause);
       el.removeEventListener('ended', onEnded);
       el.removeEventListener('error', onError);
+      el.removeEventListener('loadedmetadata', onMeta);
       el.pause();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ensureAudio]);
+
+  // Surah-total duration scan (per-ayah mode only): metadata-only
+  // probes, 4 concurrent, never autoplay. Stops on unmount/plan
+  // change. A partial sum is never shown — unknown stays null.
+  useEffect(() => {
+    if (!plan.perAyah) return;
+    const urls = plan.urls;
+    if (urls.length === 0 || urls.some((u) => typeof u !== 'string' || u.length === 0)) {
+      setSurahDuration(null);
+      return;
+    }
+    let cancelled = false;
+    const probes: HTMLAudioElement[] = [];
+    const durations: (number | null)[] = new Array(urls.length).fill(null);
+    let next = 0;
+    const worker = async () => {
+      for (;;) {
+        if (cancelled) return;
+        const i = next;
+        next += 1;
+        if (i >= urls.length) return;
+        const el = new Audio();
+        el.preload = 'metadata';
+        probes.push(el);
+        try {
+          const d = await new Promise<number>((resolve, reject) => {
+            const cleanup = () => {
+              el.removeEventListener('loadedmetadata', onMeta);
+              el.removeEventListener('error', onErr);
+            };
+            const onMeta = () => {
+              cleanup();
+              resolve(el.duration);
+            };
+            const onErr = () => {
+              cleanup();
+              reject(new Error('metadata failed'));
+            };
+            el.addEventListener('loadedmetadata', onMeta);
+            el.addEventListener('error', onErr);
+            el.src = urls[i] as string;
+          });
+          durations[i] = d;
+        } catch {
+          durations[i] = null;
+        }
+      }
+    };
+    setSurahDuration(null);
+    void Promise.all([worker(), worker(), worker(), worker()]).then(() => {
+      if (cancelled) return;
+      if (durations.some((d) => d === null || !(d > 0))) {
+        setSurahDuration(null);
+        return;
+      }
+      setSurahDuration(durations.reduce<number>((a, b) => a + (b ?? 0), 0));
+    });
+    return () => {
+      cancelled = true;
+      for (const el of probes) {
+        el.removeAttribute('src');
+        el.load();
+      }
+    };
+  }, [plan]);
 
   const playIndex = useCallback(
     (i: number) => {
@@ -185,6 +286,9 @@ export function useQuranPlayback(
         indexRef.current = i;
         setState((s) => ({ ...s, status: 'loading', ayahIndex: i, wordIndex: -1, error: null }));
         el.src = url;
+        // Whole-surah speed: the selected rate is re-applied on every
+        // ayah change, so it can never reset to 1x mid-surah.
+        el.playbackRate = rateRef.current;
         void el.play().catch(() =>
           setState((s) => ({ ...s, status: 'error', error: 'audio_failed' })),
         );
@@ -192,6 +296,7 @@ export function useQuranPlayback(
         indexRef.current = i;
         setState((s) => ({ ...s, status: 'loading', ayahIndex: i, wordIndex: -1, error: null }));
         if (el.src !== planNow.surahUrl) el.src = planNow.surahUrl;
+        el.playbackRate = rateRef.current;
         // Seek to the ayah start when durations are known.
         const start = prefixSum(planNow.durations, i);
         try {
@@ -217,6 +322,7 @@ export function useQuranPlayback(
     const el = audioRef.current;
     if (!el) return;
     setState((s) => ({ ...s, status: 'loading', error: null }));
+    el.playbackRate = rateRef.current;
     void el.play().catch(() =>
       setState((s) => ({ ...s, status: 'error', error: 'audio_failed' })),
     );
@@ -260,6 +366,8 @@ export function useQuranPlayback(
     volume,
     setRate,
     setVolume,
+    surahDuration,
+    getAudioElement,
   };
 }
 

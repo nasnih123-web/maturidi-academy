@@ -20,6 +20,12 @@ export interface SurahIndexLabels {
   noResults: string;
   meccan: string;
   medinan: string;
+  /** Section title above the three section cards. */
+  sectionsTitle: string;
+  /** Card labels — the SAME strings as the reader tabs. */
+  sectionGeneral: string;
+  sectionHifz: string;
+  sectionChildren: string;
 }
 
 export function SurahIndex({
@@ -46,6 +52,22 @@ export function SurahIndex({
   return (
     <div className="surah-index">
       <h1 className="page-title">{labels.title}</h1>
+
+      {/* Section cards FIRST, before the surah list. عموم opens the
+          general reader; حفاظ / کودکان open the reader with that tab
+          active — the same honest Phase-2 placeholders, nothing new. */}
+      <h2 className="quran-sections-title">{labels.sectionsTitle}</h2>
+      <nav className="quran-section-cards" aria-label={labels.sectionsTitle}>
+        <Link href={`/${locale}/quran/1`} className="quran-section-card">
+          {labels.sectionGeneral}
+        </Link>
+        <Link href={`/${locale}/quran/1?tab=hifz`} className="quran-section-card">
+          {labels.sectionHifz}
+        </Link>
+        <Link href={`/${locale}/quran/1?tab=children`} className="quran-section-card">
+          {labels.sectionChildren}
+        </Link>
+      </nav>
 
       <div className="surah-index-tools">
         <input

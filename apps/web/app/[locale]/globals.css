@@ -781,6 +781,20 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .quran-progress { flex: 1; height: 0.5rem; border-radius: 999px; background: rgba(212, 175, 55, 0.15); overflow: hidden; }
 .quran-progress-fill { height: 100%; background: linear-gradient(90deg, #b8860b, #e5c07b); border-radius: 999px; transition: width 0.25s linear; }
 .quran-player-note { margin: 0.5rem 0 0; font-size: 0.85rem; color: hsl(var(--text-muted)); }
+.quran-player-times { display: flex; gap: 1.2rem; margin-top: 0.6rem; font-size: 0.85rem; font-variant-numeric: tabular-nums; color: hsl(var(--text-secondary)); }
+.quran-waveform { display: block; width: 100%; height: 2.5rem; margin-top: 0.6rem; border: 1px solid rgba(212, 175, 55, 0.2); border-radius: var(--radius-lg); background: rgba(0, 0, 0, 0.25); }
+.quran-view-modes { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+.quran-mode-btn { padding: 0.5rem 1.1rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.35); background: transparent; color: hsl(var(--text-secondary)); cursor: pointer; font-size: 0.95rem; }
+.quran-mode-btn.quran-mode-active { background: rgba(212, 175, 55, 0.2); color: #e5c07b; border-color: rgba(212, 175, 55, 0.75); font-weight: 700; }
+.quran-mode-nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; font-variant-numeric: tabular-nums; }
+.quran-mode-nav button { padding: 0.45rem 1rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.35); background: transparent; color: hsl(var(--text-secondary)); cursor: pointer; }
+.quran-mode-nav button:disabled { opacity: 0.4; cursor: default; }
+.quran-mode-note { margin: 0 0 1rem; padding: 0.9rem 1.1rem; border: 1px solid rgba(212, 175, 55, 0.25); border-radius: var(--radius-lg); color: hsl(var(--text-secondary)); }
+.quran-sections-title { font-size: 1.1rem; color: #e5c07b; margin: 0 0 0.8rem; }
+.quran-section-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; margin-bottom: 1.5rem; }
+.quran-section-card { display: flex; align-items: center; justify-content: center; padding: 1.1rem 0.5rem; border: 1px solid rgba(212, 175, 55, 0.35); border-radius: var(--radius-lg); background: rgba(7, 35, 28, 0.6); color: #e5c07b; font-size: 1.05rem; font-weight: 700; text-decoration: none; }
+.quran-section-card:hover { background: rgba(212, 175, 55, 0.15); }
+@media (max-width: 640px) { .quran-section-cards { grid-template-columns: 1fr; } }
 .quran-bismillah { text-align: center; font-size: 1.6rem; color: #e5c07b; margin: 0 0 1.5rem; }
 .ayah-list { display: flex; flex-direction: column; gap: 1rem; }
 .ayah-card { padding: 1.2rem 1.4rem; border: 1px solid rgba(212, 175, 55, 0.2); border-radius: var(--radius-lg); background: rgba(7, 35, 28, 0.5); transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base); }
@@ -839,9 +853,10 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .quran-volume input[type="range"] { width: 8rem; accent-color: #d4af37; }
 /* Phone widths: the player bar sticks to the bottom; the reader gets
    bottom padding so the bar never covers the last ayah. 768px matches
-   the user's phone layout viewport (720–768 CSS px). */
+   the user's phone layout viewport (720–768 CSS px). Padding grew
+   with the bar itself (times row + waveform + wrapping settings). */
 @media (max-width: 768px) {
-  .quran-reader { padding-bottom: 11rem; }
+  .quran-reader { padding-bottom: 17rem; }
   .quran-player { position: fixed; inset-inline: 0; bottom: 0; z-index: 40; margin-bottom: 0; border-radius: 0; border-inline: 0; border-bottom: 0; }
 }
 
