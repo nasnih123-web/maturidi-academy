@@ -7,9 +7,12 @@
  *
  * Outputs (checked in, so the site never depends on a live third-party
  * fetch for navigation or search):
- * - lib/quran-boundaries.json: first ayah of every juz (30), hizb (60,
- *   hizb h = hizbQuarter group 4h-3..4h) and Madani page (604), each with
- *   { n, surah, ayah, text } — the first-ayah text preview for the lists.
+ * - lib/quran-boundaries.json: first ayah of every juz (30), hizb (120
+ *   half-hizb divisions — Bayan's حزب system, hizb n = hizbQuarter
+ *   2n-1: odd quarters are hizb starts AND hizb middles, so the 120
+ *   half-hizb boundaries are exactly the odd quarters) and Madani page
+ *   (604), each with { n, surah, ayah, text } — the first-ayah text
+ *   preview for the lists.
  * - lib/quran-search-index.json: one entry per ayah (6236) with
  *   { g (global number), s (surah), a (ayah), t (NORMALIZED text) }.
  *   Normalization matches lib/quran-search.ts normalizeQuranText
@@ -119,9 +122,9 @@ for (let n = 1; n <= 30; n++) {
   juz.push({ n, surah: hit.s, ayah: hit.a, text: hit.text });
 }
 const hizb = [];
-for (let n = 1; n <= 60; n++) {
-  const hit = firstBy('hizbQuarter', 4 * n - 3);
-  if (!hit) fail(`no ayah with hizbQuarter=${4 * n - 3} (hizb ${n})`);
+for (let n = 1; n <= 120; n++) {
+  const hit = firstBy('hizbQuarter', 2 * n - 1);
+  if (!hit) fail(`no ayah with hizbQuarter=${2 * n - 1} (hizb ${n})`);
   hizb.push({ n, surah: hit.s, ayah: hit.a, text: hit.text });
 }
 const page = [];
@@ -144,6 +147,12 @@ const anchors = [
   ['page 4', page[3], 2, 17],
   ['page 5', page[4], 2, 25],
   ['page 6', page[5], 2, 30],
+  // Bayan's حزب anchors (half-hizb divisions, user reference 2026-11-01).
+  ['hizb 2', hizb[1], 2, 44],
+  ['hizb 3', hizb[2], 2, 75],
+  ['hizb 4', hizb[3], 2, 106],
+  ['hizb 5', hizb[4], 2, 142],
+  ['hizb 6', hizb[5], 2, 177],
 ];
 for (const [name, hit, s, a] of anchors) {
   if (hit.surah !== s || hit.ayah !== a) {
@@ -151,10 +160,11 @@ for (const [name, hit, s, a] of anchors) {
   }
   console.log(`  anchor ${name} OK (${s}:${a})`);
 }
-console.log('Provider-derived hizb starts 1-6 (compare with bayan reference):');
+console.log('Bayan hizb (half-hizb) starts 1-6:');
 for (let i = 0; i < 6; i++) {
   console.log(`  hizb ${hizb[i].n} → ${hizb[i].surah}:${hizb[i].ayah}`);
 }
+console.log(`  hizb 22 → ${hizb[21].surah}:${hizb[21].ayah}`);
 
 const searchIndex = all.map((x) => ({ g: x.g, s: x.s, a: x.a, t: normalize(x.text) }));
 
