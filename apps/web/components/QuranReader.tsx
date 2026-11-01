@@ -1,17 +1,33 @@
 'use client';
 
 /**
- * QuranReader — client shell for the surah view.
+ * QuranReader — client shell for the Quran reader (umum section).
  *
- * Owns the audio player state (via useQuranPlayback), the reciter selector
- * and per-ayah play buttons. All data (surah, ayahs, reciters, settings)
- * arrives as props from the RSC page; all user-visible strings arrive via
- * `labels`. Highlight rendering is delegated to AyahCard.
+ * User-locked 2026-11-01: NO section tabs. The reader renders ONLY the
+ * section selected via ?tab= (default umum); hifz / children render
+ * their existing honest placeholders and nothing else. Back navigation
+ * is via the site Quran menu — no back link is invented here.
+ *
+ * Umum view modes (switcher order, user-locked): سوره، آیه، جزء، حزب،
+ * صفحه. Initial mode is سوره. Modes are deep-linkable (?view= + ?target=,
+ * mirrored into the URL on change so refresh keeps the view).
+ *
+ * Juz / hizb / page views SPAN SURAH BOUNDARIES: the reader assembles
+ * every spanned surah (entry surah from RSC props, the rest fetched
+ * client-side) and filters by the range span from
+ * lib/quran-boundaries.json (provider-derived, never hand-typed).
+ * The page view renders flowing mushaf-style text (NOT exact Madani
+ * lines — the provider has no line-break data).
+ *
+ * All data arrives as props from the RSC page except range surahs
+ * (client-fetched); all user-visible strings arrive via `labels`.
+ * Playback state lives in useQuranPlayback; the player bar carries the
+ * waveform INSIDE the progress bar (no separate waveform row).
  */
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuranPlayback, type PlaybackStatus } from '@/lib/hooks/useQuranPlayback';
-import type { Ayah, Reciter, SurahDetail } from '@/lib/quran';
+import type { Ayah, Reciter, SurahDetail, SurahSummary } from '@/lib/quran';
 import { fawasilFor, type FawasilSchool } from '@/lib/quran-fawasil';
 import {
   isSajda,
@@ -24,15 +40,26 @@ import {
 } from '@/lib/quran-madhhab';
 import { reciterDisplayName } from '@/lib/quran-reciters';
 import {
-  groupByJuz,
-  groupByPage,
+  filterRangeAyahs,
+  inRangeSpan,
+  rangeContaining,
+  rangeSpan,
+  RANGE_COUNTS,
   VIEW_MODE_ORDER,
+  type QuranBoundaries,
   type QuranViewMode,
+  type RangeKind,
+  type RangeSpan,
 } from '@/lib/quran-view-modes';
+import { loadBoundaries } from '@/lib/quran-boundaries-loader';
+import { fetchSurahClient } from '@/lib/quran-range-client';
+import { toLatinDigits } from '@/lib/quran-search';
 import type { QuranSettings } from '@/lib/settings';
 import { AyahCard, type AyahCardLabels } from './AyahCard';
 import { AyahNotes, type AyahNotesLabels } from './AyahNotes';
 import { QuranWaveform } from './QuranWaveform';
+import { QuranMushafPage, type MushafSurahGroup } from './QuranMushafPage';
+import { QuranSearchBox, type QuranSearchLabels } from './QuranSearchBox';
 
 export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   surahOf: string;
@@ -49,10 +76,6 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   showTranslation: string;
   showTafsir: string;
   bismillah: string;
-  tabsLabel: string;
-  tabGeneral: string;
-  tabHifz: string;
-  tabChildren: string;
   hifzPlaceholder: string;
   childrenPlaceholder: string;
   madhhabLabel: string;
@@ -77,28 +100,49 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   nextAyah: string;
   speedLabel: string;
   volumeLabel: string;
-  /** View-mode switcher (order: ayah, page, surah, juz — user-locked). */
+  /** View-mode switcher (order: surah, ayah, juz, hizb, page — user-locked). */
   modeLabel: string;
-  modeAyah: string;
-  modePage: string;
   modeSurah: string;
+  modeAyah: string;
   modeJuz: string;
+  modeHizb: string;
+  modePage: string;
   prevPage: string;
   nextPage: string;
   prevJuz: string;
   nextJuz: string;
-  /** Template with %n% (page / juz number). */
+  prevHizb: string;
+  nextHizb: string;
+  /** Templates with %n% (page / juz / hizb number). */
   pageCurrent: string;
   juzCurrent: string;
-  pageDataMissing: string;
-  juzDataMissing: string;
+  hizbCurrent: string;
   /** Template with %current% and %total%. */
   ayahOf: string;
   surahTotalLabel: string;
+  /** Total label for range views (the range's audio, not one surah). */
+  rangeTotalLabel: string;
   waveformLabel: string;
+  juzListTitle: string;
+  hizbListTitle: string;
+  pageListTitle: string;
+  backToList: string;
+  pageJumpLabel: string;
+  pageJumpButton: string;
+  /** Template with %max% (604). */
+  pageJumpOutOfRange: string;
+  rangeLoading: string;
+  rangeFailed: string;
+  /** Script/typeface switch (typeface only — see the note label). */
+  scriptLabel: string;
+  scriptUthmani: string;
+  scriptIndopak: string;
+  /** Plain note: the switch changes the typeface, not the text. */
+  scriptTypefaceNote: string;
 }
 
-type QuranTab = 'general' | 'hifz' | 'children';
+type QuranSection = 'general' | 'hifz' | 'children';
+type ScriptId = 'uthmani' | 'indopak';
 
 /** "m:ss" or "h:mm:ss" — never NaN, never negative. */
 function formatTime(sec: number): string {
@@ -123,6 +167,18 @@ const STATUS_KEY: Record<PlaybackStatus, 'idle' | 'loading' | 'playing' | 'pause
   error: 'error',
 };
 
+interface RangeSurahData {
+  surah: SurahDetail;
+  ayahs: Ayah[];
+}
+
+/** One flattened play entry: the ayah plus the surah it belongs to. */
+type PlayAyah = Ayah & { surahNumber: number };
+
+function parseViewParam(v: string | null): QuranViewMode {
+  return v === 'ayah' || v === 'juz' || v === 'hizb' || v === 'page' ? v : 'surah';
+}
+
 export function QuranReader({
   locale,
   surah,
@@ -131,7 +187,11 @@ export function QuranReader({
   settings,
   initialAyah,
   initialTab,
+  initialView,
+  initialTarget,
+  surahList,
   labels,
+  searchLabels,
 }: {
   locale: string;
   surah: SurahDetail;
@@ -140,33 +200,137 @@ export function QuranReader({
   settings: QuranSettings;
   /** Deep-link: highlight + scroll to this ayah number (1-based). */
   initialAyah: number | null;
-  /** Deep-link from the index cards (?tab=hifz|children). */
-  initialTab?: QuranTab;
+  /** Section from ?tab= — the reader renders ONLY this section. */
+  initialTab?: QuranSection;
+  /** Deep-link view from ?view= (validated server-side). */
+  initialView?: QuranViewMode;
+  /** Deep-link range target from ?target= (null = list state). */
+  initialTarget?: number | null;
+  /** Full surah list for search name matching. */
+  surahList: SurahSummary[];
   labels: QuranReaderLabels;
+  searchLabels: QuranSearchLabels;
+}) {
+  const section: QuranSection = initialTab ?? 'general';
+
+  // Non-umum sections render ONLY their honest placeholder — no header,
+  // no toolbar, no player, no modes, no other section's content.
+  if (section !== 'general') {
+    return (
+      <div className="quran-reader">
+        <div className="quran-placeholder" role="note">
+          <p>{section === 'hifz' ? labels.hifzPlaceholder : labels.childrenPlaceholder}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <QuranUmumReader
+      locale={locale}
+      surah={surah}
+      ayahs={ayahs}
+      reciters={reciters}
+      settings={settings}
+      initialAyah={initialAyah}
+      initialView={initialView}
+      initialTarget={initialTarget}
+      surahList={surahList}
+      labels={labels}
+      searchLabels={searchLabels}
+    />
+  );
+}
+
+function QuranUmumReader({
+  locale,
+  surah,
+  ayahs,
+  reciters,
+  settings,
+  initialAyah,
+  initialView,
+  initialTarget,
+  surahList,
+  labels,
+  searchLabels,
+}: {
+  locale: string;
+  surah: SurahDetail;
+  ayahs: Ayah[];
+  reciters: Reciter[];
+  settings: QuranSettings;
+  initialAyah: number | null;
+  initialView?: QuranViewMode;
+  initialTarget?: number | null;
+  surahList: SurahSummary[];
+  labels: QuranReaderLabels;
+  searchLabels: QuranSearchLabels;
 }) {
   const [reciterId, setReciterId] = useState<string>(settings.defaultReciter ?? reciters[0]?.id ?? '');
   const [showTranslation, setShowTranslation] = useState(settings.showTranslation);
   const [showTafsir, setShowTafsir] = useState(settings.showTafsir);
   const [madhhab, setMadhhab] = useState<MadhhabId>(() => parseMadhhabId(settings.madhhabDefault));
-  const [activeTab, setActiveTab] = useState<QuranTab>(initialTab ?? 'general');
+  const [script, setScript] = useState<ScriptId>('uthmani');
+  const scriptClass = script === 'indopak' ? 'quran-script-indopak' : 'quran-script-uthmani';
 
-  // View mode (general tab only). Initial mode is سوره — the historical
-  // full-surah behavior. Mode-specific selections reset per surah;
-  // madhhab/reciter selections survive surah navigation.
-  const [viewMode, setViewMode] = useState<QuranViewMode>('surah');
+  // View mode + range target. Initial mode is سوره. Range modes with a
+  // null target show their LIST; a target shows that range's ayahs.
+  const [viewMode, setViewMode] = useState<QuranViewMode>(initialView ?? 'surah');
+  const [rangeTarget, setRangeTarget] = useState<number | null>(initialTarget ?? null);
   const [focusedDisplayIdx, setFocusedDisplayIdx] = useState(0);
-  const [selectedPage, setSelectedPage] = useState<number | null>(null);
-  const [selectedJuz, setSelectedJuz] = useState<number | null>(null);
+  const isRangeMode = viewMode === 'juz' || viewMode === 'hizb' || viewMode === 'page';
+  const rangeKind: RangeKind | null = isRangeMode ? viewMode : null;
+
+  // Mode-specific selections reset when the surah CHANGES (prev/next
+  // navigation reuses this component instance). The mount run must NOT
+  // reset: it would wipe the deep-linked ?view=/?target= the page was
+  // opened with. Madhhab/reciter/script selections survive navigation.
+  const prevSurahRef = useRef(surah.number);
   useEffect(() => {
+    if (prevSurahRef.current === surah.number) return;
+    prevSurahRef.current = surah.number;
     setViewMode('surah');
+    setRangeTarget(null);
     setFocusedDisplayIdx(0);
-    setSelectedPage(null);
-    setSelectedJuz(null);
   }, [surah.number]);
 
-  // Display mapping (madhhab): Fatiha split, sajda markers, fawasil
-  // school. Playback itself keeps working on the STANDARD ayahs array —
-  // the hook never sees display numbers.
+  // Mirror view/target into the URL (replaceState, no refetch) so a
+  // refresh keeps the view. Other params (tab/ayah/reciter/...) pass
+  // through untouched.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (viewMode === 'surah') {
+      url.searchParams.delete('view');
+      url.searchParams.delete('target');
+    } else if (viewMode === 'ayah') {
+      url.searchParams.set('view', 'ayah');
+      url.searchParams.delete('target');
+    } else {
+      url.searchParams.set('view', viewMode);
+      if (rangeTarget !== null) url.searchParams.set('target', String(rangeTarget));
+      else url.searchParams.delete('target');
+    }
+    const next = url.toString();
+    if (next !== window.location.href) window.history.replaceState(null, '', next);
+  }, [viewMode, rangeTarget]);
+
+  // Back/forward buttons restore the view from the URL.
+  useEffect(() => {
+    const onPop = () => {
+      const params = new URLSearchParams(window.location.search);
+      setViewMode(parseViewParam(params.get('view')));
+      const t = params.get('target');
+      setRangeTarget(t && /^\d+$/.test(t) ? Number(t) : null);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  // Display mapping (madhhab) for the ENTRY surah. Playback keeps
+  // working on the STANDARD ayahs array — the hook never sees display
+  // numbers.
   const display = useMemo(
     () => toDisplayAyahs(surah.number, ayahs, madhhab),
     [surah.number, ayahs, madhhab],
@@ -214,8 +378,117 @@ export function QuranReader({
   const reciterOptionName = (r: Reciter): string =>
     reciterDisplayName(r.id, locale) ?? r.name;
 
-  // Reciter switching is a data concern: the page would refetch with a new
-  // reciter param. We reload the route so the RSC refetches with ?reciter=.
+  // ---- Range data (juz / hizb / page) ----
+  const [boundaries, setBoundaries] = useState<QuranBoundaries | null>(null);
+  useEffect(() => {
+    if (!isRangeMode) return;
+    let cancelled = false;
+    loadBoundaries()
+      .then((b) => {
+        if (!cancelled) setBoundaries(b);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isRangeMode]);
+
+  const span: RangeSpan | null = useMemo(() => {
+    if (!isRangeMode || rangeKind === null || rangeTarget === null || !boundaries) return null;
+    return rangeSpan(boundaries, rangeKind, rangeTarget);
+  }, [isRangeMode, rangeKind, rangeTarget, boundaries]);
+
+  const [rangeSurahs, setRangeSurahs] = useState<RangeSurahData[] | null>(null);
+  const [rangeLoading, setRangeLoading] = useState(false);
+  const [rangeError, setRangeError] = useState(false);
+  useEffect(() => {
+    if (!span) {
+      setRangeSurahs(null);
+      setRangeError(false);
+      setRangeLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setRangeLoading(true);
+    setRangeError(false);
+    const jobs = span.surahs.map(async (n): Promise<RangeSurahData> => {
+      // Reuse the RSC entry surah instead of refetching it.
+      if (n === surah.number) return { surah, ayahs };
+      const view = await fetchSurahClient(n, {
+        translation: settings.defaultTranslation,
+        tafsir: settings.defaultTafsir,
+      });
+      return { surah: view.surah, ayahs: view.ayahs };
+    });
+    Promise.all(jobs)
+      .then((rows) => {
+        if (cancelled) return;
+        setRangeSurahs(rows);
+        setRangeLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRangeError(true);
+        setRangeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [span, surah, ayahs, settings.defaultTranslation, settings.defaultTafsir]);
+
+  // Display groups for the range: per-surah madhhab mapping, Bismillah
+  // header only when the surah actually STARTS inside this range, and
+  // the embedded Bismillah prefix stripped exactly when the header
+  // shows — the same single-condition rule as the surah view.
+  const rangeGroups: MushafSurahGroup[] | null = useMemo(() => {
+    if (!span || !rangeSurahs) return null;
+    const groups: MushafSurahGroup[] = [];
+    for (const { surah: s, ayahs: sa } of rangeSurahs) {
+      const disp = toDisplayAyahs(s.number, sa, madhhab);
+      const startsHere = inRangeSpan(s.number, 1, span);
+      const header =
+        startsHere && s.number !== 9 && (s.number !== 1 || disp.bismillahAsHeader);
+      const stripped = stripBismillahFromFirst(disp.ayahs, header);
+      const items = stripped.filter((d) => inRangeSpan(s.number, d.standardNumber, span));
+      if (items.length === 0) continue;
+      groups.push({
+        surahNumber: s.number,
+        surahNameAr: s.nameAr,
+        surahStartsHere: startsHere,
+        bismillahHeader: header,
+        items,
+      });
+    }
+    return groups;
+  }, [span, rangeSurahs, madhhab]);
+
+  // Flattened play array for the active reading set. Range views play
+  // the range's standard ayahs (per-ayah files only); surah/ayah modes
+  // play the entry surah exactly as before.
+  const playAyahs: PlayAyah[] = useMemo(() => {
+    if (isRangeMode) {
+      if (!span || !rangeSurahs) return [];
+      const out: PlayAyah[] = [];
+      for (const { surah: s, ayahs: sa } of rangeSurahs) {
+        for (const a of filterRangeAyahs(s.number, sa, span)) {
+          out.push({ ...a, surahNumber: s.number });
+        }
+      }
+      return out;
+    }
+    return ayahs.map((a) => ({ ...a, surahNumber: surah.number }));
+  }, [isRangeMode, span, rangeSurahs, ayahs, surah.number]);
+
+  const playMap = useMemo(() => {
+    const m = new Map<string, number>();
+    playAyahs.forEach((a, i) => m.set(`${a.surahNumber}:${a.number}`, i));
+    return m;
+  }, [playAyahs]);
+
+  const playSetId = isRangeMode
+    ? `range-${rangeKind}-${rangeTarget ?? 'list'}`
+    : `surah-${surah.number}`;
+
   const {
     state,
     canPlay,
@@ -223,21 +496,31 @@ export function QuranReader({
     pause,
     resume,
     stop,
+    seek,
     rate,
     volume,
     setRate,
     setVolume,
     surahDuration,
     getAudioElement,
-  } = useQuranPlayback(ayahs, {
-    surahAudioUrl: surah.audioUrl,
+    getAudioContext,
+    ctxState,
+  } = useQuranPlayback(playAyahs, {
+    surahAudioUrl: isRangeMode ? null : surah.audioUrl,
     initialRate: settings.playerDefaultSpeed,
   });
+
+  // A new reading set stops the old playback (the hook's element is
+  // shared, so an explicit stop keeps indices from pointing at the
+  // previous set's ayahs).
+  useEffect(() => {
+    stop();
+  }, [playSetId, stop]);
 
   const [highlightAyah, setHighlightAyah] = useState<number | null>(initialAyah);
 
   useEffect(() => {
-    if (!initialAyah) return;
+    if (!initialAyah || isRangeMode) return;
     // Deep-link numbers are STANDARD; scroll to the first display card
     // with that standard number (the first pair card for Fatiha 7).
     const target = visible.find((d) => d.standardNumber === initialAyah);
@@ -245,36 +528,45 @@ export function QuranReader({
     document
       .getElementById(`ayah-${target.displayNumber}`)
       ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [initialAyah, visible]);
+  }, [initialAyah, visible, isRangeMode]);
 
   // Focused ayah follows the deep-link on mount / surah change.
   useEffect(() => {
-    if (!initialAyah) return;
+    if (!initialAyah || isRangeMode) return;
     const idx = visible.findIndex((d) => d.standardNumber === initialAyah);
     if (idx >= 0) setFocusedDisplayIdx(idx);
-  }, [initialAyah, visible]);
+  }, [initialAyah, visible, isRangeMode]);
 
   const statusKey = STATUS_KEY[state.status];
   const playing = statusKey === 'playing' || statusKey === 'loading';
 
-  // Auto-follow playback: when the playing ayah changes — auto-advance to
-  // the next ayah, or time-driven advance in whole-surah mode — keep its
-  // card in view. 'nearest' scrolls only when the card is out of view, so
-  // reading ahead while paused is never yanked back (paused => playing
-  // is false, and this effect exits early).
+  // Auto-follow playback in surah/ayah modes: keep the playing card in
+  // view. 'nearest' scrolls only when the card is out of view, so
+  // reading ahead while paused is never yanked back.
   useEffect(() => {
-    if (state.ayahIndex < 0 || !playing) return;
+    if (isRangeMode || state.ayahIndex < 0 || !playing) return;
     const ayah = ayahs[state.ayahIndex];
     if (!ayah) return;
     const target = visible.find((d) => d.standardIndex === state.ayahIndex);
     document
       .getElementById(`ayah-${target ? target.displayNumber : ayah.number}`)
       ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [state.ayahIndex, playing, ayahs, visible]);
+  }, [state.ayahIndex, playing, ayahs, visible, isRangeMode]);
 
-  // Step through DISPLAY cards (Fatiha pair = two steps, one audio file:
-  // stepping 6→7 or 7→6 replays standard 1:7 — the documented Phase 1
-  // simplification; a pair-as-one-step refinement is future work).
+  // Auto-follow playback in range modes: scroll to the playing ayah's
+  // card wrapper / mushaf segment.
+  useEffect(() => {
+    if (!isRangeMode || state.ayahIndex < 0 || !playing) return;
+    const item = playAyahs[state.ayahIndex];
+    if (!item) return;
+    document
+      .getElementById(`range-${item.surahNumber}-${item.number}`)
+      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [state.ayahIndex, playing, isRangeMode, playAyahs]);
+
+  // Step through DISPLAY cards (surah/ayah modes; Fatiha pair = two
+  // steps, one audio file: stepping 6→7 or 7→6 replays standard 1:7 —
+  // the documented Phase 1 simplification).
   const currentDisplayIndex = visible.findIndex((d) => d.standardIndex === state.ayahIndex);
   const stepAyah = (dir: 1 | -1): void => {
     if (currentDisplayIndex < 0) {
@@ -285,134 +577,179 @@ export function QuranReader({
     if (next) playIndex(next.standardIndex);
   };
 
+  // Step through the play array (range modes).
+  const stepRange = (dir: 1 | -1): void => {
+    if (playAyahs.length === 0) return;
+    const idx = state.ayahIndex < 0 ? (dir === 1 ? 0 : playAyahs.length - 1) : state.ayahIndex + dir;
+    if (idx >= 0 && idx < playAyahs.length) playIndex(idx);
+  };
+
+  const playCurrent = (dir: 1 | -1): void => {
+    if (isRangeMode) stepRange(dir);
+    else stepAyah(dir);
+  };
+
   const progressPct = useMemo(() => {
     if (!state.duration || state.duration <= 0) return 0;
     return Math.min(100, (state.currentTime / state.duration) * 100);
   }, [state.currentTime, state.duration]);
 
-  // ---- View modes (general tab) ----
-  const pageGroups = useMemo(() => groupByPage(visible), [visible]);
-  const juzGroups = useMemo(() => groupByJuz(visible), [visible]);
-  const activePage =
-    pageGroups.some((g) => g.key === selectedPage) ? selectedPage : (pageGroups[0]?.key ?? null);
-  const activeJuz =
-    juzGroups.some((g) => g.key === selectedJuz) ? selectedJuz : (juzGroups[0]?.key ?? null);
+  const playingPlayItem = state.ayahIndex >= 0 ? playAyahs[state.ayahIndex] : undefined;
+  const playingKey = playingPlayItem
+    ? `${playingPlayItem.surahNumber}:${playingPlayItem.number}`
+    : null;
+
   const clampedFocused =
     visible.length === 0 ? 0 : Math.min(Math.max(0, focusedDisplayIdx), visible.length - 1);
 
-  // While playing, the focused view follows playback: the ayah view
-  // tracks the playing ayah, the page/juz views track its page/juz.
-  // Paused navigation is never yanked (playing is false then).
+  // While playing, the ayah view tracks the playing ayah. Paused
+  // navigation is never yanked (playing is false then).
   useEffect(() => {
-    if (!playing || state.ayahIndex < 0) return;
-    const card = visible.find((d) => d.standardIndex === state.ayahIndex);
-    if (!card) return;
-    if (viewMode === 'ayah') {
-      const idx = visible.findIndex((d) => d.standardIndex === state.ayahIndex);
-      if (idx >= 0) setFocusedDisplayIdx(idx);
-    } else if (viewMode === 'page') {
-      if (card.ayah.page !== null && pageGroups.some((g) => g.key === card.ayah.page)) {
-        setSelectedPage(card.ayah.page);
-      }
-    } else if (viewMode === 'juz') {
-      if (card.ayah.juz !== null && juzGroups.some((g) => g.key === card.ayah.juz)) {
-        setSelectedJuz(card.ayah.juz);
-      }
-    }
-  }, [state.ayahIndex, playing, viewMode, visible, pageGroups, juzGroups]);
+    if (isRangeMode || !playing || state.ayahIndex < 0) return;
+    const idx = visible.findIndex((d) => d.standardIndex === state.ayahIndex);
+    if (idx >= 0) setFocusedDisplayIdx(idx);
+  }, [state.ayahIndex, playing, visible, isRangeMode]);
 
   const modeAyahs =
-    viewMode === 'ayah'
-      ? visible.length > 0
-        ? [visible[clampedFocused]]
-        : []
-      : viewMode === 'page'
-        ? (pageGroups.find((g) => g.key === activePage)?.ayahs ?? [])
-        : viewMode === 'juz'
-          ? (juzGroups.find((g) => g.key === activeJuz)?.ayahs ?? [])
-          : visible;
+    viewMode === 'ayah' ? (visible.length > 0 ? [visible[clampedFocused]] : []) : visible;
 
-  const MODE_LABELS: Record<(typeof VIEW_MODE_ORDER)[number], string> = {
-    ayah: labels.modeAyah,
-    page: labels.modePage,
+  const MODE_LABELS: Record<QuranViewMode, string> = {
     surah: labels.modeSurah,
+    ayah: labels.modeAyah,
     juz: labels.modeJuz,
-  };
-  const stepGroup = (groups: { key: number }[], active: number | null, dir: 1 | -1): number | null => {
-    if (groups.length === 0 || active === null) return null;
-    const idx = groups.findIndex((g) => g.key === active);
-    if (idx < 0) return groups[0].key;
-    const next = groups[idx + dir];
-    return next ? next.key : active;
+    hizb: labels.modeHizb,
+    page: labels.modePage,
   };
 
-  const ayahLink = (n: number): string =>
-    `/${locale}/quran/${surah.number}?ayah=${n}${reciterId ? `&reciter=${encodeURIComponent(reciterId)}` : ''}`;
+  const selectMode = (mode: QuranViewMode): void => {
+    // Clicking the active range mode returns to its list.
+    if (mode === viewMode && (mode === 'juz' || mode === 'hizb' || mode === 'page')) {
+      setRangeTarget(null);
+      return;
+    }
+    setViewMode(mode);
+    setRangeTarget(null);
+  };
+
+  const ayahLink = (surahNum: number, n: number): string =>
+    `/${locale}/quran/${surahNum}?ayah=${n}${reciterId ? `&reciter=${encodeURIComponent(reciterId)}` : ''}`;
+
+  const surahNameAr = (n: number): string => {
+    const s = surahList.find((x) => x.number === n);
+    return s ? s.nameAr : String(n);
+  };
+
+  // Range list rows (boundaries loaded lazily on first range view).
+  const listEntries = boundaries && rangeKind ? boundaries[rangeKind] : null;
+  const listTitle =
+    rangeKind === 'juz'
+      ? labels.juzListTitle
+      : rangeKind === 'hizb'
+        ? labels.hizbListTitle
+        : labels.pageListTitle;
+  const rangeNavLabel =
+    rangeKind === 'juz'
+      ? labels.juzCurrent
+      : rangeKind === 'hizb'
+        ? labels.hizbCurrent
+        : labels.pageCurrent;
+  const rangePrevLabel =
+    rangeKind === 'juz' ? labels.prevJuz : rangeKind === 'hizb' ? labels.prevHizb : labels.prevPage;
+  const rangeNextLabel =
+    rangeKind === 'juz' ? labels.nextJuz : rangeKind === 'hizb' ? labels.nextHizb : labels.nextPage;
+  const rangeCount = rangeKind ? RANGE_COUNTS[rangeKind] : 0;
+
+  // Page jump input (page list only): digits only, 1..604.
+  const [pageJump, setPageJump] = useState('');
+  const [pageJumpError, setPageJumpError] = useState(false);
+  const submitPageJump = (): void => {
+    const digits = toLatinDigits(pageJump.trim());
+    if (!/^[0-9]+$/.test(digits)) {
+      setPageJumpError(true);
+      return;
+    }
+    const p = Number(digits);
+    if (p < 1 || p > 604) {
+      setPageJumpError(true);
+      return;
+    }
+    setPageJumpError(false);
+    setRangeTarget(p);
+  };
+
+  // Player title + total label: range views show the range, not the
+  // entry surah.
+  const rangeTitle =
+    rangeKind && rangeTarget !== null ? rangeNavLabel.replace('%n%', String(rangeTarget)) : null;
+  const playerTitle = rangeTitle ?? surah.nameAr;
+  const totalLabel = isRangeMode ? labels.rangeTotalLabel : labels.surahTotalLabel;
+  const showPlayer = !isRangeMode || (rangeTarget !== null && rangeGroups !== null && !rangeLoading);
+
+  const onSeekBarClick = (e: React.MouseEvent<HTMLDivElement>): void => {
+    if (!state.duration || state.duration <= 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const rtl = document.documentElement.dir === 'rtl';
+    const frac = rtl
+      ? (rect.right - e.clientX) / rect.width
+      : (e.clientX - rect.left) / rect.width;
+    seek(Math.max(0, Math.min(1, frac)) * state.duration);
+  };
+
+  // Page meta (juz/hizb containing the page's first ayah).
+  const pageMeta =
+    viewMode === 'page' && span && boundaries
+      ? rangeContaining(boundaries, span.start.surah, span.start.ayah)
+      : { juz: null, hizb: null, page: null };
 
   return (
-    <div className="quran-reader">
+    <div className={`quran-reader ${scriptClass}`}>
       <header className="quran-surah-head">
         <div>
-          <p className="quran-surah-kicker">
-            {labels.surahOf} {surah.number} · {surah.ayahCount} · {surah.revelationType}
-          </p>
-          <h1 className="quran-surah-title" lang="ar" dir="rtl">
-            {surah.nameAr}
-          </h1>
-          <p className="quran-surah-sub">
-            {surah.name} · {surah.englishName}
-          </p>
-          <p className="quran-fawasil-note">
-            {fawasilLine}
-            {fawasilFallbackLine ? ` · ${fawasilFallbackLine}` : ''}
-          </p>
+          {isRangeMode ? (
+            <>
+              <h1 className="quran-surah-title">
+                {rangeTarget !== null ? rangeTitle : listTitle}
+              </h1>
+              {rangeGroups && rangeGroups.length > 0 ? (
+                <p className="quran-surah-sub" lang="ar" dir="rtl">
+                  {rangeGroups.map((g) => g.surahNameAr).join(' ، ')}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <p className="quran-surah-kicker">
+                {labels.surahOf} {surah.number} · {surah.ayahCount} · {surah.revelationType}
+              </p>
+              <h1 className="quran-surah-title" lang="ar" dir="rtl">
+                {surah.nameAr}
+              </h1>
+              <p className="quran-surah-sub">
+                {surah.name} · {surah.englishName}
+              </p>
+              <p className="quran-fawasil-note">
+                {fawasilLine}
+                {fawasilFallbackLine ? ` · ${fawasilFallbackLine}` : ''}
+              </p>
+            </>
+          )}
         </div>
-        <nav className="quran-surah-nav" aria-label={`${surah.nameAr}`}>
-          {surah.number > 1 ? (
-            <Link href={`/${locale}/quran/${surah.number - 1}`} className="quran-nav-btn">
-              {labels.prevSurah}
-            </Link>
-          ) : null}
-          {surah.number < 114 ? (
-            <Link href={`/${locale}/quran/${surah.number + 1}`} className="quran-nav-btn">
-              {labels.nextSurah}
-            </Link>
-          ) : null}
-        </nav>
+        {!isRangeMode ? (
+          <nav className="quran-surah-nav" aria-label={`${surah.nameAr}`}>
+            {surah.number > 1 ? (
+              <Link href={`/${locale}/quran/${surah.number - 1}`} className="quran-nav-btn">
+                {labels.prevSurah}
+              </Link>
+            ) : null}
+            {surah.number < 114 ? (
+              <Link href={`/${locale}/quran/${surah.number + 1}`} className="quran-nav-btn">
+                {labels.nextSurah}
+              </Link>
+            ) : null}
+          </nav>
+        ) : null}
       </header>
 
-      <div className="quran-tabs" role="tablist" aria-label={labels.tabsLabel}>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'general'}
-          className={activeTab === 'general' ? 'quran-tab quran-tab-active' : 'quran-tab'}
-          onClick={() => setActiveTab('general')}
-        >
-          {labels.tabGeneral}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'hifz'}
-          className={activeTab === 'hifz' ? 'quran-tab quran-tab-active' : 'quran-tab'}
-          onClick={() => setActiveTab('hifz')}
-        >
-          {labels.tabHifz}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'children'}
-          className={activeTab === 'children' ? 'quran-tab quran-tab-active' : 'quran-tab'}
-          onClick={() => setActiveTab('children')}
-        >
-          {labels.tabChildren}
-        </button>
-      </div>
-
-      {activeTab === 'general' ? (
-        <>
       <div className="quran-toolbar" role="toolbar" aria-label={surah.name}>
         {reciters.length > 0 ? (
           <label className="quran-reciter">
@@ -466,144 +803,164 @@ export function QuranReader({
           />
           {labels.showTafsir}
         </label>
+
+        <label className="quran-script">
+          <span>{labels.scriptLabel}</span>
+          <select value={script} onChange={(e) => setScript(e.target.value as ScriptId)}>
+            <option value="uthmani">{labels.scriptUthmani}</option>
+            <option value="indopak">{labels.scriptIndopak}</option>
+          </select>
+          <span className="quran-script-note">{labels.scriptTypefaceNote}</span>
+        </label>
       </div>
 
-      {/* Audio player bar */}
-      <div
-        className="quran-player"
-        role="region"
-        aria-label={labels.playSurah}
-        data-status={statusKey}
-      >
-        {!canPlay ? (
-          <p className="quran-player-note">{labels.audioUnavailable}</p>
-        ) : (
-          <>
-            <div className="quran-player-meta">
-              {settings.playerShowPhoto ? (
-                currentReciter?.photoUrl ? (
-                  <img
-                    className="quran-reciter-photo"
-                    src={currentReciter.photoUrl}
-                    alt={currentReciterName ?? currentReciter.name}
-                  />
-                ) : (
-                  <span className="quran-reciter-photo quran-reciter-photo-empty" aria-hidden="true">
-                    ♪
-                  </span>
-                )
-              ) : null}
-              {currentReciterName ? (
-                <span className="quran-player-reciter">{currentReciterName}</span>
-              ) : null}
-              <span className="quran-player-surah" lang="ar" dir="rtl">
-                {surah.nameAr}
-              </span>
-            </div>
-            <div className="quran-player-controls">
-              <button
-                type="button"
-                className="quran-step-btn"
-                onClick={() => stepAyah(-1)}
-                aria-label={labels.prevAyah}
-                disabled={!canPlay}
-              >
-                ⏮
-              </button>
-              {statusKey === 'playing' || statusKey === 'loading' ? (
-                <button type="button" className="quran-play-btn" onClick={pause} aria-label={labels.pause}>
-                  ❚❚
-                </button>
-              ) : statusKey === 'paused' ? (
-                <button type="button" className="quran-play-btn" onClick={resume} aria-label={labels.resume}>
-                  ▶
-                </button>
-              ) : (
+      <QuranSearchBox locale={locale} surahs={surahList} labels={searchLabels} />
+
+      {/* Audio player bar — the waveform lives INSIDE the progress bar
+          (no separate waveform row). Hidden for range LISTS (navigation,
+          not reading); shown for every reading view. */}
+      {showPlayer ? (
+        <div
+          className="quran-player"
+          role="region"
+          aria-label={labels.playSurah}
+          data-status={statusKey}
+        >
+          {!canPlay ? (
+            <p className="quran-player-note">{labels.audioUnavailable}</p>
+          ) : (
+            <>
+              <div className="quran-player-meta">
+                {settings.playerShowPhoto ? (
+                  currentReciter?.photoUrl ? (
+                    <img
+                      className="quran-reciter-photo"
+                      src={currentReciter.photoUrl}
+                      alt={currentReciterName ?? currentReciter.name}
+                    />
+                  ) : (
+                    <span className="quran-reciter-photo quran-reciter-photo-empty" aria-hidden="true">
+                      ♪
+                    </span>
+                  )
+                ) : null}
+                {currentReciterName ? (
+                  <span className="quran-player-reciter">{currentReciterName}</span>
+                ) : null}
+                <span className="quran-player-surah" lang="ar" dir="rtl">
+                  {playerTitle}
+                </span>
+              </div>
+              <div className="quran-player-controls">
                 <button
                   type="button"
-                  className="quran-play-btn"
-                  onClick={() => playIndex(highlightAyah ? highlightAyah - 1 : 0)}
-                  aria-label={labels.playSurah}
+                  className="quran-step-btn"
+                  onClick={() => playCurrent(-1)}
+                  aria-label={labels.prevAyah}
+                  disabled={!canPlay}
                 >
-                  ▶
+                  ⏮
                 </button>
-              )}
-              <button
-                type="button"
-                className="quran-step-btn"
-                onClick={() => stepAyah(1)}
-                aria-label={labels.nextAyah}
-                disabled={!canPlay}
-              >
-                ⏭
-              </button>
-              <button type="button" className="quran-stop-btn" onClick={stop} aria-label={labels.stop}>
-                ■
-              </button>
-              <div
-                className="quran-progress"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(progressPct)}
-              >
-                <div className="quran-progress-fill" style={{ width: `${progressPct}%` }} />
-              </div>
-            </div>
-            <div className="quran-player-times" dir="ltr">
-              <span>
-                {formatTime(state.currentTime)} / {state.duration > 0 ? formatTime(state.duration) : '–'}
-              </span>
-              {surahDuration !== null ? (
-                <span>
-                  {labels.surahTotalLabel}: {formatTime(surahDuration)}
-                </span>
-              ) : null}
-            </div>
-            <QuranWaveform
-              getAudioElement={getAudioElement}
-              playing={playing}
-              progressPct={progressPct}
-              label={labels.waveformLabel}
-            />
-            <div className="quran-player-settings">
-              <label className="quran-speed">
-                <span>{labels.speedLabel}</span>
-                <select
-                  value={rate}
-                  onChange={(e) => setRate(Number(e.target.value))}
-                  aria-label={labels.speedLabel}
+                {statusKey === 'playing' || statusKey === 'loading' ? (
+                  <button type="button" className="quran-play-btn" onClick={pause} aria-label={labels.pause}>
+                    ❚❚
+                  </button>
+                ) : statusKey === 'paused' ? (
+                  <button type="button" className="quran-play-btn" onClick={resume} aria-label={labels.resume}>
+                    ▶
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="quran-play-btn"
+                    onClick={() => {
+                      if (isRangeMode) playIndex(0);
+                      else playIndex(highlightAyah ? highlightAyah - 1 : 0);
+                    }}
+                    aria-label={labels.playSurah}
+                  >
+                    ▶
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="quran-step-btn"
+                  onClick={() => playCurrent(1)}
+                  aria-label={labels.nextAyah}
+                  disabled={!canPlay}
                 >
-                  {PLAYBACK_SPEEDS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}×
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="quran-volume">
-                <span>{labels.volumeLabel}</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={volume}
-                  onChange={(e) => setVolume(Number(e.target.value))}
-                  aria-label={labels.volumeLabel}
-                />
-              </label>
-            </div>
-            {state.status === 'error' ? (
-              <p className="quran-player-note" role="alert">
-                {state.error === 'audio_missing' ? labels.audioUnavailable : labels.audioFailed}
-              </p>
-            ) : null}
-          </>
-        )}
-      </div>
+                  ⏭
+                </button>
+                <button type="button" className="quran-stop-btn" onClick={stop} aria-label={labels.stop}>
+                  ■
+                </button>
+                <div
+                  className="quran-progress"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(progressPct)}
+                  onClick={onSeekBarClick}
+                >
+                  <QuranWaveform
+                    getAudioElement={getAudioElement}
+                    getAudioContext={getAudioContext}
+                    ctxState={ctxState}
+                    playing={playing}
+                    progressPct={progressPct}
+                    label={labels.waveformLabel}
+                  />
+                </div>
+              </div>
+              <div className="quran-player-times" dir="ltr">
+                <span>
+                  {formatTime(state.currentTime)} / {state.duration > 0 ? formatTime(state.duration) : '–'}
+                </span>
+                {surahDuration !== null ? (
+                  <span>
+                    {totalLabel}: {formatTime(surahDuration)}
+                  </span>
+                ) : null}
+              </div>
+              <div className="quran-player-settings">
+                <label className="quran-speed">
+                  <span>{labels.speedLabel}</span>
+                  <select
+                    value={rate}
+                    onChange={(e) => setRate(Number(e.target.value))}
+                    aria-label={labels.speedLabel}
+                  >
+                    {PLAYBACK_SPEEDS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}×
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="quran-volume">
+                  <span>{labels.volumeLabel}</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={volume}
+                    onChange={(e) => setVolume(Number(e.target.value))}
+                    aria-label={labels.volumeLabel}
+                  />
+                </label>
+              </div>
+              {state.status === 'error' ? (
+                <p className="quran-player-note" role="alert">
+                  {state.error === 'audio_missing' ? labels.audioUnavailable : labels.audioFailed}
+                </p>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
 
-      {showBismillahHeader ? (
+      {!isRangeMode && showBismillahHeader ? (
         <p className="quran-bismillah" lang="ar" dir="rtl">
           {labels.bismillah}
         </p>
@@ -616,146 +973,243 @@ export function QuranReader({
             type="button"
             className={viewMode === mode ? 'quran-mode-btn quran-mode-active' : 'quran-mode-btn'}
             aria-pressed={viewMode === mode}
-            onClick={() => setViewMode(mode)}
+            onClick={() => selectMode(mode)}
           >
             {MODE_LABELS[mode]}
           </button>
         ))}
       </div>
 
-      {viewMode === 'ayah' && visible.length > 0 ? (
-        <div className="quran-mode-nav">
-          <button
-            type="button"
-            onClick={() => setFocusedDisplayIdx(clampedFocused - 1)}
-            disabled={clampedFocused <= 0}
-            aria-label={labels.prevAyah}
-          >
-            {labels.prevAyah}
-          </button>
-          <span>
-            {labels.ayahOf
-              .replace('%current%', String(visible[clampedFocused].displayNumber))
-              .replace('%total%', String(visible.length))}
-          </span>
-          <button
-            type="button"
-            onClick={() => setFocusedDisplayIdx(clampedFocused + 1)}
-            disabled={clampedFocused >= visible.length - 1}
-            aria-label={labels.nextAyah}
-          >
-            {labels.nextAyah}
-          </button>
-        </div>
-      ) : null}
-
-      {viewMode === 'page' ? (
-        pageGroups.length === 0 ? (
-          <p className="quran-mode-note">{labels.pageDataMissing}</p>
-        ) : (
-          <div className="quran-mode-nav">
-            <button
-              type="button"
-              onClick={() => {
-                const next = stepGroup(pageGroups, activePage, -1);
-                if (next !== null) setSelectedPage(next);
+      {/* ---- Range LISTS (target null) ---- */}
+      {isRangeMode && rangeTarget === null ? (
+        <>
+          <h2 className="quran-range-list-title">{listTitle}</h2>
+          {rangeKind === 'page' ? (
+            <form
+              className="quran-page-jump"
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitPageJump();
               }}
-              disabled={activePage === pageGroups[0]?.key}
-              aria-label={labels.prevPage}
             >
-              {labels.prevPage}
-            </button>
-            <span>
-              {activePage !== null ? labels.pageCurrent.replace('%n%', String(activePage)) : ''}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                const next = stepGroup(pageGroups, activePage, 1);
-                if (next !== null) setSelectedPage(next);
-              }}
-              disabled={activePage === pageGroups[pageGroups.length - 1]?.key}
-              aria-label={labels.nextPage}
-            >
-              {labels.nextPage}
-            </button>
-          </div>
-        )
-      ) : null}
-
-      {viewMode === 'juz' ? (
-        juzGroups.length === 0 ? (
-          <p className="quran-mode-note">{labels.juzDataMissing}</p>
-        ) : (
-          <div className="quran-mode-nav">
-            <button
-              type="button"
-              onClick={() => {
-                const next = stepGroup(juzGroups, activeJuz, -1);
-                if (next !== null) setSelectedJuz(next);
-              }}
-              disabled={activeJuz === juzGroups[0]?.key}
-              aria-label={labels.prevJuz}
-            >
-              {labels.prevJuz}
-            </button>
-            <span>
-              {activeJuz !== null ? labels.juzCurrent.replace('%n%', String(activeJuz)) : ''}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                const next = stepGroup(juzGroups, activeJuz, 1);
-                if (next !== null) setSelectedJuz(next);
-              }}
-              disabled={activeJuz === juzGroups[juzGroups.length - 1]?.key}
-              aria-label={labels.nextJuz}
-            >
-              {labels.nextJuz}
-            </button>
-          </div>
-        )
-      ) : null}
-
-      <div className="ayah-list">
-        {modeAyahs.map((d) => (
-          <AyahCard
-            key={d.displayNumber}
-            ayah={d.ayah}
-            surahNumber={surah.number}
-            highlighted={state.ayahIndex === d.standardIndex || highlightAyah === d.standardNumber}
-            wordIndex={
-              state.ayahIndex === d.standardIndex ? wordIndexForCard(d, state.wordIndex) : -1
-            }
-            showTranslation={showTranslation}
-            showTafsir={showTafsir}
-            isCurrent={state.ayahIndex === d.standardIndex && playing}
-            labels={labels}
-            ayahHref={ayahLink(d.standardNumber)}
-            sajdaTitle={isSajda(surah.number, d.standardNumber, madhhab) ? sajdaTitle : null}
-            notes={
-              <AyahNotes
-                surah={surah.number}
-                ayahNumber={d.standardNumber}
-                locale={locale}
-                labels={labels}
-                onPlayAyah={() => playIndex(d.standardIndex)}
-                canPlay={Boolean(d.ayah.audioUrl)}
-              />
-            }
-          />
-        ))}
-      </div>
-
-      <div className="quran-ayah-jump">
-        <span>{labels.ayahLink}</span>
-      </div>
+              <label>
+                <span>{labels.pageJumpLabel}</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={pageJump}
+                  onChange={(e) => {
+                    setPageJump(e.target.value);
+                    setPageJumpError(false);
+                  }}
+                  aria-label={labels.pageJumpLabel}
+                />
+              </label>
+              <button type="submit">{labels.pageJumpButton}</button>
+              {pageJumpError ? (
+                <p className="quran-page-jump-error" role="alert">
+                  {labels.pageJumpOutOfRange.replace('%max%', '604')}
+                </p>
+              ) : null}
+            </form>
+          ) : null}
+          {!listEntries ? (
+            <p className="quran-mode-note">{labels.rangeLoading}</p>
+          ) : (
+            <ol className="quran-range-list">
+              {listEntries.map((entry) => (
+                <li key={entry.n}>
+                  <button
+                    type="button"
+                    className="quran-range-row"
+                    onClick={() => setRangeTarget(entry.n)}
+                  >
+                    <span className="quran-range-row-num">
+                      {rangeNavLabel.replace('%n%', String(entry.n))}
+                    </span>
+                    <span className="quran-range-row-ref" lang="ar" dir="rtl">
+                      {surahNameAr(entry.surah)} · {entry.ayah}
+                    </span>
+                    <span className="quran-range-row-text" lang="ar" dir="rtl">
+                      {entry.text}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
         </>
-      ) : (
-        <div className="quran-placeholder" role="tabpanel">
-          <p>{activeTab === 'hifz' ? labels.hifzPlaceholder : labels.childrenPlaceholder}</p>
-        </div>
-      )}
+      ) : null}
+
+      {/* ---- Range READING (target set) ---- */}
+      {isRangeMode && rangeTarget !== null ? (
+        <>
+          <div className="quran-mode-nav">
+            <button type="button" onClick={() => setRangeTarget(null)}>
+              {labels.backToList}
+            </button>
+            <span>
+              {rangeTarget !== null ? rangeNavLabel.replace('%n%', String(rangeTarget)) : ''}
+            </span>
+            <span className="quran-range-nav-steps">
+              <button
+                type="button"
+                onClick={() => setRangeTarget(Math.max(1, rangeTarget - 1))}
+                disabled={rangeTarget <= 1}
+                aria-label={rangePrevLabel}
+              >
+                {rangePrevLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRangeTarget(Math.min(rangeCount, rangeTarget + 1))}
+                disabled={rangeTarget >= rangeCount}
+                aria-label={rangeNextLabel}
+              >
+                {rangeNextLabel}
+              </button>
+            </span>
+          </div>
+          {rangeLoading || !rangeGroups ? (
+            <p className="quran-mode-note">{rangeError ? labels.rangeFailed : labels.rangeLoading}</p>
+          ) : viewMode === 'page' ? (
+            <QuranMushafPage
+              groups={rangeGroups}
+              pageNumber={rangeTarget}
+              juz={pageMeta.juz}
+              hizb={pageMeta.hizb}
+              pageCurrent={labels.pageCurrent}
+              juzCurrent={labels.juzCurrent}
+              hizbCurrent={labels.hizbCurrent}
+              bismillah={labels.bismillah}
+              scriptClass={scriptClass}
+              playingKey={playingKey}
+              onPlayAyah={(sn, d) => {
+                const idx = playMap.get(`${sn}:${d.standardNumber}`);
+                if (idx !== undefined) playIndex(idx);
+              }}
+            />
+          ) : (
+            <div className="ayah-list">
+              {rangeGroups.map((group) => (
+                <div key={group.surahNumber} className="quran-range-surah-block">
+                  {group.bismillahHeader ? (
+                    <p className="quran-bismillah" lang="ar" dir="rtl">
+                      {labels.bismillah}
+                    </p>
+                  ) : null}
+                  {group.items.map((d) => {
+                    const key = `${group.surahNumber}:${d.standardNumber}`;
+                    const isPlayingCard = playingKey === key;
+                    return (
+                      <div key={key} id={`range-${group.surahNumber}-${d.standardNumber}`}>
+                        <AyahCard
+                          ayah={d.ayah}
+                          surahNumber={group.surahNumber}
+                          highlighted={
+                            isPlayingCard ||
+                            (initialAyah !== null &&
+                              group.surahNumber === surah.number &&
+                              d.standardNumber === initialAyah)
+                          }
+                          wordIndex={
+                            isPlayingCard ? wordIndexForCard(d, state.wordIndex) : -1
+                          }
+                          showTranslation={showTranslation}
+                          showTafsir={showTafsir}
+                          isCurrent={isPlayingCard && playing}
+                          labels={labels}
+                          ayahHref={ayahLink(group.surahNumber, d.standardNumber)}
+                          sajdaTitle={
+                            isSajda(group.surahNumber, d.standardNumber, madhhab)
+                              ? sajdaTitle
+                              : null
+                          }
+                          idPrefix={`r${group.surahNumber}-`}
+                          notes={
+                            <AyahNotes
+                              surah={group.surahNumber}
+                              ayahNumber={d.standardNumber}
+                              locale={locale}
+                              labels={labels}
+                              onPlayAyah={() => {
+                                const idx = playMap.get(key);
+                                if (idx !== undefined) playIndex(idx);
+                              }}
+                              canPlay={Boolean(d.ayah.audioUrl)}
+                            />
+                          }
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : null}
+
+      {/* ---- Surah / ayah modes ---- */}
+      {!isRangeMode ? (
+        <>
+          {viewMode === 'ayah' && visible.length > 0 ? (
+            <div className="quran-mode-nav">
+              <button
+                type="button"
+                onClick={() => setFocusedDisplayIdx(clampedFocused - 1)}
+                disabled={clampedFocused <= 0}
+                aria-label={labels.prevAyah}
+              >
+                {labels.prevAyah}
+              </button>
+              <span>
+                {labels.ayahOf
+                  .replace('%current%', String(visible[clampedFocused].displayNumber))
+                  .replace('%total%', String(visible.length))}
+              </span>
+              <button
+                type="button"
+                onClick={() => setFocusedDisplayIdx(clampedFocused + 1)}
+                disabled={clampedFocused >= visible.length - 1}
+                aria-label={labels.nextAyah}
+              >
+                {labels.nextAyah}
+              </button>
+            </div>
+          ) : null}
+
+          <div className="ayah-list">
+            {modeAyahs.map((d) => (
+              <AyahCard
+                key={d.displayNumber}
+                ayah={d.ayah}
+                surahNumber={surah.number}
+                highlighted={state.ayahIndex === d.standardIndex || highlightAyah === d.standardNumber}
+                wordIndex={
+                  state.ayahIndex === d.standardIndex ? wordIndexForCard(d, state.wordIndex) : -1
+                }
+                showTranslation={showTranslation}
+                showTafsir={showTafsir}
+                isCurrent={state.ayahIndex === d.standardIndex && playing}
+                labels={labels}
+                ayahHref={ayahLink(surah.number, d.standardNumber)}
+                sajdaTitle={isSajda(surah.number, d.standardNumber, madhhab) ? sajdaTitle : null}
+                notes={
+                  <AyahNotes
+                    surah={surah.number}
+                    ayahNumber={d.standardNumber}
+                    locale={locale}
+                    labels={labels}
+                    onPlayAyah={() => playIndex(d.standardIndex)}
+                    canPlay={Boolean(d.ayah.audioUrl)}
+                  />
+                }
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

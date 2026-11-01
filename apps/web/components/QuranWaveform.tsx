@@ -1,21 +1,24 @@
 'use client';
 
 /**
- * QuranWaveform — live sound wave on the player bar.
+ * QuranWaveform — live sound wave INSIDE the player progress bar.
  *
- * Tries a Web Audio AnalyserNode fed by the playback element. The
- * element is never given a crossOrigin attribute on purpose: forcing
- * CORS mode could BREAK playback outright when the CDN does not send
- * the header. Instead the analyser runs on the plain element — when
- * the source is cross-origin without CORS approval the analyser data
- * is tainted (constant silence) and playback itself is unaffected.
+ * The canvas fills the progress bar itself (replacing the old yellow
+ * fill line): the real wave draws dim across the bar with the played
+ * portion in bright gold; the fallback draws gold/dim bars by progress.
  *
- * Taint detection: while playing, 30 consecutive frames of constant
- * time-domain data (all 128) mean tainted data, not real silence, so
- * the canvas switches permanently (for this mount) to a decorative
- * progress-driven indicator. That indicator is NOT presented as a
- * waveform: it is visibly a different, simpler animation, and this
- * comment + the delivery report document the limitation honestly.
+ * SOUND-BUG HARD GATE (user phone report 2026-11-01: wave visible, no
+ * sound): the analyser graph is built ONLY when the shared AudioContext
+ * is actually running (ctxState === 'running', primed synchronously in
+ * the play-click gesture by the playback hook). A suspended context
+ * must NEVER capture the element — capturing reroutes the element's
+ * audio through the graph, so suspension means total silence while
+ * progress still advances. When the gate refuses, the element plays
+ * natively (sound guaranteed) and this canvas shows the decorative
+ * indicator, honestly marked data-mode="indicator".
+ *
+ * The context is owned by the playback hook and is NEVER closed here:
+ * closing a shared context would permanently end the visualizer.
  * prefers-reduced-motion renders one static frame instead of looping.
  */
 import { useEffect, useRef, useState } from 'react';
@@ -25,13 +28,18 @@ const SILENCE_VALUE = 128;
 
 export function QuranWaveform({
   getAudioElement,
+  getAudioContext,
+  ctxState,
   playing,
   progressPct,
   label,
 }: {
   getAudioElement: () => HTMLAudioElement | null;
+  getAudioContext: () => AudioContext | null;
+  /** 'running' only when the hook primed the context in a gesture. */
+  ctxState: 'running' | 'suspended' | null;
   playing: boolean;
-  /** 0..100 progress, used only by the decorative fallback animation. */
+  /** 0..100 progress, used for the played/unplayed split. */
   progressPct: number;
   label: string;
 }) {
@@ -41,48 +49,41 @@ export function QuranWaveform({
     analyser: AnalyserNode;
   } | null>(null);
   const [fallback, setFallback] = useState(false);
+  const [graphBuilt, setGraphBuilt] = useState(false);
   const fallbackRef = useRef(false);
   const zeroFramesRef = useRef(0);
   const progressRef = useRef(progressPct);
   progressRef.current = progressPct;
 
-  // Build the analyser graph once, when playback first starts (the
-  // user has clicked play, so sticky activation lets the context run).
-  // One MediaElementSource per element — creating a second throws.
+  // Build the analyser graph ONLY under the hard gate: playing AND the
+  // shared context running. Anything else leaves the element untouched.
   useEffect(() => {
     if (!playing || graphRef.current || fallbackRef.current) return;
+    if (ctxState !== 'running') return;
     const el = getAudioElement();
-    if (!el) return;
+    const ctx = getAudioContext();
+    if (!el || !ctx || ctx.state !== 'running') return;
     try {
-      const Ctx =
-        window.AudioContext ??
-        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!Ctx) {
-        fallbackRef.current = true;
-        setFallback(true);
-        return;
-      }
-      const ctx = new Ctx();
       const source = ctx.createMediaElementSource(el);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 2048;
       source.connect(analyser);
       analyser.connect(ctx.destination);
       graphRef.current = { ctx, analyser };
-      void ctx.resume().catch(() => {
-        /* suspended context: analyser reads zeros → fallback path */
-      });
+      setGraphBuilt(true);
     } catch {
+      // Already captured (or any graph failure): never retry capture,
+      // fall back to the decorative indicator and keep native sound.
       fallbackRef.current = true;
       setFallback(true);
     }
-  }, [playing, getAudioElement]);
+  }, [playing, ctxState, getAudioElement, getAudioContext]);
 
   useEffect(
     () => () => {
-      void graphRef.current?.ctx.close().catch(() => {
-        /* already closed */
-      });
+      // Shared context: do NOT close it, do NOT disconnect nodes (that
+      // would silence an element that keeps playing). Just drop the ref;
+      // the hook's own cleanup pauses the element on unmount.
       graphRef.current = null;
     },
     [],
@@ -97,6 +98,10 @@ export function QuranWaveform({
     const W = canvas.width;
     const H = canvas.height;
     const data = new Uint8Array(2048);
+    // Progress grows from the inline-start edge: left in LTR, right in
+    // RTL. The seek handler uses the same rule, so the gold region and
+    // the click position always agree.
+    const rtl = document.documentElement.dir === 'rtl';
 
     const drawFallback = (t: number) => {
       g.clearRect(0, 0, W, H);
@@ -106,7 +111,9 @@ export function QuranWaveform({
       for (let i = 0; i < bars; i++) {
         const phase = t / 500 + i * 0.55;
         const h = 4 + (Math.sin(phase) * 0.5 + 0.5) * (H - 10);
-        const lit = i / bars <= p;
+        // Strict < so 0% progress lights nothing (no stray first bar).
+        const fromOrigin = rtl ? (bars - 1 - i) / bars : i / bars;
+        const lit = fromOrigin < p;
         g.fillStyle = lit ? '#e5c07b' : 'rgba(212, 175, 55, 0.25)';
         const x = i * bw + 1;
         const bh = Math.max(2, h * (lit ? 1 : 0.45));
@@ -118,18 +125,32 @@ export function QuranWaveform({
       const analyser = graphRef.current?.analyser;
       if (!analyser) return;
       analyser.getByteTimeDomainData(data);
-      g.clearRect(0, 0, W, H);
-      g.strokeStyle = '#e5c07b';
-      g.lineWidth = 1.5;
-      g.beginPath();
       const step = Math.floor(data.length / W);
-      for (let x = 0; x < W; x++) {
-        const v = data[x * step] / 255;
-        const y = v * H;
-        if (x === 0) g.moveTo(x, y);
-        else g.lineTo(x, y);
-      }
-      g.stroke();
+      const trace = (stroke: string, width: number) => {
+        g.strokeStyle = stroke;
+        g.lineWidth = width;
+        g.lineJoin = 'round';
+        g.beginPath();
+        for (let x = 0; x < W; x++) {
+          const v = data[x * step] / 255;
+          const y = v * H;
+          if (x === 0) g.moveTo(x, y);
+          else g.lineTo(x, y);
+        }
+        g.stroke();
+      };
+      g.clearRect(0, 0, W, H);
+      // Unplayed portion: dim wave across the whole bar.
+      trace('rgba(212, 175, 55, 0.28)', 2);
+      // Played portion: bright gold, clipped to the progress width —
+      // right-anchored in RTL so it matches the seek direction.
+      const p = progressRef.current / 100;
+      g.save();
+      g.beginPath();
+      g.rect(rtl ? W * (1 - p) : 0, 0, W * p, H);
+      g.clip();
+      trace('#e5c07b', 2);
+      g.restore();
     };
 
     let raf = 0;
@@ -170,8 +191,9 @@ export function QuranWaveform({
       raf = requestAnimationFrame(tick);
     }
     return () => cancelAnimationFrame(raf);
-  }, [playing, fallback]);
+  }, [playing, fallback, graphBuilt]);
 
+  const liveWave = graphBuilt && !fallback;
   return (
     <canvas
       ref={canvasRef}
@@ -180,7 +202,7 @@ export function QuranWaveform({
       height={40}
       role="img"
       aria-label={label}
-      data-mode={fallback ? 'indicator' : 'waveform'}
+      data-mode={liveWave ? 'waveform' : 'indicator'}
     />
   );
 }

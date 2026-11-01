@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
-import { getQuranProviders, getSurah } from '@/lib/quran';
+import { getQuranProviders, getSurah, getSurahs } from '@/lib/quran';
+import type { QuranViewMode } from '@/lib/quran-view-modes';
 import { getSiteConfig, type QuranSettings } from '@/lib/settings';
 import { QuranReader } from '@/components/QuranReader';
 
@@ -26,8 +27,14 @@ export async function generateMetadata({
  * flags) comes from GET /api/v1/quran/providers (CRM-driven); the
  * quran.* settings are the fallback. Query params: ?translation= &tafsir=
  * (edition overrides), ?reciter= (forward-compatible selector),
- * ?ayah= (deep-link highlight).
+ * ?ayah= (deep-link highlight), ?tab= (section: general/hifz/children),
+ * ?view= + ?target= (umum view mode + range target; refresh keeps the
+ * view). Range targets are validated against the range size (30/60/604);
+ * an out-of-range target degrades to the mode's list, never a crash.
  * Invalid surah numbers 404.
+ *
+ * User-locked 2026-11-01: the reader renders ONLY the ?tab= section —
+ * no tab bar, no other section's content.
  */
 export default async function SurahPage({
   params,
@@ -40,6 +47,8 @@ export default async function SurahPage({
     reciter?: string;
     ayah?: string;
     tab?: string;
+    view?: string;
+    target?: string;
   }>;
 }) {
   const { locale, surah } = await params;
@@ -70,9 +79,26 @@ export default async function SurahPage({
 
   const ayahParam = searchParams.ayah ? Number(searchParams.ayah) : NaN;
   const initialAyah = Number.isInteger(ayahParam) && ayahParam >= 1 ? ayahParam : null;
-  // Index-card deep-link: only the three real tabs; anything else is عموم.
+  // Section deep-link: only the three real sections; anything else is عموم.
   const initialTab =
     searchParams.tab === 'hifz' || searchParams.tab === 'children' ? searchParams.tab : 'general';
+
+  // View-mode deep-link: only the four real modes besides سوره; anything
+  // else is سوره. Target validated against the mode's range size.
+  const initialView: QuranViewMode =
+    searchParams.view === 'ayah' ||
+    searchParams.view === 'juz' ||
+    searchParams.view === 'hizb' ||
+    searchParams.view === 'page'
+      ? searchParams.view
+      : 'surah';
+  const maxTarget =
+    initialView === 'juz' ? 30 : initialView === 'hizb' ? 60 : initialView === 'page' ? 604 : 0;
+  const targetParam = searchParams.target ? Number(searchParams.target) : NaN;
+  const initialTarget =
+    Number.isInteger(targetParam) && targetParam >= 1 && targetParam <= maxTarget
+      ? targetParam
+      : null;
 
   let view: Awaited<ReturnType<typeof getSurah>> | null = null;
   try {
@@ -84,6 +110,14 @@ export default async function SurahPage({
     });
   } catch {
     view = null;
+  }
+
+  // Full surah list for search name matching (non-fatal on failure).
+  let surahList: Awaited<ReturnType<typeof getSurahs>> = [];
+  try {
+    surahList = await getSurahs();
+  } catch {
+    surahList = [];
   }
 
   if (!view) {
@@ -107,6 +141,9 @@ export default async function SurahPage({
         settings={qs}
         initialAyah={initialAyah}
         initialTab={initialTab}
+        initialView={initialView}
+        initialTarget={initialTarget}
+        surahList={surahList}
         labels={{
           surahOf: t('surahOf'),
           reciterLabel: t('reciterLabel'),
@@ -122,10 +159,6 @@ export default async function SurahPage({
           showTranslation: t('showTranslation'),
           showTafsir: t('showTafsir'),
           bismillah: t('bismillah'),
-          tabsLabel: t('tabsLabel'),
-          tabGeneral: t('tabGeneral'),
-          tabHifz: t('tabHifz'),
-          tabChildren: t('tabChildren'),
           hifzPlaceholder: t('hifzPlaceholder'),
           childrenPlaceholder: t('childrenPlaceholder'),
           madhhabLabel: t('madhhabLabel'),
@@ -153,17 +186,33 @@ export default async function SurahPage({
           modePage: t('modePage'),
           modeSurah: t('modeSurah'),
           modeJuz: t('modeJuz'),
+          modeHizb: t('modeHizb'),
           prevPage: t('prevPage'),
           nextPage: t('nextPage'),
           prevJuz: t('prevJuz'),
           nextJuz: t('nextJuz'),
+          prevHizb: t('prevHizb'),
+          nextHizb: t('nextHizb'),
           pageCurrent: t('pageCurrent'),
           juzCurrent: t('juzCurrent'),
-          pageDataMissing: t('pageDataMissing'),
-          juzDataMissing: t('juzDataMissing'),
+          hizbCurrent: t('hizbCurrent'),
           ayahOf: t('ayahOf'),
           surahTotalLabel: t('surahTotalLabel'),
+          rangeTotalLabel: t('rangeTotalLabel'),
           waveformLabel: t('waveformLabel'),
+          juzListTitle: t('juzListTitle'),
+          hizbListTitle: t('hizbListTitle'),
+          pageListTitle: t('pageListTitle'),
+          backToList: t('backToList'),
+          pageJumpLabel: t('pageJumpLabel'),
+          pageJumpButton: t('pageJumpButton'),
+          pageJumpOutOfRange: t('pageJumpOutOfRange'),
+          rangeLoading: t('rangeLoading'),
+          rangeFailed: t('rangeFailed'),
+          scriptLabel: t('scriptLabel'),
+          scriptUthmani: t('scriptUthmani'),
+          scriptIndopak: t('scriptIndopak'),
+          scriptTypefaceNote: t('scriptTypefaceNote'),
           playAyah: t('playAyah'),
           playing: t('playing'),
           translationLabel: t('translationLabel'),
@@ -185,6 +234,18 @@ export default async function SurahPage({
           notesFailed: t('notesFailed'),
           noteSaved: t('noteSaved'),
           noteDeleted: t('noteDeleted'),
+        }}
+        searchLabels={{
+          searchPlaceholder: t('searchPlaceholder'),
+          searchAria: t('searchAria'),
+          searchHint: t('searchHint'),
+          searchLoading: t('searchLoading'),
+          noResults: t('noResults'),
+          searchSurahHeading: t('searchSurahHeading'),
+          searchAyahHeading: t('searchAyahHeading'),
+          searchPageHeading: t('searchPageHeading'),
+          searchPageOutOfRange: t('searchPageOutOfRange'),
+          searchMore: t('searchMore'),
         }}
       />
     </div>

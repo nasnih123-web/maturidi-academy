@@ -238,26 +238,26 @@ export interface SurahView {
   ayahs: Ayah[];
 }
 
-/** Fetch one surah with ayahs, translation, tafsir and audio references. */
-export async function getSurah(
+export interface SurahViewBody {
+  surah?: unknown;
+  name_ar?: unknown;
+  name_en?: unknown;
+  ayahs?: unknown;
+}
+
+/**
+ * Pure parser for the surah-view wire shape — shared by the server
+ * getSurah and the browser range fetcher (lib/quran-range-client.ts),
+ * so both parse identically. No I/O here.
+ */
+export function parseSurahView(
+  body: SurahViewBody,
   number: number,
   opts: {
-    translation?: string | null;
-    tafsir?: string | null;
     translationEdition?: string | null;
     tafsirEdition?: string | null;
   } = {},
-): Promise<SurahView> {
-  const params = new URLSearchParams();
-  if (opts.translation) params.set('translation', opts.translation);
-  if (opts.tafsir) params.set('tafsir', opts.tafsir);
-  const qs = params.toString();
-  const body = await getJson<{
-    surah?: unknown;
-    name_ar?: unknown;
-    name_en?: unknown;
-    ayahs?: unknown;
-  }>(`/api/v1/quran/surah/${number}${qs ? `?${qs}` : ''}`);
+): SurahView {
   const str = (v: unknown, fb = ''): string => (typeof v === 'string' ? v : fb);
   const surah: SurahDetail = {
     number: typeof body?.surah === 'number' ? body.surah : number,
@@ -288,6 +288,29 @@ export async function getSurah(
         .sort((a, b) => a.number - b.number)
     : [];
   return { surah, ayahs };
+}
+
+/** Fetch one surah with ayahs, translation, tafsir and audio references. */
+export async function getSurah(
+  number: number,
+  opts: {
+    translation?: string | null;
+    tafsir?: string | null;
+    translationEdition?: string | null;
+    tafsirEdition?: string | null;
+  } = {},
+): Promise<SurahView> {
+  const params = new URLSearchParams();
+  if (opts.translation) params.set('translation', opts.translation);
+  if (opts.tafsir) params.set('tafsir', opts.tafsir);
+  const qs = params.toString();
+  const body = await getJson<SurahViewBody>(
+    `/api/v1/quran/surah/${number}${qs ? `?${qs}` : ''}`,
+  );
+  return parseSurahView(body, number, {
+    translationEdition: opts.translationEdition ?? null,
+    tafsirEdition: opts.tafsirEdition ?? null,
+  });
 }
 
 /**

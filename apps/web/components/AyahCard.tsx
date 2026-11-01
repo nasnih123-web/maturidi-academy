@@ -28,6 +28,7 @@ export function AyahCard({
   notes,
   ayahHref,
   sajdaTitle,
+  idPrefix,
 }: {
   ayah: Ayah;
   surahNumber: number;
@@ -45,11 +46,17 @@ export function AyahCard({
    * Null = no sajda at this ayah under the selected madhhab.
    */
   sajdaTitle?: string | null;
+  /**
+   * Optional id prefix for range views, where several surahs render on
+   * one page and bare `ayah-{n}` ids would collide (e.g. `range-`).
+   * Single-surah views keep the historical bare ids.
+   */
+  idPrefix?: string;
 }) {
   const words = ayah.text.split(/\s+/).filter(Boolean);
   return (
     <article
-      id={`ayah-${ayah.number}`}
+      id={`${idPrefix ?? ''}ayah-${ayah.number}`}
       className={`ayah-card${highlighted ? ' ayah-active' : ''}`}
       aria-current={highlighted ? 'true' : undefined}
       data-surah={surahNumber}
