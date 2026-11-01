@@ -194,6 +194,19 @@ function asEdition(raw: unknown): EditionRaw | null {
 }
 
 /**
+ * Round 7: force https on provider audio URLs. The page is served over
+ * https, so an http audio URL would die to a mixed-content block with
+ * no visible error. The live provider (AlQuran Cloud) already returns
+ * https, so this is a defensive normalization, not a rewrite of a
+ * known http source — an http URL can only arrive if a provider or
+ * CRM override ever supplies one.
+ */
+function forceHttps(url: string | null): string | null {
+  if (url && url.startsWith('http://')) return `https://${url.slice('http://'.length)}`;
+  return url;
+}
+
+/**
  * Resolve one ayah's display fields from its editions bundle:
  * Arabic text (quran-uthmani), the requested translation/tafsir editions,
  * and the reciter edition's audio URL.
@@ -221,7 +234,7 @@ function resolveAyah(
     text: arabic?.text ?? '',
     translation,
     tafsir,
-    audioUrl: audio?.audioUrl ?? null,
+    audioUrl: forceHttps(audio?.audioUrl ?? null),
     wordTimings: null,
     audioDuration: null,
     juz: arabic?.juz ?? null,

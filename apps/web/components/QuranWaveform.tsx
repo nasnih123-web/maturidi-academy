@@ -20,6 +20,10 @@
  * The context is owned by the playback hook and is NEVER closed here:
  * closing a shared context would permanently end the visualizer.
  * prefers-reduced-motion renders one static frame instead of looping.
+ *
+ * Round 7: cross-origin audio (e.g. cdn.islamic.network, which sends
+ * no CORS headers) is NEVER captured — the indicator renders instead.
+ * Capturing it would silence real playback through the graph.
  */
 import { useEffect, useRef, useState } from 'react';
 import { parseWaveformStyle, type WaveformStyleId } from '@/lib/quran-waveform-styles';
@@ -63,12 +67,38 @@ export function QuranWaveform({
 
   // Build the analyser graph ONLY under the hard gate: playing AND the
   // shared context running. Anything else leaves the element untouched.
+  //
+  // Round 7 CORS fix (verified 2026-11-02: cdn.islamic.network answers
+  // NO Access-Control-Allow-Origin): a cross-origin element MUST NEVER
+  // be captured. Per the Web Audio spec, cross-origin media without
+  // CORS approval outputs SILENCE through the graph — capturing it
+  // mutes real playback while the player looks like it is playing.
+  // So cross-origin audio always renders the decorative indicator
+  // (honestly marked data-mode="indicator") and plays natively.
+  // Do NOT set crossOrigin='anonymous' on the playback element to
+  // "fix" this: with no CORS headers the whole load would fail,
+  // which is strictly worse than native playback.
   useEffect(() => {
     if (!playing || graphRef.current || fallbackRef.current) return;
     if (ctxState !== 'running') return;
     const el = getAudioElement();
     const ctx = getAudioContext();
     if (!el || !ctx || ctx.state !== 'running') return;
+    const src = el.currentSrc || el.src;
+    if (src) {
+      try {
+        if (new URL(src, window.location.href).origin !== window.location.origin) {
+          fallbackRef.current = true;
+          setFallback(true);
+          return;
+        }
+      } catch {
+        // Unparseable src: stay safe, never capture.
+        fallbackRef.current = true;
+        setFallback(true);
+        return;
+      }
+    }
     try {
       const source = ctx.createMediaElementSource(el);
       const analyser = ctx.createAnalyser();
