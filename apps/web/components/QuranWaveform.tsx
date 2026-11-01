@@ -300,7 +300,7 @@ export function QuranWaveform({
       ref={canvasRef}
       className="quran-waveform"
       width={720}
-      height={40}
+      height={96}
       role="img"
       aria-label={label}
       data-mode={liveWave ? 'waveform' : 'indicator'}

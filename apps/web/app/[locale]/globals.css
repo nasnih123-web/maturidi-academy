@@ -779,8 +779,10 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .quran-play-btn, .quran-stop-btn { width: 3rem; height: 3rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.5); background: rgba(212, 175, 55, 0.14); color: #e5c07b; font-size: 1.1rem; cursor: pointer; }
 .quran-play-btn:hover, .quran-stop-btn:hover { background: rgba(212, 175, 55, 0.28); }
 /* Progress bar hosts the waveform canvas (the yellow fill line is gone:
-   the wave itself is the progress — gold played, dim unplayed). */
-.quran-progress { flex: 1; height: 2.75rem; border-radius: 999px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(212, 175, 55, 0.2); overflow: hidden; cursor: pointer; }
+   the wave itself is the progress — gold played, dim unplayed).
+   The equalizer frame is TALL and BORDERLESS by user order: the wave
+   sits directly on the player background, no outline ring. */
+.quran-progress { flex: 1; height: 6rem; border-radius: 999px; background: rgba(0, 0, 0, 0.25); border: none; overflow: hidden; cursor: pointer; }
 .quran-progress-fill { height: 100%; background: linear-gradient(90deg, #b8860b, #e5c07b); border-radius: 999px; transition: width 0.25s linear; }
 .quran-player-note { margin: 0.5rem 0 0; font-size: 0.85rem; color: hsl(var(--text-muted)); }
 .quran-player-times { display: flex; gap: 1.2rem; margin-top: 0.6rem; font-size: 0.85rem; font-variant-numeric: tabular-nums; color: hsl(var(--text-secondary)); }
@@ -863,22 +865,38 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .quran-page-jump-error { flex-basis: 100%; margin: 0; font-size: 0.85rem; color: #e08a8a; }
 .quran-range-nav-steps { display: inline-flex; gap: 0.5rem; }
 
-/* ---- Mushaf-style page view (flowing text on the site background) ---- */
-.mushaf-page { max-width: min(92vw, 640px); margin: 0 auto 1.5rem; padding: 1.6rem 1.8rem 1.2rem; border: 1px solid #c9b37e; border-radius: 6px; background: #f7f1dd; box-shadow: 0 2px 18px rgba(0, 0, 0, 0.45); color: #2b2118; }
+/* ---- Mushaf-style page view: a book page ON the site background ----
+   The card is deliberately NARROWER than the viewport on every width so
+   the site's dark background stays visible around it (user order: the
+   previous near-full-width phone card hid the background). */
+.mushaf-page { max-width: min(90vw, 600px); margin: 0 auto 1.5rem; padding: 1.6rem 1.8rem 1.2rem; border: 1px solid #c9b37e; border-radius: 6px; background: #f7f1dd; box-shadow: 0 2px 18px rgba(0, 0, 0, 0.45); color: #2b2118; container-type: inline-size; }
 .mushaf-page-meta { text-align: center; margin-bottom: 1.2rem; font-size: 0.85rem; color: #6f6151; }
 .mushaf-page-foot { margin-top: 1.2rem; margin-bottom: 0; text-align: center; }
 .mushaf-surah-ornament { text-align: center; font-size: 1.5rem; color: #2b2118; margin: 0 auto 1rem; padding: 0.35rem 1rem; border: 2px solid #8a6d1b; border-radius: 999px; background: #efe6c8; max-width: max-content; }
 .mushaf-bismillah { text-align: center; font-size: 1.7rem; color: #2b2118; margin: 0 0 1rem; }
 .mushaf-text { font-size: 1.55rem; line-height: 2.4; text-align: justify; color: #2b2118; }
+/* Exact Madani lines: one print line per block, justified like the
+   printed page. Lines are full by construction, so justification
+   stays even without stretched short lines. The font SCALES with the
+   card width (cqw, like Bayan/Tarteel's width-derived sizing) so a
+   print line NEVER wraps onto a second visual row at any card width:
+   3.2cqw measured wrap-free on page 30 (longest line 108 chars) with
+   headroom for the global longest line (119 chars); the rem value is
+   only a fallback for browsers without container query units. */
+.mushaf-line { margin: 0; font-size: 1.1rem; font-size: 3.2cqw; line-height: 2.4; text-align: justify; color: #2b2118; }
+.mushaf-line-btn { display: block; width: 100%; margin: 0; padding: 0; background: none; border: 0; color: inherit; text-align: justify; cursor: pointer; }
+.mushaf-line-playing { color: #8a6d1b; background: rgba(138, 109, 27, 0.12); border-radius: 4px; }
 .mushaf-ayah { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
 .mushaf-ayah:hover { color: #8a6d1b; }
 .mushaf-ayah-playing { color: #8a6d1b; text-decoration: underline; text-decoration-color: rgba(138, 109, 27, 0.5); }
 .mushaf-ayah-end { color: #8a6d1b; font-size: 0.85em; }
 @media (max-width: 768px) {
   /* 768px matches the site's phone breakpoint (sticky player) and the
-     user's 720-768px phone: the card is near-full width there too. */
-  .mushaf-page { margin-inline: 0.25rem; max-width: none; padding: 1.2rem 1rem; }
+     user's 720-768px phone: the card keeps CLEAR margins here too, so
+     the dark site background stays visible around the page. */
+  .mushaf-page { margin-inline: auto; max-width: min(92vw, 600px); padding: 1.2rem 1.1rem; }
   .mushaf-text { font-size: 1.35rem; line-height: 2.3; }
+  .mushaf-line { line-height: 2.3; }
 }
 
 /* ---- Script / typeface switch (typeface only — the text never changes) ---- */
@@ -886,10 +904,12 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .quran-script select { padding: 0.4rem 0.6rem; border-radius: var(--radius-sm); border: 1px solid rgba(212, 175, 55, 0.3); background: rgba(7, 35, 28, 0.7); color: hsl(var(--text-primary)); }
 .quran-script-note { font-size: 0.75rem; color: hsl(var(--text-muted)); }
 .quran-script-uthmani .mushaf-text,
+.quran-script-uthmani .mushaf-line,
 .quran-script-uthmani .quran-bismillah,
 .quran-script-uthmani .mushaf-bismillah,
 .quran-script-uthmani .mushaf-surah-ornament { font-family: "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
 .quran-script-indopak .mushaf-text,
+.quran-script-indopak .mushaf-line,
 .quran-script-indopak .quran-bismillah,
 .quran-script-indopak .mushaf-bismillah,
 .quran-script-indopak .mushaf-surah-ornament { font-family: "Noto Nastaliq Urdu", "Alvi Nastaliq", "Noto Naskh Arabic", serif; line-height: 2.6; }
@@ -914,7 +934,7 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
    the user's phone layout viewport (720–768 CSS px). Padding grew
    with the bar itself (times row + waveform + wrapping settings). */
 @media (max-width: 768px) {
-  .quran-reader { padding-bottom: 17rem; }
+  .quran-reader { padding-bottom: 20rem; }
   .quran-player { position: fixed; inset-inline: 0; bottom: 0; z-index: 40; margin-bottom: 0; border-radius: 0; border-inline: 0; border-bottom: 0; }
 }
 

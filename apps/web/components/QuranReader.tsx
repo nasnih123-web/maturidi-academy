@@ -16,8 +16,10 @@
  * every spanned surah (entry surah from RSC props, the rest fetched
  * client-side) and filters by the range span from
  * lib/quran-boundaries.json (provider-derived, never hand-typed).
- * The page view renders flowing mushaf-style text (NOT exact Madani
- * lines — the provider has no line-break data).
+ * The page view renders EXACT Madani print lines from
+ * lib/quran-mushaf-lines.json (QPC1 breaks, verified line-by-line
+ * against the user's Bayan page-106 screenshot), falling back to
+ * flowing text if the line data fails to load.
  *
  * All data arrives as props from the RSC page except range surahs
  * (client-fetched); all user-visible strings arrive via `labels`.
@@ -52,6 +54,7 @@ import {
   type RangeSpan,
 } from '@/lib/quran-view-modes';
 import { loadBoundaries } from '@/lib/quran-boundaries-loader';
+import { loadMushafLines, type MushafExactLine } from '@/lib/quran-mushaf-lines';
 import { fetchSurahClient } from '@/lib/quran-range-client';
 import { toLatinDigits } from '@/lib/quran-search';
 import type { QuranSettings } from '@/lib/settings';
@@ -463,6 +466,28 @@ function QuranUmumReader({
     }
     return groups;
   }, [span, rangeSurahs, madhhab]);
+
+  // Exact Madani lines for the page view: lazy-loaded once, then the
+  // current page's lines. Null while loading or on failure → the
+  // flowing fallback renders (never a blank page, never stale lines:
+  // the target change clears first).
+  const [exactLines, setExactLines] = useState<MushafExactLine[] | null>(null);
+  useEffect(() => {
+    if (viewMode !== 'page' || rangeTarget === null) return;
+    setExactLines(null);
+    let cancelled = false;
+    loadMushafLines().then((pages) => {
+      if (cancelled) return;
+      setExactLines(
+        pages && rangeTarget >= 1 && rangeTarget <= pages.length
+          ? pages[rangeTarget - 1]
+          : null,
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode, rangeTarget]);
 
   // Flattened play array for the active reading set. Range views play
   // the range's standard ayahs (per-ayah files only); surah/ayah modes
@@ -1094,6 +1119,7 @@ function QuranUmumReader({
           ) : viewMode === 'page' ? (
             <QuranMushafPage
               groups={rangeGroups}
+              exactLines={exactLines}
               pageNumber={rangeTarget}
               juz={pageMeta.juz}
               hizb={pageMeta.hizb}
@@ -1107,6 +1133,10 @@ function QuranUmumReader({
               playingKey={playingKey}
               onPlayAyah={(sn, d) => {
                 const idx = playMap.get(`${sn}:${d.standardNumber}`);
+                if (idx !== undefined) playIndex(idx);
+              }}
+              onPlayLine={(sn, an) => {
+                const idx = playMap.get(`${sn}:${an}`);
                 if (idx !== undefined) playIndex(idx);
               }}
             />
