@@ -34,9 +34,24 @@
  * edition selectors over the verified AlQuran Cloud catalogs.
  * Hifz study features and children-specific features are NOT here —
  * they are the next rounds.
+ *
+ * Round 5 (exact app-style reading view): a fullscreen reading view
+ * (fixed overlay over the site's dark background; the page face stays
+ * light like the apps) with an app-style top bar (page · surah ·
+ * juz · hizb), the same exact 15-line QPC page, and a minimal bottom
+ * bar (play, picker, mushaf, bookmarks, display, always-visible
+ * exit); a bottom-sheet picker (surah/juz/hizb/page tabs + search +
+ * card grid) navigating via the existing ?view=&target= deep links;
+ * a mushaf picker where ONLY Hafs is a real option and every other
+ * row is disabled and labeled «به‌زودی»; and TRUE fullscreen (the
+ * Fullscreen API, with a fixed-overlay fallback when the API is
+ * unavailable or blocked — a page cannot hide browser chrome itself,
+ * so the API is the web maximum). The phrase-chunk coloring in the
+ * Hefz reference is a hifz-study feature and is NOT built here.
  */
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuranPlayback, type PlaybackStatus } from '@/lib/hooks/useQuranPlayback';
 import type { Ayah, Reciter, SurahDetail, SurahSummary } from '@/lib/quran';
 import {
@@ -99,7 +114,17 @@ import type { QuranSettings } from '@/lib/settings';
 import { AyahCard, type AyahCardLabels } from './AyahCard';
 import { AyahNotes, type AyahNotesLabels } from './AyahNotes';
 import { QuranWaveform } from './QuranWaveform';
-import { QuranMushafPage, type MushafSurahGroup } from './QuranMushafPage';
+import {
+  QuranMushafPage,
+  toArabicIndicDigits,
+  type MushafSurahGroup,
+} from './QuranMushafPage';
+import { QuranMushafPicker, type MushafPickerLabels } from './QuranMushafPicker';
+import {
+  QuranPickerSheet,
+  QuranSheetShell,
+  type PickerSheetLabels,
+} from './QuranPickerSheet';
 import { QuranSearchBox, type QuranSearchLabels } from './QuranSearchBox';
 
 export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
@@ -225,7 +250,33 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   listSortLabel: string;
   listSortAsc: string;
   listSortDesc: string;
+  /* ---- Round 5: reading view + picker + mushaf ---- */
+  readingLabel: string;
+  exitReadingLabel: string;
+  pickerLabel: string;
+  pickerTitle: string;
+  pickerSearchLabel: string;
+  pickerSearchPlaceholder: string;
+  pickerCloseLabel: string;
+  mushafLabel: string;
+  mushafTitle: string;
+  mushafHafs: string;
+  mushafWarsh: string;
+  mushafQalun: string;
+  mushafHafsMargins: string;
+  mushafWarshMargins: string;
+  mushafQalunMargins: string;
+  mushafMadina: string;
+  mushafTajweed: string;
+  mushafCurrent: string;
+  mushafSoon: string;
+  mushafNote: string;
+  readingSettingsLabel: string;
+  /** Template with %current% and %total% (reading page nav). */
+  readingPageOf: string;
 }
+
+export type QuranSheetKind = 'picker' | 'mushaf' | 'settings' | 'bookmarks';
 
 type QuranSection = 'general' | 'hifz' | 'children';
 type ScriptId = 'uthmani' | 'indopak';
@@ -440,22 +491,45 @@ function QuranUmumReader({
       return next;
     });
   };
-  // Fullscreen state (reader root element).
+  // Fullscreen state (reader root element). Round 5: TRUE fullscreen
+  // — the Fullscreen API on the reader element, with a fixed-overlay
+  // fallback (quran-fallback-fullscreen) when the API is unavailable
+  // or blocked (iframe/permissions). A page cannot hide browser
+  // chrome itself, so the API is the web maximum; the fallback still
+  // covers the site header/footer and keeps an always-visible exit.
   const readerRef = useRef<HTMLDivElement | null>(null);
+  const readingRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fallbackFs, setFallbackFs] = useState(false);
   useEffect(() => {
     const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener('fullscreenchange', onChange);
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
-  const toggleFullscreen = (): void => {
+  const requestFs = async (
+    el: HTMLElement | null,
+    onFallback: () => void,
+  ): Promise<void> => {
+    if (!el) {
+      onFallback();
+      return;
+    }
     try {
-      if (document.fullscreenElement) void document.exitFullscreen();
-      else void readerRef.current?.requestFullscreen();
+      const p = el.requestFullscreen() as unknown as Promise<void> | undefined;
+      if (p && typeof p.catch === 'function') await p;
     } catch {
-      /* fullscreen unavailable (iframe/permissions): toolbar still works */
+      onFallback();
     }
   };
+  const toggleFullscreen = (): void => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void requestFs(readerRef.current, () => setFallbackFs(true));
+  };
+  // Round 5 sheets (one open at a time): the picker, the mushaf
+  // picker, and the reading-view display / bookmarks sheets. Rendered
+  // inside the reading overlay when it is open, at the reader root
+  // otherwise — the same nodes, never both.
+  const [sheet, setSheet] = useState<QuranSheetKind | null>(null);
 
   // ---- Round 4: bookmarks + last-read (localStorage only). ----
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -962,6 +1036,222 @@ function QuranUmumReader({
     };
   }, [displayPage]);
 
+  // ---- Round 5: fullscreen reading view ----
+  // The overlay shows ONE mushaf page (readingPage) with its own
+  // data pipeline (span → surahs → groups → exact lines), mirroring
+  // the main page view so the two can never disagree on what a page
+  // contains. Line metrics are NOT rescaled here: the exact-line
+  // sizing (3.2cqw) is what keeps a print line on one visual row,
+  // and changing it would break the 15-line layout.
+  const [readingOpen, setReadingOpen] = useState(false);
+  const [readingPage, setReadingPage] = useState<number | null>(null);
+  // Surah mode loads no boundaries on its own; the reading view does.
+  useEffect(() => {
+    if (!readingOpen || boundaries) return;
+    let cancelled = false;
+    loadBoundaries()
+      .then((b) => {
+        if (!cancelled) setBoundaries(b);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [readingOpen, boundaries]);
+  // Resolve the opening page: the current display page when one
+  // exists (page/juz/ayah modes), else the page containing the
+  // focused ayah of the entry surah.
+  useEffect(() => {
+    if (!readingOpen || readingPage !== null || !boundaries) return;
+    const focused = visible.length > 0 ? visible[clampedFocused] : null;
+    const ref = focused
+      ? { surah: surah.number, ayah: focused.standardNumber }
+      : { surah: surah.number, ayah: 1 };
+    const p = rangeContaining(boundaries, ref.surah, ref.ayah).page;
+    if (p !== null) setReadingPage(p);
+  }, [readingOpen, readingPage, boundaries, visible, clampedFocused, surah.number]);
+  const readingSpan = useMemo(
+    () =>
+      readingPage !== null && boundaries ? rangeSpan(boundaries, 'page', readingPage) : null,
+    [readingPage, boundaries],
+  );
+  const [readingSurahs, setReadingSurahs] = useState<RangeSurahData[] | null>(null);
+  const [readingLoading, setReadingLoading] = useState(false);
+  const [readingError, setReadingError] = useState(false);
+  useEffect(() => {
+    if (!readingOpen || !readingSpan) {
+      setReadingSurahs(null);
+      setReadingError(false);
+      setReadingLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setReadingLoading(true);
+    setReadingError(false);
+    const jobs = readingSpan.surahs.map(async (n): Promise<RangeSurahData> => {
+      if (n === surah.number) return { surah, ayahs };
+      const view = await fetchSurahClient(n, {
+        translation: settings.defaultTranslation,
+        tafsir: settings.defaultTafsir,
+      });
+      return { surah: view.surah, ayahs: view.ayahs };
+    });
+    Promise.all(jobs)
+      .then((rows) => {
+        if (cancelled) return;
+        setReadingSurahs(rows);
+        setReadingLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setReadingError(true);
+        setReadingLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [readingOpen, readingSpan, surah, ayahs, settings.defaultTranslation, settings.defaultTafsir]);
+  const readingGroups = useMemo(
+    () =>
+      readingSpan && readingSurahs
+        ? buildMushafGroups(readingSpan, readingSurahs, madhhab)
+        : null,
+    [readingSpan, readingSurahs, madhhab],
+  );
+  const [readingLines, setReadingLines] = useState<MushafExactLine[] | null>(null);
+  useEffect(() => {
+    if (!readingOpen || readingPage === null) return;
+    setReadingLines(null);
+    let cancelled = false;
+    loadMushafLines().then((pages) => {
+      if (cancelled) return;
+      setReadingLines(
+        pages && readingPage >= 1 && readingPage <= pages.length
+          ? pages[readingPage - 1]
+          : null,
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [readingOpen, readingPage]);
+  // Reading page meta (last-ayah rule, same as the main page header).
+  const readingLastRef =
+    readingGroups && readingGroups.length > 0
+      ? (() => {
+          const g = readingGroups[readingGroups.length - 1];
+          const d = g.items[g.items.length - 1];
+          return d ? { surah: g.surahNumber, ayah: d.standardNumber } : null;
+        })()
+      : null;
+  const readingMeta =
+    readingPage !== null && readingSpan && boundaries
+      ? rangeContaining(
+          boundaries,
+          (readingLastRef ?? readingSpan.start).surah,
+          (readingLastRef ?? readingSpan.start).ayah,
+        )
+      : { juz: null, hizb: null, page: null };
+  const readingSurahName =
+    readingGroups && readingGroups.length > 0
+      ? readingGroups[readingGroups.length - 1].surahNameAr
+      : '';
+
+  const openReading = (): void => {
+    setReadingPage(displayPage);
+    setSheet(null);
+    setReadingOpen(true);
+  };
+  const closeReading = (): void => {
+    // Land the main view where reading stopped (page mode), so the
+    // last-read resume and the main view agree with the reading view.
+    if (readingPage !== null) {
+      setViewMode('page');
+      setRangeTarget(readingPage);
+    }
+    setSheet(null);
+    setReadingOpen(false);
+  };
+  // Body scroll lock while the reading overlay is open.
+  useEffect(() => {
+    if (!readingOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [readingOpen]);
+  // Site chrome: the reader lives inside main (a z-index:1 stacking
+  // context under the sticky site header), so a fixed layer inside it
+  // can NEVER paint above the header — that is why the overlay and
+  // the sheets portal to document.body (below). As a second layer,
+  // while reading or in fallback fullscreen the site header/footer
+  // are hidden outright, so no chrome can ever peek through.
+  useEffect(() => {
+    document.body.classList.toggle('quran-chrome-hidden', readingOpen || fallbackFs);
+    return () => {
+      document.body.classList.remove('quran-chrome-hidden');
+    };
+  }, [readingOpen, fallbackFs]);
+  // Escape: close the topmost sheet, else the reading view, else the
+  // fallback fullscreen. (Native fullscreen Escape is the browser's.)
+  useEffect(() => {
+    if (!sheet && !readingOpen && !fallbackFs) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (sheet) setSheet(null);
+      else if (readingOpen) closeReading();
+      else setFallbackFs(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [sheet, readingOpen, fallbackFs, readingPage]);
+  // Picker range choice: the main view follows (deep link via the
+  // URL-mirror effect) and the reading view jumps to the range's
+  // first page when it is open.
+  const selectRangeFromPicker = (kind: RangeKind, target: number, firstPage: number): void => {
+    setViewMode(kind);
+    setRangeTarget(target);
+    if (readingOpen) setReadingPage(firstPage);
+    setSheet(null);
+  };
+  // Reading bottom-bar play: the main player's own logic (pause /
+  // resume / start the current set) — the reading view has no
+  // separate playback set, so it never plays something else.
+  const readingPlayToggle = (): void => {
+    if (statusKey === 'playing' || statusKey === 'loading') pause();
+    else if (statusKey === 'paused') resume();
+    else if (isRangeMode) playIndex(0);
+    else playIndex(highlightAyah ? highlightAyah - 1 : 0);
+  };
+  const pickerLabels: PickerSheetLabels = {
+    title: labels.pickerTitle,
+    searchLabel: labels.pickerSearchLabel,
+    searchPlaceholder: labels.pickerSearchPlaceholder,
+    closeLabel: labels.pickerCloseLabel,
+    noResults: searchLabels.noResults,
+    loading: labels.rangeLoading,
+    tabSurah: labels.modeSurah,
+    tabJuz: labels.modeJuz,
+    tabHizb: labels.modeHizb,
+    tabPage: labels.modePage,
+  };
+  const mushafLabels: MushafPickerLabels = {
+    title: labels.mushafTitle,
+    closeLabel: labels.pickerCloseLabel,
+    hafs: labels.mushafHafs,
+    warsh: labels.mushafWarsh,
+    qalun: labels.mushafQalun,
+    hafsMargins: labels.mushafHafsMargins,
+    warshMargins: labels.mushafWarshMargins,
+    qalunMargins: labels.mushafQalunMargins,
+    madina: labels.mushafMadina,
+    tajweed: labels.mushafTajweed,
+    current: labels.mushafCurrent,
+    soon: labels.mushafSoon,
+    note: labels.mushafNote,
+  };
+
   // While playing in juz mode, follow the playing ayah's page inside
   // the juz (paused navigation is never yanked).
   useEffect(() => {
@@ -1118,12 +1408,153 @@ function QuranUmumReader({
     locale,
   );
 
+  // Round 5 sheets, rendered once: inside the reading overlay when
+  // it is open, at the reader root otherwise (never both).
+  const sheetNodes = (
+    <>
+      {sheet === 'picker' ? (
+        <QuranPickerSheet
+          locale={locale}
+          surahList={surahList}
+          currentSurah={surah.number}
+          currentView={viewMode}
+          currentTarget={rangeTarget}
+          onSelectRange={selectRangeFromPicker}
+          onClose={() => setSheet(null)}
+          labels={pickerLabels}
+        />
+      ) : null}
+      {sheet === 'mushaf' ? (
+        <QuranMushafPicker onClose={() => setSheet(null)} labels={mushafLabels} />
+      ) : null}
+      {sheet === 'settings' ? (
+        <QuranSheetShell
+          title={labels.readingSettingsLabel}
+          closeLabel={labels.pickerCloseLabel}
+          onClose={() => setSheet(null)}
+        >
+          <div className="quran-reading-settings">
+            <label className="quran-reading-setting">
+              <span>{labels.displayFontLabel}</span>
+              <select
+                value={prefs.font}
+                onChange={(e) => updatePrefs({ font: e.target.value as DisplayPrefs['font'] })}
+              >
+                <option value="system">{labels.fontSystem}</option>
+                <option value="amiri">{labels.fontAmiri}</option>
+                <option value="scheherazade">{labels.fontScheherazade}</option>
+              </select>
+            </label>
+            <label className="quran-reading-setting">
+              <span>
+                {labels.fontSizeLabel} ({prefs.fontSize}px)
+              </span>
+              <input
+                type="range"
+                min={12}
+                max={40}
+                step={1}
+                value={prefs.fontSize}
+                onChange={(e) => updatePrefs({ fontSize: Number(e.target.value) })}
+                aria-label={labels.fontSizeLabel}
+              />
+            </label>
+            <label className="quran-reading-setting">
+              <span>{labels.displayThemeLabel}</span>
+              <select
+                value={prefs.theme}
+                onChange={(e) => updatePrefs({ theme: e.target.value as DisplayPrefs['theme'] })}
+              >
+                <option value="dark">{labels.themeDark}</option>
+                <option value="sepia">{labels.themeSepia}</option>
+                <option value="light">{labels.themeLight}</option>
+                <option value="green">{labels.themeGreen}</option>
+              </select>
+            </label>
+            <label className="quran-reading-setting quran-toggle">
+              <input
+                type="checkbox"
+                checked={prefs.autoScroll}
+                onChange={(e) => updatePrefs({ autoScroll: e.target.checked })}
+              />
+              {labels.autoScrollLabel}
+            </label>
+            <button
+              type="button"
+              className="quran-nav-btn quran-reading-btn"
+              onClick={() => {
+                if (document.fullscreenElement) void document.exitFullscreen();
+                else void requestFs(readingRef.current, () => {});
+              }}
+            >
+              {isFullscreen ? labels.exitFullscreenLabel : labels.fullscreenLabel}
+            </button>
+          </div>
+        </QuranSheetShell>
+      ) : null}
+      {sheet === 'bookmarks' ? (
+        <QuranSheetShell
+          title={labels.bookmarksTitle}
+          closeLabel={labels.pickerCloseLabel}
+          onClose={() => setSheet(null)}
+        >
+          {lastRead ? (
+            <p className="quran-resume">
+              <span>{labels.lastReadLabel}: </span>
+              <Link href={lastReadHref(lastRead, locale)}>{labels.resumeReading}</Link>
+            </p>
+          ) : null}
+          {bookmarks.length === 0 ? (
+            <p className="quran-sheet-empty">{labels.bookmarksEmpty}</p>
+          ) : (
+            <ul className="quran-bookmark-list">
+              {bookmarks.map((b) => (
+                <li key={b.id} className="quran-bookmark-row">
+                  <Link href={bookmarkHref(b, locale)} lang="ar" dir="rtl">
+                    {b.label}
+                  </Link>
+                  <button
+                    type="button"
+                    className="quran-bookmark-star"
+                    onClick={() => setFavorite(b.id, !b.favorite)}
+                    aria-label={b.favorite ? labels.bookmarkUnfavorite : labels.bookmarkFavorite}
+                    title={b.favorite ? labels.bookmarkUnfavorite : labels.bookmarkFavorite}
+                  >
+                    {b.favorite ? '★' : '☆'}
+                  </button>
+                  <button
+                    type="button"
+                    className="quran-bookmark-remove"
+                    onClick={() => removeBookmark(b.id)}
+                    aria-label={labels.bookmarkRemoveBtn}
+                  >
+                    {labels.bookmarkRemoveBtn}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </QuranSheetShell>
+      ) : null}
+    </>
+  );
+
   return (
     <div
       ref={readerRef}
-      className={`quran-reader ${scriptClass} ${displayFontClass(prefs.font)} ${displayThemeClass(prefs.theme)}`}
+      className={`quran-reader ${scriptClass} ${displayFontClass(prefs.font)} ${displayThemeClass(prefs.theme)}${fallbackFs ? ' quran-fallback-fullscreen' : ''}`}
       style={{ '--quran-ayah-size': `${prefs.fontSize}px` } as React.CSSProperties}
     >
+      {fallbackFs ? (
+        <button
+          type="button"
+          className="quran-fallback-exit"
+          onClick={() => setFallbackFs(false)}
+          aria-label={labels.exitFullscreenLabel}
+        >
+          ✕ {labels.exitFullscreenLabel}
+        </button>
+      ) : null}
       <header className="quran-surah-head">
         <div>
           {isRangeMode ? (
@@ -1308,6 +1739,26 @@ function QuranUmumReader({
         >
           {labels.bookmarksLabel}
           {bookmarks.length > 0 ? ` (${bookmarks.length})` : ''}
+        </button>
+        {/* Round 5: reading view + picker + mushaf, from the main view. */}
+        <button type="button" className="quran-nav-btn quran-reading-btn" onClick={openReading}>
+          {labels.readingLabel}
+        </button>
+        <button
+          type="button"
+          className="quran-nav-btn quran-reading-btn"
+          onClick={() => setSheet('picker')}
+          aria-haspopup="dialog"
+        >
+          {labels.pickerLabel}
+        </button>
+        <button
+          type="button"
+          className="quran-nav-btn quran-reading-btn"
+          onClick={() => setSheet('mushaf')}
+          aria-haspopup="dialog"
+        >
+          {labels.mushafLabel}
         </button>
       </div>
 
@@ -2061,6 +2512,197 @@ function QuranUmumReader({
           )}
         </>
       ) : null}
+
+      {/* ---- Round 5: fullscreen reading view ---- */}
+      {readingOpen
+        ? createPortal(
+            <div
+              ref={readingRef}
+              className="quran-reading"
+              role="dialog"
+              aria-modal="true"
+              aria-label={labels.readingLabel}
+            >
+              <div className="quran-reading-top">
+                <span className="quran-reading-top-page" lang="ar" dir="rtl">
+                  {readingPage !== null
+                    ? labels.pageCurrent.replace('%n%', toArabicIndicDigits(readingPage))
+                    : ''}
+                </span>
+                <span className="quran-reading-top-surah" lang="ar" dir="rtl">
+                  {readingSurahName}
+                </span>
+                <span className="quran-reading-top-range">
+                  <span lang="ar" dir="rtl">
+                    {[
+                      readingMeta.juz !== null
+                        ? labels.juzCurrent.replace('%n%', toArabicIndicDigits(readingMeta.juz))
+                        : null,
+                      readingMeta.hizb !== null
+                        ? labels.hizbCurrent.replace('%n%', toArabicIndicDigits(readingMeta.hizb))
+                        : null,
+                    ]
+                      .filter((x): x is string => x !== null)
+                      .join(' · ')}
+                  </span>
+                  <button
+                    type="button"
+                    className="quran-reading-exit"
+                    onClick={closeReading}
+                    aria-label={labels.exitReadingLabel}
+                  >
+                    ✕ <span className="quran-reading-exit-text">{labels.exitReadingLabel}</span>
+                  </button>
+                </span>
+              </div>
+              <div className="quran-reading-scroll">
+                <div className="quran-reading-pagenav">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      readingPage !== null && setReadingPage(Math.max(1, readingPage - 1))
+                    }
+                    disabled={readingPage === null || readingPage <= 1}
+                    aria-label={labels.prevPage}
+                  >
+                    {labels.prevPage}
+                  </button>
+                  <span>
+                    {readingPage !== null
+                      ? labels.readingPageOf
+                          .replace('%current%', toArabicIndicDigits(readingPage))
+                          .replace('%total%', toArabicIndicDigits(RANGE_COUNTS.page))
+                      : ''}
+                  </span>
+                  <button
+                    type="button"
+                    className="quran-reading-bookmark"
+                    onClick={() => {
+                      if (readingPage === null) return;
+                      toggleBookmark({
+                        id: pageBookmarkId(readingPage),
+                        kind: 'page',
+                        surah: surah.number,
+                        ayah: null,
+                        page: readingPage,
+                        label: labels.pageCurrent.replace('%n%', String(readingPage)),
+                        favorite: false,
+                        createdAt: Date.now(),
+                      });
+                    }}
+                    aria-label={
+                      readingPage !== null && bookmarkIds.has(pageBookmarkId(readingPage))
+                        ? labels.bookmarkRemove
+                        : labels.bookmarkPage
+                    }
+                    title={
+                      readingPage !== null && bookmarkIds.has(pageBookmarkId(readingPage))
+                        ? labels.bookmarkRemove
+                        : labels.bookmarkPage
+                    }
+                  >
+                    {readingPage !== null && bookmarkIds.has(pageBookmarkId(readingPage)) ? '★' : '☆'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      readingPage !== null &&
+                      setReadingPage(Math.min(RANGE_COUNTS.page, readingPage + 1))
+                    }
+                    disabled={readingPage === null || readingPage >= RANGE_COUNTS.page}
+                    aria-label={labels.nextPage}
+                  >
+                    {labels.nextPage}
+                  </button>
+                </div>
+                {readingLoading || !readingGroups ? (
+                  <p className="quran-mode-note">
+                    {readingError ? labels.rangeFailed : labels.rangeLoading}
+                  </p>
+                ) : (
+                  <QuranMushafPage
+                    groups={readingGroups}
+                    exactLines={readingLines}
+                    pageNumber={readingPage ?? 1}
+                    juz={readingMeta.juz}
+                    hizb={readingMeta.hizb}
+                    headerSurah={readingSurahName}
+                    headerSurahTemplate={labels.mushafHeaderSurah}
+                    pageCurrent={labels.pageCurrent}
+                    juzCurrent={labels.juzCurrent}
+                    hizbCurrent={labels.hizbCurrent}
+                    bismillah={labels.bismillah}
+                    scriptClass={scriptClass}
+                    playingKey={playingKey}
+                    linesClickable={false}
+                    hideMeta
+                    onPlayAyah={() => {}}
+                  />
+                )}
+              </div>
+              <div className="quran-reading-bottom" role="toolbar" aria-label={labels.readingLabel}>
+                <button
+                  type="button"
+                  className="quran-reading-bar-btn quran-reading-play"
+                  onClick={readingPlayToggle}
+                  disabled={!canPlay}
+                  aria-label={
+                    statusKey === 'playing' || statusKey === 'loading'
+                      ? labels.pause
+                      : statusKey === 'paused'
+                        ? labels.resume
+                        : labels.playSurah
+                  }
+                >
+                  {statusKey === 'playing' || statusKey === 'loading' ? '❚❚' : '▶'}
+                </button>
+                <button
+                  type="button"
+                  className="quran-reading-bar-btn"
+                  onClick={() => setSheet('picker')}
+                  aria-haspopup="dialog"
+                >
+                  {labels.pickerLabel}
+                </button>
+                <button
+                  type="button"
+                  className="quran-reading-bar-btn"
+                  onClick={() => setSheet('mushaf')}
+                  aria-haspopup="dialog"
+                >
+                  {labels.mushafLabel}
+                </button>
+                <button
+                  type="button"
+                  className="quran-reading-bar-btn"
+                  onClick={() => setSheet('bookmarks')}
+                  aria-haspopup="dialog"
+                >
+                  {labels.bookmarksLabel}
+                  {bookmarks.length > 0 ? ` (${bookmarks.length})` : ''}
+                </button>
+                <button
+                  type="button"
+                  className="quran-reading-bar-btn"
+                  onClick={() => setSheet('settings')}
+                  aria-haspopup="dialog"
+                >
+                  {labels.readingSettingsLabel}
+                </button>
+                <button
+                  type="button"
+                  className="quran-reading-bar-btn quran-reading-bar-exit"
+                  onClick={closeReading}
+                >
+                  {labels.exitReadingLabel}
+                </button>
+              </div>
+              {sheetNodes}
+            </div>,
+            document.body,
+          )
+        : null}
+      {readingOpen || !sheet ? null : createPortal(sheetNodes, document.body)}
     </div>
   );
 }

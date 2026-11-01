@@ -21,9 +21,9 @@
  *
  * Printed-page dress (original code-drawn ornaments, never copied
  * artwork): a double gold frame with geometric corner motifs around
- * the text block, a full-width surah-heading band, and gold rosette
- * ayah-end markers with the ayah number inside. Page numbers use
- * Arabic-Indic digits throughout, as in the print.
+ * the text block, a full-width surah-heading band, and gold circular
+ * double-ring ayah-end markers with the ayah number inside. Page
+ * numbers use Arabic-Indic digits throughout, as in the print.
  */
 import { Fragment } from 'react';
 import type { DisplayAyah } from '@/lib/quran-madhhab';
@@ -40,19 +40,21 @@ export interface MushafSurahGroup {
 }
 
 /**
- * Ayah-end rosette — an original inline-SVG ornament in the printed
- * mushaf's manner: an 8-point star (two overlapping squares, one
- * rotated 45°) in gold outline with the Arabic-Indic ayah number
- * centered inside. Drawn here from basic geometry; no artwork is
- * copied from any mushaf, app, or scan.
+ * Ayah-end marker — an original inline-SVG ornament in the apps'
+ * circular-marker manner (round 5): a DOUBLE gold ring with the
+ * Arabic-Indic ayah number centered inside and a small gold diamond
+ * flourish on the ring's top, like the circular ornate markers in
+ * the user's Bayan reference. Drawn here from basic geometry
+ * (circles + one rotated square); no artwork is copied from any
+ * mushaf, app, or scan.
  */
 function AyahRosette({ n }: { n: string }) {
   return (
     <span className="mushaf-ayah-end" aria-label={n}>
       <svg viewBox="0 0 40 40" aria-hidden="true">
-        <rect x="10" y="10" width="20" height="20" />
-        <rect x="10" y="10" width="20" height="20" transform="rotate(45 20 20)" />
-        <circle cx="20" cy="20" r="11" />
+        <circle cx="20" cy="20" r="15" />
+        <circle cx="20" cy="20" r="10.5" />
+        <rect x="17.5" y="1" width="5" height="5" transform="rotate(45 20 3.5)" />
         <text x="20" y="20" textAnchor="middle" dominantBaseline="central">
           {n}
         </text>
@@ -135,6 +137,7 @@ export function QuranMushafPage({
   playingKey,
   highlightKey,
   linesClickable,
+  hideMeta,
   onPlayAyah,
   onPlayLine,
 }: {
@@ -163,6 +166,10 @@ export function QuranMushafPage({
   /** False renders lines/ayahs as plain text (ayah mode: the page is
    *  for reading + highlight; navigation is the mode's prev/next). */
   linesClickable?: boolean;
+  /** True hides the in-page meta header + footer (round 5 reading
+   *  view: the reading top bar already carries page · juz · hizb ·
+   *  surah, so repeating them inside the page would duplicate). */
+  hideMeta?: boolean;
   /** Play the range from this display item (surah + display item). */
   onPlayAyah: (surahNumber: number, displayItem: DisplayAyah) => void;
   /** Play from a print line's first verse (exact-lines path only). */
@@ -181,7 +188,7 @@ export function QuranMushafPage({
   const foot = pageCurrent.replace('%n%', toArabicIndicDigits(pageNumber));
   return (
     <div className={`mushaf-page ${scriptClass}`}>
-      <p className="mushaf-page-meta">{meta}</p>
+      {hideMeta ? null : <p className="mushaf-page-meta">{meta}</p>}
       <div className="mushaf-frame">
         <MushafCorner pos="tl" />
         <MushafCorner pos="tr" />
@@ -278,7 +285,7 @@ export function QuranMushafPage({
           ))
         )}
       </div>
-      <p className="mushaf-page-meta mushaf-page-foot">{foot}</p>
+      {hideMeta ? null : <p className="mushaf-page-meta mushaf-page-foot">{foot}</p>}
     </div>
   );
 }
