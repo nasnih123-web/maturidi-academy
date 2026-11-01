@@ -316,6 +316,7 @@
     "pageDataMissing": "معلومات صفحة المصحف غير متوفرة لهذه السورة.",
     "juzDataMissing": "معلومات الجزء غير متوفرة لهذه السورة.",
     "ayahOf": "الآية %current% من %total%",
+    "juzPageOf": "صفحة %current% من %total% في هذا الجزء",
     "surahTotalLabel": "مدة السورة الكاملة",
     "waveformLabel": "موجة الصوت الجاري",
     "waveformBars": "أعمدة",

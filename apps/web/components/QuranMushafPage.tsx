@@ -18,6 +18,12 @@
  * Each exact text line is tappable to play from its first verse; the
  * line containing the playing ayah highlights. Word-level highlight
  * is card-view only — page segments highlight at line level.
+ *
+ * Printed-page dress (original code-drawn ornaments, never copied
+ * artwork): a double gold frame with geometric corner motifs around
+ * the text block, a full-width surah-heading band, and gold rosette
+ * ayah-end markers with the ayah number inside. Page numbers use
+ * Arabic-Indic digits throughout, as in the print.
  */
 import { Fragment } from 'react';
 import type { DisplayAyah } from '@/lib/quran-madhhab';
@@ -33,22 +39,64 @@ export interface MushafSurahGroup {
   items: DisplayAyah[];
 }
 
-/** Arabic-Indic digit token → circled ayah-end marker, as in the print. */
+/**
+ * Ayah-end rosette — an original inline-SVG ornament in the printed
+ * mushaf's manner: an 8-point star (two overlapping squares, one
+ * rotated 45°) in gold outline with the Arabic-Indic ayah number
+ * centered inside. Drawn here from basic geometry; no artwork is
+ * copied from any mushaf, app, or scan.
+ */
+function AyahRosette({ n }: { n: string }) {
+  return (
+    <span className="mushaf-ayah-end" aria-label={n}>
+      <svg viewBox="0 0 40 40" aria-hidden="true">
+        <rect x="10" y="10" width="20" height="20" />
+        <rect x="10" y="10" width="20" height="20" transform="rotate(45 20 20)" />
+        <circle cx="20" cy="20" r="11" />
+        <text x="20" y="20" textAnchor="middle" dominantBaseline="central">
+          {n}
+        </text>
+      </svg>
+    </span>
+  );
+}
+
+/** Arabic-Indic digit token → rosette ayah-end marker, as in the print. */
 function renderLineText(text: string) {
   const tokens = text.split(' ');
   return tokens.map((tok, i) => (
     <Fragment key={i}>
-      {/^[٠-٩]+$/.test(tok) ? (
-        <span className="mushaf-ayah-end">
-          {'\u06DD'}
-          {tok}
-        </span>
-      ) : (
-        tok
-      )}
+      {/^[٠-٩]+$/.test(tok) ? <AyahRosette n={tok} /> : tok}
       {i < tokens.length - 1 ? ' ' : ''}
     </Fragment>
   ));
+}
+
+/**
+ * Corner motif for the page frame — an original geometric diamond +
+ * dot motif (gold stroke on a parchment disc so it sits cleanly on
+ * the frame rule). One instance per corner, rotated by CSS.
+ */
+function MushafCorner({ pos }: { pos: 'tl' | 'tr' | 'bl' | 'br' }) {
+  return (
+    <span className={`mushaf-corner mushaf-corner-${pos}`} aria-hidden="true">
+      <svg viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r="19" />
+        <rect x="12" y="12" width="16" height="16" transform="rotate(45 20 20)" />
+        <circle cx="20" cy="20" r="4" />
+      </svg>
+    </span>
+  );
+}
+
+/** True when (surah, ayah) lies inside the print line's verse range. */
+function refInLine(surah: number, ayah: number, line: MushafExactLine): boolean {
+  if (line.t !== 'text' || !line.v) return false;
+  const [vs, va] = line.v.split(':').map(Number);
+  const [ws, wa] = (line.w || line.v).split(':').map(Number);
+  const cmp = (s1: number, a1: number, s2: number, a2: number): number =>
+    s1 !== s2 ? s1 - s2 : a1 - a2;
+  return cmp(surah, ayah, vs, va) >= 0 && cmp(surah, ayah, ws, wa) <= 0;
 }
 
 /** True when playingKey "S:A" falls inside the line's verse range. */
@@ -85,6 +133,8 @@ export function QuranMushafPage({
   bismillah,
   scriptClass,
   playingKey,
+  highlightKey,
+  linesClickable,
   onPlayAyah,
   onPlayLine,
 }: {
@@ -94,8 +144,7 @@ export function QuranMushafPage({
   pageNumber: number;
   juz: number | null;
   hizb: number | null;
-  /** Surah of the page's LAST ayah (Bayan's header follows the page's
-   *  final content, e.g. page 106 → مائده, not نساء). */
+  /** Arabic name of the page's last surah, for the "(سورهٔ …)" header part. */
   headerSurah: string;
   /** Template with %s% (surah name), e.g. "(سورهٔ %s%)". */
   headerSurahTemplate: string;
@@ -108,6 +157,12 @@ export function QuranMushafPage({
   scriptClass: string;
   /** `${surah}:${standardNumber}` of the playing ayah, or null. */
   playingKey: string | null;
+  /** `${surah}:${standardNumber}` of a selected ayah to highlight (ayah
+   *  mode), or null. Renders with the same gold highlight as playing. */
+  highlightKey?: string | null;
+  /** False renders lines/ayahs as plain text (ayah mode: the page is
+   *  for reading + highlight; navigation is the mode's prev/next). */
+  linesClickable?: boolean;
   /** Play the range from this display item (surah + display item). */
   onPlayAyah: (surahNumber: number, displayItem: DisplayAyah) => void;
   /** Play from a print line's first verse (exact-lines path only). */
@@ -116,19 +171,24 @@ export function QuranMushafPage({
   // Header meta, Bayan-style: page · juz · hizb · (surah) — each
   // part only when known. The footer repeats only the page number.
   const meta = [
-    pageCurrent.replace('%n%', String(pageNumber)),
-    juz !== null ? juzCurrent.replace('%n%', String(juz)) : null,
-    hizb !== null ? hizbCurrent.replace('%n%', String(hizb)) : null,
+    pageCurrent.replace('%n%', toArabicIndicDigits(pageNumber)),
+    juz !== null ? juzCurrent.replace('%n%', toArabicIndicDigits(juz)) : null,
+    hizb !== null ? hizbCurrent.replace('%n%', toArabicIndicDigits(hizb)) : null,
     headerSurahTemplate.replace('%s%', headerSurah),
   ]
     .filter((x): x is string => x !== null)
     .join(' · ');
-  const foot = pageCurrent.replace('%n%', String(pageNumber));
+  const foot = pageCurrent.replace('%n%', toArabicIndicDigits(pageNumber));
   return (
     <div className={`mushaf-page ${scriptClass}`}>
       <p className="mushaf-page-meta">{meta}</p>
-      {exactLines ? (
-        <div lang="ar" dir="rtl">
+      <div className="mushaf-frame">
+        <MushafCorner pos="tl" />
+        <MushafCorner pos="tr" />
+        <MushafCorner pos="bl" />
+        <MushafCorner pos="br" />
+        {exactLines ? (
+          <div lang="ar" dir="rtl">
           {exactLines.map((line, i) => {
             if (line.t === 'surah-header') {
               return (
@@ -146,11 +206,27 @@ export function QuranMushafPage({
             }
             const playing = lineIsPlaying(line, playingKey);
             const [vs, va] = (line.v || '0:0').split(':').map(Number);
+            const highlighted =
+              playing ||
+              (highlightKey
+                ? (() => {
+                    const [hs, ha] = highlightKey.split(':').map(Number);
+                    return refInLine(hs, ha, line);
+                  })()
+                : false);
+            const lineClass = `mushaf-line${highlighted ? ' mushaf-line-playing' : ''}`;
+            if (linesClickable === false) {
+              return (
+                <div key={i} className={lineClass} aria-label={line.v || undefined}>
+                  {renderLineText(line.x || '')}
+                </div>
+              );
+            }
             return (
               <button
                 key={i}
                 type="button"
-                className={`mushaf-line mushaf-line-btn${playing ? ' mushaf-line-playing' : ''}`}
+                className={`mushaf-line-btn ${lineClass}`}
                 onClick={() => onPlayLine?.(vs, va)}
                 aria-label={line.v || undefined}
               >
@@ -175,28 +251,33 @@ export function QuranMushafPage({
             <p className="mushaf-text" lang="ar" dir="rtl">
               {group.items.map((d) => {
                 const key = `${group.surahNumber}:${d.standardNumber}`;
-                const isPlaying = playingKey === key;
+                const highlighted = playingKey === key || highlightKey === key;
                 return (
                   <span key={key} id={`range-${group.surahNumber}-${d.standardNumber}`}>
-                    <button
-                      type="button"
-                      className={`mushaf-ayah${isPlaying ? ' mushaf-ayah-playing' : ''}`}
-                      onClick={() => onPlayAyah(group.surahNumber, d)}
-                      aria-label={`${group.surahNumber}:${d.standardNumber}`}
-                    >
-                      {d.ayah.text}{' '}
-                      <span className="mushaf-ayah-end">
-                        {'\u06DD'}
-                        {toArabicIndicDigits(d.displayNumber)}
+                    {linesClickable === false ? (
+                      <span
+                        className={`mushaf-ayah${highlighted ? ' mushaf-ayah-playing' : ''}`}
+                      >
+                        {d.ayah.text} <AyahRosette n={toArabicIndicDigits(d.displayNumber)} />
                       </span>
-                    </button>{' '}
+                    ) : (
+                      <button
+                        type="button"
+                        className={`mushaf-ayah${highlighted ? ' mushaf-ayah-playing' : ''}`}
+                        onClick={() => onPlayAyah(group.surahNumber, d)}
+                        aria-label={`${group.surahNumber}:${d.standardNumber}`}
+                      >
+                        {d.ayah.text} <AyahRosette n={toArabicIndicDigits(d.displayNumber)} />
+                      </button>
+                    )}{' '}
                   </span>
                 );
               })}
             </p>
           </div>
-        ))
-      )}
+          ))
+        )}
+      </div>
       <p className="mushaf-page-meta mushaf-page-foot">{foot}</p>
     </div>
   );

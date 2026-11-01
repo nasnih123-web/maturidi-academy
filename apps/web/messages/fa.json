@@ -316,6 +316,7 @@
     "pageDataMissing": "اطلاعات صفحهٔ مصحف برای این سوره در دسترس نیست.",
     "juzDataMissing": "اطلاعات جزء برای این سوره در دسترس نیست.",
     "ayahOf": "آیهٔ %current% از %total%",
+    "juzPageOf": "صفحهٔ %current% از %total% در این جزء",
     "surahTotalLabel": "مدت کل سوره",
     "waveformLabel": "موج صدای در حال پخش",
     "waveformBars": "میله‌ای",

@@ -88,6 +88,36 @@ export function rangeSpan(
   return { kind, target, start, end, surahs };
 }
 
+/**
+ * The mushaf pages a juz spans, in order: every page intersecting the
+ * juz's span. Juz starts do NOT all fall on page starts (4 of 30 fall
+ * mid-page: juz 4, 7, 11, 26), so the first page may also carry the
+ * previous juz's tail and the last page may carry the next juz's head
+ * — exactly as the printed page does. Empty when the juz is unknown.
+ */
+export function juzPages(boundaries: QuranBoundaries, juz: number): number[] {
+  const list = boundaries.juz;
+  if (juz < 1 || juz > list.length) return [];
+  const start = list[juz - 1];
+  const next = juz < list.length ? list[juz] : null;
+  const first = rangeContaining(boundaries, start.surah, start.ayah).page;
+  if (first === null) return [];
+  let last: number;
+  if (next === null) {
+    last = boundaries.page.length;
+  } else {
+    const nextPage = rangeContaining(boundaries, next.surah, next.ayah).page;
+    if (nextPage === null) return [];
+    const nextIsPageStart = boundaries.page.some(
+      (p) => p.surah === next.surah && p.ayah === next.ayah,
+    );
+    last = nextIsPageStart ? nextPage - 1 : nextPage;
+  }
+  const out: number[] = [];
+  for (let p = first; p <= last; p++) out.push(p);
+  return out;
+}
+
 /** True when (surah, ayah) lies inside [span.start, span.end). */
 export function inRangeSpan(surah: number, ayah: number, span: RangeSpan): boolean {
   const ref: AyahRef = { surah, ayah };

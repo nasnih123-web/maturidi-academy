@@ -201,6 +201,7 @@ export default async function SurahPage({
           hizbCurrent: t('hizbCurrent'),
           mushafHeaderSurah: t('mushafHeaderSurah'),
           ayahOf: t('ayahOf'),
+          juzPageOf: t('juzPageOf'),
           surahTotalLabel: t('surahTotalLabel'),
           rangeTotalLabel: t('rangeTotalLabel'),
           waveformLabel: t('waveformLabel'),

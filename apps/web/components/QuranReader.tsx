@@ -44,6 +44,7 @@ import { reciterDisplayName } from '@/lib/quran-reciters';
 import {
   filterRangeAyahs,
   inRangeSpan,
+  juzPages,
   rangeContaining,
   rangeSpan,
   RANGE_COUNTS,
@@ -124,6 +125,8 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   mushafHeaderSurah: string;
   /** Template with %current% and %total%. */
   ayahOf: string;
+  /** Template with %current% and %total% (page within the open juz). */
+  juzPageOf: string;
   surahTotalLabel: string;
   /** Total label for range views (the range's audio, not one surah). */
   rangeTotalLabel: string;
@@ -175,6 +178,39 @@ const STATUS_KEY: Record<PlaybackStatus, 'idle' | 'loading' | 'playing' | 'pause
 interface RangeSurahData {
   surah: SurahDetail;
   ayahs: Ayah[];
+}
+
+/**
+ * Display groups for a span (page / juz / ayah-page): per-surah
+ * madhhab mapping, Bismillah header only when the surah actually
+ * STARTS inside the span, and the embedded Bismillah prefix stripped
+ * exactly when the header shows — the same single-condition rule as
+ * the surah view. Shared by the range groups, the juz page groups,
+ * and the ayah page groups so all three stay consistent.
+ */
+function buildMushafGroups(
+  forSpan: RangeSpan,
+  surahs: RangeSurahData[],
+  madhhab: MadhhabId,
+): MushafSurahGroup[] {
+  const groups: MushafSurahGroup[] = [];
+  for (const { surah: s, ayahs: sa } of surahs) {
+    const disp = toDisplayAyahs(s.number, sa, madhhab);
+    const startsHere = inRangeSpan(s.number, 1, forSpan);
+    const header =
+      startsHere && s.number !== 9 && (s.number !== 1 || disp.bismillahAsHeader);
+    const stripped = stripBismillahFromFirst(disp.ayahs, header);
+    const items = stripped.filter((d) => inRangeSpan(s.number, d.standardNumber, forSpan));
+    if (items.length === 0) continue;
+    groups.push({
+      surahNumber: s.number,
+      surahNameAr: s.nameAr,
+      surahStartsHere: startsHere,
+      bismillahHeader: header,
+      items,
+    });
+  }
+  return groups;
 }
 
 /** One flattened play entry: the ayah plus the surah it belongs to. */
@@ -383,10 +419,12 @@ function QuranUmumReader({
   const reciterOptionName = (r: Reciter): string =>
     reciterDisplayName(r.id, locale) ?? r.name;
 
-  // ---- Range data (juz / hizb / page) ----
+  // ---- Range data (juz / hizb / page) + ayah-mode page data ----
+  // Boundaries load for range modes AND for ayah mode (ayah mode
+  // renders the mushaf page containing the focused ayah).
   const [boundaries, setBoundaries] = useState<QuranBoundaries | null>(null);
   useEffect(() => {
-    if (!isRangeMode) return;
+    if (!isRangeMode && viewMode !== 'ayah') return;
     let cancelled = false;
     loadBoundaries()
       .then((b) => {
@@ -396,7 +434,7 @@ function QuranUmumReader({
     return () => {
       cancelled = true;
     };
-  }, [isRangeMode]);
+  }, [isRangeMode, viewMode]);
 
   const span: RangeSpan | null = useMemo(() => {
     if (!isRangeMode || rangeKind === null || rangeTarget === null || !boundaries) return null;
@@ -441,53 +479,14 @@ function QuranUmumReader({
     };
   }, [span, surah, ayahs, settings.defaultTranslation, settings.defaultTafsir]);
 
-  // Display groups for the range: per-surah madhhab mapping, Bismillah
-  // header only when the surah actually STARTS inside this range, and
-  // the embedded Bismillah prefix stripped exactly when the header
-  // shows — the same single-condition rule as the surah view.
+  // Display groups for the range (whole span, used by the hizb card
+  // list and as the base for the page views).
   const rangeGroups: MushafSurahGroup[] | null = useMemo(() => {
     if (!span || !rangeSurahs) return null;
-    const groups: MushafSurahGroup[] = [];
-    for (const { surah: s, ayahs: sa } of rangeSurahs) {
-      const disp = toDisplayAyahs(s.number, sa, madhhab);
-      const startsHere = inRangeSpan(s.number, 1, span);
-      const header =
-        startsHere && s.number !== 9 && (s.number !== 1 || disp.bismillahAsHeader);
-      const stripped = stripBismillahFromFirst(disp.ayahs, header);
-      const items = stripped.filter((d) => inRangeSpan(s.number, d.standardNumber, span));
-      if (items.length === 0) continue;
-      groups.push({
-        surahNumber: s.number,
-        surahNameAr: s.nameAr,
-        surahStartsHere: startsHere,
-        bismillahHeader: header,
-        items,
-      });
-    }
-    return groups;
+    return buildMushafGroups(span, rangeSurahs, madhhab);
   }, [span, rangeSurahs, madhhab]);
 
-  // Exact Madani lines for the page view: lazy-loaded once, then the
-  // current page's lines. Null while loading or on failure → the
-  // flowing fallback renders (never a blank page, never stale lines:
-  // the target change clears first).
-  const [exactLines, setExactLines] = useState<MushafExactLine[] | null>(null);
-  useEffect(() => {
-    if (viewMode !== 'page' || rangeTarget === null) return;
-    setExactLines(null);
-    let cancelled = false;
-    loadMushafLines().then((pages) => {
-      if (cancelled) return;
-      setExactLines(
-        pages && rangeTarget >= 1 && rangeTarget <= pages.length
-          ? pages[rangeTarget - 1]
-          : null,
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [viewMode, rangeTarget]);
+
 
   // Flattened play array for the active reading set. Range views play
   // the range's standard ayahs (per-ayah files only); surah/ayah modes
@@ -640,6 +639,122 @@ function QuranUmumReader({
   const modeAyahs =
     viewMode === 'ayah' ? (visible.length > 0 ? [visible[clampedFocused]] : []) : visible;
 
+  // ---- Mushaf-page display (page / juz / ayah modes) ----
+  // Bayan-style reading: each of these modes DISPLAYS a mushaf page
+  // (exact lines + frame + header/footer), never a card list.
+  //   page mode: the selected page (rangeTarget).
+  //   juz mode: the page inside the open juz (juzPage state, moved
+  //     with page navigation inside the juz's pages).
+  //   ayah mode: the page containing the focused ayah (derived, so
+  //     prev/next switches pages when the ayah sits on another page).
+  const juzPagesList = useMemo(
+    () =>
+      viewMode === 'juz' && rangeTarget !== null && boundaries
+        ? juzPages(boundaries, rangeTarget)
+        : [],
+    [viewMode, rangeTarget, boundaries],
+  );
+  const [juzPage, setJuzPage] = useState<number | null>(null);
+  useEffect(() => {
+    if (viewMode !== 'juz' || juzPagesList.length === 0) return;
+    if (juzPage === null || !juzPagesList.includes(juzPage)) setJuzPage(juzPagesList[0]);
+  }, [viewMode, juzPagesList, juzPage]);
+  const ayahPage = useMemo(() => {
+    if (viewMode !== 'ayah' || !boundaries || visible.length === 0) return null;
+    const d = visible[clampedFocused];
+    if (!d) return null;
+    return rangeContaining(boundaries, surah.number, d.standardNumber).page;
+  }, [viewMode, boundaries, visible, clampedFocused, surah.number]);
+  const focusedAyah = visible.length > 0 ? visible[clampedFocused] : null;
+  const displayPage =
+    viewMode === 'page' ? rangeTarget : viewMode === 'juz' ? juzPage : viewMode === 'ayah' ? ayahPage : null;
+  const displayPageSpan = useMemo(
+    () => (displayPage !== null && boundaries ? rangeSpan(boundaries, 'page', displayPage) : null),
+    [displayPage, boundaries],
+  );
+
+  // Surahs for the ayah mode's display page (the page may span two
+  // surahs; the entry surah is reused, the other is fetched — the
+  // same pattern as the range fetch).
+  const [ayahPageSurahs, setAyahPageSurahs] = useState<RangeSurahData[] | null>(null);
+  const [ayahPageLoading, setAyahPageLoading] = useState(false);
+  const [ayahPageError, setAyahPageError] = useState(false);
+  useEffect(() => {
+    if (viewMode !== 'ayah' || !displayPageSpan) {
+      setAyahPageSurahs(null);
+      setAyahPageError(false);
+      setAyahPageLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setAyahPageLoading(true);
+    setAyahPageError(false);
+    const jobs = displayPageSpan.surahs.map(async (n): Promise<RangeSurahData> => {
+      if (n === surah.number) return { surah, ayahs };
+      const view = await fetchSurahClient(n, {
+        translation: settings.defaultTranslation,
+        tafsir: settings.defaultTafsir,
+      });
+      return { surah: view.surah, ayahs: view.ayahs };
+    });
+    Promise.all(jobs)
+      .then((rows) => {
+        if (cancelled) return;
+        setAyahPageSurahs(rows);
+        setAyahPageLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAyahPageError(true);
+        setAyahPageLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode, displayPageSpan, surah, ayahs, settings.defaultTranslation, settings.defaultTafsir]);
+
+  // Flowing-fallback groups for the display page (page mode reuses
+  // the range groups: its span IS the page span).
+  const displayPageGroups: MushafSurahGroup[] | null = useMemo(() => {
+    if (displayPage === null || !displayPageSpan) return null;
+    if (viewMode === 'juz' && rangeSurahs) return buildMushafGroups(displayPageSpan, rangeSurahs, madhhab);
+    if (viewMode === 'ayah' && ayahPageSurahs)
+      return buildMushafGroups(displayPageSpan, ayahPageSurahs, madhhab);
+    if (viewMode === 'page' && rangeSurahs) return buildMushafGroups(displayPageSpan, rangeSurahs, madhhab);
+    return null;
+  }, [displayPage, displayPageSpan, viewMode, rangeSurahs, ayahPageSurahs, madhhab]);
+
+  // Exact Madani lines for the display page: lazy-loaded once, then
+  // the current page's lines. Null while loading or on failure → the
+  // flowing fallback renders (never a blank page, never stale lines:
+  // the page change clears first).
+  const [exactLines, setExactLines] = useState<MushafExactLine[] | null>(null);
+  useEffect(() => {
+    if (displayPage === null) return;
+    setExactLines(null);
+    let cancelled = false;
+    loadMushafLines().then((pages) => {
+      if (cancelled) return;
+      setExactLines(
+        pages && displayPage >= 1 && displayPage <= pages.length
+          ? pages[displayPage - 1]
+          : null,
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [displayPage]);
+
+  // While playing in juz mode, follow the playing ayah's page inside
+  // the juz (paused navigation is never yanked).
+  useEffect(() => {
+    if (viewMode !== 'juz' || !playing || !playingPlayItem || !boundaries || juzPagesList.length === 0)
+      return;
+    const p = rangeContaining(boundaries, playingPlayItem.surahNumber, playingPlayItem.number).page;
+    if (p !== null && juzPagesList.includes(p) && p !== juzPage) setJuzPage(p);
+  }, [viewMode, playing, playingPlayItem, boundaries, juzPagesList, juzPage]);
+
   const MODE_LABELS: Record<QuranViewMode, string> = {
     surah: labels.modeSurah,
     ayah: labels.modeAyah,
@@ -727,21 +842,23 @@ function QuranUmumReader({
   // (جزء ۶ · حزب ۲۲ · مائده), not its first ayah (which would give
   // حزب ۲۱ · نساء): the last ayah of page 106 is Ma'idah, in hizb 22.
   const pageLastRef =
-    rangeGroups && rangeGroups.length > 0
+    displayPageGroups && displayPageGroups.length > 0
       ? (() => {
-          const g = rangeGroups[rangeGroups.length - 1];
+          const g = displayPageGroups[displayPageGroups.length - 1];
           const d = g.items[g.items.length - 1];
           return d ? { surah: g.surahNumber, ayah: d.standardNumber } : null;
         })()
       : null;
   const pageMeta =
-    viewMode === 'page' && span && boundaries
+    displayPage !== null && displayPageSpan && boundaries
       ? rangeContaining(
           boundaries,
-          (pageLastRef ?? span.start).surah,
-          (pageLastRef ?? span.start).ayah,
+          (pageLastRef ?? displayPageSpan.start).surah,
+          (pageLastRef ?? displayPageSpan.start).ayah,
         )
       : { juz: null, hizb: null, page: null };
+
+
 
   return (
     <div className={`quran-reader ${scriptClass}`}>
@@ -1114,32 +1231,67 @@ function QuranUmumReader({
               </button>
             </span>
           </div>
-          {rangeLoading || !rangeGroups ? (
+          {rangeLoading || !rangeGroups || (viewMode === 'juz' && (displayPage === null || !displayPageGroups)) ? (
             <p className="quran-mode-note">{rangeError ? labels.rangeFailed : labels.rangeLoading}</p>
-          ) : viewMode === 'page' ? (
-            <QuranMushafPage
-              groups={rangeGroups}
-              exactLines={exactLines}
-              pageNumber={rangeTarget}
-              juz={pageMeta.juz}
-              hizb={pageMeta.hizb}
-              headerSurah={rangeGroups[rangeGroups.length - 1].surahNameAr}
-              headerSurahTemplate={labels.mushafHeaderSurah}
-              pageCurrent={labels.pageCurrent}
-              juzCurrent={labels.juzCurrent}
-              hizbCurrent={labels.hizbCurrent}
-              bismillah={labels.bismillah}
-              scriptClass={scriptClass}
-              playingKey={playingKey}
-              onPlayAyah={(sn, d) => {
-                const idx = playMap.get(`${sn}:${d.standardNumber}`);
-                if (idx !== undefined) playIndex(idx);
-              }}
-              onPlayLine={(sn, an) => {
-                const idx = playMap.get(`${sn}:${an}`);
-                if (idx !== undefined) playIndex(idx);
-              }}
-            />
+          ) : viewMode === 'page' || viewMode === 'juz' ? (
+            <>
+              {viewMode === 'juz' && displayPage !== null && juzPagesList.length > 0 ? (
+                <div className="quran-mode-nav">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const i = juzPagesList.indexOf(displayPage);
+                      if (i > 0) setJuzPage(juzPagesList[i - 1]);
+                    }}
+                    disabled={juzPagesList.indexOf(displayPage) <= 0}
+                    aria-label={labels.prevPage}
+                  >
+                    {labels.prevPage}
+                  </button>
+                  <span>
+                    {labels.juzPageOf
+                      .replace('%current%', String(juzPagesList.indexOf(displayPage) + 1))
+                      .replace('%total%', String(juzPagesList.length))}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const i = juzPagesList.indexOf(displayPage);
+                      if (i >= 0 && i < juzPagesList.length - 1) setJuzPage(juzPagesList[i + 1]);
+                    }}
+                    disabled={juzPagesList.indexOf(displayPage) >= juzPagesList.length - 1}
+                    aria-label={labels.nextPage}
+                  >
+                    {labels.nextPage}
+                  </button>
+                </div>
+              ) : null}
+              <QuranMushafPage
+                groups={displayPageGroups ?? rangeGroups}
+                exactLines={exactLines}
+                pageNumber={displayPage ?? rangeTarget}
+                juz={pageMeta.juz}
+                hizb={pageMeta.hizb}
+                headerSurah={(displayPageGroups ?? rangeGroups)[
+                  (displayPageGroups ?? rangeGroups).length - 1
+                ].surahNameAr}
+                headerSurahTemplate={labels.mushafHeaderSurah}
+                pageCurrent={labels.pageCurrent}
+                juzCurrent={labels.juzCurrent}
+                hizbCurrent={labels.hizbCurrent}
+                bismillah={labels.bismillah}
+                scriptClass={scriptClass}
+                playingKey={playingKey}
+                onPlayAyah={(sn, d) => {
+                  const idx = playMap.get(`${sn}:${d.standardNumber}`);
+                  if (idx !== undefined) playIndex(idx);
+                }}
+                onPlayLine={(sn, an) => {
+                  const idx = playMap.get(`${sn}:${an}`);
+                  if (idx !== undefined) playIndex(idx);
+                }}
+              />
+            </>
           ) : (
             <div className="ayah-list">
               {rangeGroups.map((group) => (
@@ -1230,35 +1382,96 @@ function QuranUmumReader({
             </div>
           ) : null}
 
-          <div className="ayah-list">
-            {modeAyahs.map((d) => (
-              <AyahCard
-                key={d.displayNumber}
-                ayah={d.ayah}
-                surahNumber={surah.number}
-                highlighted={state.ayahIndex === d.standardIndex || highlightAyah === d.standardNumber}
-                wordIndex={
-                  state.ayahIndex === d.standardIndex ? wordIndexForCard(d, state.wordIndex) : -1
-                }
-                showTranslation={showTranslation}
-                showTafsir={showTafsir}
-                isCurrent={state.ayahIndex === d.standardIndex && playing}
-                labels={labels}
-                ayahHref={ayahLink(surah.number, d.standardNumber)}
-                sajdaTitle={isSajda(surah.number, d.standardNumber, madhhab) ? sajdaTitle : null}
-                notes={
-                  <AyahNotes
-                    surah={surah.number}
-                    ayahNumber={d.standardNumber}
-                    locale={locale}
-                    labels={labels}
-                    onPlayAyah={() => playIndex(d.standardIndex)}
-                    canPlay={Boolean(d.ayah.audioUrl)}
-                  />
-                }
-              />
-            ))}
-          </div>
+          {viewMode === 'ayah' && focusedAyah ? (
+            ayahPageLoading || displayPage === null || !displayPageGroups ? (
+              <p className="quran-mode-note">
+                {ayahPageError ? labels.rangeFailed : labels.rangeLoading}
+              </p>
+            ) : (
+              <>
+                <QuranMushafPage
+                  groups={displayPageGroups}
+                  exactLines={exactLines}
+                  pageNumber={displayPage}
+                  juz={pageMeta.juz}
+                  hizb={pageMeta.hizb}
+                  headerSurah={displayPageGroups[displayPageGroups.length - 1].surahNameAr}
+                  headerSurahTemplate={labels.mushafHeaderSurah}
+                  pageCurrent={labels.pageCurrent}
+                  juzCurrent={labels.juzCurrent}
+                  hizbCurrent={labels.hizbCurrent}
+                  bismillah={labels.bismillah}
+                  scriptClass={scriptClass}
+                  playingKey={playingKey}
+                  highlightKey={`${surah.number}:${focusedAyah.standardNumber}`}
+                  linesClickable={false}
+                  onPlayAyah={(sn, d) => {
+                    const idx = playMap.get(`${sn}:${d.standardNumber}`);
+                    if (idx !== undefined) playIndex(idx);
+                  }}
+                  onPlayLine={(sn, an) => {
+                    const idx = playMap.get(`${sn}:${an}`);
+                    if (idx !== undefined) playIndex(idx);
+                  }}
+                />
+                {(() => {
+                  const sajda = isSajda(surah.number, focusedAyah.standardNumber, madhhab)
+                    ? sajdaTitle
+                    : null;
+                  const hasTr = showTranslation && focusedAyah.ayah.translation;
+                  const hasTf = showTafsir && focusedAyah.ayah.tafsir;
+                  if (!sajda && !hasTr && !hasTf) return null;
+                  return (
+                    <div className="quran-ayah-panel">
+                      {sajda ? <p className="quran-ayah-sajda">{sajda}</p> : null}
+                      {hasTr ? (
+                        <div className="ayah-translation">
+                          <span className="ayah-sub-label">{labels.translationLabel}</span>
+                          <p>{focusedAyah.ayah.translation}</p>
+                        </div>
+                      ) : null}
+                      {hasTf ? (
+                        <details className="ayah-tafsir">
+                          <summary>{labels.tafsirLabel}</summary>
+                          <p>{focusedAyah.ayah.tafsir}</p>
+                        </details>
+                      ) : null}
+                    </div>
+                  );
+                })()}
+              </>
+            )
+          ) : (
+            <div className="ayah-list">
+              {modeAyahs.map((d) => (
+                <AyahCard
+                  key={d.displayNumber}
+                  ayah={d.ayah}
+                  surahNumber={surah.number}
+                  highlighted={state.ayahIndex === d.standardIndex || highlightAyah === d.standardNumber}
+                  wordIndex={
+                    state.ayahIndex === d.standardIndex ? wordIndexForCard(d, state.wordIndex) : -1
+                  }
+                  showTranslation={showTranslation}
+                  showTafsir={showTafsir}
+                  isCurrent={state.ayahIndex === d.standardIndex && playing}
+                  labels={labels}
+                  ayahHref={ayahLink(surah.number, d.standardNumber)}
+                  sajdaTitle={isSajda(surah.number, d.standardNumber, madhhab) ? sajdaTitle : null}
+                  notes={
+                    <AyahNotes
+                      surah={surah.number}
+                      ayahNumber={d.standardNumber}
+                      locale={locale}
+                      labels={labels}
+                      onPlayAyah={() => playIndex(d.standardIndex)}
+                      canPlay={Boolean(d.ayah.audioUrl)}
+                    />
+                  }
+                />
+              ))}
+            </div>
+          )}
         </>
       ) : null}
     </div>

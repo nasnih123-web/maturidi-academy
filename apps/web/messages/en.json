@@ -316,6 +316,7 @@
     "pageDataMissing": "Mushaf page information is not available for this surah.",
     "juzDataMissing": "Juz information is not available for this surah.",
     "ayahOf": "Ayah %current% of %total%",
+    "juzPageOf": "Page %current% of %total% in this juz",
     "surahTotalLabel": "Total surah duration",
     "waveformLabel": "Playing audio waveform",
     "waveformBars": "Bars",

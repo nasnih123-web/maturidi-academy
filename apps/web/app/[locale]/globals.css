@@ -780,9 +780,10 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .quran-play-btn:hover, .quran-stop-btn:hover { background: rgba(212, 175, 55, 0.28); }
 /* Progress bar hosts the waveform canvas (the yellow fill line is gone:
    the wave itself is the progress — gold played, dim unplayed).
-   The equalizer frame is TALL and BORDERLESS by user order: the wave
-   sits directly on the player background, no outline ring. */
-.quran-progress { flex: 1; height: 6rem; border-radius: 999px; background: rgba(0, 0, 0, 0.25); border: none; overflow: hidden; cursor: pointer; }
+   The equalizer frame is TALL and BORDERLESS by user order, and the
+   dark track behind the wave is REMOVED: the wave draws directly on
+   the player background, no pill, no outline ring. */
+.quran-progress { flex: 1; height: 6rem; border-radius: 999px; background: transparent; border: none; overflow: hidden; cursor: pointer; }
 .quran-progress-fill { height: 100%; background: linear-gradient(90deg, #b8860b, #e5c07b); border-radius: 999px; transition: width 0.25s linear; }
 .quran-player-note { margin: 0.5rem 0 0; font-size: 0.85rem; color: hsl(var(--text-muted)); }
 .quran-player-times { display: flex; gap: 1.2rem; margin-top: 0.6rem; font-size: 0.85rem; font-variant-numeric: tabular-nums; color: hsl(var(--text-secondary)); }
@@ -872,7 +873,8 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .mushaf-page { max-width: min(90vw, 600px); margin: 0 auto 1.5rem; padding: 1.6rem 1.8rem 1.2rem; border: 1px solid #c9b37e; border-radius: 6px; background: #f7f1dd; box-shadow: 0 2px 18px rgba(0, 0, 0, 0.45); color: #2b2118; container-type: inline-size; }
 .mushaf-page-meta { text-align: center; margin-bottom: 1.2rem; font-size: 0.85rem; color: #6f6151; }
 .mushaf-page-foot { margin-top: 1.2rem; margin-bottom: 0; text-align: center; }
-.mushaf-surah-ornament { text-align: center; font-size: 1.5rem; color: #2b2118; margin: 0 auto 1rem; padding: 0.35rem 1rem; border: 2px solid #8a6d1b; border-radius: 999px; background: #efe6c8; max-width: max-content; }
+.mushaf-surah-ornament { display: flex; align-items: center; justify-content: center; gap: 0.9rem; text-align: center; font-size: 1.5rem; color: #2b2118; margin: 0 auto 1rem; padding: 0.45rem 1rem; border-top: 2px solid #8a6d1b; border-bottom: 2px solid #8a6d1b; background: #efe6c8; }
+.mushaf-surah-ornament::before, .mushaf-surah-ornament::after { content: '◆'; color: #8a6d1b; font-size: 0.7em; }
 .mushaf-bismillah { text-align: center; font-size: 1.7rem; color: #2b2118; margin: 0 0 1rem; }
 .mushaf-text { font-size: 1.55rem; line-height: 2.4; text-align: justify; color: #2b2118; }
 /* Exact Madani lines: one print line per block, justified like the
@@ -889,7 +891,24 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .mushaf-ayah { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
 .mushaf-ayah:hover { color: #8a6d1b; }
 .mushaf-ayah-playing { color: #8a6d1b; text-decoration: underline; text-decoration-color: rgba(138, 109, 27, 0.5); }
-.mushaf-ayah-end { color: #8a6d1b; font-size: 0.85em; }
+.mushaf-ayah-end { display: inline-block; width: 1.5em; height: 1.5em; vertical-align: middle; margin-inline: 0.1em; }
+.mushaf-ayah-end svg { display: block; width: 100%; height: 100%; }
+.mushaf-ayah-end svg rect, .mushaf-ayah-end svg circle { fill: #f7f1dd; stroke: #8a6d1b; stroke-width: 1.6; }
+.mushaf-ayah-end svg text { fill: #8a6d1b; font-size: 12px; font-weight: 700; font-family: inherit; }
+/* Uthman Taha frame: double gold rule + geometric corner motifs
+   (original code-drawn ornaments, never copied artwork). */
+.mushaf-frame { position: relative; border: 2px solid #8a6d1b; outline: 1px solid #8a6d1b; outline-offset: 5px; padding: 1.4rem 1.5rem; }
+.mushaf-corner { position: absolute; width: 1.9rem; height: 1.9rem; background: #f7f1dd; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
+.mushaf-corner svg { width: 100%; height: 100%; }
+.mushaf-corner svg circle, .mushaf-corner svg rect { fill: none; stroke: #8a6d1b; stroke-width: 1.8; }
+.mushaf-corner svg circle[r="4"] { fill: #8a6d1b; stroke: none; }
+.mushaf-corner-tl { top: -0.95rem; inset-inline-start: -0.95rem; }
+.mushaf-corner-tr { top: -0.95rem; inset-inline-end: -0.95rem; }
+.mushaf-corner-bl { bottom: -0.95rem; inset-inline-start: -0.95rem; }
+.mushaf-corner-br { bottom: -0.95rem; inset-inline-end: -0.95rem; }
+/* Focused-ayah translation/tafsir panel under the ayah-mode page. */
+.quran-ayah-panel { margin: 0 0 1.5rem; padding: 1rem 1.2rem; border: 1px solid rgba(212, 175, 55, 0.25); border-radius: var(--radius-lg); background: rgba(7, 35, 28, 0.5); }
+.quran-ayah-sajda { color: #e5c07b; margin: 0 0 0.6rem; font-size: 0.95rem; }
 @media (max-width: 768px) {
   /* 768px matches the site's phone breakpoint (sticky player) and the
      user's 720-768px phone: the card keeps CLEAR margins here too, so
@@ -934,8 +953,23 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
    the user's phone layout viewport (720–768 CSS px). Padding grew
    with the bar itself (times row + waveform + wrapping settings). */
 @media (max-width: 768px) {
-  .quran-reader { padding-bottom: 20rem; }
-  .quran-player { position: fixed; inset-inline: 0; bottom: 0; z-index: 40; margin-bottom: 0; border-radius: 0; border-inline: 0; border-bottom: 0; }
+  /* Measured sticky player height at 720px width is 336px; the
+     padding must EXCEED it so the last content never hides under
+     the player (22rem = 352px). */
+  .quran-reader { padding-bottom: 22rem; }
+  .quran-player { position: fixed; inset-inline: 0; bottom: 0; z-index: 40; margin-bottom: 0; border-radius: 0; border-inline: 0; border-bottom: 0; padding: 0.9rem 1rem 1rem; background: #07231c; box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45); }
+  /* Music-app layout on phones: meta on top, the tall borderless
+     wave full-width in the middle, tidy controls below. Desktop
+     keeps its single-row layout. */
+  .quran-player-controls { flex-wrap: wrap; justify-content: center; }
+  .quran-player-controls .quran-progress { order: -1; flex-basis: 100%; }
+  .quran-play-btn { width: 3.6rem; height: 3.6rem; font-size: 1.35rem; }
+  .quran-step-btn, .quran-stop-btn { width: 2.75rem; height: 2.75rem; }
+  .quran-player-meta { margin-bottom: 0.5rem; }
+  .quran-reciter-photo { width: 2.75rem; height: 2.75rem; }
+  .quran-player-times { justify-content: center; }
+  .quran-player-settings { justify-content: space-between; }
+  .quran-speed select { padding: 0.5rem 0.6rem; }
 }
 
 /* tasbih */
