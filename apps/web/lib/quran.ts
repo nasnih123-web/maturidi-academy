@@ -112,6 +112,12 @@ export interface QuranDisplayConfig {
   translationEdition: string | null;
   /** Edition id used for the tafsir column. */
   tafsirEdition: string | null;
+  /** Full CRM-enabled translation list (selector options, CRM order). */
+  translationEditions: string[];
+  /** Full CRM-enabled tafsir list (selector options, CRM order). */
+  tafsirEditions: string[];
+  /** CRM playback repeat default (quran.playback.repeat), or null. */
+  repeatDefault: 'off' | 'ayah' | 'surah' | null;
   reciters: Reciter[];
   activeReciter: string | null;
 }
@@ -331,6 +337,11 @@ export async function getQuranProviders(): Promise<QuranDisplayConfig | null> {
   const tafsirs = strList(body.tafsirs);
   const reciterIds = strList(body.reciters);
   const mode = body.highlight_mode === 'word' ? 'word' : 'ayah';
+  const playback =
+    body.playback && typeof body.playback === 'object'
+      ? (body.playback as Record<string, unknown>)
+      : null;
+  const repeatRaw = playback?.repeat;
   return {
     showTranslation: body.show_translation !== false,
     showTafsir: body.show_tafsir === true,
@@ -340,6 +351,10 @@ export async function getQuranProviders(): Promise<QuranDisplayConfig | null> {
     textEdition: typeof body.text_edition === 'string' ? body.text_edition : 'quran-uthmani',
     translationEdition: translations[0] ?? null,
     tafsirEdition: tafsirs[0] ?? null,
+    translationEditions: translations,
+    tafsirEditions: tafsirs,
+    repeatDefault:
+      repeatRaw === 'ayah' || repeatRaw === 'surah' || repeatRaw === 'off' ? repeatRaw : null,
     reciters: reciterIds.map((id) => ({ id, name: id, rewaya: null, locale: null, photoUrl: null })),
     activeReciter: reciterIds[0] ?? null,
   };

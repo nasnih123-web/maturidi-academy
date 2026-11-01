@@ -40,30 +40,127 @@ const QURAN_URL = 'https://api.alquran.cloud/v1/quran/quran-uthmani';
 // Normalization, built from code points (ASCII-only source, so no
 // invisible character can ever be mangled again):
 // Persian yeh U+06CC -> Arabic yeh U+064A, Persian kaf U+06A9 ->
-// Arabic kaf U+0643, alif wasla U+0671 -> alef U+0627; strip Arabic
-// diacritics U+064B-U+0652 + U+0670 and tatweel U+0640.
+// Arabic kaf U+0643, alif wasla U+0671 -> alef U+0627, alif variants
+// U+0623/U+0625/U+0622 -> alef U+0627, teh marbuta U+0629 -> heh
+// U+0647, yeh-with-hamza U+0626 -> yeh, waw-with-hamza U+0624 -> waw,
+// small waw U+06E5 -> waw, small yeh U+06E6 -> yeh; strip Arabic
+// diacritics U+064B-U+0652 and tatweel U+0640, plus the Quranic
+// annotation marks (maddah/hamza-above U+0653/U+0654 and the
+// U+06D6-U+06ED block except the two miniature letters).
 // This MUST stay identical to normalizeQuranText in lib/quran-search.ts.
+// (Round 4: the variant mappings + annotation strip + waw-alif
+// unification fix Persian-keyboard queries like «بقره» / «ابراهیم»
+// / «يومنون» / «موسی» / «صلاة» missing Uthmani «البقرة» /
+// «ابرهۦم» / «يؤمنون» / «موسى» / «الصلوه». The dagger alif
+// U+0670 is MAPPED to a regular alef, NOT stripped: stripping made
+// العالمين→العلمين and الصالحات→الصلحت, which no longer match
+// their own standard spellings and — worse — collide with
+// unrelated words (علم inside العلمين, صلح inside الصلحت).
+// With the alif materialized, the matcher (lib/quran-search.ts)
+// can tell a verbatim word from a skipped-alif lookalike: plural
+// suffixes (ين/ون/ات/ان/وا) are allowed only on verbatim matches,
+// so «مومن» finds «المومنون» while «علم» never returns
+// «العالمين». Words whose standard spelling OMITS the dagger
+// alif (الرحمن→الرحمان, ذلك→ذالك, لكن→لاكن, اله→الاه) are
+// handled at search time by the skip-alif matcher, not by the
+// index.)
 const PERSIAN_YEH = String.fromCharCode(0x06cc);
 const ARABIC_YEH = String.fromCharCode(0x064a);
 const PERSIAN_KAF = String.fromCharCode(0x06a9);
 const ARABIC_KAF = String.fromCharCode(0x0643);
 const ALIF_WASLA = String.fromCharCode(0x0671);
 const ALEF = String.fromCharCode(0x0627);
+const TEH_MARBUTA = String.fromCharCode(0x0629);
+const HEH = String.fromCharCode(0x0647);
+const ALIF_HAMZA_ABOVE = String.fromCharCode(0x0623);
+const ALIF_HAMZA_BELOW = String.fromCharCode(0x0625);
+const ALIF_MADDA = String.fromCharCode(0x0622);
+const YEH_HAMZA = String.fromCharCode(0x0626);
+const WAW_HAMZA = String.fromCharCode(0x0624);
+const WAW = String.fromCharCode(0x0648);
+const SMALL_WAW = String.fromCharCode(0x06e5);
+const SMALL_YEH = String.fromCharCode(0x06e6);
+const ALEF_MAKSURA = String.fromCharCode(0x0649);
+const DAGGER_ALIF = String.fromCharCode(0x0670);
 const DIACRITICS = new RegExp(
-  `[${String.fromCharCode(0x064b)}-${String.fromCharCode(0x0652)}${String.fromCharCode(0x0670)}${String.fromCharCode(0x0640)}]`,
+  `[${String.fromCharCode(0x064b)}-${String.fromCharCode(0x0652)}${String.fromCharCode(0x0640)}]`,
   'g',
 );
+const ANNOTATIONS = new RegExp(
+  `[${String.fromCharCode(0x0653)}${String.fromCharCode(0x0654)}${String.fromCharCode(0x06d6)}-${String.fromCharCode(0x06e4)}${String.fromCharCode(0x06e7)}-${String.fromCharCode(0x06ed)}]`,
+  'g',
+);
+// Waw-alif rasm words → standard spelling (same list as
+// lib/quran-search.ts RASM_WAW_WORDS — keep the two in sync).
+// Each word: dagger-materialized form (الصلواه, from Uthmani
+// الصلوٰة), plain form (الصلوه), and bare form without ال
+// (صلواه — «صلاة الفجر» has no ال on صلاة itself).
+const RASM_WAW_WORDS = [
+  ['الصلواه', 'الصلاه'],
+  ['الزكواه', 'الزكاه'],
+  ['الحيواه', 'الحياه'],
+  ['مشكواه', 'مشكاه'],
+  ['منواه', 'مناه'],
+  ['النجواه', 'النجاه'],
+  ['الصلوه', 'الصلاه'],
+  ['الزكوه', 'الزكاه'],
+  ['الحيوه', 'الحياه'],
+  ['مشكوه', 'مشكاه'],
+  ['منوه', 'مناه'],
+  ['النجوه', 'النجاه'],
+  ['صلواه', 'صلاه'],
+  ['زكواه', 'زكاه'],
+  ['حيواه', 'حياه'],
+  ['مشكواه', 'مشكاه'],
+  ['منواه', 'مناه'],
+  ['نجواه', 'نجاه'],
+  ['صلوه', 'صلاه'],
+  ['زكوه', 'زكاه'],
+  ['حيوه', 'حياه'],
+  ['مشكوه', 'مشكاه'],
+  ['منوه', 'مناه'],
+  ['نجوه', 'نجاه'],
+];
+function unifyRasmWords(normalized) {
+  let out = normalized;
+  for (const [from, to] of RASM_WAW_WORDS) {
+    out = out.split(from).join(to);
+  }
+  return out;
+}
 function normalize(text) {
-  return text
+  const chars = text
     .split(PERSIAN_YEH)
     .join(ARABIC_YEH)
     .split(PERSIAN_KAF)
     .join(ARABIC_KAF)
     .split(ALIF_WASLA)
     .join(ALEF)
+    .split(ALIF_HAMZA_ABOVE)
+    .join(ALEF)
+    .split(ALIF_HAMZA_BELOW)
+    .join(ALEF)
+    .split(ALIF_MADDA)
+    .join(ALEF)
+    .split(TEH_MARBUTA)
+    .join(HEH)
+    .split(YEH_HAMZA)
+    .join(ARABIC_YEH)
+    .split(WAW_HAMZA)
+    .join(WAW)
+    .split(SMALL_WAW)
+    .join(WAW)
+    .split(SMALL_YEH)
+    .join(ARABIC_YEH)
+    .split(ALEF_MAKSURA)
+    .join(ARABIC_YEH)
+    .split(DAGGER_ALIF)
+    .join(ALEF)
     .replace(DIACRITICS, '')
+    .replace(ANNOTATIONS, '')
     .replace(/\s+/g, ' ')
     .trim();
+  return unifyRasmWords(chars);
 }
 
 function fail(msg) {
