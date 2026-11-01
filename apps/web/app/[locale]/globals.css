@@ -1072,28 +1072,67 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .quran-speed, .quran-volume { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: hsl(var(--text-secondary)); }
 .quran-speed select { padding: 0.3rem 0.5rem; border-radius: var(--radius-sm); border: 1px solid rgba(212, 175, 55, 0.3); background: rgba(7, 35, 28, 0.7); color: hsl(var(--text-primary)); }
 .quran-volume input[type="range"] { width: 8rem; accent-color: #d4af37; }
-/* Phone widths: the player bar sticks to the bottom; the reader gets
-   bottom padding so the bar never covers the last ayah. 768px matches
-   the user's phone layout viewport (720–768 CSS px). Padding grew
-   with the bar itself (times row + waveform + wrapping settings). */
+/* ---- Round 7: mobile-only controls — hidden on desktop, so the
+   desktop player and toolbars are exactly as before. ---- */
+.quran-settings-open-btn, .quran-settings-backdrop, .quran-settings-close-btn,
+.quran-settings-group-title, .quran-player-mini, .quran-player-collapse-btn,
+.quran-player-status { display: none; }
+/* Desktop: the settings wrapper is display:contents — the three
+   toolbars + bookmarks panel lay out exactly as if unwrapped. */
+.quran-mobile-settings { display: contents; }
+/* Phone widths: the old fixed player was 336px tall (half the phone). */
 @media (max-width: 768px) {
-  /* Measured sticky player height at 720px width is 336px; the
-     padding must EXCEED it so the last content never hides under
-     the player (22rem = 352px). */
-  .quran-reader { padding-bottom: 22rem; }
-  .quran-player { position: fixed; inset-inline: 0; bottom: 0; z-index: 40; margin-bottom: 0; border-radius: 0; border-inline: 0; border-bottom: 0; padding: 0.9rem 1rem 1rem; background: #07231c; box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45); }
-  /* Music-app layout on phones: meta on top, the tall borderless
-     wave full-width in the middle, tidy controls below. Desktop
-     keeps its single-row layout. */
-  .quran-player-controls { flex-wrap: wrap; justify-content: center; }
-  .quran-player-controls .quran-progress { order: -1; flex-basis: 100%; }
-  .quran-play-btn { width: 3.6rem; height: 3.6rem; font-size: 1.35rem; }
-  .quran-step-btn, .quran-stop-btn { width: 2.75rem; height: 2.75rem; }
-  .quran-player-meta { margin-bottom: 0.5rem; }
-  .quran-reciter-photo { width: 2.75rem; height: 2.75rem; }
-  .quran-player-times { justify-content: center; }
-  .quran-player-settings { justify-content: space-between; }
-  .quran-speed select { padding: 0.5rem 0.6rem; }
+  /* Round 7: the default player is now a 68px mini bar, so the reader
+     padding matches the MINI bar (not the old 336px tall player).
+     The full player appears only as an expanded sheet overlay — it
+     never pushes content — and the settings panel only as a bottom
+     sheet. 768px matches the user's 720–768px phone viewport. */
+  .quran-reader { padding-bottom: calc(68px + env(safe-area-inset-bottom) + 1rem); }
+  /* One button replaces the tall settings pile. */
+  .quran-settings-open-btn { display: flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; min-height: 2.75rem; margin-bottom: 1rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.4); background: rgba(7, 35, 28, 0.6); color: #e5c07b; font-size: 0.95rem; cursor: pointer; }
+  /* Settings sheet: hidden until opened, then a bottom sheet over a
+     dimmed backdrop. Same controls inside — only presentation moves. */
+  .quran-mobile-settings { display: none; }
+  .quran-mobile-settings-open { display: block; position: fixed; inset-inline: 0; bottom: 0; z-index: 360; max-height: 86dvh; overflow-y: auto; padding: 1rem 1rem calc(1.5rem + env(safe-area-inset-bottom)); border-radius: 1.25rem 1.25rem 0 0; border: 1px solid rgba(212, 175, 55, 0.4); border-bottom: 0; background: #07231c; box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5); }
+  .quran-settings-backdrop { display: block; position: fixed; inset: 0; z-index: 355; border: 0; background: rgba(2, 8, 6, 0.7); cursor: pointer; }
+  .quran-mobile-settings-open .quran-settings-close-btn { display: block; width: 100%; min-height: 2.75rem; margin-bottom: 0.8rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.4); background: transparent; color: #e5c07b; font-size: 0.9rem; cursor: pointer; }
+  .quran-mobile-settings-open .quran-settings-group-title { display: block; margin: 1rem 0 0.5rem; font-size: 0.85rem; font-weight: 700; color: #e5c07b; }
+  /* Mini bar: 68px sticky bar (the reader padding above matches it). */
+  .quran-player-mini { display: flex; align-items: center; gap: 0.6rem; position: fixed; inset-inline: 0; bottom: 0; z-index: 40; height: calc(68px + env(safe-area-inset-bottom)); padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom)); border-top: 1px solid rgba(212, 175, 55, 0.4); background: #07231c; box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45); }
+  .quran-player-mini-hidden { display: none; }
+  .quran-player-mini-progress { position: absolute; top: 0; inset-inline: 0; height: 3px; background: rgba(212, 175, 55, 0.25); pointer-events: none; }
+  .quran-player-mini-progress-fill { height: 100%; background: #e5c07b; }
+  /* Full-bar tap target for expanding; control buttons sit above it.
+     Photo/text are pointer-transparent so taps on them reach the
+     expand button (a positioned text span would otherwise intercept
+     the tap and the bar would not expand). */
+  .quran-player-mini-expand { position: absolute; inset: 0; border: 0; background: transparent; cursor: pointer; }
+  .quran-player-mini-photo { position: relative; width: 2.5rem; height: 2.5rem; flex: none; pointer-events: none; }
+  .quran-player-mini-text { position: relative; display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.3; pointer-events: none; }
+  .quran-player-mini-reciter { font-size: 0.75rem; color: hsl(var(--text-secondary)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .quran-player-mini-title { font-size: 0.95rem; color: #e5c07b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .quran-player-mini-status { font-size: 0.7rem; color: hsl(var(--text-muted)); }
+  .quran-player-mini-controls { position: relative; z-index: 1; display: flex; align-items: center; gap: 0.3rem; flex: none; }
+  .quran-mini-btn { width: 2.5rem; height: 2.5rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.4); background: transparent; color: #e5c07b; font-size: 1rem; cursor: pointer; }
+  .quran-mini-btn:disabled { opacity: 0.45; cursor: default; }
+  .quran-mini-play { width: 3rem; height: 3rem; font-size: 1.15rem; background: rgba(212, 175, 55, 0.15); }
+  /* Full player on mobile: hidden while the mini bar covers it;
+     expanded it becomes a bottom-sheet overlay (never in-flow). */
+  .quran-player-mini ~ .quran-player:not(.quran-player-expanded) { display: none; }
+  .quran-player.quran-player-expanded { display: block; position: fixed; inset-inline: 0; bottom: 0; z-index: 350; max-height: 86dvh; overflow-y: auto; margin-bottom: 0; border-radius: 1.25rem 1.25rem 0 0; border: 1px solid rgba(212, 175, 55, 0.4); border-bottom: 0; padding: 1rem 1rem calc(1.5rem + env(safe-area-inset-bottom)); background: #07231c; box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5); }
+  .quran-player-expanded .quran-player-collapse-btn { display: block; width: 100%; min-height: 2.75rem; margin-bottom: 0.8rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.4); background: transparent; color: #e5c07b; font-size: 0.9rem; cursor: pointer; }
+  .quran-player-expanded .quran-player-status { display: inline; }
+  /* Music-app layout inside the expanded sheet: meta on top, the tall
+     borderless wave full-width in the middle, tidy controls below. */
+  .quran-player-expanded .quran-player-controls { flex-wrap: wrap; justify-content: center; }
+  .quran-player-expanded .quran-player-controls .quran-progress { order: -1; flex-basis: 100%; }
+  .quran-player-expanded .quran-play-btn { width: 3.6rem; height: 3.6rem; font-size: 1.35rem; }
+  .quran-player-expanded .quran-step-btn, .quran-player-expanded .quran-stop-btn { width: 2.75rem; height: 2.75rem; }
+  .quran-player-expanded .quran-player-meta { margin-bottom: 0.5rem; }
+  .quran-player-expanded .quran-reciter-photo { width: 2.75rem; height: 2.75rem; }
+  .quran-player-expanded .quran-player-times { justify-content: center; }
+  .quran-player-expanded .quran-player-settings { justify-content: space-between; }
+  .quran-player-expanded .quran-speed select { padding: 0.5rem 0.6rem; }
 }
 
 /* tasbih */

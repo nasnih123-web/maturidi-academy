@@ -295,6 +295,25 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   svgEditionTextLabel: string;
   mushafDouri: string;
   mushafShubah: string;
+  /* ---- Round 7: mobile settings sheet + mini player ---- */
+  /** Title of the mobile settings bottom sheet. */
+  settingsSheetTitle: string;
+  /** Close button label for the mobile settings sheet. */
+  settingsSheetClose: string;
+  /** Group headings inside the mobile settings sheet. */
+  settingsGroupAudio: string;
+  settingsGroupDisplay: string;
+  settingsGroupEditions: string;
+  /** Visible playback status (never a silent failure again). */
+  playerStatusIdle: string;
+  playerStatusLoading: string;
+  playerStatusPlaying: string;
+  playerStatusPaused: string;
+  playerStatusEnded: string;
+  playerStatusError: string;
+  /** Expand/collapse labels for the mobile full-player sheet. */
+  playerExpandLabel: string;
+  playerCollapseLabel: string;
 }
 
 export type QuranSheetKind = 'picker' | 'mushaf' | 'settings' | 'bookmarks';
@@ -557,6 +576,22 @@ function QuranUmumReader({
   // inside the reading overlay when it is open, at the reader root
   // otherwise — the same nodes, never both.
   const [sheet, setSheet] = useState<QuranSheetKind | null>(null);
+  /* ---- Round 7: mobile sheets ---- */
+  /** Mobile-only: the whole settings panel as one bottom sheet. */
+  const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
+  /** Mobile-only: full player sheet expanded from the mini bar. */
+  const [playerExpanded, setPlayerExpanded] = useState(false);
+  // Escape closes the mobile sheets (player first, then settings).
+  useEffect(() => {
+    if (!settingsSheetOpen && !playerExpanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (playerExpanded) setPlayerExpanded(false);
+      else setSettingsSheetOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [settingsSheetOpen, playerExpanded]);
 
   // ---- Round 4: bookmarks + last-read (localStorage only). ----
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -873,6 +908,22 @@ function QuranUmumReader({
 
   const statusKey = STATUS_KEY[state.status];
   const playing = statusKey === 'playing' || statusKey === 'loading';
+
+  // Round 7: playback status as VISIBLE text (mini bar + expanded
+  // sheet), so a failure is never silent again — the old player only
+  // carried data-status, invisible to the user.
+  const statusText =
+    statusKey === 'playing'
+      ? labels.playerStatusPlaying
+      : statusKey === 'loading'
+        ? labels.playerStatusLoading
+        : statusKey === 'paused'
+          ? labels.playerStatusPaused
+          : statusKey === 'ended'
+            ? labels.playerStatusEnded
+            : statusKey === 'error'
+              ? labels.playerStatusError
+              : labels.playerStatusIdle;
 
   // Round 4 auto-scroll: while playing, advance the window slowly
   // (60/120/180 px per second at speed 1/2/3). Pausing stops it;
@@ -1715,6 +1766,42 @@ function QuranUmumReader({
         ) : null}
       </header>
 
+      {/* Round 7: on mobile the whole settings panel collapses into ONE
+          button + bottom sheet. Same controls, same handlers — only the
+          presentation collapses; on desktop the wrapper is
+          display:contents, so the layout is exactly as before. */}
+      <button
+        type="button"
+        className="quran-settings-open-btn"
+        onClick={() => setSettingsSheetOpen(true)}
+        aria-expanded={settingsSheetOpen}
+        aria-haspopup="dialog"
+      >
+        ⚙ {labels.settingsSheetTitle}
+      </button>
+      {settingsSheetOpen ? (
+        <button
+          type="button"
+          className="quran-settings-backdrop"
+          onClick={() => setSettingsSheetOpen(false)}
+          aria-label={labels.settingsSheetClose}
+        />
+      ) : null}
+      <div
+        className={
+          settingsSheetOpen
+            ? 'quran-mobile-settings quran-mobile-settings-open'
+            : 'quran-mobile-settings'
+        }
+      >
+        <button
+          type="button"
+          className="quran-settings-close-btn"
+          onClick={() => setSettingsSheetOpen(false)}
+        >
+          × {labels.settingsSheetClose}
+        </button>
+        <p className="quran-settings-group-title">{labels.settingsGroupAudio}</p>
       <div className="quran-toolbar" role="toolbar" aria-label={surah.name}>
         {reciters.length > 0 ? (
           <label className="quran-reciter">
@@ -1781,6 +1868,7 @@ function QuranUmumReader({
 
       {/* Round 4 display toolbar: font / size / theme / fullscreen /
           auto-scroll — per-device localStorage over CRM defaults. */}
+      <p className="quran-settings-group-title">{labels.settingsGroupDisplay}</p>
       <div className="quran-toolbar quran-display-toolbar" role="toolbar">
         <label className="quran-reciter">
           <span>{labels.displayFontLabel}</span>
@@ -1877,6 +1965,7 @@ function QuranUmumReader({
       {/* Round 4 edition selectors: CRM-enabled lists first, then the
           verified AlQuran Cloud catalogs. Texts load live through the
           existing provider mechanism — nothing is bundled here. */}
+      <p className="quran-settings-group-title">{labels.settingsGroupEditions}</p>
       <div className="quran-toolbar quran-edition-toolbar" role="toolbar">
         <label className="quran-reciter">
           <span>{labels.translationEditionLabel}</span>
@@ -1957,6 +2046,9 @@ function QuranUmumReader({
           )}
         </section>
       ) : null}
+      </div>
+      {/* End of the round-7 mobile settings wrapper (toolbars +
+          bookmarks panel). Search + player stay outside it. */}
 
       <QuranSearchBox locale={locale} surahs={surahList} labels={searchLabels} />
 
@@ -1964,12 +2056,118 @@ function QuranUmumReader({
           (no separate waveform row). Hidden for range LISTS (navigation,
           not reading); shown for every reading view. */}
       {showPlayer ? (
-        <div
-          className="quran-player"
-          role="region"
-          aria-label={labels.playSurah}
-          data-status={statusKey}
-        >
+        <>
+          {/* Round 7 mobile mini bar (desktop: display:none): slim
+              sticky bar — photo/♪ + reciter + title + status + prev /
+              play / next + a thin progress line on the top edge.
+              Tapping the bar (not the buttons) expands the full player
+              sheet below; the expand button covers the bar so the
+              whole bar is the tap target, while the control buttons
+              sit above it. Rendered only when audio exists; without
+              audio the plain note below stays in flow. */}
+          {canPlay ? (
+            <div
+              className={
+                playerExpanded
+                  ? 'quran-player-mini quran-player-mini-hidden'
+                  : 'quran-player-mini'
+              }
+              role="region"
+              aria-label={labels.playSurah}
+              data-status={statusKey}
+            >
+              <div className="quran-player-mini-progress" aria-hidden="true">
+                <div
+                  className="quran-player-mini-progress-fill"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+              <button
+                type="button"
+                className="quran-player-mini-expand"
+                onClick={() => setPlayerExpanded(true)}
+                aria-label={labels.playerExpandLabel}
+              />
+              {settings.playerShowPhoto ? (
+                currentReciter?.photoUrl ? (
+                  <img
+                    className="quran-player-mini-photo"
+                    src={currentReciter.photoUrl}
+                    alt={currentReciterName ?? currentReciter.name}
+                  />
+                ) : (
+                  <span
+                    className="quran-player-mini-photo quran-reciter-photo-empty"
+                    aria-hidden="true"
+                  >
+                    ♪
+                  </span>
+                )
+              ) : null}
+              <span className="quran-player-mini-text">
+                {currentReciterName ? (
+                  <span className="quran-player-mini-reciter">{currentReciterName}</span>
+                ) : null}
+                <span className="quran-player-mini-title" lang="ar" dir="rtl">
+                  {playerTitle}
+                </span>
+                <span className="quran-player-mini-status" role="status">
+                  {statusText}
+                </span>
+              </span>
+              <span className="quran-player-mini-controls">
+                <button
+                  type="button"
+                  className="quran-mini-btn"
+                  onClick={() => playCurrent(-1)}
+                  aria-label={labels.prevAyah}
+                  disabled={!canPlay}
+                >
+                  ⏮
+                </button>
+                <button
+                  type="button"
+                  className="quran-mini-btn quran-mini-play"
+                  onClick={readingPlayToggle}
+                  aria-label={
+                    statusKey === 'playing' || statusKey === 'loading'
+                      ? labels.pause
+                      : statusKey === 'paused'
+                        ? labels.resume
+                        : labels.playSurah
+                  }
+                >
+                  {statusKey === 'playing' || statusKey === 'loading' ? '❚❚' : '▶'}
+                </button>
+                <button
+                  type="button"
+                  className="quran-mini-btn"
+                  onClick={() => playCurrent(1)}
+                  aria-label={labels.nextAyah}
+                  disabled={!canPlay}
+                >
+                  ⏭
+                </button>
+              </span>
+            </div>
+          ) : null}
+          <div
+            className={
+              playerExpanded ? 'quran-player quran-player-expanded' : 'quran-player'
+            }
+            role="region"
+            aria-label={labels.playSurah}
+            data-status={statusKey}
+          >
+            {/* Round 7: collapse button for the mobile expanded sheet
+                (desktop: display:none). */}
+            <button
+              type="button"
+              className="quran-player-collapse-btn"
+              onClick={() => setPlayerExpanded(false)}
+            >
+              × {labels.playerCollapseLabel}
+            </button>
           {!canPlay ? (
             <p className="quran-player-note">{labels.audioUnavailable}</p>
           ) : (
@@ -2058,12 +2256,29 @@ function QuranUmumReader({
                 </div>
               </div>
               <div className="quran-player-times" dir="ltr">
+                {/* Round 7: visible status (mobile; desktop keeps the
+                    old times row exactly — see CSS). */}
+                <span className="quran-player-status" role="status" dir="auto">
+                  {statusText}
+                </span>
                 <span>
-                  {formatTime(state.currentTime)} / {state.duration > 0 ? formatTime(state.duration) : '–'}
+                  {formatTime(state.currentTime)} /{' '}
+                  {state.duration > 0
+                    ? formatTime(state.duration)
+                    : surahDuration !== null
+                      ? formatTime(surahDuration)
+                      : '–'}
                 </span>
                 {surahDuration !== null ? (
-                  <span>
-                    {totalLabel}: {formatTime(surahDuration)}
+                  // Round 7: the total is the SECTION total, labelled
+                  // with the section itself — a page total must never
+                  // read as a surah total. Ground truth 2026-11-02
+                  // (ffprobe on the real Alafasy files): page 566's
+                  // 18 ayahs sum to 173.57s = 2:53, so the shown 2:53
+                  // was CORRECT; only the display misled (0:00 / –).
+                  <span dir="auto">
+                    {totalLabel}
+                    {rangeTitle ? ` (${rangeTitle})` : ''}: {formatTime(surahDuration)}
                   </span>
                 ) : null}
               </div>
@@ -2119,6 +2334,7 @@ function QuranUmumReader({
             </>
           )}
         </div>
+        </>
       ) : null}
 
       {!isRangeMode && showBismillahHeader ? (
