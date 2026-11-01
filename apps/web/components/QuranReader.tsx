@@ -117,6 +117,8 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   pageCurrent: string;
   juzCurrent: string;
   hizbCurrent: string;
+  /** Template with %s% (surah name) for the mushaf page header. */
+  mushafHeaderSurah: string;
   /** Template with %current% and %total%. */
   ayahOf: string;
   surahTotalLabel: string;
@@ -695,10 +697,25 @@ function QuranUmumReader({
     seek(Math.max(0, Math.min(1, frac)) * state.duration);
   };
 
-  // Page meta (juz/hizb containing the page's first ayah).
+  // Page meta (juz/hizb/surah of the page's LAST ayah). Bayan's own
+  // page-106 header proves the header follows the page's final content
+  // (جزء ۶ · حزب ۲۲ · مائده), not its first ayah (which would give
+  // حزب ۲۱ · نساء): the last ayah of page 106 is Ma'idah, in hizb 22.
+  const pageLastRef =
+    rangeGroups && rangeGroups.length > 0
+      ? (() => {
+          const g = rangeGroups[rangeGroups.length - 1];
+          const d = g.items[g.items.length - 1];
+          return d ? { surah: g.surahNumber, ayah: d.standardNumber } : null;
+        })()
+      : null;
   const pageMeta =
     viewMode === 'page' && span && boundaries
-      ? rangeContaining(boundaries, span.start.surah, span.start.ayah)
+      ? rangeContaining(
+          boundaries,
+          (pageLastRef ?? span.start).surah,
+          (pageLastRef ?? span.start).ayah,
+        )
       : { juz: null, hizb: null, page: null };
 
   return (
@@ -725,7 +742,8 @@ function QuranUmumReader({
                 {surah.nameAr}
               </h1>
               <p className="quran-surah-sub">
-                {surah.name} · {surah.englishName}
+                {surah.name}
+                {surah.englishName !== surah.name ? ` · ${surah.englishName}` : ''}
               </p>
               <p className="quran-fawasil-note">
                 {fawasilLine}
@@ -909,6 +927,7 @@ function QuranUmumReader({
                     playing={playing}
                     progressPct={progressPct}
                     label={labels.waveformLabel}
+                    style={settings.waveformStyle}
                   />
                 </div>
               </div>
@@ -1078,6 +1097,8 @@ function QuranUmumReader({
               pageNumber={rangeTarget}
               juz={pageMeta.juz}
               hizb={pageMeta.hizb}
+              headerSurah={rangeGroups[rangeGroups.length - 1].surahNameAr}
+              headerSurahTemplate={labels.mushafHeaderSurah}
               pageCurrent={labels.pageCurrent}
               juzCurrent={labels.juzCurrent}
               hizbCurrent={labels.hizbCurrent}

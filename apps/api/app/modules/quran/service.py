@@ -49,6 +49,7 @@ _DEFAULTS: dict[str, object] = {
     "quran.madhhab_default": "hanafi",
     "quran.player_default_speed": 1,
     "quran.player_show_photo": True,
+    "quran.waveform_style": "bars",
     "munajat.enabled": True,
     "munajat.window": {"start": "02:00", "end": "05:00"},
     "adhan.defaults": {"calculation_method": "council", "madhab": "hanafi"},

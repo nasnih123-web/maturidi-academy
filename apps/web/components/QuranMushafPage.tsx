@@ -40,6 +40,8 @@ export function QuranMushafPage({
   pageNumber,
   juz,
   hizb,
+  headerSurah,
+  headerSurahTemplate,
   pageCurrent,
   juzCurrent,
   hizbCurrent,
@@ -52,6 +54,11 @@ export function QuranMushafPage({
   pageNumber: number;
   juz: number | null;
   hizb: number | null;
+  /** Surah of the page's LAST ayah (Bayan's header follows the page's
+   *  final content, e.g. page 106 → مائده, not نساء). */
+  headerSurah: string;
+  /** Template with %s% (surah name), e.g. "(سورهٔ %s%)". */
+  headerSurahTemplate: string;
   /** Templates with %n%. */
   pageCurrent: string;
   juzCurrent: string;
@@ -64,13 +71,17 @@ export function QuranMushafPage({
   /** Play the range from this display item (surah + display item). */
   onPlayAyah: (surahNumber: number, displayItem: DisplayAyah) => void;
 }) {
+  // Header meta, Bayan-style: page · juz · hizb · (surah) — each
+  // part only when known. The footer repeats only the page number.
   const meta = [
     pageCurrent.replace('%n%', String(pageNumber)),
     juz !== null ? juzCurrent.replace('%n%', String(juz)) : null,
     hizb !== null ? hizbCurrent.replace('%n%', String(hizb)) : null,
+    headerSurahTemplate.replace('%s%', headerSurah),
   ]
     .filter((x): x is string => x !== null)
     .join(' · ');
+  const foot = pageCurrent.replace('%n%', String(pageNumber));
   return (
     <div className={`mushaf-page ${scriptClass}`}>
       <p className="mushaf-page-meta">{meta}</p>
@@ -110,7 +121,7 @@ export function QuranMushafPage({
           </p>
         </div>
       ))}
-      <p className="mushaf-page-meta mushaf-page-foot">{meta}</p>
+      <p className="mushaf-page-meta mushaf-page-foot">{foot}</p>
     </div>
   );
 }

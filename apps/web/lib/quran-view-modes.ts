@@ -13,11 +13,12 @@
  * Boundaries come ONLY from lib/quran-boundaries.json, which is
  * generated from the provider's per-ayah metadata (juz, hizbQuarter,
  * page) by scripts/generate-quran-data.mjs — never hand-typed. A hizb
- * is the standard 60-part division (hizb h = hizbQuarter group 4h-3..4h).
- * NOTE: the bayan-app reference the user showed numbers its حزب list
- * differently (its حزب N starts at provider quarter 2N-1, i.e. a
- * half-hizb division, 120 items); the provider's standard 60 hizb are
- * used here and the difference is reported, never force-matched.
+ * is Bayan's حزب: the half-hizb division, 120 items (hizb n =
+ * hizbQuarter 2n-1: the odd quarters are exactly the hizb starts and
+ * the hizb middles). PROOF from the user's own reference: Bayan's page
+ * 106 header reads جزء ۶ حزب ۲۲ — standard 60-hizb numbering cannot
+ * put hizb 22 inside juz 6 (it falls in juz 11); only half-hizb
+ * numbering does (half-hizbs 21–24 belong to juz 6).
  */
 import type { Ayah } from './quran';
 
@@ -29,7 +30,7 @@ export const VIEW_MODE_ORDER: QuranViewMode[] = ['surah', 'ayah', 'juz', 'hizb',
 export type RangeKind = 'juz' | 'hizb' | 'page';
 
 /** Item counts per range kind (provider-verified). */
-export const RANGE_COUNTS: Record<RangeKind, number> = { juz: 30, hizb: 60, page: 604 };
+export const RANGE_COUNTS: Record<RangeKind, number> = { juz: 30, hizb: 120, page: 604 };
 
 /** First ayah of one juz / hizb / page (from quran-boundaries.json). */
 export interface BoundaryStart {

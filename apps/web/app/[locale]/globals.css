@@ -864,18 +864,20 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .quran-range-nav-steps { display: inline-flex; gap: 0.5rem; }
 
 /* ---- Mushaf-style page view (flowing text on the site background) ---- */
-.mushaf-page { margin-bottom: 1.5rem; padding: 1.2rem 1.4rem; border: 1px solid rgba(212, 175, 55, 0.3); border-radius: var(--radius-lg); background: rgba(7, 35, 28, 0.45); }
-.mushaf-page-meta { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; font-size: 0.85rem; color: hsl(var(--text-secondary)); }
-.mushaf-page-foot { margin-top: 1rem; margin-bottom: 0; text-align: center; }
-.mushaf-surah-ornament { text-align: center; font-size: 1.5rem; color: #e5c07b; margin: 0 0 1rem; }
-.mushaf-bismillah { text-align: center; font-size: 1.4rem; color: #e5c07b; margin: 0 0 1rem; }
-.mushaf-text { font-size: 1.55rem; line-height: 2.4; text-align: justify; color: #ede6d6; }
+.mushaf-page { max-width: min(92vw, 640px); margin: 0 auto 1.5rem; padding: 1.6rem 1.8rem 1.2rem; border: 1px solid #c9b37e; border-radius: 6px; background: #f7f1dd; box-shadow: 0 2px 18px rgba(0, 0, 0, 0.45); color: #2b2118; }
+.mushaf-page-meta { text-align: center; margin-bottom: 1.2rem; font-size: 0.85rem; color: #6f6151; }
+.mushaf-page-foot { margin-top: 1.2rem; margin-bottom: 0; text-align: center; }
+.mushaf-surah-ornament { text-align: center; font-size: 1.5rem; color: #2b2118; margin: 0 auto 1rem; padding: 0.35rem 1rem; border: 2px solid #8a6d1b; border-radius: 999px; background: #efe6c8; max-width: max-content; }
+.mushaf-bismillah { text-align: center; font-size: 1.7rem; color: #2b2118; margin: 0 0 1rem; }
+.mushaf-text { font-size: 1.55rem; line-height: 2.4; text-align: justify; color: #2b2118; }
 .mushaf-ayah { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
-.mushaf-ayah:hover { color: #e5c07b; }
-.mushaf-ayah-playing { color: #e5c07b; text-decoration: underline; text-decoration-color: rgba(212, 175, 55, 0.5); }
-.mushaf-ayah-end { color: #e5c07b; font-size: 0.85em; }
-@media (max-width: 640px) {
-  .mushaf-page { padding: 1rem 0.9rem; }
+.mushaf-ayah:hover { color: #8a6d1b; }
+.mushaf-ayah-playing { color: #8a6d1b; text-decoration: underline; text-decoration-color: rgba(138, 109, 27, 0.5); }
+.mushaf-ayah-end { color: #8a6d1b; font-size: 0.85em; }
+@media (max-width: 768px) {
+  /* 768px matches the site's phone breakpoint (sticky player) and the
+     user's 720-768px phone: the card is near-full width there too. */
+  .mushaf-page { margin-inline: 0.25rem; max-width: none; padding: 1.2rem 1rem; }
   .mushaf-text { font-size: 1.35rem; line-height: 2.3; }
 }
 

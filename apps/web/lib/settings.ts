@@ -7,6 +7,7 @@ import {
   type PlaceTypeDef,
 } from './places-view';
 import { isGlobeMode, type GlobeMode } from './places-globe';
+import { parseWaveformStyle } from './quran-waveform-styles';
 
 export type { Locale, PlaceTypeDef };
 
@@ -96,6 +97,8 @@ export interface QuranSettings {
   playerDefaultSpeed: number;
   /** Whether the player bar shows the reciter photo block (quran.player_show_photo). */
   playerShowPhoto: boolean;
+  /** Player waveform equalizer style id (quran.waveform_style; CRM default 'bars'). */
+  waveformStyle: string;
 }
 
 /** Public settings contract for the night-munajat calm theme.
@@ -341,6 +344,7 @@ export const DEFAULT_QURAN: QuranSettings = {
   madhhabDefault: 'hanafi',
   playerDefaultSpeed: 1,
   playerShowPhoto: true,
+  waveformStyle: 'bars',
 };
 
 export const DEFAULT_MUNAJAT: MunajatSettings = {
@@ -400,6 +404,7 @@ function parseQuranSettings(get: (key: string) => unknown): QuranSettings {
       typeof madhhab === 'string' && QURAN_MADHHABS.includes(madhhab) ? madhhab : 'hanafi',
     playerDefaultSpeed: parsePlayerSpeed(get('quran.player_default_speed'), 1),
     playerShowPhoto: bool(get('quran.player_show_photo'), true),
+    waveformStyle: parseWaveformStyle(get('quran.waveform_style')),
   };
 }
 

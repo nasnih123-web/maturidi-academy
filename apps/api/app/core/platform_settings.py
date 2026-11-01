@@ -91,6 +91,8 @@ SETTING_DEFS: dict[str, dict] = {
     "quran.madhhab_default": {"type": "json", "sensitive": False, "label": "مذهب پیش‌فرض نمایش قرآن"},
     "quran.player_default_speed": {"type": "json", "sensitive": False, "label": "سرعت پیش‌فرض پخش قرآن"},
     "quran.player_show_photo": {"type": "json", "sensitive": False, "label": "نمایش عکس قاری در پخش‌کننده"},
+    # --- اصلاحیهٔ صفحهٔ قرآن: سبک موج پخش‌کننده (قابل‌تغییر از CRM) ---
+    "quran.waveform_style": {"type": "json", "sensitive": False, "label": "سبک موج پخش‌کنندهٔ قرآن"},
     "munajat.enabled": {"type": "json", "sensitive": False, "label": "فعال‌بودن مناجات شبانه"},
     "munajat.window": {"type": "json", "sensitive": False, "label": "پنجرهٔ زمانی مناجات"},
     "adhan.defaults": {"type": "json", "sensitive": False, "label": "پیش‌فرض محاسبهٔ اذان (روش + مذهب)"},
@@ -422,6 +424,17 @@ def _validate_player_speed(value: Any) -> float:
     return float(value)
 
 
+_WAVEFORM_STYLES = ("bars", "dotted", "line", "mirrored", "neon")
+
+
+def _validate_waveform_style(value: Any) -> str:
+    if value not in _WAVEFORM_STYLES:
+        raise ValueError(
+            f"quran.waveform_style must be one of {'|'.join(_WAVEFORM_STYLES)}"
+        )
+    return value
+
+
 _HHMM = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 
@@ -584,6 +597,8 @@ def _validate_json_setting(key: str, value: Any) -> Any:
         return _validate_player_speed(value)
     if key == "quran.player_show_photo":
         return _validate_flag(key, value)
+    if key == "quran.waveform_style":
+        return _validate_waveform_style(value)
     if key == "munajat.window":
         return _validate_munajat_window(value)
     if key == "adhan.defaults":

@@ -25,6 +25,7 @@ import { readSettingsMap } from "./appearance";
  *   quran.madhhab_default    "hanafi"|"shafii"|"maliki"|"hanbali" (Phase 1)
  *   quran.player_default_speed number 0.5..2 (Phase 1)
  *   quran.player_show_photo  bool (Phase 1)
+ *   quran.waveform_style     "bars"|"dotted"|"line"|"mirrored"|"neon" (UX rework)
  *   munajat.enabled          bool
  *   munajat.window           {start: "HH:MM", end: "HH:MM"}
  *   adhan.defaults           {calculation_method, madhab} — registered
@@ -61,6 +62,7 @@ export const QURAN_SETTINGS_KEYS = {
   madhhabDefault: "quran.madhhab_default",
   playerDefaultSpeed: "quran.player_default_speed",
   playerShowPhoto: "quran.player_show_photo",
+  waveformStyle: "quran.waveform_style",
   munajatEnabled: "munajat.enabled",
   munajatWindow: "munajat.window",
   adhanDefaults: "adhan.defaults",
@@ -303,6 +305,22 @@ export function parsePlayerSpeed(raw: string | null | undefined): number {
   const v = decodeJson(raw);
   if (typeof v !== "number" || Number.isNaN(v)) return 1;
   return clamp(v, 0.5, 2);
+}
+
+/**
+ * Waveform equalizer style ids — the API's own enum values
+ * (`quran.waveform_style` validator). NOT hardcoded display names:
+ * the names come from i18n (quran.waveformBars / … / waveformNeon).
+ */
+export const WAVEFORM_STYLES = ["bars", "dotted", "line", "mirrored", "neon"] as const;
+export type WaveformStyle = (typeof WAVEFORM_STYLES)[number];
+
+/** quran.waveform_style — one of the five ids, default "bars". */
+export function parseWaveformStyle(raw: string | null | undefined): WaveformStyle {
+  const v = decodeJson(raw);
+  return typeof v === "string" && (WAVEFORM_STYLES as readonly string[]).includes(v)
+    ? (v as WaveformStyle)
+    : "bars";
 }
 
 /* ------------------------------------------------------------------ */

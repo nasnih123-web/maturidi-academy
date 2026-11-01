@@ -399,6 +399,13 @@ async def test_settings_public_returns_whitelisted_keys(tc, db_session):
         # globe phase: extensible place types + default globe view.
         "places.types",
         "places.globe",
+        # Quran UX rework: CRM display-tab defaults (non-sensitive
+        # display preferences; also fixes the pre-existing gap where
+        # CRM madhhab/speed/photo choices never reached the web).
+        "quran.madhhab_default",
+        "quran.player_default_speed",
+        "quran.player_show_photo",
+        "quran.waveform_style",
     }
     assert set(body["settings"].keys()) == expected
     # هیچ کلید حساسی لو نرفته

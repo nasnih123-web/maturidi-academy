@@ -17,6 +17,7 @@ import {
   parsePlayback,
   parsePlayerSpeed,
   parseProviderId,
+  parseWaveformStyle,
   parseStringList,
   useQuranProvidersQuery,
   useQuranSettingsQuery,
@@ -26,6 +27,7 @@ import {
   type PlaybackConfig,
   type QuranMadhhab,
   type RepeatMode,
+  type WaveformStyle,
 } from "../lib/quran";
 
 /**
@@ -401,6 +403,15 @@ const DISPLAY_MADHHABS: { id: QuranMadhhab; key: string }[] = [
 
 const PLAYER_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
+/* Quran UX rework: player waveform equalizer styles (CRM-selectable). */
+const WAVEFORM_STYLE_OPTIONS: { id: WaveformStyle; key: string }[] = [
+  { id: "bars", key: "quran.waveformBars" },
+  { id: "dotted", key: "quran.waveformDotted" },
+  { id: "line", key: "quran.waveformLine" },
+  { id: "mirrored", key: "quran.waveformMirrored" },
+  { id: "neon", key: "quran.waveformNeon" },
+];
+
 function DisplayPanel(): React.ReactElement {
   const { t } = useI18n();
   const settings = useQuranSettingsQuery();
@@ -414,6 +425,7 @@ function DisplayPanel(): React.ReactElement {
   const [madhhabDefault, setMadhhabDefault] = React.useState<QuranMadhhab>("hanafi");
   const [playerSpeed, setPlayerSpeed] = React.useState(1);
   const [playerShowPhoto, setPlayerShowPhoto] = React.useState(true);
+  const [waveformStyle, setWaveformStyle] = React.useState<WaveformStyle>("bars");
   const [savedTick, setSavedTick] = React.useState(0);
 
   React.useEffect(() => {
@@ -437,6 +449,7 @@ function DisplayPanel(): React.ReactElement {
       setMadhhabDefault(parseMadhhabDefault(settings.data[QURAN_SETTINGS_KEYS.madhhabDefault]));
       setPlayerSpeed(parsePlayerSpeed(settings.data[QURAN_SETTINGS_KEYS.playerDefaultSpeed]));
       setPlayerShowPhoto(parseFlag(settings.data[QURAN_SETTINGS_KEYS.playerShowPhoto], true));
+      setWaveformStyle(parseWaveformStyle(settings.data[QURAN_SETTINGS_KEYS.waveformStyle]));
     }
   }, [settings.data]);
 
@@ -469,6 +482,7 @@ function DisplayPanel(): React.ReactElement {
         [QURAN_SETTINGS_KEYS.madhhabDefault]: madhhabDefault,
         [QURAN_SETTINGS_KEYS.playerDefaultSpeed]: playerSpeed,
         [QURAN_SETTINGS_KEYS.playerShowPhoto]: playerShowPhoto,
+        [QURAN_SETTINGS_KEYS.waveformStyle]: waveformStyle,
       },
       { onSuccess: () => setSavedTick((n) => n + 1) },
     );
@@ -623,6 +637,23 @@ function DisplayPanel(): React.ReactElement {
           />
           {t("quran.playerShowPhoto")}
         </label>
+      </div>
+
+      <div className="field">
+        <label htmlFor="quran-waveform-style">{t("quran.waveformStyle")}</label>
+        <select
+          id="quran-waveform-style"
+          className="input"
+          style={{ maxWidth: "280px" }}
+          value={waveformStyle}
+          onChange={(e) => setWaveformStyle(e.target.value as WaveformStyle)}
+        >
+          {WAVEFORM_STYLE_OPTIONS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {t(s.key)}
+            </option>
+          ))}
+        </select>
       </div>
 
       <SaveRow

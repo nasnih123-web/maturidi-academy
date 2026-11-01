@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getQuranProviders, getSurah, getSurahs } from '@/lib/quran';
-import type { QuranViewMode } from '@/lib/quran-view-modes';
+import { RANGE_COUNTS, type QuranViewMode } from '@/lib/quran-view-modes';
 import { getSiteConfig, type QuranSettings } from '@/lib/settings';
 import { QuranReader } from '@/components/QuranReader';
 
@@ -29,7 +29,7 @@ export async function generateMetadata({
  * (edition overrides), ?reciter= (forward-compatible selector),
  * ?ayah= (deep-link highlight), ?tab= (section: general/hifz/children),
  * ?view= + ?target= (umum view mode + range target; refresh keeps the
- * view). Range targets are validated against the range size (30/60/604);
+ * view). Range targets are validated against the range size (30/120/604);
  * an out-of-range target degrades to the mode's list, never a crash.
  * Invalid surah numbers 404.
  *
@@ -74,6 +74,7 @@ export default async function SurahPage({
     madhhabDefault: siteConfig.quran.madhhabDefault,
     playerDefaultSpeed: siteConfig.quran.playerDefaultSpeed,
     playerShowPhoto: siteConfig.quran.playerShowPhoto,
+    waveformStyle: siteConfig.quran.waveformStyle,
   };
   const reciters = providers?.reciters ?? [];
 
@@ -93,7 +94,9 @@ export default async function SurahPage({
       ? searchParams.view
       : 'surah';
   const maxTarget =
-    initialView === 'juz' ? 30 : initialView === 'hizb' ? 60 : initialView === 'page' ? 604 : 0;
+    initialView === 'juz' || initialView === 'hizb' || initialView === 'page'
+      ? RANGE_COUNTS[initialView]
+      : 0;
   const targetParam = searchParams.target ? Number(searchParams.target) : NaN;
   const initialTarget =
     Number.isInteger(targetParam) && targetParam >= 1 && targetParam <= maxTarget
@@ -196,6 +199,7 @@ export default async function SurahPage({
           pageCurrent: t('pageCurrent'),
           juzCurrent: t('juzCurrent'),
           hizbCurrent: t('hizbCurrent'),
+          mushafHeaderSurah: t('mushafHeaderSurah'),
           ayahOf: t('ayahOf'),
           surahTotalLabel: t('surahTotalLabel'),
           rangeTotalLabel: t('rangeTotalLabel'),

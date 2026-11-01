@@ -27,6 +27,15 @@ _PUBLIC_SETTING_KEYS = (
     "places.popup",
     "places.types",
     "places.globe",
+    # Quran display defaults (CRM display tab) — non-sensitive display
+    # preferences, same class as places.globe. Without these, the web
+    # always fell back to its hardcoded defaults and CRM choices for
+    # madhhab/speed/photo never reached the reader; the waveform style
+    # (quran.waveform_style) needs the same path.
+    "quran.madhhab_default",
+    "quran.player_default_speed",
+    "quran.player_show_photo",
+    "quran.waveform_style",
 )
 
 _PUBLIC_DEFAULTS: dict[str, object] = {
@@ -41,6 +50,10 @@ _PUBLIC_DEFAULTS: dict[str, object] = {
     "places.popup": {"show_image": True, "show_description": True, "show_type": True, "show_city": True},
     "places.types": [dict(t) for t in DEFAULT_PLACE_TYPES],
     "places.globe": {"defaultLat": 21.4225, "defaultLng": 39.8262, "defaultAltitude": 2.5, "defaultMode": "satellite", "autoRotate": False},
+    "quran.madhhab_default": "hanafi",
+    "quran.player_default_speed": 1,
+    "quran.player_show_photo": True,
+    "quran.waveform_style": "bars",
 }
 
 
