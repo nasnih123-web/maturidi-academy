@@ -9,6 +9,8 @@
  * or page happens through the search box.
  */
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { lastReadHref, loadLastRead, type LastRead } from '@/lib/quran-bookmarks';
 import type { SurahSummary } from '@/lib/quran';
 import { QuranSearchBox, type QuranSearchLabels } from './QuranSearchBox';
 
@@ -20,6 +22,8 @@ export interface SurahIndexLabels {
   sectionGeneral: string;
   sectionHifz: string;
   sectionChildren: string;
+  /** Round 4: resume link label (last-read position, local only). */
+  resumeReading?: string;
 }
 
 export function SurahIndex({
@@ -33,9 +37,21 @@ export function SurahIndex({
   labels: SurahIndexLabels;
   searchLabels: QuranSearchLabels;
 }) {
+  // Round 4: last-read resume (localStorage only — Bayan-style
+  // on-device history; nothing is fetched or synced).
+  const [lastRead, setLastRead] = useState<LastRead | null>(null);
+  useEffect(() => {
+    setLastRead(loadLastRead());
+  }, []);
   return (
     <div className="surah-index">
       <h1 className="page-title">{labels.title}</h1>
+
+      {lastRead && labels.resumeReading ? (
+        <Link href={lastReadHref(lastRead, locale)} className="quran-resume-link">
+          {labels.resumeReading}
+        </Link>
+      ) : null}
 
       <QuranSearchBox locale={locale} surahs={surahs} labels={searchLabels} />
 

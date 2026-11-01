@@ -48,6 +48,7 @@ export default async function QuranIndexPage({
           sectionGeneral: t('tabGeneral'),
           sectionHifz: t('tabHifz'),
           sectionChildren: t('tabChildren'),
+          resumeReading: t('resumeReading'),
         }}
         searchLabels={{
           searchPlaceholder: t('searchPlaceholder'),

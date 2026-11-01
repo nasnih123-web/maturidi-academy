@@ -75,6 +75,11 @@ export default async function SurahPage({
     playerDefaultSpeed: siteConfig.quran.playerDefaultSpeed,
     playerShowPhoto: siteConfig.quran.playerShowPhoto,
     waveformStyle: siteConfig.quran.waveformStyle,
+    displayFont: siteConfig.quran.displayFont,
+    displayTheme: siteConfig.quran.displayTheme,
+    // Providers (CRM playback) wins when present; public settings are
+    // the fallback — both now flow through the same whitelist.
+    repeatDefault: providers?.repeatDefault ?? siteConfig.quran.repeatDefault,
   };
   const reciters = providers?.reciters ?? [];
 
@@ -147,6 +152,9 @@ export default async function SurahPage({
         initialView={initialView}
         initialTarget={initialTarget}
         surahList={surahList}
+        translationEditions={providers?.translationEditions ?? []}
+        tafsirEditions={providers?.tafsirEditions ?? []}
+        fontSizeDefault={providers?.fontSize ?? 20}
         labels={{
           surahOf: t('surahOf'),
           reciterLabel: t('reciterLabel'),
@@ -218,6 +226,42 @@ export default async function SurahPage({
           scriptUthmani: t('scriptUthmani'),
           scriptIndopak: t('scriptIndopak'),
           scriptTypefaceNote: t('scriptTypefaceNote'),
+          displayFontLabel: t('displayFontLabel'),
+          fontSystem: t('fontSystem'),
+          fontAmiri: t('fontAmiri'),
+          fontScheherazade: t('fontScheherazade'),
+          fontSizeLabel: t('fontSizeLabel'),
+          displayThemeLabel: t('displayThemeLabel'),
+          themeDark: t('themeDark'),
+          themeSepia: t('themeSepia'),
+          themeLight: t('themeLight'),
+          themeGreen: t('themeGreen'),
+          fullscreenLabel: t('fullscreenLabel'),
+          exitFullscreenLabel: t('exitFullscreenLabel'),
+          autoScrollLabel: t('autoScrollLabel'),
+          autoScrollSpeedLabel: t('autoScrollSpeedLabel'),
+          repeatLabel: t('repeatLabel'),
+          repeatOff: t('repeatOff'),
+          repeatAyah: t('repeatAyah'),
+          repeatSurah: t('repeatSurah'),
+          translationEditionLabel: t('translationEditionLabel'),
+          tafsirEditionLabel: t('tafsirEditionLabel'),
+          bookmarksLabel: t('bookmarksLabel'),
+          bookmarksTitle: t('bookmarksTitle'),
+          bookmarkAyah: t('bookmarkAyah'),
+          bookmarkPage: t('bookmarkPage'),
+          bookmarkRemove: t('bookmarkRemove'),
+          bookmarksEmpty: t('bookmarksEmpty'),
+          bookmarkFavorite: t('bookmarkFavorite'),
+          bookmarkUnfavorite: t('bookmarkUnfavorite'),
+          bookmarkRemoveBtn: t('bookmarkRemoveBtn'),
+          resumeReading: t('resumeReading'),
+          lastReadLabel: t('lastReadLabel'),
+          listFilterLabel: t('listFilterLabel'),
+          listFilterPlaceholder: t('listFilterPlaceholder'),
+          listSortLabel: t('listSortLabel'),
+          listSortAsc: t('listSortAsc'),
+          listSortDesc: t('listSortDesc'),
           playAyah: t('playAyah'),
           playing: t('playing'),
           translationLabel: t('translationLabel'),

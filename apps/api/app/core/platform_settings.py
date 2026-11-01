@@ -93,6 +93,8 @@ SETTING_DEFS: dict[str, dict] = {
     "quran.player_show_photo": {"type": "json", "sensitive": False, "label": "نمایش عکس قاری در پخش‌کننده"},
     # --- اصلاحیهٔ صفحهٔ قرآن: سبک موج پخش‌کننده (قابل‌تغییر از CRM) ---
     "quran.waveform_style": {"type": "json", "sensitive": False, "label": "سبک موج پخش‌کنندهٔ قرآن"},
+    "quran.display_font": {"type": "json", "sensitive": False, "label": "فونت پیش‌فرض نمایش قرآن"},
+    "quran.display_theme": {"type": "json", "sensitive": False, "label": "تم رنگی پیش‌فرض نمایش قرآن"},
     "munajat.enabled": {"type": "json", "sensitive": False, "label": "فعال‌بودن مناجات شبانه"},
     "munajat.window": {"type": "json", "sensitive": False, "label": "پنجرهٔ زمانی مناجات"},
     "adhan.defaults": {"type": "json", "sensitive": False, "label": "پیش‌فرض محاسبهٔ اذان (روش + مذهب)"},
@@ -599,6 +601,14 @@ def _validate_json_setting(key: str, value: Any) -> Any:
         return _validate_flag(key, value)
     if key == "quran.waveform_style":
         return _validate_waveform_style(value)
+    if key == "quran.display_font":
+        if value not in ("system", "amiri", "scheherazade"):
+            raise ValueError("quran.display_font must be one of system|amiri|scheherazade")
+        return value
+    if key == "quran.display_theme":
+        if value not in ("dark", "sepia", "light", "green"):
+            raise ValueError("quran.display_theme must be one of dark|sepia|light|green")
+        return value
     if key == "munajat.window":
         return _validate_munajat_window(value)
     if key == "adhan.defaults":

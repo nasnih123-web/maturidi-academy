@@ -36,6 +36,10 @@ _PUBLIC_SETTING_KEYS = (
     "quran.player_default_speed",
     "quran.player_show_photo",
     "quran.waveform_style",
+    # Round 4 reader display defaults (same non-sensitive class).
+    "quran.display_font",
+    "quran.display_theme",
+    "quran.playback",
 )
 
 _PUBLIC_DEFAULTS: dict[str, object] = {
@@ -54,6 +58,9 @@ _PUBLIC_DEFAULTS: dict[str, object] = {
     "quran.player_default_speed": 1,
     "quran.player_show_photo": True,
     "quran.waveform_style": "bars",
+    "quran.display_font": "system",
+    "quran.display_theme": "dark",
+    "quran.playback": {"autoplay": False, "repeat": "off"},
 }
 
 

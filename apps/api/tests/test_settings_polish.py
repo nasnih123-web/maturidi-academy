@@ -406,6 +406,10 @@ async def test_settings_public_returns_whitelisted_keys(tc, db_session):
         "quran.player_default_speed",
         "quran.player_show_photo",
         "quran.waveform_style",
+        # Round 4 reader display defaults (public by design, same class).
+        "quran.display_font",
+        "quran.display_theme",
+        "quran.playback",
     }
     assert set(body["settings"].keys()) == expected
     # هیچ کلید حساسی لو نرفته

@@ -52,6 +52,12 @@ interface AyahAudioPlan {
   surahUrl: string | null;
 }
 
+export type RepeatMode = 'off' | 'ayah' | 'surah';
+
+function parseRepeat(v: unknown): RepeatMode {
+  return v === 'ayah' || v === 'surah' ? v : 'off';
+}
+
 export function useQuranPlayback(
   ayahs: Ayah[],
   opts: {
@@ -60,6 +66,8 @@ export function useQuranPlayback(
     /** Player default speed (CRM quran.player_default_speed), 0.5–2. */
     initialRate?: number;
     initialVolume?: number;
+    /** Player repeat default (CRM quran.playback.repeat). */
+    initialRepeat?: RepeatMode;
   } = {},
 ) {
   const [state, setState] = useState<PlaybackState>(INITIAL);
@@ -122,6 +130,18 @@ export function useQuranPlayback(
 
   /** The shared visualizer context, for the waveform component only. */
   const getAudioContext = useCallback((): AudioContext | null => audioCtxRef.current, []);
+  // Repeat mode (round 4): 'ayah' replays the current ayah, 'surah'
+  // restarts the whole reading set at its end. Mirrored in a ref so
+  // the once-wired 'ended' handler always sees the current choice.
+  const [repeatMode, setRepeatModeState] = useState<RepeatMode>(() =>
+    parseRepeat(opts.initialRepeat),
+  );
+  const repeatRef = useRef(repeatMode);
+  const setRepeatMode = useCallback((m: RepeatMode) => {
+    repeatRef.current = m;
+    setRepeatModeState(m);
+  }, []);
+
   // Rate/volume live on the single element; refs mirror state so a
   // lazily created element still picks up the current values.
   const [rate, setRateState] = useState(() => clampRate(opts.initialRate ?? 1));
@@ -225,6 +245,45 @@ export function useQuranPlayback(
     const onPause = () => setState((s) => (s.status === 'ended' ? s : { ...s, status: 'paused' }));
     const onEnded = () => {
       const planNow = planRef.current;
+      const repeat = repeatRef.current;
+      if (repeat === 'ayah') {
+        // Replay the ayah that just ended (per-ayah: same file; single
+        // file: seek back to this ayah's start from durations).
+        if (planNow?.perAyah) {
+          playIndex(indexRef.current);
+        } else if (planNow?.surahUrl) {
+          const el2 = audioRef.current;
+          if (el2) {
+            try {
+              el2.currentTime = prefixSum(planNow.durations, indexRef.current);
+            } catch {
+              /* seeking before metadata is fine to skip */
+            }
+            el2.playbackRate = rateRef.current;
+            void el2.play().catch(() => {});
+          }
+        }
+        return;
+      }
+      if (repeat === 'surah') {
+        // Restart the whole reading set (per-ayah: first ayah; single
+        // file: rewind to 0).
+        if (planNow?.perAyah) {
+          playIndex(0);
+        } else if (planNow?.surahUrl) {
+          const el2 = audioRef.current;
+          if (el2) {
+            try {
+              el2.currentTime = 0;
+            } catch {
+              /* ignore */
+            }
+            el2.playbackRate = rateRef.current;
+            void el2.play().catch(() => {});
+          }
+        }
+        return;
+      }
       if (planNow?.perAyah && indexRef.current < ayahsRef.current.length - 1) {
         // Advance to the next ayah automatically.
         playIndex(indexRef.current + 1);
@@ -428,6 +487,8 @@ export function useQuranPlayback(
     volume,
     setRate,
     setVolume,
+    repeatMode,
+    setRepeatMode,
     surahDuration,
     getAudioElement,
     primeAudio,

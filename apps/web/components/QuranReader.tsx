@@ -25,11 +25,48 @@
  * (client-fetched); all user-visible strings arrive via `labels`.
  * Playback state lives in useQuranPlayback; the player bar carries the
  * waveform INSIDE the progress bar (no separate waveform row).
+ *
+ * Round 4 (Bayan reader parity, shared by all sections' display):
+ * display toolbar (OFL font stack, size, color theme, fullscreen,
+ * auto-scroll) with per-device localStorage persistence over CRM
+ * defaults; range-list filter/sort; local bookmarks + last-read
+ * resume; player repeat (off / ayah / surah); translation/tafsir
+ * edition selectors over the verified AlQuran Cloud catalogs.
+ * Hifz study features and children-specific features are NOT here —
+ * they are the next rounds.
  */
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuranPlayback, type PlaybackStatus } from '@/lib/hooks/useQuranPlayback';
 import type { Ayah, Reciter, SurahDetail, SurahSummary } from '@/lib/quran';
+import {
+  ayahBookmarkId,
+  bookmarkHref,
+  lastReadHref,
+  loadBookmarks,
+  loadLastRead,
+  pageBookmarkId,
+  saveBookmarks,
+  saveLastRead,
+  type Bookmark,
+  type LastRead,
+} from '@/lib/quran-bookmarks';
+import {
+  ARABIC_TAFSIRS,
+  editionOptions,
+  PERSIAN_TRANSLATIONS,
+} from '@/lib/quran-editions';
+import {
+  DEFAULT_DISPLAY_PREFS,
+  displayFontClass,
+  displayThemeClass,
+  loadDisplayPrefs,
+  parseDisplayFont,
+  parseDisplayFontSize,
+  parseDisplayTheme,
+  saveDisplayPrefs,
+  type DisplayPrefs,
+} from '@/lib/quran-display';
 import { fawasilFor, type FawasilSchool } from '@/lib/quran-fawasil';
 import {
   isSajda,
@@ -57,7 +94,7 @@ import {
 import { loadBoundaries } from '@/lib/quran-boundaries-loader';
 import { loadMushafLines, type MushafExactLine } from '@/lib/quran-mushaf-lines';
 import { fetchSurahClient } from '@/lib/quran-range-client';
-import { toLatinDigits } from '@/lib/quran-search';
+import { normalizeQuranText, toLatinDigits } from '@/lib/quran-search';
 import type { QuranSettings } from '@/lib/settings';
 import { AyahCard, type AyahCardLabels } from './AyahCard';
 import { AyahNotes, type AyahNotesLabels } from './AyahNotes';
@@ -147,6 +184,47 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   scriptIndopak: string;
   /** Plain note: the switch changes the typeface, not the text. */
   scriptTypefaceNote: string;
+  /* ---- Round 4: display toolbar ---- */
+  displayFontLabel: string;
+  fontSystem: string;
+  fontAmiri: string;
+  fontScheherazade: string;
+  fontSizeLabel: string;
+  displayThemeLabel: string;
+  themeDark: string;
+  themeSepia: string;
+  themeLight: string;
+  themeGreen: string;
+  fullscreenLabel: string;
+  exitFullscreenLabel: string;
+  autoScrollLabel: string;
+  autoScrollSpeedLabel: string;
+  /* ---- Round 4: player repeat ---- */
+  repeatLabel: string;
+  repeatOff: string;
+  repeatAyah: string;
+  repeatSurah: string;
+  /* ---- Round 4: edition selectors ---- */
+  translationEditionLabel: string;
+  tafsirEditionLabel: string;
+  /* ---- Round 4: bookmarks + history ---- */
+  bookmarksLabel: string;
+  bookmarksTitle: string;
+  bookmarkAyah: string;
+  bookmarkPage: string;
+  bookmarkRemove: string;
+  bookmarksEmpty: string;
+  bookmarkFavorite: string;
+  bookmarkUnfavorite: string;
+  bookmarkRemoveBtn: string;
+  resumeReading: string;
+  lastReadLabel: string;
+  /* ---- Round 4: range-list filter/sort ---- */
+  listFilterLabel: string;
+  listFilterPlaceholder: string;
+  listSortLabel: string;
+  listSortAsc: string;
+  listSortDesc: string;
 }
 
 type QuranSection = 'general' | 'hifz' | 'children';
@@ -233,6 +311,9 @@ export function QuranReader({
   surahList,
   labels,
   searchLabels,
+  translationEditions,
+  tafsirEditions,
+  fontSizeDefault,
 }: {
   locale: string;
   surah: SurahDetail;
@@ -251,6 +332,12 @@ export function QuranReader({
   surahList: SurahSummary[];
   labels: QuranReaderLabels;
   searchLabels: QuranSearchLabels;
+  /** Full CRM-enabled translation list (selector options, CRM order). */
+  translationEditions?: string[];
+  /** Full CRM-enabled tafsir list (selector options, CRM order). */
+  tafsirEditions?: string[];
+  /** CRM quran.font_size (providers) — display size default. */
+  fontSizeDefault?: number;
 }) {
   const section: QuranSection = initialTab ?? 'general';
 
@@ -279,6 +366,9 @@ export function QuranReader({
       surahList={surahList}
       labels={labels}
       searchLabels={searchLabels}
+      translationEditions={translationEditions}
+      tafsirEditions={tafsirEditions}
+      fontSizeDefault={fontSizeDefault}
     />
   );
 }
@@ -295,6 +385,9 @@ function QuranUmumReader({
   surahList,
   labels,
   searchLabels,
+  translationEditions,
+  tafsirEditions,
+  fontSizeDefault,
 }: {
   locale: string;
   surah: SurahDetail;
@@ -307,6 +400,9 @@ function QuranUmumReader({
   surahList: SurahSummary[];
   labels: QuranReaderLabels;
   searchLabels: QuranSearchLabels;
+  translationEditions?: string[];
+  tafsirEditions?: string[];
+  fontSizeDefault?: number;
 }) {
   const [reciterId, setReciterId] = useState<string>(settings.defaultReciter ?? reciters[0]?.id ?? '');
   const [showTranslation, setShowTranslation] = useState(settings.showTranslation);
@@ -315,6 +411,89 @@ function QuranUmumReader({
   const [script, setScript] = useState<ScriptId>('uthmani');
   const scriptClass = script === 'indopak' ? 'quran-script-indopak' : 'quran-script-uthmani';
 
+  // ---- Round 4: display prefs (CRM defaults, per-device localStorage
+  // overrides win when present; the toolbar works standalone either
+  // way). The initializer reads storage synchronously so the first
+  // paint already uses the reader's own choice (SSR: window absent →
+  // CRM defaults, then the mount effect applies storage).
+  const [prefs, setPrefs] = useState<DisplayPrefs>(() => {
+    const crm: DisplayPrefs = {
+      ...DEFAULT_DISPLAY_PREFS,
+      font: parseDisplayFont(settings.displayFont),
+      fontSize: parseDisplayFontSize(
+        fontSizeDefault ?? DEFAULT_DISPLAY_PREFS.fontSize,
+        DEFAULT_DISPLAY_PREFS.fontSize,
+      ),
+      theme: parseDisplayTheme(settings.displayTheme),
+      repeat:
+        settings.repeatDefault === 'ayah' || settings.repeatDefault === 'surah'
+          ? settings.repeatDefault
+          : 'off',
+    };
+    if (typeof window === 'undefined') return crm;
+    return { ...crm, ...(loadDisplayPrefs() ?? {}) };
+  });
+  const updatePrefs = (patch: Partial<DisplayPrefs>): void => {
+    setPrefs((prev) => {
+      const next = { ...prev, ...patch };
+      saveDisplayPrefs(next);
+      return next;
+    });
+  };
+  // Fullscreen state (reader root element).
+  const readerRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+  const toggleFullscreen = (): void => {
+    try {
+      if (document.fullscreenElement) void document.exitFullscreen();
+      else void readerRef.current?.requestFullscreen();
+    } catch {
+      /* fullscreen unavailable (iframe/permissions): toolbar still works */
+    }
+  };
+
+  // ---- Round 4: bookmarks + last-read (localStorage only). ----
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [bookmarksOpen, setBookmarksOpen] = useState(false);
+  const [lastRead, setLastRead] = useState<LastRead | null>(null);
+  useEffect(() => {
+    setBookmarks(loadBookmarks());
+    setLastRead(loadLastRead());
+  }, []);
+  const bookmarkIds = useMemo(() => new Set(bookmarks.map((b) => b.id)), [bookmarks]);
+  const toggleBookmark = (b: Bookmark): void => {
+    setBookmarks((prev) => {
+      const next = prev.some((x) => x.id === b.id)
+        ? prev.filter((x) => x.id !== b.id)
+        : [...prev, b];
+      saveBookmarks(next);
+      return loadBookmarks();
+    });
+  };
+  const setFavorite = (id: string, favorite: boolean): void => {
+    setBookmarks((prev) => {
+      const next = prev.map((x) => (x.id === id ? { ...x, favorite } : x));
+      saveBookmarks(next);
+      return loadBookmarks();
+    });
+  };
+  const removeBookmark = (id: string): void => {
+    setBookmarks((prev) => {
+      const next = prev.filter((x) => x.id !== id);
+      saveBookmarks(next);
+      return loadBookmarks();
+    });
+  };
+
+  // ---- Round 4: range-list filter/sort (reset per range kind). ----
+  const [listQuery, setListQuery] = useState('');
+  const [listSort, setListSort] = useState<'asc' | 'desc'>('asc');
+
   // View mode + range target. Initial mode is سوره. Range modes with a
   // null target show their LIST; a target shows that range's ayahs.
   const [viewMode, setViewMode] = useState<QuranViewMode>(initialView ?? 'surah');
@@ -322,6 +501,12 @@ function QuranUmumReader({
   const [focusedDisplayIdx, setFocusedDisplayIdx] = useState(0);
   const isRangeMode = viewMode === 'juz' || viewMode === 'hizb' || viewMode === 'page';
   const rangeKind: RangeKind | null = isRangeMode ? viewMode : null;
+
+  // Round 4: a new range list starts unfiltered, ascending.
+  useEffect(() => {
+    setListQuery('');
+    setListSort('asc');
+  }, [rangeKind]);
 
   // Mode-specific selections reset when the surah CHANGES (prev/next
   // navigation reuses this component instance). The mount run must NOT
@@ -527,6 +712,8 @@ function QuranUmumReader({
     volume,
     setRate,
     setVolume,
+    repeatMode,
+    setRepeatMode,
     surahDuration,
     getAudioElement,
     getAudioContext,
@@ -534,6 +721,7 @@ function QuranUmumReader({
   } = useQuranPlayback(playAyahs, {
     surahAudioUrl: isRangeMode ? null : surah.audioUrl,
     initialRate: settings.playerDefaultSpeed,
+    initialRepeat: prefs.repeat,
   });
 
   // A new reading set stops the old playback (the hook's element is
@@ -565,6 +753,18 @@ function QuranUmumReader({
 
   const statusKey = STATUS_KEY[state.status];
   const playing = statusKey === 'playing' || statusKey === 'loading';
+
+  // Round 4 auto-scroll: while playing, advance the window slowly
+  // (60/120/180 px per second at speed 1/2/3). Pausing stops it;
+  // reaching the bottom stops naturally (scrollY clamps).
+  useEffect(() => {
+    if (!prefs.autoScroll || !playing) return;
+    const pxPerTick = 12 * prefs.autoScrollSpeed;
+    const id = window.setInterval(() => {
+      window.scrollBy(0, pxPerTick);
+    }, 200);
+    return () => window.clearInterval(id);
+  }, [prefs.autoScroll, prefs.autoScrollSpeed, playing]);
 
   // Auto-follow playback in surah/ayah modes: keep the playing card in
   // view. 'nearest' scrolls only when the card is out of view, so
@@ -627,6 +827,22 @@ function QuranUmumReader({
 
   const clampedFocused =
     visible.length === 0 ? 0 : Math.min(Math.max(0, focusedDisplayIdx), visible.length - 1);
+
+  // Round 4 last-read: remember what the reader is looking at (surah
+  // + view + target + focused ayah) so the menu page can offer a
+  // resume link. Local only; list states save with a null target.
+  useEffect(() => {
+    const focused = visible.length > 0 ? visible[clampedFocused] : null;
+    const lr: LastRead = {
+      surah: surah.number,
+      view: viewMode,
+      target: isRangeMode ? rangeTarget : null,
+      ayah: viewMode === 'ayah' && focused ? focused.standardNumber : null,
+      savedAt: Date.now(),
+    };
+    saveLastRead(lr);
+    setLastRead(lr);
+  }, [surah.number, viewMode, rangeTarget, clampedFocused, visible, isRangeMode]);
 
   // While playing, the ayah view tracks the playing ayah. Paused
   // navigation is never yanked (playing is false then).
@@ -783,6 +999,26 @@ function QuranUmumReader({
 
   // Range list rows (boundaries loaded lazily on first range view).
   const listEntries = boundaries && rangeKind ? boundaries[rangeKind] : null;
+  // Round 4 list filter/sort: digits match the range number (any
+  // digit script); otherwise the query matches the start surah's
+  // Arabic name after the same normalization as search. Sort is by
+  // range number only (name sort is meaningless for page lists).
+  const filteredListEntries = useMemo(() => {
+    if (!listEntries) return null;
+    const q = listQuery.trim();
+    let rows = listEntries;
+    if (q) {
+      const digits = toLatinDigits(q);
+      if (/^[0-9]+$/.test(digits)) {
+        const n = Number(digits);
+        rows = rows.filter((e) => e.n === n);
+      } else {
+        const nq = normalizeQuranText(q);
+        rows = rows.filter((e) => normalizeQuranText(surahNameAr(e.surah)).includes(nq));
+      }
+    }
+    return listSort === 'desc' ? [...rows].reverse() : rows;
+  }, [listEntries, listQuery, listSort, surahList]);
   const listTitle =
     rangeKind === 'juz'
       ? labels.juzListTitle
@@ -860,8 +1096,34 @@ function QuranUmumReader({
 
 
 
+  // Round 4: edition navigation (same reload pattern as the reciter
+  // select — the page already honors ?translation= / ?tafsir=).
+  const navigateWithParam = (param: string, value: string | null): void => {
+    const url = new URL(window.location.href);
+    if (value) url.searchParams.set(param, value);
+    else url.searchParams.delete(param);
+    window.location.href = url.toString();
+  };
+  const translationOptions = editionOptions(
+    PERSIAN_TRANSLATIONS,
+    [
+      ...(translationEditions ?? []),
+      ...(settings.defaultTranslation ? [settings.defaultTranslation] : []),
+    ],
+    locale,
+  );
+  const tafsirOptions = editionOptions(
+    ARABIC_TAFSIRS,
+    [...(tafsirEditions ?? []), ...(settings.defaultTafsir ? [settings.defaultTafsir] : [])],
+    locale,
+  );
+
   return (
-    <div className={`quran-reader ${scriptClass}`}>
+    <div
+      ref={readerRef}
+      className={`quran-reader ${scriptClass} ${displayFontClass(prefs.font)} ${displayThemeClass(prefs.theme)}`}
+      style={{ '--quran-ayah-size': `${prefs.fontSize}px` } as React.CSSProperties}
+    >
       <header className="quran-surah-head">
         <div>
           {isRangeMode ? (
@@ -973,6 +1235,165 @@ function QuranUmumReader({
           <span className="quran-script-note">{labels.scriptTypefaceNote}</span>
         </label>
       </div>
+
+      {/* Round 4 display toolbar: font / size / theme / fullscreen /
+          auto-scroll — per-device localStorage over CRM defaults. */}
+      <div className="quran-toolbar quran-display-toolbar" role="toolbar">
+        <label className="quran-reciter">
+          <span>{labels.displayFontLabel}</span>
+          <select
+            value={prefs.font}
+            onChange={(e) => updatePrefs({ font: e.target.value as DisplayPrefs['font'] })}
+          >
+            <option value="system">{labels.fontSystem}</option>
+            <option value="amiri">{labels.fontAmiri}</option>
+            <option value="scheherazade">{labels.fontScheherazade}</option>
+          </select>
+        </label>
+        <label className="quran-reciter">
+          <span>
+            {labels.fontSizeLabel} ({prefs.fontSize}px)
+          </span>
+          <input
+            type="range"
+            min={12}
+            max={40}
+            step={1}
+            value={prefs.fontSize}
+            onChange={(e) => updatePrefs({ fontSize: Number(e.target.value) })}
+            aria-label={labels.fontSizeLabel}
+          />
+        </label>
+        <label className="quran-reciter">
+          <span>{labels.displayThemeLabel}</span>
+          <select
+            value={prefs.theme}
+            onChange={(e) => updatePrefs({ theme: e.target.value as DisplayPrefs['theme'] })}
+          >
+            <option value="dark">{labels.themeDark}</option>
+            <option value="sepia">{labels.themeSepia}</option>
+            <option value="light">{labels.themeLight}</option>
+            <option value="green">{labels.themeGreen}</option>
+          </select>
+        </label>
+        <button type="button" className="quran-nav-btn" onClick={toggleFullscreen}>
+          {isFullscreen ? labels.exitFullscreenLabel : labels.fullscreenLabel}
+        </button>
+        <label className="quran-toggle">
+          <input
+            type="checkbox"
+            checked={prefs.autoScroll}
+            onChange={(e) => updatePrefs({ autoScroll: e.target.checked })}
+          />
+          {labels.autoScrollLabel}
+        </label>
+        {prefs.autoScroll ? (
+          <label className="quran-reciter">
+            <span>{labels.autoScrollSpeedLabel}</span>
+            <select
+              value={prefs.autoScrollSpeed}
+              onChange={(e) => updatePrefs({ autoScrollSpeed: Number(e.target.value) })}
+            >
+              <option value={1}>1×</option>
+              <option value={2}>2×</option>
+              <option value={3}>3×</option>
+            </select>
+          </label>
+        ) : null}
+        <button
+          type="button"
+          className="quran-nav-btn"
+          onClick={() => setBookmarksOpen((v) => !v)}
+          aria-expanded={bookmarksOpen}
+        >
+          {labels.bookmarksLabel}
+          {bookmarks.length > 0 ? ` (${bookmarks.length})` : ''}
+        </button>
+      </div>
+
+      {/* Round 4 edition selectors: CRM-enabled lists first, then the
+          verified AlQuran Cloud catalogs. Texts load live through the
+          existing provider mechanism — nothing is bundled here. */}
+      <div className="quran-toolbar quran-edition-toolbar" role="toolbar">
+        <label className="quran-reciter">
+          <span>{labels.translationEditionLabel}</span>
+          <select
+            value={settings.defaultTranslation ?? ''}
+            onChange={(e) => navigateWithParam('translation', e.target.value || null)}
+          >
+            {translationOptions.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          {settings.defaultTranslation ? (
+            <code className="quran-edition-id" dir="ltr">
+              {settings.defaultTranslation}
+            </code>
+          ) : null}
+        </label>
+        <label className="quran-reciter">
+          <span>{labels.tafsirEditionLabel}</span>
+          <select
+            value={settings.defaultTafsir ?? ''}
+            onChange={(e) => navigateWithParam('tafsir', e.target.value || null)}
+          >
+            {tafsirOptions.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          {settings.defaultTafsir ? (
+            <code className="quran-edition-id" dir="ltr">
+              {settings.defaultTafsir}
+            </code>
+          ) : null}
+        </label>
+      </div>
+
+      {/* Round 4 bookmarks panel (local only) + last-read resume. */}
+      {bookmarksOpen ? (
+        <section className="quran-bookmarks" aria-label={labels.bookmarksTitle}>
+          <h2>{labels.bookmarksTitle}</h2>
+          {lastRead ? (
+            <p className="quran-resume">
+              <span>{labels.lastReadLabel}: </span>
+              <Link href={lastReadHref(lastRead, locale)}>{labels.resumeReading}</Link>
+            </p>
+          ) : null}
+          {bookmarks.length === 0 ? (
+            <p className="quran-mode-note">{labels.bookmarksEmpty}</p>
+          ) : (
+            <ul className="quran-bookmark-list">
+              {bookmarks.map((b) => (
+                <li key={b.id} className="quran-bookmark-row">
+                  <Link href={bookmarkHref(b, locale)} lang="ar" dir="rtl">
+                    {b.label}
+                  </Link>
+                  <button
+                    type="button"
+                    className="quran-bookmark-star"
+                    onClick={() => setFavorite(b.id, !b.favorite)}
+                    aria-label={b.favorite ? labels.bookmarkUnfavorite : labels.bookmarkFavorite}
+                    title={b.favorite ? labels.bookmarkUnfavorite : labels.bookmarkFavorite}
+                  >
+                    {b.favorite ? '★' : '☆'}
+                  </button>
+                  <button
+                    type="button"
+                    className="quran-bookmark-remove"
+                    onClick={() => removeBookmark(b.id)}
+                  >
+                    {labels.bookmarkRemoveBtn}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
 
       <QuranSearchBox locale={locale} surahs={surahList} labels={searchLabels} />
 
@@ -1098,6 +1519,22 @@ function QuranUmumReader({
                     ))}
                   </select>
                 </label>
+                <label className="quran-speed">
+                  <span>{labels.repeatLabel}</span>
+                  <select
+                    value={repeatMode}
+                    onChange={(e) => {
+                      const m = e.target.value as 'off' | 'ayah' | 'surah';
+                      setRepeatMode(m);
+                      updatePrefs({ repeat: m });
+                    }}
+                    aria-label={labels.repeatLabel}
+                  >
+                    <option value="off">{labels.repeatOff}</option>
+                    <option value="ayah">{labels.repeatAyah}</option>
+                    <option value="surah">{labels.repeatSurah}</option>
+                  </select>
+                </label>
                 <label className="quran-volume">
                   <span>{labels.volumeLabel}</span>
                   <input
@@ -1177,8 +1614,35 @@ function QuranUmumReader({
           {!listEntries ? (
             <p className="quran-mode-note">{labels.rangeLoading}</p>
           ) : (
+            <>
+              <div className="quran-list-tools" role="toolbar">
+                <label>
+                  <span>{labels.listFilterLabel}</span>
+                  <input
+                    type="search"
+                    value={listQuery}
+                    onChange={(e) => setListQuery(e.target.value)}
+                    placeholder={labels.listFilterPlaceholder}
+                    aria-label={labels.listFilterLabel}
+                  />
+                </label>
+                <label>
+                  <span>{labels.listSortLabel}</span>
+                  <select
+                    value={listSort}
+                    onChange={(e) => setListSort(e.target.value as 'asc' | 'desc')}
+                    aria-label={labels.listSortLabel}
+                  >
+                    <option value="asc">{labels.listSortAsc}</option>
+                    <option value="desc">{labels.listSortDesc}</option>
+                  </select>
+                </label>
+              </div>
+              {filteredListEntries && filteredListEntries.length === 0 ? (
+                <p className="quran-mode-note">{searchLabels.noResults}</p>
+              ) : null}
             <ol className="quran-range-list">
-              {listEntries.map((entry) => (
+              {(filteredListEntries ?? []).map((entry) => (
                 <li key={entry.n}>
                   <button
                     type="button"
@@ -1198,6 +1662,7 @@ function QuranUmumReader({
                 </li>
               ))}
             </ol>
+            </>
           )}
         </>
       ) : null}
@@ -1212,6 +1677,36 @@ function QuranUmumReader({
             <span>
               {rangeTarget !== null ? rangeNavLabel.replace('%n%', String(rangeTarget)) : ''}
             </span>
+            {displayPage !== null ? (
+              <button
+                type="button"
+                className="quran-bookmark-btn"
+                onClick={() =>
+                  toggleBookmark({
+                    id: pageBookmarkId(displayPage),
+                    kind: 'page',
+                    surah: surah.number,
+                    ayah: null,
+                    page: displayPage,
+                    label: labels.pageCurrent.replace('%n%', String(displayPage)),
+                    favorite: false,
+                    createdAt: Date.now(),
+                  })
+                }
+                aria-label={
+                  bookmarkIds.has(pageBookmarkId(displayPage))
+                    ? labels.bookmarkRemove
+                    : labels.bookmarkPage
+                }
+                title={
+                  bookmarkIds.has(pageBookmarkId(displayPage))
+                    ? labels.bookmarkRemove
+                    : labels.bookmarkPage
+                }
+              >
+                {bookmarkIds.has(pageBookmarkId(displayPage)) ? '★' : '☆'}
+              </button>
+            ) : null}
             <span className="quran-range-nav-steps">
               <button
                 type="button"
@@ -1330,17 +1825,49 @@ function QuranUmumReader({
                           }
                           idPrefix={`r${group.surahNumber}-`}
                           notes={
-                            <AyahNotes
-                              surah={group.surahNumber}
-                              ayahNumber={d.standardNumber}
-                              locale={locale}
-                              labels={labels}
-                              onPlayAyah={() => {
-                                const idx = playMap.get(key);
-                                if (idx !== undefined) playIndex(idx);
-                              }}
-                              canPlay={Boolean(d.ayah.audioUrl)}
-                            />
+                            <>
+                              <AyahNotes
+                                surah={group.surahNumber}
+                                ayahNumber={d.standardNumber}
+                                locale={locale}
+                                labels={labels}
+                                onPlayAyah={() => {
+                                  const idx = playMap.get(key);
+                                  if (idx !== undefined) playIndex(idx);
+                                }}
+                                canPlay={Boolean(d.ayah.audioUrl)}
+                              />
+                              <button
+                                type="button"
+                                className="quran-bookmark-btn"
+                                onClick={() =>
+                                  toggleBookmark({
+                                    id: ayahBookmarkId(group.surahNumber, d.standardNumber),
+                                    kind: 'ayah',
+                                    surah: group.surahNumber,
+                                    ayah: d.standardNumber,
+                                    page: null,
+                                    label: `${group.surahNameAr} · ${d.standardNumber}`,
+                                    favorite: false,
+                                    createdAt: Date.now(),
+                                  })
+                                }
+                                aria-label={
+                                  bookmarkIds.has(ayahBookmarkId(group.surahNumber, d.standardNumber))
+                                    ? labels.bookmarkRemove
+                                    : labels.bookmarkAyah
+                                }
+                                title={
+                                  bookmarkIds.has(ayahBookmarkId(group.surahNumber, d.standardNumber))
+                                    ? labels.bookmarkRemove
+                                    : labels.bookmarkAyah
+                                }
+                              >
+                                {bookmarkIds.has(ayahBookmarkId(group.surahNumber, d.standardNumber))
+                                  ? '★'
+                                  : '☆'}
+                              </button>
+                            </>
                           }
                         />
                       </div>
@@ -1371,6 +1898,36 @@ function QuranUmumReader({
                   .replace('%current%', String(visible[clampedFocused].displayNumber))
                   .replace('%total%', String(visible.length))}
               </span>
+              <button
+                type="button"
+                className="quran-bookmark-btn"
+                onClick={() =>
+                  toggleBookmark({
+                    id: ayahBookmarkId(surah.number, visible[clampedFocused].standardNumber),
+                    kind: 'ayah',
+                    surah: surah.number,
+                    ayah: visible[clampedFocused].standardNumber,
+                    page: null,
+                    label: `${surah.nameAr} · ${visible[clampedFocused].standardNumber}`,
+                    favorite: false,
+                    createdAt: Date.now(),
+                  })
+                }
+                aria-label={
+                  bookmarkIds.has(ayahBookmarkId(surah.number, visible[clampedFocused].standardNumber))
+                    ? labels.bookmarkRemove
+                    : labels.bookmarkAyah
+                }
+                title={
+                  bookmarkIds.has(ayahBookmarkId(surah.number, visible[clampedFocused].standardNumber))
+                    ? labels.bookmarkRemove
+                    : labels.bookmarkAyah
+                }
+              >
+                {bookmarkIds.has(ayahBookmarkId(surah.number, visible[clampedFocused].standardNumber))
+                  ? '★'
+                  : '☆'}
+              </button>
               <button
                 type="button"
                 onClick={() => setFocusedDisplayIdx(clampedFocused + 1)}
@@ -1459,14 +2016,44 @@ function QuranUmumReader({
                   ayahHref={ayahLink(surah.number, d.standardNumber)}
                   sajdaTitle={isSajda(surah.number, d.standardNumber, madhhab) ? sajdaTitle : null}
                   notes={
-                    <AyahNotes
-                      surah={surah.number}
-                      ayahNumber={d.standardNumber}
-                      locale={locale}
-                      labels={labels}
-                      onPlayAyah={() => playIndex(d.standardIndex)}
-                      canPlay={Boolean(d.ayah.audioUrl)}
-                    />
+                    <>
+                      <AyahNotes
+                        surah={surah.number}
+                        ayahNumber={d.standardNumber}
+                        locale={locale}
+                        labels={labels}
+                        onPlayAyah={() => playIndex(d.standardIndex)}
+                        canPlay={Boolean(d.ayah.audioUrl)}
+                      />
+                      <button
+                        type="button"
+                        className="quran-bookmark-btn"
+                        onClick={() =>
+                          toggleBookmark({
+                            id: ayahBookmarkId(surah.number, d.standardNumber),
+                            kind: 'ayah',
+                            surah: surah.number,
+                            ayah: d.standardNumber,
+                            page: null,
+                            label: `${surah.nameAr} · ${d.standardNumber}`,
+                            favorite: false,
+                            createdAt: Date.now(),
+                          })
+                        }
+                        aria-label={
+                          bookmarkIds.has(ayahBookmarkId(surah.number, d.standardNumber))
+                            ? labels.bookmarkRemove
+                            : labels.bookmarkAyah
+                        }
+                        title={
+                          bookmarkIds.has(ayahBookmarkId(surah.number, d.standardNumber))
+                            ? labels.bookmarkRemove
+                            : labels.bookmarkAyah
+                        }
+                      >
+                        {bookmarkIds.has(ayahBookmarkId(surah.number, d.standardNumber)) ? '★' : '☆'}
+                      </button>
+                    </>
                   }
                 />
               ))}
