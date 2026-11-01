@@ -5,12 +5,15 @@
  * and no human names, so the player used to print the raw id. This map
  * turns an id into a clean name in the page locale (fa/ar/en).
  *
- * Source (fetched 2026-10-31): AlQuran Cloud audio editions catalog,
- * GET /v1/edition/format/audio. Only verse-by-verse and translation
- * audio editions are listed here — those are the editions the reader's
- * per-ayah player can actually play. Surah-by-surah-only editions are
- * deliberately NOT listed: the reader cannot play them per ayah, and
- * inventing entries for them would be worse than the raw-id fallback.
+ * Source (fetched 2026-10-31, re-verified 2026-11-01): AlQuran Cloud
+ * audio editions catalog, GET /v1/edition/format/audio. Only
+ * verse-by-verse and translation audio editions are listed here —
+ * those are the editions the reader's per-ayah player can actually
+ * play. Surah-by-surah-only editions are deliberately NOT listed: the
+ * reader cannot play them per ayah, and inventing entries for them
+ * would be worse than the raw-id fallback. Re-verification found
+ * exactly ONE previously unmapped playable edition (uz.sodik-audio,
+ * the last row of the live list); the other 37 were already mapped.
  *
  * Values are the catalog's own `name` (Arabic script, used for both fa
  * and ar — Persian readers read Arabic-script names as-is) and
@@ -116,6 +119,10 @@ const NAMES: Record<string, ReciterNames> = {
   'ar.muhammadayyoub-2': { fa: 'محمد أيوب', ar: 'محمد أيوب', en: 'Muhammad Ayyoub' },
   'ar.muhammadjibreel-2': { fa: 'محمد جبريل', ar: 'محمد جبريل', en: 'Muhammad Jibreel' },
   'tr.vakfi-audio': { fa: 'Diyanet Vakfı', ar: 'Diyanet Vakfı', en: 'Diyanet Vakfı' },
+  // Round 4 addition (live catalog 2026-11-01): the only playable
+  // per-ayah edition the old map missed. Name/englishName verbatim
+  // from the catalog (englishName trailing space trimmed).
+  'uz.sodik-audio': { fa: 'Мухаммад Содик', ar: 'Мухаммад Содик', en: 'Muhammad Sodik Muhammad Yusuf' },
 };
 
 /**

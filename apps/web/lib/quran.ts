@@ -112,6 +112,12 @@ export interface QuranDisplayConfig {
   translationEdition: string | null;
   /** Edition id used for the tafsir column. */
   tafsirEdition: string | null;
+  /** Full CRM-enabled translation list (selector options, CRM order). */
+  translationEditions: string[];
+  /** Full CRM-enabled tafsir list (selector options, CRM order). */
+  tafsirEditions: string[];
+  /** CRM playback repeat default (quran.playback.repeat), or null. */
+  repeatDefault: 'off' | 'ayah' | 'surah' | null;
   reciters: Reciter[];
   activeReciter: string | null;
 }
@@ -238,26 +244,26 @@ export interface SurahView {
   ayahs: Ayah[];
 }
 
-/** Fetch one surah with ayahs, translation, tafsir and audio references. */
-export async function getSurah(
+export interface SurahViewBody {
+  surah?: unknown;
+  name_ar?: unknown;
+  name_en?: unknown;
+  ayahs?: unknown;
+}
+
+/**
+ * Pure parser for the surah-view wire shape — shared by the server
+ * getSurah and the browser range fetcher (lib/quran-range-client.ts),
+ * so both parse identically. No I/O here.
+ */
+export function parseSurahView(
+  body: SurahViewBody,
   number: number,
   opts: {
-    translation?: string | null;
-    tafsir?: string | null;
     translationEdition?: string | null;
     tafsirEdition?: string | null;
   } = {},
-): Promise<SurahView> {
-  const params = new URLSearchParams();
-  if (opts.translation) params.set('translation', opts.translation);
-  if (opts.tafsir) params.set('tafsir', opts.tafsir);
-  const qs = params.toString();
-  const body = await getJson<{
-    surah?: unknown;
-    name_ar?: unknown;
-    name_en?: unknown;
-    ayahs?: unknown;
-  }>(`/api/v1/quran/surah/${number}${qs ? `?${qs}` : ''}`);
+): SurahView {
   const str = (v: unknown, fb = ''): string => (typeof v === 'string' ? v : fb);
   const surah: SurahDetail = {
     number: typeof body?.surah === 'number' ? body.surah : number,
@@ -290,6 +296,29 @@ export async function getSurah(
   return { surah, ayahs };
 }
 
+/** Fetch one surah with ayahs, translation, tafsir and audio references. */
+export async function getSurah(
+  number: number,
+  opts: {
+    translation?: string | null;
+    tafsir?: string | null;
+    translationEdition?: string | null;
+    tafsirEdition?: string | null;
+  } = {},
+): Promise<SurahView> {
+  const params = new URLSearchParams();
+  if (opts.translation) params.set('translation', opts.translation);
+  if (opts.tafsir) params.set('tafsir', opts.tafsir);
+  const qs = params.toString();
+  const body = await getJson<SurahViewBody>(
+    `/api/v1/quran/surah/${number}${qs ? `?${qs}` : ''}`,
+  );
+  return parseSurahView(body, number, {
+    translationEdition: opts.translationEdition ?? null,
+    tafsirEdition: opts.tafsirEdition ?? null,
+  });
+}
+
 /**
  * Fetch the providers/display config (CRM-driven: enabled translations,
  * tafsirs, reciters, visibility flags). Non-throwing — null when the
@@ -308,6 +337,11 @@ export async function getQuranProviders(): Promise<QuranDisplayConfig | null> {
   const tafsirs = strList(body.tafsirs);
   const reciterIds = strList(body.reciters);
   const mode = body.highlight_mode === 'word' ? 'word' : 'ayah';
+  const playback =
+    body.playback && typeof body.playback === 'object'
+      ? (body.playback as Record<string, unknown>)
+      : null;
+  const repeatRaw = playback?.repeat;
   return {
     showTranslation: body.show_translation !== false,
     showTafsir: body.show_tafsir === true,
@@ -317,6 +351,10 @@ export async function getQuranProviders(): Promise<QuranDisplayConfig | null> {
     textEdition: typeof body.text_edition === 'string' ? body.text_edition : 'quran-uthmani',
     translationEdition: translations[0] ?? null,
     tafsirEdition: tafsirs[0] ?? null,
+    translationEditions: translations,
+    tafsirEditions: tafsirs,
+    repeatDefault:
+      repeatRaw === 'ayah' || repeatRaw === 'surah' || repeatRaw === 'off' ? repeatRaw : null,
     reciters: reciterIds.map((id) => ({ id, name: id, rewaya: null, locale: null, photoUrl: null })),
     activeReciter: reciterIds[0] ?? null,
   };

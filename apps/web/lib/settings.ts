@@ -7,6 +7,7 @@ import {
   type PlaceTypeDef,
 } from './places-view';
 import { isGlobeMode, type GlobeMode } from './places-globe';
+import { parseWaveformStyle } from './quran-waveform-styles';
 
 export type { Locale, PlaceTypeDef };
 
@@ -96,6 +97,14 @@ export interface QuranSettings {
   playerDefaultSpeed: number;
   /** Whether the player bar shows the reciter photo block (quran.player_show_photo). */
   playerShowPhoto: boolean;
+  /** Player waveform equalizer style id (quran.waveform_style; CRM default 'bars'). */
+  waveformStyle: string;
+  /** Reader typeface default (quran.display_font; CRM default 'system'). */
+  displayFont: string;
+  /** Reader color-theme default (quran.display_theme; CRM default 'dark'). */
+  displayTheme: string;
+  /** Player repeat default (quran.playback.repeat; CRM default 'off'). */
+  repeatDefault: 'off' | 'ayah' | 'surah';
 }
 
 /** Public settings contract for the night-munajat calm theme.
@@ -341,6 +350,10 @@ export const DEFAULT_QURAN: QuranSettings = {
   madhhabDefault: 'hanafi',
   playerDefaultSpeed: 1,
   playerShowPhoto: true,
+  waveformStyle: 'bars',
+  displayFont: 'system',
+  displayTheme: 'dark',
+  repeatDefault: 'off',
 };
 
 export const DEFAULT_MUNAJAT: MunajatSettings = {
@@ -389,6 +402,10 @@ function parseQuranSettings(get: (key: string) => unknown): QuranSettings {
   const reciters = strList(get('quran.reciters'));
   const mode = get('quran.highlight_mode') === 'word' ? 'word' : 'ayah';
   const madhhab = get('quran.madhhab_default');
+  const font = get('quran.display_font');
+  const theme = get('quran.display_theme');
+  const playback = asObject(get('quran.playback'));
+  const repeatRaw = playback?.repeat;
   return {
     defaultTranslation: translations[0] ?? null,
     defaultTafsir: tafsirs[0] ?? null,
@@ -400,6 +417,17 @@ function parseQuranSettings(get: (key: string) => unknown): QuranSettings {
       typeof madhhab === 'string' && QURAN_MADHHABS.includes(madhhab) ? madhhab : 'hanafi',
     playerDefaultSpeed: parsePlayerSpeed(get('quran.player_default_speed'), 1),
     playerShowPhoto: bool(get('quran.player_show_photo'), true),
+    waveformStyle: parseWaveformStyle(get('quran.waveform_style')),
+    displayFont:
+      typeof font === 'string' && ['system', 'amiri', 'scheherazade'].includes(font)
+        ? font
+        : 'system',
+    displayTheme:
+      typeof theme === 'string' && ['dark', 'sepia', 'light', 'green'].includes(theme)
+        ? theme
+        : 'dark',
+    repeatDefault:
+      repeatRaw === 'ayah' || repeatRaw === 'surah' ? repeatRaw : 'off',
   };
 }
 

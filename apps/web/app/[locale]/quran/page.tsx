@@ -15,8 +15,11 @@ export async function generateMetadata({
 }
 
 /**
- * Quran index — server-rendered from GET /api/v1/quran/surahs.
- * Quran text is never hardcoded; on API failure an error state renders.
+ * Quran index — user-locked 2026-11-01: ONLY the three section cards
+ * (عموم / حفاظ / کودکان) plus a search box above them. No surah list,
+ * no surah search tools, no juz shortcuts. The surah list is fetched
+ * only so the search box can match surah names (fa/ar/en); if it fails,
+ * the cards still render and search falls back to ayah/page search.
  */
 export default async function QuranIndexPage({
   params,
@@ -28,22 +31,10 @@ export default async function QuranIndexPage({
   const t = await getTranslations({ locale, namespace: 'quran' });
 
   let surahs: Awaited<ReturnType<typeof getSurahs>> = [];
-  let failed = false;
   try {
     surahs = await getSurahs();
   } catch {
-    failed = true;
-  }
-
-  if (failed) {
-    return (
-      <div className="page-wrap">
-        <h1 className="page-title">{t('title')}</h1>
-        <p className="error-state" role="alert">
-          {t('loadFailed')}
-        </p>
-      </div>
-    );
+    surahs = [];
   }
 
   return (
@@ -53,18 +44,23 @@ export default async function QuranIndexPage({
         surahs={surahs}
         labels={{
           title: t('title'),
-          searchPlaceholder: t('searchPlaceholder'),
-          searchAria: t('searchAria'),
-          juzLabel: t('juzLabel'),
-          allJuz: t('allJuz'),
-          ayahsCount: t('ayahsCount'),
-          noResults: t('noResults'),
-          meccan: t('meccan'),
-          medinan: t('medinan'),
           sectionsTitle: t('sectionsTitle'),
           sectionGeneral: t('tabGeneral'),
           sectionHifz: t('tabHifz'),
           sectionChildren: t('tabChildren'),
+          resumeReading: t('resumeReading'),
+        }}
+        searchLabels={{
+          searchPlaceholder: t('searchPlaceholder'),
+          searchAria: t('searchAria'),
+          searchHint: t('searchHint'),
+          searchLoading: t('searchLoading'),
+          noResults: t('noResults'),
+          searchSurahHeading: t('searchSurahHeading'),
+          searchAyahHeading: t('searchAyahHeading'),
+          searchPageHeading: t('searchPageHeading'),
+          searchPageOutOfRange: t('searchPageOutOfRange'),
+          searchMore: t('searchMore'),
         }}
       />
     </div>

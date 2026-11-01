@@ -1,0 +1,270 @@
+/**
+ * Generate Quran boundary + search data from the provider's full text.
+ *
+ * Source: AlQuran Cloud (https://api.alquran.cloud/v1), edition
+ * `quran-uthmani` — the SAME Arabic text edition the reader displays
+ * (see lib/quran.ts resolveAyah: quran-uthmani first).
+ *
+ * Outputs (checked in, so the site never depends on a live third-party
+ * fetch for navigation or search):
+ * - lib/quran-boundaries.json: first ayah of every juz (30), hizb (120
+ *   half-hizb divisions — Bayan's حزب system, hizb n = hizbQuarter
+ *   2n-1: odd quarters are hizb starts AND hizb middles, so the 120
+ *   half-hizb boundaries are exactly the odd quarters) and Madani page
+ *   (604), each with { n, surah, ayah, text } — the first-ayah text
+ *   preview for the lists.
+ * - lib/quran-search-index.json: one entry per ayah (6236) with
+ *   { g (global number), s (surah), a (ayah), t (NORMALIZED text) }.
+ *   Normalization matches lib/quran-search.ts normalizeQuranText
+ *   (strip diacritics + tatweel, map Persian yeh/kaf to Arabic).
+ *
+ * Nothing here is hand-typed: every boundary is the first ayah carrying
+ * that juz / hizbQuarter / page value in the provider data. The script
+ * FAILS (non-zero exit) when any anchor check fails, so a regenerated
+ * file can never silently drift.
+ *
+ * Usage: node scripts/generate-quran-data.mjs  (from apps/web)
+ * Requires network access to api.alquran.cloud.
+ */
+
+import { writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const LIB = join(HERE, '..', 'lib');
+
+const EDITION_URL = 'https://api.alquran.cloud/v1/edition';
+const QURAN_URL = 'https://api.alquran.cloud/v1/quran/quran-uthmani';
+
+// Normalization, built from code points (ASCII-only source, so no
+// invisible character can ever be mangled again):
+// Persian yeh U+06CC -> Arabic yeh U+064A, Persian kaf U+06A9 ->
+// Arabic kaf U+0643, alif wasla U+0671 -> alef U+0627, alif variants
+// U+0623/U+0625/U+0622 -> alef U+0627, teh marbuta U+0629 -> heh
+// U+0647, yeh-with-hamza U+0626 -> yeh, waw-with-hamza U+0624 -> waw,
+// small waw U+06E5 -> waw, small yeh U+06E6 -> yeh; strip Arabic
+// diacritics U+064B-U+0652 and tatweel U+0640, plus the Quranic
+// annotation marks (maddah/hamza-above U+0653/U+0654 and the
+// U+06D6-U+06ED block except the two miniature letters).
+// This MUST stay identical to normalizeQuranText in lib/quran-search.ts.
+// (Round 4: the variant mappings + annotation strip + waw-alif
+// unification fix Persian-keyboard queries like «بقره» / «ابراهیم»
+// / «يومنون» / «موسی» / «صلاة» missing Uthmani «البقرة» /
+// «ابرهۦم» / «يؤمنون» / «موسى» / «الصلوه». The dagger alif
+// U+0670 is MAPPED to a regular alef, NOT stripped: stripping made
+// العالمين→العلمين and الصالحات→الصلحت, which no longer match
+// their own standard spellings and — worse — collide with
+// unrelated words (علم inside العلمين, صلح inside الصلحت).
+// With the alif materialized, the matcher (lib/quran-search.ts)
+// can tell a verbatim word from a skipped-alif lookalike: plural
+// suffixes (ين/ون/ات/ان/وا) are allowed only on verbatim matches,
+// so «مومن» finds «المومنون» while «علم» never returns
+// «العالمين». Words whose standard spelling OMITS the dagger
+// alif (الرحمن→الرحمان, ذلك→ذالك, لكن→لاكن, اله→الاه) are
+// handled at search time by the skip-alif matcher, not by the
+// index.)
+const PERSIAN_YEH = String.fromCharCode(0x06cc);
+const ARABIC_YEH = String.fromCharCode(0x064a);
+const PERSIAN_KAF = String.fromCharCode(0x06a9);
+const ARABIC_KAF = String.fromCharCode(0x0643);
+const ALIF_WASLA = String.fromCharCode(0x0671);
+const ALEF = String.fromCharCode(0x0627);
+const TEH_MARBUTA = String.fromCharCode(0x0629);
+const HEH = String.fromCharCode(0x0647);
+const ALIF_HAMZA_ABOVE = String.fromCharCode(0x0623);
+const ALIF_HAMZA_BELOW = String.fromCharCode(0x0625);
+const ALIF_MADDA = String.fromCharCode(0x0622);
+const YEH_HAMZA = String.fromCharCode(0x0626);
+const WAW_HAMZA = String.fromCharCode(0x0624);
+const WAW = String.fromCharCode(0x0648);
+const SMALL_WAW = String.fromCharCode(0x06e5);
+const SMALL_YEH = String.fromCharCode(0x06e6);
+const ALEF_MAKSURA = String.fromCharCode(0x0649);
+const DAGGER_ALIF = String.fromCharCode(0x0670);
+const DIACRITICS = new RegExp(
+  `[${String.fromCharCode(0x064b)}-${String.fromCharCode(0x0652)}${String.fromCharCode(0x0640)}]`,
+  'g',
+);
+const ANNOTATIONS = new RegExp(
+  `[${String.fromCharCode(0x0653)}${String.fromCharCode(0x0654)}${String.fromCharCode(0x06d6)}-${String.fromCharCode(0x06e4)}${String.fromCharCode(0x06e7)}-${String.fromCharCode(0x06ed)}]`,
+  'g',
+);
+// Waw-alif rasm words → standard spelling (same list as
+// lib/quran-search.ts RASM_WAW_WORDS — keep the two in sync).
+// Each word: dagger-materialized form (الصلواه, from Uthmani
+// الصلوٰة), plain form (الصلوه), and bare form without ال
+// (صلواه — «صلاة الفجر» has no ال on صلاة itself).
+const RASM_WAW_WORDS = [
+  ['الصلواه', 'الصلاه'],
+  ['الزكواه', 'الزكاه'],
+  ['الحيواه', 'الحياه'],
+  ['مشكواه', 'مشكاه'],
+  ['منواه', 'مناه'],
+  ['النجواه', 'النجاه'],
+  ['الصلوه', 'الصلاه'],
+  ['الزكوه', 'الزكاه'],
+  ['الحيوه', 'الحياه'],
+  ['مشكوه', 'مشكاه'],
+  ['منوه', 'مناه'],
+  ['النجوه', 'النجاه'],
+  ['صلواه', 'صلاه'],
+  ['زكواه', 'زكاه'],
+  ['حيواه', 'حياه'],
+  ['مشكواه', 'مشكاه'],
+  ['منواه', 'مناه'],
+  ['نجواه', 'نجاه'],
+  ['صلوه', 'صلاه'],
+  ['زكوه', 'زكاه'],
+  ['حيوه', 'حياه'],
+  ['مشكوه', 'مشكاه'],
+  ['منوه', 'مناه'],
+  ['نجوه', 'نجاه'],
+];
+function unifyRasmWords(normalized) {
+  let out = normalized;
+  for (const [from, to] of RASM_WAW_WORDS) {
+    out = out.split(from).join(to);
+  }
+  return out;
+}
+function normalize(text) {
+  const chars = text
+    .split(PERSIAN_YEH)
+    .join(ARABIC_YEH)
+    .split(PERSIAN_KAF)
+    .join(ARABIC_KAF)
+    .split(ALIF_WASLA)
+    .join(ALEF)
+    .split(ALIF_HAMZA_ABOVE)
+    .join(ALEF)
+    .split(ALIF_HAMZA_BELOW)
+    .join(ALEF)
+    .split(ALIF_MADDA)
+    .join(ALEF)
+    .split(TEH_MARBUTA)
+    .join(HEH)
+    .split(YEH_HAMZA)
+    .join(ARABIC_YEH)
+    .split(WAW_HAMZA)
+    .join(WAW)
+    .split(SMALL_WAW)
+    .join(WAW)
+    .split(SMALL_YEH)
+    .join(ARABIC_YEH)
+    .split(ALEF_MAKSURA)
+    .join(ARABIC_YEH)
+    .split(DAGGER_ALIF)
+    .join(ALEF)
+    .replace(DIACRITICS, '')
+    .replace(ANNOTATIONS, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return unifyRasmWords(chars);
+}
+
+function fail(msg) {
+  console.error(`FAILED: ${msg}`);
+  process.exit(1);
+}
+
+const editionRes = await fetch(EDITION_URL);
+if (!editionRes.ok) fail(`editions fetch → ${editionRes.status}`);
+const editionBody = await editionRes.json();
+const textEditions = (editionBody.data ?? []).filter((e) => e.format === 'text');
+console.log('Text editions on AlQuran Cloud:');
+for (const e of textEditions) {
+  console.log(`  - ${e.identifier} (${e.language}, ${e.type})`);
+}
+const indopak = textEditions.filter((e) => /indopak|indo-pak|pak/i.test(e.identifier));
+console.log(
+  indopak.length > 0
+    ? `INDO-PAK TEXT EDITIONS FOUND: ${indopak.map((e) => e.identifier).join(', ')}`
+    : 'NO Indo-Pak character text edition on AlQuran Cloud (only uthmani/simple variants).',
+);
+
+const res = await fetch(QURAN_URL);
+if (!res.ok) fail(`quran fetch → ${res.status}`);
+const body = await res.json();
+const surahs = body.data?.surahs;
+if (!Array.isArray(surahs) || surahs.length !== 114) {
+  fail(`expected 114 surahs, got ${Array.isArray(surahs) ? surahs.length : 'none'}`);
+}
+
+const all = [];
+for (const s of surahs) {
+  for (const a of s.ayahs) {
+    all.push({
+      g: a.number,
+      s: s.number,
+      a: a.numberInSurah,
+      text: a.text,
+      juz: a.juz,
+      page: a.page,
+      hizbQuarter: a.hizbQuarter,
+    });
+  }
+}
+console.log(`Total ayahs: ${all.length}`);
+if (all.length !== 6236) fail(`expected 6236 ayahs, got ${all.length}`);
+
+function firstBy(key, value) {
+  return all.find((x) => x[key] === value) ?? null;
+}
+
+const juz = [];
+for (let n = 1; n <= 30; n++) {
+  const hit = firstBy('juz', n);
+  if (!hit) fail(`no ayah with juz=${n}`);
+  juz.push({ n, surah: hit.s, ayah: hit.a, text: hit.text });
+}
+const hizb = [];
+for (let n = 1; n <= 120; n++) {
+  const hit = firstBy('hizbQuarter', 2 * n - 1);
+  if (!hit) fail(`no ayah with hizbQuarter=${2 * n - 1} (hizb ${n})`);
+  hizb.push({ n, surah: hit.s, ayah: hit.a, text: hit.text });
+}
+const page = [];
+for (let n = 1; n <= 604; n++) {
+  const hit = firstBy('page', n);
+  if (!hit) fail(`no ayah with page=${n}`);
+  page.push({ n, surah: hit.s, ayah: hit.a, text: hit.text });
+}
+console.log(`Boundaries: juz=${juz.length} hizb=${hizb.length} page=${page.length}`);
+
+// Anchor checks (provider-derived values must equal these known anchors).
+const anchors = [
+  ['juz 2', juz[1], 2, 142],
+  ['juz 3', juz[2], 2, 253],
+  ['juz 4', juz[3], 3, 93],
+  ['juz 5', juz[4], 4, 24],
+  ['juz 6', juz[5], 4, 148],
+  ['page 2', page[1], 2, 1],
+  ['page 3', page[2], 2, 6],
+  ['page 4', page[3], 2, 17],
+  ['page 5', page[4], 2, 25],
+  ['page 6', page[5], 2, 30],
+  // Bayan's حزب anchors (half-hizb divisions, user reference 2026-11-01).
+  ['hizb 2', hizb[1], 2, 44],
+  ['hizb 3', hizb[2], 2, 75],
+  ['hizb 4', hizb[3], 2, 106],
+  ['hizb 5', hizb[4], 2, 142],
+  ['hizb 6', hizb[5], 2, 177],
+];
+for (const [name, hit, s, a] of anchors) {
+  if (hit.surah !== s || hit.ayah !== a) {
+    fail(`anchor ${name}: expected ${s}:${a}, provider says ${hit.surah}:${hit.ayah}`);
+  }
+  console.log(`  anchor ${name} OK (${s}:${a})`);
+}
+console.log('Bayan hizb (half-hizb) starts 1-6:');
+for (let i = 0; i < 6; i++) {
+  console.log(`  hizb ${hizb[i].n} → ${hizb[i].surah}:${hizb[i].ayah}`);
+}
+console.log(`  hizb 22 → ${hizb[21].surah}:${hizb[21].ayah}`);
+
+const searchIndex = all.map((x) => ({ g: x.g, s: x.s, a: x.a, t: normalize(x.text) }));
+
+writeFileSync(join(LIB, 'quran-boundaries.json'), `${JSON.stringify({ juz, hizb, page })}\n`);
+writeFileSync(join(LIB, 'quran-search-index.json'), `${JSON.stringify(searchIndex)}\n`);
+console.log('Wrote lib/quran-boundaries.json and lib/quran-search-index.json');

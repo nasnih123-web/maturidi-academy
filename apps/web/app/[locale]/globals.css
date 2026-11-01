@@ -38,6 +38,51 @@
   --color-ivory: #ede6d6;
 }
 
+/* ─── KFGQPC Uthmanic Script fonts, one per edition (round 6) ───
+   Quranic text uses code points (small signs, open tanwin; for
+   Warsh/Qalun a block of letters Unicode only added in 2021) that
+   ordinary Arabic fonts do not draw, so the edition's own font is
+   NOT optional for its text. One font per edition, never one for
+   all: families + files come from each edition's own quran-text
+   data file (see THIRD_PARTY_NOTICES.md for hashes). Files arrive
+   via the user's GitHub web-UI upload (binaries cannot be pushed
+   by the app): the .woff2 is the converted optimization, the .ttf
+   is the fallback — the .ttf alone is sufficient. Until an upload
+   lands, its stack falls back gracefully and the SVG printed pages
+   still show the exact printed shapes (vector outlines need no
+   font). The .quran-mushaf-* classes below select the edition's
+   font for mushaf-page text. */
+@font-face {
+  font-family: "KFGQPC HAFS Uthmanic Script";
+  src: url("/fonts/UthmanicHafs-v-3.0.woff2") format("woff2"),
+       url("/fonts/UthmanicHafs-v-3.0.ttf") format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "KFGQPC Warsh Uthmanic Script";
+  src: url("/fonts/UthmanicWarsh-v-3.0.woff2") format("woff2"),
+       url("/fonts/UthmanicWarsh-v-3.0.ttf") format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "KFGQPC Qaloun Uthmanic Script";
+  src: url("/fonts/UthmanicQaloun-v-3.0.woff2") format("woff2"),
+       url("/fonts/UthmanicQaloun-v-3.0.ttf") format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "KFGQPC Douri Uthmanic Script";
+  src: url("/fonts/UthmanicDouri-V20.woff2") format("woff2"),
+       url("/fonts/UthmanicDouri-V20.ttf") format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "KFGQPC Shuba Uthmanic Script";
+  src: url("/fonts/UthmanicShubah-v-3.0.woff2") format("woff2"),
+       url("/fonts/UthmanicShubah-v-3.0.ttf") format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+
 /* ─── Self-hosted fonts (OFL) ─── */
 @font-face {
   font-family: "Vazirmatn";
@@ -778,11 +823,16 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .quran-player-controls { display: flex; align-items: center; gap: 0.8rem; }
 .quran-play-btn, .quran-stop-btn { width: 3rem; height: 3rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.5); background: rgba(212, 175, 55, 0.14); color: #e5c07b; font-size: 1.1rem; cursor: pointer; }
 .quran-play-btn:hover, .quran-stop-btn:hover { background: rgba(212, 175, 55, 0.28); }
-.quran-progress { flex: 1; height: 0.5rem; border-radius: 999px; background: rgba(212, 175, 55, 0.15); overflow: hidden; }
+/* Progress bar hosts the waveform canvas (the yellow fill line is gone:
+   the wave itself is the progress — gold played, dim unplayed).
+   The equalizer frame is TALL and BORDERLESS by user order, and the
+   dark track behind the wave is REMOVED: the wave draws directly on
+   the player background, no pill, no outline ring. */
+.quran-progress { flex: 1; height: 6rem; border-radius: 999px; background: transparent; border: none; overflow: hidden; cursor: pointer; }
 .quran-progress-fill { height: 100%; background: linear-gradient(90deg, #b8860b, #e5c07b); border-radius: 999px; transition: width 0.25s linear; }
 .quran-player-note { margin: 0.5rem 0 0; font-size: 0.85rem; color: hsl(var(--text-muted)); }
 .quran-player-times { display: flex; gap: 1.2rem; margin-top: 0.6rem; font-size: 0.85rem; font-variant-numeric: tabular-nums; color: hsl(var(--text-secondary)); }
-.quran-waveform { display: block; width: 100%; height: 2.5rem; margin-top: 0.6rem; border: 1px solid rgba(212, 175, 55, 0.2); border-radius: var(--radius-lg); background: rgba(0, 0, 0, 0.25); }
+.quran-waveform { display: block; width: 100%; height: 100%; }
 .quran-view-modes { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
 .quran-mode-btn { padding: 0.5rem 1.1rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.35); background: transparent; color: hsl(var(--text-secondary)); cursor: pointer; font-size: 0.95rem; }
 .quran-mode-btn.quran-mode-active { background: rgba(212, 175, 55, 0.2); color: #e5c07b; border-color: rgba(212, 175, 55, 0.75); font-weight: 700; }
@@ -827,14 +877,185 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .ayah-note-row { display: flex; align-items: center; gap: 0.6rem; }
 .ayah-note-save { margin-inline-start: auto; padding: 0.4rem 1rem; border-radius: var(--radius-sm); border: 1px solid rgba(212, 175, 55, 0.5); background: rgba(212, 175, 55, 0.18); color: #e5c07b; cursor: pointer; font-size: 0.82rem; }
 .ayah-note-save:disabled { opacity: 0.45; cursor: default; }
-.quran-ayah-jump { margin-top: 1.5rem; font-size: 0.8rem; color: hsl(var(--text-muted)); }
 
 /* Quran Phase 1: tabs, madhhab selector, sajda badge, fawasil note, extended player */
 .quran-fawasil-note { margin: 0.3rem 0 0; font-size: 0.8rem; color: hsl(var(--text-muted)); }
-.quran-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid rgba(212, 175, 55, 0.25); }
-.quran-tab { padding: 0.6rem 1.2rem; border: 0; border-bottom: 2px solid transparent; background: none; color: hsl(var(--text-secondary)); font-size: 0.95rem; cursor: pointer; }
-.quran-tab:hover { color: #e5c07b; }
-.quran-tab-active { color: #e5c07b; border-bottom-color: #d4af37; font-weight: 700; }
+
+/* ---- Quran search (index + reader, one component) ---- */
+.quran-search-box { position: relative; margin-bottom: 1.5rem; }
+.quran-search-input { width: 100%; padding: 0.8rem 1rem; border-radius: var(--radius-lg); border: 1px solid rgba(212, 175, 55, 0.35); background: rgba(7, 35, 28, 0.6); color: hsl(var(--text-primary)); font-size: 1rem; }
+.quran-search-input::placeholder { color: hsl(var(--text-muted)); }
+.quran-search-hint { margin: 0.4rem 0 0; font-size: 0.8rem; color: hsl(var(--text-muted)); }
+.quran-search-status { margin: 0.5rem 0 0; font-size: 0.85rem; color: hsl(var(--text-secondary)); }
+.quran-search-results { margin: 0.7rem 0 0; padding: 0.5rem; border: 1px solid rgba(212, 175, 55, 0.25); border-radius: var(--radius-lg); background: rgba(7, 35, 28, 0.7); }
+.quran-search-results h3 { margin: 0.6rem 0 0.3rem; font-size: 0.85rem; color: #e5c07b; }
+.quran-search-results ul { list-style: none; margin: 0; padding: 0; }
+.quran-search-row { display: flex; align-items: baseline; gap: 0.7rem; width: 100%; padding: 0.55rem 0.6rem; border-radius: var(--radius-sm); color: hsl(var(--text-primary)); text-decoration: none; }
+.quran-search-row:hover { background: rgba(212, 175, 55, 0.12); }
+
+/* ---- Juz / hizb / page lists (bayan style: number + start ref + preview) ---- */
+.quran-range-list-title { font-size: 1.1rem; color: #e5c07b; margin: 0 0 0.8rem; }
+.quran-range-list { list-style: none; margin: 0 0 1.5rem; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }
+.quran-range-row { display: flex; align-items: baseline; gap: 0.8rem; width: 100%; padding: 0.7rem 0.9rem; border: 1px solid rgba(212, 175, 55, 0.25); border-radius: var(--radius-md); background: rgba(7, 35, 28, 0.5); color: hsl(var(--text-primary)); text-align: start; cursor: pointer; }
+.quran-range-row:hover { background: rgba(212, 175, 55, 0.12); border-color: rgba(212, 175, 55, 0.55); }
+.quran-range-row-num { flex: none; font-weight: 700; color: #e5c07b; white-space: nowrap; }
+.quran-range-row-ref { flex: none; font-size: 0.9rem; color: hsl(var(--text-secondary)); white-space: nowrap; }
+.quran-range-row-text { min-width: 0; font-size: 1rem; line-height: 1.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quran-range-surah-block { margin-bottom: 1.5rem; }
+
+/* ---- Page jump (page list only) ---- */
+.quran-page-jump { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.quran-page-jump label { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: hsl(var(--text-secondary)); }
+.quran-page-jump input { width: 6rem; padding: 0.45rem 0.6rem; border-radius: var(--radius-sm); border: 1px solid rgba(212, 175, 55, 0.3); background: rgba(7, 35, 28, 0.7); color: hsl(var(--text-primary)); font-variant-numeric: tabular-nums; }
+.quran-page-jump button { padding: 0.45rem 1.2rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.5); background: rgba(212, 175, 55, 0.14); color: #e5c07b; cursor: pointer; }
+.quran-page-jump-error { flex-basis: 100%; margin: 0; font-size: 0.85rem; color: #e08a8a; }
+.quran-range-nav-steps { display: inline-flex; gap: 0.5rem; }
+
+/* ---- Round 4: display prefs (font / size / theme) ----
+   Font stacks are OFL families (Amiri, Scheherazade New) with system
+   fallbacks — no font file is bundled. The size variable is set
+   inline on .quran-reader; the var() default keeps the old clamp when
+   the variable is absent. The font choice applies to the ayah-card
+   text; the mushaf page keeps its own script stack (the script
+   switch owns the mushaf typeface). Themes recolor only the card
+   views (the mushaf page keeps its parchment card by design). */
+.quran-reader .ayah-text { font-size: var(--quran-ayah-size, clamp(1.3rem, 3vw, 1.8rem)); }
+.quran-font-amiri .ayah-text { font-family: "Amiri", "Noto Naskh Arabic", "Traditional Naskh Arabic", serif; }
+.quran-font-scheherazade .ayah-text { font-family: "Scheherazade New", "Noto Naskh Arabic", "Traditional Naskh Arabic", serif; }
+.quran-theme-sepia .ayah-card { background: #f7f1dd; border-color: rgba(120, 90, 20, 0.35); }
+.quran-theme-sepia .ayah-text { color: #2b2118; }
+.quran-theme-sepia .ayah-translation p { color: #4a3b28; }
+.quran-theme-light .ayah-card { background: #ffffff; border-color: rgba(0, 0, 0, 0.15); }
+.quran-theme-light .ayah-text { color: #1a1a1a; }
+.quran-theme-light .ayah-translation p { color: #333333; }
+.quran-theme-green .ayah-card { background: rgba(10, 46, 34, 0.85); }
+.quran-edition-id { font-size: 0.75rem; color: hsl(var(--text-muted)); }
+.quran-display-toolbar input[type="range"] { accent-color: #d4af37; }
+
+/* ---- Round 4: bookmarks + list tools ---- */
+.quran-bookmarks { margin-bottom: 1.5rem; padding: 0.9rem 1.1rem; border: 1px solid rgba(212, 175, 55, 0.3); border-radius: var(--radius-lg); background: rgba(7, 35, 28, 0.6); }
+.quran-bookmarks h2 { margin: 0 0 0.6rem; font-size: 1rem; color: #e5c07b; }
+.quran-resume { margin: 0 0 0.8rem; font-size: 0.9rem; color: hsl(var(--text-secondary)); }
+.quran-resume a { color: #e5c07b; }
+.quran-bookmark-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.quran-bookmark-row { display: flex; align-items: center; gap: 0.6rem; }
+.quran-bookmark-row a { flex: 1; color: hsl(var(--text-primary)); text-decoration: none; }
+.quran-bookmark-row a:hover { color: #e5c07b; }
+.quran-bookmark-btn { background: transparent; border: none; color: #e5c07b; font-size: 1.15rem; cursor: pointer; padding: 0.1rem 0.3rem; line-height: 1; }
+.quran-bookmark-star { background: transparent; border: none; color: #e5c07b; font-size: 1.15rem; cursor: pointer; }
+.quran-bookmark-remove { background: transparent; border: 1px solid rgba(212, 175, 55, 0.35); border-radius: 999px; color: hsl(var(--text-secondary)); font-size: 0.8rem; padding: 0.2rem 0.7rem; cursor: pointer; }
+.quran-list-tools { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.quran-list-tools label { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: hsl(var(--text-secondary)); }
+.quran-list-tools input, .quran-list-tools select { padding: 0.4rem 0.6rem; border-radius: var(--radius-sm); border: 1px solid rgba(212, 175, 55, 0.3); background: rgba(7, 35, 28, 0.7); color: hsl(var(--text-primary)); }
+.quran-resume-link { display: block; margin: 0 0 1rem; color: #e5c07b; text-decoration: none; font-weight: 700; }
+.quran-resume-link:hover { text-decoration: underline; }
+
+/* ---- Mushaf-style page view: a book page ON the site background ----
+   The card is deliberately NARROWER than the viewport on every width so
+   the site's dark background stays visible around it (user order: the
+   previous near-full-width phone card hid the background). */
+.mushaf-page { max-width: min(90vw, 600px); margin: 0 auto 1.5rem; padding: 1.6rem 1.8rem 1.2rem; border: 1px solid #c9b37e; border-radius: 6px; background: #f7f1dd; box-shadow: 0 2px 18px rgba(0, 0, 0, 0.45); color: #2b2118; container-type: inline-size; }
+.mushaf-page-meta { text-align: center; margin-bottom: 1.2rem; font-size: 0.85rem; color: #6f6151; }
+.mushaf-page-foot { margin-top: 1.2rem; margin-bottom: 0; text-align: center; }
+.mushaf-surah-ornament { display: flex; align-items: center; justify-content: center; gap: 0.9rem; text-align: center; font-size: 1.5rem; color: #2b2118; margin: 0 auto 1rem; padding: 0.45rem 1rem; border-top: 2px solid #8a6d1b; border-bottom: 2px solid #8a6d1b; background: #efe6c8; }
+.mushaf-surah-ornament::before, .mushaf-surah-ornament::after { content: '◆'; color: #8a6d1b; font-size: 0.7em; }
+.mushaf-bismillah { text-align: center; font-size: 1.7rem; color: #2b2118; margin: 0 0 1rem; }
+.mushaf-text { font-size: 1.55rem; line-height: 2.4; text-align: justify; color: #2b2118; }
+/* Exact Madani lines: one print line per block, justified like the
+   printed page. Lines are full by construction, so justification
+   stays even without stretched short lines. The font SCALES with the
+   card width (cqw, like Bayan/Tarteel's width-derived sizing) so a
+   print line NEVER wraps onto a second visual row at any card width:
+   3.2cqw measured wrap-free on page 30 (longest line 108 chars) with
+   headroom for the global longest line (119 chars); the rem value is
+   only a fallback for browsers without container query units. */
+.mushaf-line { margin: 0; font-size: 1.1rem; font-size: 3.2cqw; line-height: 2.4; text-align: justify; color: #2b2118; }
+.mushaf-line-btn { display: block; width: 100%; margin: 0; padding: 0; background: none; border: 0; color: inherit; text-align: justify; cursor: pointer; }
+.mushaf-line-playing { color: #8a6d1b; background: rgba(138, 109, 27, 0.12); border-radius: 4px; }
+.mushaf-ayah { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.mushaf-ayah:hover { color: #8a6d1b; }
+.mushaf-ayah-playing { color: #8a6d1b; text-decoration: underline; text-decoration-color: rgba(138, 109, 27, 0.5); }
+.mushaf-ayah-end { display: inline-block; width: 1.5em; height: 1.5em; vertical-align: middle; margin-inline: 0.1em; }
+.mushaf-ayah-end svg { display: block; width: 100%; height: 100%; }
+.mushaf-ayah-end svg circle { fill: #f7f1dd; stroke: #8a6d1b; stroke-width: 1.6; }
+.mushaf-ayah-end svg rect { fill: #8a6d1b; stroke: none; }
+.mushaf-ayah-end svg text { fill: #8a6d1b; font-size: 12px; font-weight: 700; font-family: inherit; }
+/* Uthman Taha frame: double gold rule + geometric corner motifs
+   (original code-drawn ornaments, never copied artwork). */
+.mushaf-frame { position: relative; border: 2px solid #8a6d1b; outline: 1px solid #8a6d1b; outline-offset: 5px; padding: 1.4rem 1.5rem; }
+.mushaf-corner { position: absolute; width: 1.9rem; height: 1.9rem; background: #f7f1dd; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
+.mushaf-corner svg { width: 100%; height: 100%; }
+.mushaf-corner svg circle, .mushaf-corner svg rect { fill: none; stroke: #8a6d1b; stroke-width: 1.8; }
+.mushaf-corner svg circle[r="4"] { fill: #8a6d1b; stroke: none; }
+.mushaf-corner-tl { top: -0.95rem; inset-inline-start: -0.95rem; }
+.mushaf-corner-tr { top: -0.95rem; inset-inline-end: -0.95rem; }
+.mushaf-corner-bl { bottom: -0.95rem; inset-inline-start: -0.95rem; }
+.mushaf-corner-br { bottom: -0.95rem; inset-inline-end: -0.95rem; }
+/* Focused-ayah translation/tafsir panel under the ayah-mode page. */
+.quran-ayah-panel { margin: 0 0 1.5rem; padding: 1rem 1.2rem; border: 1px solid rgba(212, 175, 55, 0.25); border-radius: var(--radius-lg); background: rgba(7, 35, 28, 0.5); }
+.quran-ayah-sajda { color: #e5c07b; margin: 0 0 0.6rem; font-size: 0.95rem; }
+@media (max-width: 768px) {
+  /* 768px matches the site's phone breakpoint (sticky player) and the
+     user's 720-768px phone: the card keeps CLEAR margins here too, so
+     the dark site background stays visible around the page. */
+  .mushaf-page { margin-inline: auto; max-width: min(92vw, 600px); padding: 1.2rem 1.1rem; }
+  .mushaf-text { font-size: 1.35rem; line-height: 2.3; }
+  .mushaf-line { line-height: 2.3; }
+}
+
+/* ---- Script / typeface switch (typeface only — the text never changes) ---- */
+.quran-script { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: hsl(var(--text-secondary)); }
+.quran-script select { padding: 0.4rem 0.6rem; border-radius: var(--radius-sm); border: 1px solid rgba(212, 175, 55, 0.3); background: rgba(7, 35, 28, 0.7); color: hsl(var(--text-primary)); }
+.quran-script-note { font-size: 0.75rem; color: hsl(var(--text-muted)); }
+.quran-script-uthmani .mushaf-text,
+.quran-script-uthmani .mushaf-line,
+.quran-script-uthmani .quran-bismillah,
+.quran-script-uthmani .mushaf-bismillah,
+.quran-script-uthmani .mushaf-surah-ornament { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+
+/* ---- Round 6: real printed SVG pages ----
+   The SVG is transparent (no page background rect), so the parchment
+   card shows through like the text page. Polygons stay tappable:
+   glyph groups never eat taps, and the layer is hidden with opacity,
+   never fill:none (which would stop the taps under visiblePainted). */
+.quran-svg-page svg { display: block; width: 100%; height: auto; }
+.quran-svg-page .ayahPolygon { cursor: pointer; }
+.quran-svg-page #content, .quran-svg-page #ayah_markers { pointer-events: none; }
+.quran-svg-fallback-note { margin: 0 0 1rem; padding: 0.6rem 0.9rem; border-radius: 6px; background: rgba(138, 109, 27, 0.12); color: #6b5510; font-size: 0.9rem; text-align: center; }
+.quran-svg-credit { margin: 1rem 0 0; color: #6f6151; font-size: 0.75rem; text-align: center; }
+
+/* ---- Round 6: per-mushaf font for mushaf-page text ----
+   The reader root carries quran-mushaf-<key>; the edition's own
+   KFGQPC font leads the stack so a non-Hafs fallback text never
+   renders in the Hafs font (or vice versa). SVG pages ignore this
+   (outlines), but the reference panel + any text page use it. */
+.quran-mushaf-hafs-kfqc .mushaf-text,
+.quran-mushaf-hafs-kfqc .mushaf-line,
+.quran-mushaf-hafs-kfqc .quran-svg-refpanel-text p { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+.quran-mushaf-warsh-kfqc .mushaf-text,
+.quran-mushaf-warsh-kfqc .mushaf-line,
+.quran-mushaf-warsh-kfqc .quran-svg-refpanel-text p { font-family: "KFGQPC Warsh Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+.quran-mushaf-qalon-kfqc .mushaf-text,
+.quran-mushaf-qalon-kfqc .mushaf-line,
+.quran-mushaf-qalon-kfqc .quran-svg-refpanel-text p { font-family: "KFGQPC Qaloun Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+.quran-mushaf-douri-kfqc .mushaf-text,
+.quran-mushaf-douri-kfqc .mushaf-line,
+.quran-mushaf-douri-kfqc .quran-svg-refpanel-text p { font-family: "KFGQPC Douri Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+.quran-mushaf-shubah-kfqc .mushaf-text,
+.quran-mushaf-shubah-kfqc .mushaf-line,
+.quran-mushaf-shubah-kfqc .quran-svg-refpanel-text p { font-family: "KFGQPC Shuba Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+
+/* ---- Round 6: non-Hafs tap reference panel ---- */
+.quran-svg-refpanel { margin: 1rem 0 0; padding: 0.9rem 1rem; border: 1px solid rgba(212, 175, 55, 0.4); border-radius: 8px; background: rgba(138, 109, 27, 0.08); }
+.quran-svg-refpanel-ref { margin: 0 0 0.5rem; font-weight: 700; }
+.quran-svg-refpanel-text .ayah-sub-label { display: block; margin-bottom: 0.25rem; font-size: 0.8rem; color: hsl(var(--text-muted)); }
+.quran-svg-refpanel-text p { margin: 0; font-size: 1.35rem; line-height: 2.1; }
+.quran-svg-refpanel-note { margin: 0.75rem 0 0; font-size: 0.85rem; color: hsl(var(--text-muted)); }
+.quran-script-indopak .mushaf-text,
+.quran-script-indopak .mushaf-line,
+.quran-script-indopak .quran-bismillah,
+.quran-script-indopak .mushaf-bismillah,
+.quran-script-indopak .mushaf-surah-ornament { font-family: "Noto Nastaliq Urdu", "Alvi Nastaliq", "Noto Naskh Arabic", serif; line-height: 2.6; }
 .quran-placeholder { padding: 2rem 1rem; border: 1px dashed rgba(212, 175, 55, 0.4); border-radius: var(--radius-lg); text-align: center; color: hsl(var(--text-secondary)); line-height: 2; }
 .quran-madhhab { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: hsl(var(--text-secondary)); }
 .quran-madhhab select { padding: 0.4rem 0.6rem; border-radius: var(--radius-sm); border: 1px solid rgba(212, 175, 55, 0.3); background: rgba(7, 35, 28, 0.7); color: hsl(var(--text-primary)); }
@@ -856,8 +1077,23 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
    the user's phone layout viewport (720–768 CSS px). Padding grew
    with the bar itself (times row + waveform + wrapping settings). */
 @media (max-width: 768px) {
-  .quran-reader { padding-bottom: 17rem; }
-  .quran-player { position: fixed; inset-inline: 0; bottom: 0; z-index: 40; margin-bottom: 0; border-radius: 0; border-inline: 0; border-bottom: 0; }
+  /* Measured sticky player height at 720px width is 336px; the
+     padding must EXCEED it so the last content never hides under
+     the player (22rem = 352px). */
+  .quran-reader { padding-bottom: 22rem; }
+  .quran-player { position: fixed; inset-inline: 0; bottom: 0; z-index: 40; margin-bottom: 0; border-radius: 0; border-inline: 0; border-bottom: 0; padding: 0.9rem 1rem 1rem; background: #07231c; box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45); }
+  /* Music-app layout on phones: meta on top, the tall borderless
+     wave full-width in the middle, tidy controls below. Desktop
+     keeps its single-row layout. */
+  .quran-player-controls { flex-wrap: wrap; justify-content: center; }
+  .quran-player-controls .quran-progress { order: -1; flex-basis: 100%; }
+  .quran-play-btn { width: 3.6rem; height: 3.6rem; font-size: 1.35rem; }
+  .quran-step-btn, .quran-stop-btn { width: 2.75rem; height: 2.75rem; }
+  .quran-player-meta { margin-bottom: 0.5rem; }
+  .quran-reciter-photo { width: 2.75rem; height: 2.75rem; }
+  .quran-player-times { justify-content: center; }
+  .quran-player-settings { justify-content: space-between; }
+  .quran-speed select { padding: 0.5rem 0.6rem; }
 }
 
 /* tasbih */
@@ -1910,3 +2146,95 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
 .map-places-desc { margin: 0; color: hsl(var(--text-muted)); line-height: 2; }
 .globe-anim-frame { width: min(100%, 280px); margin-inline: auto; aspect-ratio: 1 / 1; border-radius: var(--radius-lg); overflow: hidden; background: transparent; border: 0; }
 .globe-anim-canvas { width: 100%; height: 100%; display: block; }
+
+/* ---- Round 5: app-style reading view + picker / mushaf sheets ----
+   The reading overlay is a fixed layer over the site's own dark
+   background (never changed): the page face stays light like the
+   apps, the dark green frames it on desktop, and on phones the page
+   goes full-width edge to edge. All ornaments here are our own CSS;
+   nothing is copied from any app. Tap targets are >= 44px. */
+.quran-reading-btn { min-height: 2.75rem; }
+.quran-fallback-fullscreen { position: fixed; inset: 0; z-index: 400; overflow-y: auto; background: #04100d; padding: 1rem; }
+.quran-fallback-exit { position: fixed; top: 0.5rem; inset-inline-end: 0.5rem; z-index: 401; min-height: 2.75rem; padding: 0.5rem 1rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.6); background: #07231c; color: #e5c07b; cursor: pointer; }
+.quran-reading { position: fixed; inset: 0; z-index: 400; display: flex; flex-direction: column; background: linear-gradient(#04100d, #081c16); }
+.quran-reading-top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 0.5rem; padding: 0.6rem 1rem; border-bottom: 1px solid rgba(212, 175, 55, 0.35); background: rgba(7, 35, 28, 0.95); color: #ede6d6; }
+.quran-reading-top-page { text-align: start; font-size: 0.95rem; color: #e5c07b; white-space: nowrap; }
+.quran-reading-top-surah { text-align: center; font-size: 1.15rem; font-weight: 800; white-space: nowrap; }
+.quran-reading-top-range { display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; font-size: 0.9rem; color: hsl(var(--text-secondary)); min-width: 0; }
+.quran-reading-exit { flex: none; min-height: 2.75rem; padding: 0.4rem 0.9rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.5); background: transparent; color: #e5c07b; cursor: pointer; font-size: 0.85rem; white-space: nowrap; }
+.quran-reading-exit:hover { background: rgba(212, 175, 55, 0.15); }
+.quran-reading-scroll { flex: 1; overflow-y: auto; padding: 1rem 1rem 1.5rem; }
+.quran-reading-pagenav { display: flex; align-items: center; justify-content: center; gap: 0.8rem; margin: 0 auto 1rem; color: #e5c07b; font-variant-numeric: tabular-nums; }
+.quran-reading-pagenav button { min-height: 2.75rem; padding: 0.4rem 1rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.35); background: transparent; color: hsl(var(--text-secondary)); cursor: pointer; }
+.quran-reading-pagenav button:disabled { opacity: 0.4; cursor: default; }
+.quran-reading-bookmark { font-size: 1.15rem; color: #e5c07b; }
+.quran-reading .mushaf-page { margin-bottom: 0; }
+.quran-reading-bottom { display: flex; align-items: center; justify-content: center; gap: 0.4rem; flex-wrap: wrap; padding: 0.6rem 0.8rem; border-top: 1px solid rgba(212, 175, 55, 0.35); background: rgba(7, 35, 28, 0.97); }
+.quran-reading-bar-btn { min-height: 2.75rem; padding: 0.4rem 0.9rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.35); background: transparent; color: #e5c07b; cursor: pointer; font-size: 0.9rem; }
+.quran-reading-bar-btn:hover:not(:disabled) { background: rgba(212, 175, 55, 0.15); }
+.quran-reading-bar-btn:disabled { opacity: 0.45; cursor: default; }
+.quran-reading-play { width: 3rem; height: 3rem; min-height: 3rem; border-radius: 999px; font-size: 1.15rem; padding: 0; }
+.quran-reading-bar-exit { border-color: rgba(212, 175, 55, 0.7); font-weight: 700; }
+@media (max-width: 640px) {
+  .quran-reading-scroll { padding: 0.75rem 0 1.25rem; }
+  .quran-reading .mushaf-page { width: 100%; max-width: none; border-radius: 0; border-inline: 0; }
+  .quran-reading-top-surah { font-size: 1rem; }
+  .quran-reading-exit { padding: 0.4rem 0.6rem; font-size: 0.8rem; }
+}
+/* ---- Round 5 sheets: bottom sheet on phones, centered on desktop ---- */
+.quran-sheet-layer { position: fixed; inset: 0; z-index: 600; display: flex; align-items: flex-end; justify-content: center; }
+.quran-sheet-backdrop { position: absolute; inset: 0; background: rgba(2, 8, 6, 0.7); }
+.quran-sheet { position: relative; width: 100%; max-height: 86vh; overflow-y: auto; background: #fbf7ec; color: #2b2118; border-radius: 1.25rem 1.25rem 0 0; padding: 1rem 1rem 1.5rem; box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5); animation: quran-sheet-in 0.2s ease-out; }
+@keyframes quran-sheet-in { from { transform: translateY(2rem); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .quran-sheet { animation: none; } }
+@media (min-width: 768px) {
+  .quran-sheet-layer { align-items: center; padding: 1rem; }
+  .quran-sheet { width: min(94vw, 640px); max-height: 84vh; border-radius: 1.25rem; }
+}
+.quran-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.8rem; }
+.quran-sheet-title { margin: 0; font-size: 1.05rem; font-weight: 800; color: #2b2118; }
+.quran-sheet-close { flex: none; width: 2.75rem; height: 2.75rem; border-radius: 999px; border: 1px solid rgba(120, 90, 20, 0.4); background: transparent; color: #2b2118; cursor: pointer; font-size: 1rem; }
+.quran-sheet-tabs { display: flex; gap: 0.4rem; margin-bottom: 0.9rem; border-bottom: 1px solid rgba(120, 90, 20, 0.3); padding-bottom: 0.6rem; }
+.quran-sheet-tab { flex: 1; min-height: 2.75rem; border-radius: 0.6rem; border: 1px solid transparent; background: transparent; color: #4a3b28; cursor: pointer; font-size: 0.95rem; }
+.quran-sheet-tab-active { background: #efe6c8; border-color: rgba(120, 90, 20, 0.5); font-weight: 800; color: #2b2118; }
+.quran-sheet-search { display: block; margin-bottom: 0.9rem; }
+.quran-sheet-search-label { display: block; margin-bottom: 0.3rem; font-size: 0.85rem; color: #6f6151; }
+.quran-sheet-search input { width: 100%; padding: 0.7rem 1rem; border-radius: 999px; border: 1px solid rgba(120, 90, 20, 0.45); background: #ffffff; color: #2b2118; font-size: 1rem; }
+.quran-sheet-empty { margin: 1rem 0; color: #6f6151; }
+.quran-picker-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
+@media (max-width: 360px) { .quran-picker-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.quran-picker-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.15rem; width: 100%; min-height: 4rem; padding: 0.6rem 0.3rem; border-radius: 0.7rem; border: 1px solid rgba(120, 90, 20, 0.35); background: #ffffff; color: #2b2118; cursor: pointer; text-decoration: none; }
+.quran-picker-card:hover { border-color: #8a6d1b; background: #fffdf4; }
+.quran-picker-card-current { border: 2px solid #8a6d1b; background: #efe6c8; font-weight: 800; }
+.quran-picker-num { font-size: 1.05rem; font-weight: 800; color: #8a6d1b; }
+.quran-picker-name { font-size: 0.95rem; line-height: 1.6; text-align: center; }
+.quran-mushaf-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.quran-mushaf-row { display: flex; align-items: center; }
+.quran-mushaf-row-current { padding: 0.7rem 0.9rem; border-radius: 0.7rem; border: 2px solid #8a6d1b; background: #efe6c8; }
+.quran-mushaf-btn { display: flex; align-items: center; gap: 0.7rem; width: 100%; min-height: 2.75rem; padding: 0.7rem 0.9rem; border-radius: 0.7rem; border: 1px solid rgba(120, 90, 20, 0.35); background: #ffffff; color: #2b2118; text-align: start; }
+.quran-mushaf-btn:disabled { opacity: 0.6; cursor: default; }
+.quran-mushaf-check { color: #8a6d1b; font-weight: 800; }
+.quran-mushaf-name { flex: 1; font-size: 1rem; }
+.quran-mushaf-badge { flex: none; padding: 0.15rem 0.7rem; border-radius: 999px; background: rgba(138, 109, 27, 0.15); color: #6b5510; font-size: 0.8rem; font-weight: 700; }
+.quran-mushaf-badge-soon { background: rgba(0, 0, 0, 0.07); color: #6f6151; }
+.quran-mushaf-note { margin: 0.9rem 0 0; font-size: 0.9rem; line-height: 1.9; color: #6f6151; }
+.quran-reading-settings { display: grid; gap: 0.9rem; }
+.quran-reading-setting { display: flex; align-items: center; gap: 0.6rem; font-size: 0.95rem; color: #2b2118; }
+.quran-reading-setting select { padding: 0.4rem 0.6rem; border-radius: 0.4rem; border: 1px solid rgba(120, 90, 20, 0.45); background: #ffffff; color: #2b2118; }
+.quran-reading-setting input[type="range"] { accent-color: #8a6d1b; }
+.quran-sheet .quran-resume a { color: #8a6d1b; }
+.quran-sheet .quran-bookmark-row a { color: #2b2118; }
+.quran-sheet .quran-bookmark-star { color: #8a6d1b; }
+.quran-sheet .quran-bookmark-remove { border-color: rgba(120, 90, 20, 0.45); color: #6f6151; }
+.quran-sheet button:focus-visible, .quran-reading button:focus-visible, .quran-reading-btn:focus-visible, .quran-fallback-exit:focus-visible { outline: 2px solid #d4af37; outline-offset: 2px; }
+.quran-sheet input:focus-visible { outline: 2px solid #8a6d1b; outline-offset: 1px; }
+
+/* Round 5, second layer: while the reading view or the fallback
+   fullscreen is open, the site header/footer are hidden outright
+   (the portal already lifts the overlay above them; this also covers
+   the in-place fallback reader). Restored on close by the effect. */
+body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { display: none; }
+@media (max-width: 640px) {
+  .quran-reading-exit-text { display: none; }
+  .quran-reading-top-page, .quran-reading-top-range { font-size: 0.85rem; white-space: nowrap; }
+}

@@ -52,6 +52,12 @@ interface AyahAudioPlan {
   surahUrl: string | null;
 }
 
+export type RepeatMode = 'off' | 'ayah' | 'surah';
+
+function parseRepeat(v: unknown): RepeatMode {
+  return v === 'ayah' || v === 'surah' ? v : 'off';
+}
+
 export function useQuranPlayback(
   ayahs: Ayah[],
   opts: {
@@ -60,12 +66,82 @@ export function useQuranPlayback(
     /** Player default speed (CRM quran.player_default_speed), 0.5–2. */
     initialRate?: number;
     initialVolume?: number;
+    /** Player repeat default (CRM quran.playback.repeat). */
+    initialRepeat?: RepeatMode;
   } = {},
 ) {
   const [state, setState] = useState<PlaybackState>(INITIAL);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const planRef = useRef<AyahAudioPlan | null>(null);
   const indexRef = useRef(0);
+  /**
+   * The playback ayahs, mirrored in a ref so event handlers wired once
+   * (timeupdate/ended) always see the CURRENT reading set when the
+   * reader swaps surah ↔ range views. The plan useMemo below still
+   * recomputes from the `ayahs` prop itself.
+   */
+  const ayahsRef = useRef(ayahs);
+  ayahsRef.current = ayahs;
+  /**
+   * Shared Web Audio context for the waveform visualizer.
+   *
+   * SOUND-BUG FIX (user phone report 2026-11-01: wave visible, no
+   * sound): once an element is captured by a MediaElementSource its
+   * audio routes ONLY through the graph, so a suspended context means
+   * total silence while progress still advances. The context is
+   * therefore created/resumed SYNCHRONOUSLY inside the play-click
+   * handler path (primeAudio, a user gesture), and the visualizer
+   * HARD-GATES capture on ctx.state === 'running' — a suspended
+   * context must NEVER capture the element, so native playback (and
+   * sound) is guaranteed and only the decorative indicator shows.
+   */
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const [ctxState, setCtxState] = useState<'running' | 'suspended' | null>(null);
+
+  /**
+   * Create/resume the visualizer context. MUST be called synchronously
+   * from a user gesture (play/resume/step click) — a post-state-change
+   * effect is too late on mobile Chrome and the context stays
+   * suspended. Returns true only when the context is running right
+   * now; otherwise the caller must not build the analyser graph.
+   */
+  const primeAudio = useCallback((): boolean => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const Ctx =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return false;
+      if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'running') {
+        setCtxState('running');
+        return true;
+      }
+      void ctx
+        .resume()
+        .then(() => setCtxState(ctx.state === 'running' ? 'running' : 'suspended'))
+        .catch(() => setCtxState('suspended'));
+      return false;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  /** The shared visualizer context, for the waveform component only. */
+  const getAudioContext = useCallback((): AudioContext | null => audioCtxRef.current, []);
+  // Repeat mode (round 4): 'ayah' replays the current ayah, 'surah'
+  // restarts the whole reading set at its end. Mirrored in a ref so
+  // the once-wired 'ended' handler always sees the current choice.
+  const [repeatMode, setRepeatModeState] = useState<RepeatMode>(() =>
+    parseRepeat(opts.initialRepeat),
+  );
+  const repeatRef = useRef(repeatMode);
+  const setRepeatMode = useCallback((m: RepeatMode) => {
+    repeatRef.current = m;
+    setRepeatModeState(m);
+  }, []);
+
   // Rate/volume live on the single element; refs mirror state so a
   // lazily created element still picks up the current values.
   const [rate, setRateState] = useState(() => clampRate(opts.initialRate ?? 1));
@@ -128,7 +204,7 @@ export function useQuranPlayback(
       const t = el.currentTime;
       if (planNow.perAyah) {
         const i = indexRef.current;
-        const ayah = ayahs[i];
+        const ayah = ayahsRef.current[i];
         const word =
           ayah?.wordTimings && ayah.wordTimings.length > 0 ? wordIndexAtTime(ayah.wordTimings, t) : -1;
         // Duration used to stay 0 in per-ayah mode (only the surah-file
@@ -143,7 +219,7 @@ export function useQuranPlayback(
         }));
       } else if (planNow.surahUrl) {
         const idx = ayahIndexAtTime(planNow.durations, t);
-        const ayah = idx >= 0 ? ayahs[idx] : null;
+        const ayah = idx >= 0 ? ayahsRef.current[idx] : null;
         const perAyahT = idx >= 0 ? t - prefixSum(planNow.durations, idx) : 0;
         const word =
           ayah?.wordTimings && ayah.wordTimings.length > 0 ? wordIndexAtTime(ayah.wordTimings, perAyahT) : -1;
@@ -158,7 +234,7 @@ export function useQuranPlayback(
         setState((s) => ({ ...s, currentTime: t }));
       }
     },
-    [ayahs],
+    [],
   );
 
   // Wire element events once.
@@ -169,7 +245,46 @@ export function useQuranPlayback(
     const onPause = () => setState((s) => (s.status === 'ended' ? s : { ...s, status: 'paused' }));
     const onEnded = () => {
       const planNow = planRef.current;
-      if (planNow?.perAyah && indexRef.current < ayahs.length - 1) {
+      const repeat = repeatRef.current;
+      if (repeat === 'ayah') {
+        // Replay the ayah that just ended (per-ayah: same file; single
+        // file: seek back to this ayah's start from durations).
+        if (planNow?.perAyah) {
+          playIndex(indexRef.current);
+        } else if (planNow?.surahUrl) {
+          const el2 = audioRef.current;
+          if (el2) {
+            try {
+              el2.currentTime = prefixSum(planNow.durations, indexRef.current);
+            } catch {
+              /* seeking before metadata is fine to skip */
+            }
+            el2.playbackRate = rateRef.current;
+            void el2.play().catch(() => {});
+          }
+        }
+        return;
+      }
+      if (repeat === 'surah') {
+        // Restart the whole reading set (per-ayah: first ayah; single
+        // file: rewind to 0).
+        if (planNow?.perAyah) {
+          playIndex(0);
+        } else if (planNow?.surahUrl) {
+          const el2 = audioRef.current;
+          if (el2) {
+            try {
+              el2.currentTime = 0;
+            } catch {
+              /* ignore */
+            }
+            el2.playbackRate = rateRef.current;
+            void el2.play().catch(() => {});
+          }
+        }
+        return;
+      }
+      if (planNow?.perAyah && indexRef.current < ayahsRef.current.length - 1) {
         // Advance to the next ayah automatically.
         playIndex(indexRef.current + 1);
       } else {
@@ -276,6 +391,11 @@ export function useQuranPlayback(
     (i: number) => {
       const planNow = planRef.current;
       if (!planNow) return;
+      // Gesture-path priming: the context must be resumed synchronously
+      // from the click that starts playback (see primeAudio). When it
+      // is not running, the visualizer never captures the element, so
+      // this play() still produces sound through native playback.
+      primeAudio();
       const el = ensureAudio();
       if (planNow.perAyah) {
         const url = planNow.urls[i];
@@ -311,7 +431,7 @@ export function useQuranPlayback(
         setState((s) => ({ ...s, status: 'error', error: 'audio_missing' }));
       }
     },
-    [ensureAudio],
+    [ensureAudio, primeAudio],
   );
 
   const pause = useCallback(() => {
@@ -321,12 +441,13 @@ export function useQuranPlayback(
   const resume = useCallback(() => {
     const el = audioRef.current;
     if (!el) return;
+    primeAudio();
     setState((s) => ({ ...s, status: 'loading', error: null }));
     el.playbackRate = rateRef.current;
     void el.play().catch(() =>
       setState((s) => ({ ...s, status: 'error', error: 'audio_failed' })),
     );
-  }, []);
+  }, [primeAudio]);
 
   const stop = useCallback(() => {
     const el = audioRef.current;
@@ -366,8 +487,13 @@ export function useQuranPlayback(
     volume,
     setRate,
     setVolume,
+    repeatMode,
+    setRepeatMode,
     surahDuration,
     getAudioElement,
+    primeAudio,
+    getAudioContext,
+    ctxState,
   };
 }
 

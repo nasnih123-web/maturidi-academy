@@ -12,20 +12,26 @@ import {
   parseFlag,
   parseFontSize,
   parseHighlightMode,
+  parseDisplayFont,
+  parseDisplayTheme,
   parseMadhhabDefault,
   parseMunajatWindow,
   parsePlayback,
   parsePlayerSpeed,
   parseProviderId,
+  parseWaveformStyle,
   parseStringList,
   useQuranProvidersQuery,
   useQuranSettingsQuery,
   useWriteQuranKeys,
+  type DisplayFont,
+  type DisplayTheme,
   type HighlightMode,
   type MunajatWindow,
   type PlaybackConfig,
   type QuranMadhhab,
   type RepeatMode,
+  type WaveformStyle,
 } from "../lib/quran";
 
 /**
@@ -401,6 +407,29 @@ const DISPLAY_MADHHABS: { id: QuranMadhhab; key: string }[] = [
 
 const PLAYER_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
+/* Quran UX rework: player waveform equalizer styles (CRM-selectable). */
+const WAVEFORM_STYLE_OPTIONS: { id: WaveformStyle; key: string }[] = [
+  { id: "bars", key: "quran.waveformBars" },
+  { id: "dotted", key: "quran.waveformDotted" },
+  { id: "line", key: "quran.waveformLine" },
+  { id: "mirrored", key: "quran.waveformMirrored" },
+  { id: "neon", key: "quran.waveformNeon" },
+];
+
+/* Quran UX rework round 4: reader display defaults (CRM-selectable). */
+const DISPLAY_FONT_OPTIONS: { id: DisplayFont; key: string }[] = [
+  { id: "system", key: "quran.displayFontSystem" },
+  { id: "amiri", key: "quran.displayFontAmiri" },
+  { id: "scheherazade", key: "quran.displayFontScheherazade" },
+];
+
+const DISPLAY_THEME_OPTIONS: { id: DisplayTheme; key: string }[] = [
+  { id: "dark", key: "quran.displayThemeDark" },
+  { id: "sepia", key: "quran.displayThemeSepia" },
+  { id: "light", key: "quran.displayThemeLight" },
+  { id: "green", key: "quran.displayThemeGreen" },
+];
+
 function DisplayPanel(): React.ReactElement {
   const { t } = useI18n();
   const settings = useQuranSettingsQuery();
@@ -414,6 +443,9 @@ function DisplayPanel(): React.ReactElement {
   const [madhhabDefault, setMadhhabDefault] = React.useState<QuranMadhhab>("hanafi");
   const [playerSpeed, setPlayerSpeed] = React.useState(1);
   const [playerShowPhoto, setPlayerShowPhoto] = React.useState(true);
+  const [waveformStyle, setWaveformStyle] = React.useState<WaveformStyle>("bars");
+  const [displayFont, setDisplayFont] = React.useState<DisplayFont>("system");
+  const [displayTheme, setDisplayTheme] = React.useState<DisplayTheme>("dark");
   const [savedTick, setSavedTick] = React.useState(0);
 
   React.useEffect(() => {
@@ -437,6 +469,9 @@ function DisplayPanel(): React.ReactElement {
       setMadhhabDefault(parseMadhhabDefault(settings.data[QURAN_SETTINGS_KEYS.madhhabDefault]));
       setPlayerSpeed(parsePlayerSpeed(settings.data[QURAN_SETTINGS_KEYS.playerDefaultSpeed]));
       setPlayerShowPhoto(parseFlag(settings.data[QURAN_SETTINGS_KEYS.playerShowPhoto], true));
+      setWaveformStyle(parseWaveformStyle(settings.data[QURAN_SETTINGS_KEYS.waveformStyle]));
+      setDisplayFont(parseDisplayFont(settings.data[QURAN_SETTINGS_KEYS.displayFont]));
+      setDisplayTheme(parseDisplayTheme(settings.data[QURAN_SETTINGS_KEYS.displayTheme]));
     }
   }, [settings.data]);
 
@@ -469,6 +504,9 @@ function DisplayPanel(): React.ReactElement {
         [QURAN_SETTINGS_KEYS.madhhabDefault]: madhhabDefault,
         [QURAN_SETTINGS_KEYS.playerDefaultSpeed]: playerSpeed,
         [QURAN_SETTINGS_KEYS.playerShowPhoto]: playerShowPhoto,
+        [QURAN_SETTINGS_KEYS.waveformStyle]: waveformStyle,
+        [QURAN_SETTINGS_KEYS.displayFont]: displayFont,
+        [QURAN_SETTINGS_KEYS.displayTheme]: displayTheme,
       },
       { onSuccess: () => setSavedTick((n) => n + 1) },
     );
@@ -623,6 +661,57 @@ function DisplayPanel(): React.ReactElement {
           />
           {t("quran.playerShowPhoto")}
         </label>
+      </div>
+
+      <div className="field">
+        <label htmlFor="quran-waveform-style">{t("quran.waveformStyle")}</label>
+        <select
+          id="quran-waveform-style"
+          className="input"
+          style={{ maxWidth: "280px" }}
+          value={waveformStyle}
+          onChange={(e) => setWaveformStyle(e.target.value as WaveformStyle)}
+        >
+          {WAVEFORM_STYLE_OPTIONS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {t(s.key)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="field">
+        <label htmlFor="quran-display-font">{t("quran.displayFont")}</label>
+        <select
+          id="quran-display-font"
+          className="input"
+          style={{ maxWidth: "280px" }}
+          value={displayFont}
+          onChange={(e) => setDisplayFont(e.target.value as DisplayFont)}
+        >
+          {DISPLAY_FONT_OPTIONS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {t(s.key)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="field">
+        <label htmlFor="quran-display-theme">{t("quran.displayTheme")}</label>
+        <select
+          id="quran-display-theme"
+          className="input"
+          style={{ maxWidth: "280px" }}
+          value={displayTheme}
+          onChange={(e) => setDisplayTheme(e.target.value as DisplayTheme)}
+        >
+          {DISPLAY_THEME_OPTIONS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {t(s.key)}
+            </option>
+          ))}
+        </select>
       </div>
 
       <SaveRow

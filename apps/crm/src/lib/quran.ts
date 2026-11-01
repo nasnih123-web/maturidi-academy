@@ -25,6 +25,7 @@ import { readSettingsMap } from "./appearance";
  *   quran.madhhab_default    "hanafi"|"shafii"|"maliki"|"hanbali" (Phase 1)
  *   quran.player_default_speed number 0.5..2 (Phase 1)
  *   quran.player_show_photo  bool (Phase 1)
+ *   quran.waveform_style     "bars"|"dotted"|"line"|"mirrored"|"neon" (UX rework)
  *   munajat.enabled          bool
  *   munajat.window           {start: "HH:MM", end: "HH:MM"}
  *   adhan.defaults           {calculation_method, madhab} — registered
@@ -61,6 +62,9 @@ export const QURAN_SETTINGS_KEYS = {
   madhhabDefault: "quran.madhhab_default",
   playerDefaultSpeed: "quran.player_default_speed",
   playerShowPhoto: "quran.player_show_photo",
+  waveformStyle: "quran.waveform_style",
+  displayFont: "quran.display_font",
+  displayTheme: "quran.display_theme",
   munajatEnabled: "munajat.enabled",
   munajatWindow: "munajat.window",
   adhanDefaults: "adhan.defaults",
@@ -303,6 +307,48 @@ export function parsePlayerSpeed(raw: string | null | undefined): number {
   const v = decodeJson(raw);
   if (typeof v !== "number" || Number.isNaN(v)) return 1;
   return clamp(v, 0.5, 2);
+}
+
+/**
+ * Waveform equalizer style ids — the API's own enum values
+ * (`quran.waveform_style` validator). NOT hardcoded display names:
+ * the names come from i18n (quran.waveformBars / … / waveformNeon).
+ */
+export const WAVEFORM_STYLES = ["bars", "dotted", "line", "mirrored", "neon"] as const;
+export type WaveformStyle = (typeof WAVEFORM_STYLES)[number];
+
+/** quran.waveform_style — one of the five ids, default "bars". */
+export function parseWaveformStyle(raw: string | null | undefined): WaveformStyle {
+  const v = decodeJson(raw);
+  return typeof v === "string" && (WAVEFORM_STYLES as readonly string[]).includes(v)
+    ? (v as WaveformStyle)
+    : "bars";
+}
+
+/**
+ * Reader display defaults (round 4) — the API's own enum values
+ * (`quran.display_font` / `quran.display_theme` validators). Names
+ * come from i18n (quran.displayFontSystem / … / displayThemeGreen).
+ */
+export const DISPLAY_FONTS = ["system", "amiri", "scheherazade"] as const;
+export type DisplayFont = (typeof DISPLAY_FONTS)[number];
+export const DISPLAY_THEMES = ["dark", "sepia", "light", "green"] as const;
+export type DisplayTheme = (typeof DISPLAY_THEMES)[number];
+
+/** quran.display_font — one of the three ids, default "system". */
+export function parseDisplayFont(raw: string | null | undefined): DisplayFont {
+  const v = decodeJson(raw);
+  return typeof v === "string" && (DISPLAY_FONTS as readonly string[]).includes(v)
+    ? (v as DisplayFont)
+    : "system";
+}
+
+/** quran.display_theme — one of the four ids, default "dark". */
+export function parseDisplayTheme(raw: string | null | undefined): DisplayTheme {
+  const v = decodeJson(raw);
+  return typeof v === "string" && (DISPLAY_THEMES as readonly string[]).includes(v)
+    ? (v as DisplayTheme)
+    : "dark";
 }
 
 /* ------------------------------------------------------------------ */
