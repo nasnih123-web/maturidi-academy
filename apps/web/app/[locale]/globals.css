@@ -38,6 +38,51 @@
   --color-ivory: #ede6d6;
 }
 
+/* ─── KFGQPC Uthmanic Script fonts, one per edition (round 6) ───
+   Quranic text uses code points (small signs, open tanwin; for
+   Warsh/Qalun a block of letters Unicode only added in 2021) that
+   ordinary Arabic fonts do not draw, so the edition's own font is
+   NOT optional for its text. One font per edition, never one for
+   all: families + files come from each edition's own quran-text
+   data file (see THIRD_PARTY_NOTICES.md for hashes). Files arrive
+   via the user's GitHub web-UI upload (binaries cannot be pushed
+   by the app): the .woff2 is the converted optimization, the .ttf
+   is the fallback — the .ttf alone is sufficient. Until an upload
+   lands, its stack falls back gracefully and the SVG printed pages
+   still show the exact printed shapes (vector outlines need no
+   font). The .quran-mushaf-* classes below select the edition's
+   font for mushaf-page text. */
+@font-face {
+  font-family: "KFGQPC HAFS Uthmanic Script";
+  src: url("/fonts/UthmanicHafs-v-3.0.woff2") format("woff2"),
+       url("/fonts/UthmanicHafs-v-3.0.ttf") format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "KFGQPC Warsh Uthmanic Script";
+  src: url("/fonts/UthmanicWarsh-v-3.0.woff2") format("woff2"),
+       url("/fonts/UthmanicWarsh-v-3.0.ttf") format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "KFGQPC Qaloun Uthmanic Script";
+  src: url("/fonts/UthmanicQaloun-v-3.0.woff2") format("woff2"),
+       url("/fonts/UthmanicQaloun-v-3.0.ttf") format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "KFGQPC Douri Uthmanic Script";
+  src: url("/fonts/UthmanicDouri-V20.woff2") format("woff2"),
+       url("/fonts/UthmanicDouri-V20.ttf") format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "KFGQPC Shuba Uthmanic Script";
+  src: url("/fonts/UthmanicShubah-v-3.0.woff2") format("woff2"),
+       url("/fonts/UthmanicShubah-v-3.0.ttf") format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+
 /* ─── Self-hosted fonts (OFL) ─── */
 @font-face {
   font-family: "Vazirmatn";
@@ -966,7 +1011,46 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .quran-script-uthmani .mushaf-line,
 .quran-script-uthmani .quran-bismillah,
 .quran-script-uthmani .mushaf-bismillah,
-.quran-script-uthmani .mushaf-surah-ornament { font-family: "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+.quran-script-uthmani .mushaf-surah-ornament { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+
+/* ---- Round 6: real printed SVG pages ----
+   The SVG is transparent (no page background rect), so the parchment
+   card shows through like the text page. Polygons stay tappable:
+   glyph groups never eat taps, and the layer is hidden with opacity,
+   never fill:none (which would stop the taps under visiblePainted). */
+.quran-svg-page svg { display: block; width: 100%; height: auto; }
+.quran-svg-page .ayahPolygon { cursor: pointer; }
+.quran-svg-page #content, .quran-svg-page #ayah_markers { pointer-events: none; }
+.quran-svg-fallback-note { margin: 0 0 1rem; padding: 0.6rem 0.9rem; border-radius: 6px; background: rgba(138, 109, 27, 0.12); color: #6b5510; font-size: 0.9rem; text-align: center; }
+.quran-svg-credit { margin: 1rem 0 0; color: #6f6151; font-size: 0.75rem; text-align: center; }
+
+/* ---- Round 6: per-mushaf font for mushaf-page text ----
+   The reader root carries quran-mushaf-<key>; the edition's own
+   KFGQPC font leads the stack so a non-Hafs fallback text never
+   renders in the Hafs font (or vice versa). SVG pages ignore this
+   (outlines), but the reference panel + any text page use it. */
+.quran-mushaf-hafs-kfqc .mushaf-text,
+.quran-mushaf-hafs-kfqc .mushaf-line,
+.quran-mushaf-hafs-kfqc .quran-svg-refpanel-text p { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+.quran-mushaf-warsh-kfqc .mushaf-text,
+.quran-mushaf-warsh-kfqc .mushaf-line,
+.quran-mushaf-warsh-kfqc .quran-svg-refpanel-text p { font-family: "KFGQPC Warsh Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+.quran-mushaf-qalon-kfqc .mushaf-text,
+.quran-mushaf-qalon-kfqc .mushaf-line,
+.quran-mushaf-qalon-kfqc .quran-svg-refpanel-text p { font-family: "KFGQPC Qaloun Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+.quran-mushaf-douri-kfqc .mushaf-text,
+.quran-mushaf-douri-kfqc .mushaf-line,
+.quran-mushaf-douri-kfqc .quran-svg-refpanel-text p { font-family: "KFGQPC Douri Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+.quran-mushaf-shubah-kfqc .mushaf-text,
+.quran-mushaf-shubah-kfqc .mushaf-line,
+.quran-mushaf-shubah-kfqc .quran-svg-refpanel-text p { font-family: "KFGQPC Shuba Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+
+/* ---- Round 6: non-Hafs tap reference panel ---- */
+.quran-svg-refpanel { margin: 1rem 0 0; padding: 0.9rem 1rem; border: 1px solid rgba(212, 175, 55, 0.4); border-radius: 8px; background: rgba(138, 109, 27, 0.08); }
+.quran-svg-refpanel-ref { margin: 0 0 0.5rem; font-weight: 700; }
+.quran-svg-refpanel-text .ayah-sub-label { display: block; margin-bottom: 0.25rem; font-size: 0.8rem; color: hsl(var(--text-muted)); }
+.quran-svg-refpanel-text p { margin: 0; font-size: 1.35rem; line-height: 2.1; }
+.quran-svg-refpanel-note { margin: 0.75rem 0 0; font-size: 0.85rem; color: hsl(var(--text-muted)); }
 .quran-script-indopak .mushaf-text,
 .quran-script-indopak .mushaf-line,
 .quran-script-indopak .quran-bismillah,

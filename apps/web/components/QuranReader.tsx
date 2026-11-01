@@ -109,6 +109,12 @@ import {
 import { loadBoundaries } from '@/lib/quran-boundaries-loader';
 import { loadMushafLines, type MushafExactLine } from '@/lib/quran-mushaf-lines';
 import { fetchSurahClient } from '@/lib/quran-range-client';
+import {
+  DEFAULT_SVG_MUSHAF,
+  parseSvgMushafKey,
+  type SvgMushafKey,
+} from '@/lib/quran-svg-page';
+import { editionAyahText } from '@/lib/quran-text-edition';
 import { normalizeQuranText, toLatinDigits } from '@/lib/quran-search';
 import type { QuranSettings } from '@/lib/settings';
 import { AyahCard, type AyahCardLabels } from './AyahCard';
@@ -274,6 +280,21 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   readingSettingsLabel: string;
   /** Template with %current% and %total% (reading page nav). */
   readingPageOf: string;
+  /* ---- Round 6: real printed SVG pages ---- */
+  /** Plain note shown only when the SVG page failed (text fallback). */
+  svgFallbackNote: string;
+  /** Note shown only when a NON-Hafs SVG page failed (no text exists). */
+  svgUnavailableNote: string;
+  /** Small credit line under a rendered SVG page. */
+  svgCredit: string;
+  /** Honesty note under a non-Hafs tap panel (edition text, no Hafs add-ons). */
+  svgRefPanelNote: string;
+  /** Note for the ayah view under a non-Hafs key (page needs the ayah map). */
+  svgNonHafsAyahNote: string;
+  /** Label for the edition's own ayah text in a non-Hafs tap panel. */
+  svgEditionTextLabel: string;
+  mushafDouri: string;
+  mushafShubah: string;
 }
 
 export type QuranSheetKind = 'picker' | 'mushaf' | 'settings' | 'bookmarks';
@@ -359,6 +380,7 @@ export function QuranReader({
   initialTab,
   initialView,
   initialTarget,
+  initialMushaf,
   surahList,
   labels,
   searchLabels,
@@ -379,6 +401,8 @@ export function QuranReader({
   initialView?: QuranViewMode;
   /** Deep-link range target from ?target= (null = list state). */
   initialTarget?: number | null;
+  /** Deep-link mushaf from ?mushaf= (validated server-side). */
+  initialMushaf?: SvgMushafKey;
   /** Full surah list for search name matching. */
   surahList: SurahSummary[];
   labels: QuranReaderLabels;
@@ -414,6 +438,7 @@ export function QuranReader({
       initialAyah={initialAyah}
       initialView={initialView}
       initialTarget={initialTarget}
+      initialMushaf={initialMushaf}
       surahList={surahList}
       labels={labels}
       searchLabels={searchLabels}
@@ -433,6 +458,7 @@ function QuranUmumReader({
   initialAyah,
   initialView,
   initialTarget,
+  initialMushaf,
   surahList,
   labels,
   searchLabels,
@@ -448,6 +474,7 @@ function QuranUmumReader({
   initialAyah: number | null;
   initialView?: QuranViewMode;
   initialTarget?: number | null;
+  initialMushaf?: SvgMushafKey;
   surahList: SurahSummary[];
   labels: QuranReaderLabels;
   searchLabels: QuranSearchLabels;
@@ -572,6 +599,22 @@ function QuranUmumReader({
   // null target show their LIST; a target shows that range's ayahs.
   const [viewMode, setViewMode] = useState<QuranViewMode>(initialView ?? 'surah');
   const [rangeTarget, setRangeTarget] = useState<number | null>(initialTarget ?? null);
+  // Round 6: the mushaf key — one parameter for every printed page.
+  // It travels beside every page number (URL, bookmarks, resume)
+  // because page numbers are per-mushaf, never interchangeable.
+  const [mushafKey, setMushafKey] = useState<SvgMushafKey>(
+    initialMushaf ?? DEFAULT_SVG_MUSHAF,
+  );
+  const mushafLabelFor = (k: SvgMushafKey): string =>
+    k === 'warsh/kfqc'
+      ? labels.mushafWarsh
+      : k === 'qalon/kfqc'
+        ? labels.mushafQalun
+        : k === 'douri/kfqc'
+          ? labels.mushafDouri
+          : k === 'shubah/kfqc'
+            ? labels.mushafShubah
+            : labels.mushafHafs;
   const [focusedDisplayIdx, setFocusedDisplayIdx] = useState(0);
   const isRangeMode = viewMode === 'juz' || viewMode === 'hizb' || viewMode === 'page';
   const rangeKind: RangeKind | null = isRangeMode ? viewMode : null;
@@ -595,9 +638,10 @@ function QuranUmumReader({
     setFocusedDisplayIdx(0);
   }, [surah.number]);
 
-  // Mirror view/target into the URL (replaceState, no refetch) so a
-  // refresh keeps the view. Other params (tab/ayah/reciter/...) pass
-  // through untouched.
+  // Mirror view/target/mushaf into the URL (replaceState, no refetch)
+  // so a refresh keeps the view. The mushaf key is ALWAYS carried —
+  // a deep link without it would silently mean Hafs. Other params
+  // (tab/ayah/reciter/...) pass through untouched.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
@@ -612,17 +656,19 @@ function QuranUmumReader({
       if (rangeTarget !== null) url.searchParams.set('target', String(rangeTarget));
       else url.searchParams.delete('target');
     }
+    url.searchParams.set('mushaf', mushafKey);
     const next = url.toString();
     if (next !== window.location.href) window.history.replaceState(null, '', next);
-  }, [viewMode, rangeTarget]);
+  }, [viewMode, rangeTarget, mushafKey]);
 
-  // Back/forward buttons restore the view from the URL.
+  // Back/forward buttons restore the view + mushaf from the URL.
   useEffect(() => {
     const onPop = () => {
       const params = new URLSearchParams(window.location.search);
       setViewMode(parseViewParam(params.get('view')));
       const t = params.get('target');
       setRangeTarget(t && /^\d+$/.test(t) ? Number(t) : null);
+      setMushafKey(parseSvgMushafKey(params.get('mushaf')));
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -905,6 +951,7 @@ function QuranUmumReader({
   // Round 4 last-read: remember what the reader is looking at (surah
   // + view + target + focused ayah) so the menu page can offer a
   // resume link. Local only; list states save with a null target.
+  // Round 6: the mushaf key is saved beside the position.
   useEffect(() => {
     const focused = visible.length > 0 ? visible[clampedFocused] : null;
     const lr: LastRead = {
@@ -912,11 +959,12 @@ function QuranUmumReader({
       view: viewMode,
       target: isRangeMode ? rangeTarget : null,
       ayah: viewMode === 'ayah' && focused ? focused.standardNumber : null,
+      mushaf: mushafKey,
       savedAt: Date.now(),
     };
     saveLastRead(lr);
     setLastRead(lr);
-  }, [surah.number, viewMode, rangeTarget, clampedFocused, visible, isRangeMode]);
+  }, [surah.number, viewMode, rangeTarget, clampedFocused, visible, isRangeMode, mushafKey]);
 
   // While playing, the ayah view tracks the playing ayah. Paused
   // navigation is never yanked (playing is false then).
@@ -1036,6 +1084,51 @@ function QuranUmumReader({
     };
   }, [displayPage]);
 
+  // ---- Round 6: SVG-tap selection (page view). Tapping a printed
+  // page's ayah polygon highlights it and plays it; the selection
+  // resets whenever the displayed page changes (it is per-page).
+  const [svgSelectedKey, setSvgSelectedKey] = useState<string | null>(null);
+  useEffect(() => {
+    setSvgSelectedKey(null);
+  }, [viewMode, rangeTarget, displayPage, mushafKey]);
+  const playSvgAyah = (sn: number, an: number): void => {
+    setSvgSelectedKey(`${sn}:${an}`);
+    const idx = playMap.get(`${sn}:${an}`);
+    if (idx !== undefined) playIndex(idx);
+  };
+
+  // ---- Round 6: non-Hafs tap reference. Tapping a non-Hafs polygon
+  // does NOT play Hafs audio or show Hafs translation/tafsir for it
+  // (that would mix numberings). It highlights the reference and
+  // shows the ayah's OWN words in its own edition, labeled as such.
+  interface NonHafsSelection {
+    surah: number;
+    ayah: number;
+    page: number;
+  }
+  const [nonHafsSelected, setNonHafsSelected] = useState<NonHafsSelection | null>(null);
+  // undefined = loading, null = unavailable (reference + note only).
+  const [nonHafsText, setNonHafsText] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    setNonHafsSelected(null);
+  }, [viewMode, rangeTarget, mushafKey]);
+  useEffect(() => {
+    if (!nonHafsSelected) return;
+    setNonHafsText(undefined);
+    let cancelled = false;
+    editionAyahText(mushafKey, nonHafsSelected.surah, nonHafsSelected.ayah).then((t) => {
+      if (!cancelled) setNonHafsText(t);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [nonHafsSelected, mushafKey]);
+  const handleNonHafsTap = (sn: number, an: number): void => {
+    setSvgSelectedKey(`${sn}:${an}`);
+    setNonHafsSelected({ surah: sn, ayah: an, page: rangeTarget ?? displayPage ?? 1 });
+  };
+
+
   // ---- Round 5: fullscreen reading view ----
   // The overlay shows ONE mushaf page (readingPage) with its own
   // data pipeline (span → surahs → groups → exact lines), mirroring
@@ -1045,6 +1138,18 @@ function QuranUmumReader({
   // and changing it would break the 15-line layout.
   const [readingOpen, setReadingOpen] = useState(false);
   const [readingPage, setReadingPage] = useState<number | null>(null);
+  // ---- Round 6: mushaf switch. Picking a mushaf lands the reader on
+  // that mushaf's page view, keeping the page NUMBER (re-resolved
+  // under the new key — Warsh p42 is not Hafs p42). The reading view,
+  // when open, follows to the same number under the new key.
+  const selectMushaf = (key: SvgMushafKey): void => {
+    const target = displayPage ?? rangeTarget ?? 1;
+    setMushafKey(key);
+    setViewMode('page');
+    setRangeTarget(target);
+    if (readingOpen) setReadingPage(target);
+    setSheet(null);
+  };
   // Surah mode loads no boundaries on its own; the reading view does.
   useEffect(() => {
     if (!readingOpen || boundaries) return;
@@ -1242,6 +1347,8 @@ function QuranUmumReader({
     hafs: labels.mushafHafs,
     warsh: labels.mushafWarsh,
     qalun: labels.mushafQalun,
+    douri: labels.mushafDouri,
+    shubah: labels.mushafShubah,
     hafsMargins: labels.mushafHafsMargins,
     warshMargins: labels.mushafWarshMargins,
     qalunMargins: labels.mushafQalunMargins,
@@ -1425,7 +1532,12 @@ function QuranUmumReader({
         />
       ) : null}
       {sheet === 'mushaf' ? (
-        <QuranMushafPicker onClose={() => setSheet(null)} labels={mushafLabels} />
+        <QuranMushafPicker
+          onClose={() => setSheet(null)}
+          labels={mushafLabels}
+          currentMushaf={mushafKey}
+          onSelect={selectMushaf}
+        />
       ) : null}
       {sheet === 'settings' ? (
         <QuranSheetShell
@@ -1542,7 +1654,7 @@ function QuranUmumReader({
   return (
     <div
       ref={readerRef}
-      className={`quran-reader ${scriptClass} ${displayFontClass(prefs.font)} ${displayThemeClass(prefs.theme)}${fallbackFs ? ' quran-fallback-fullscreen' : ''}`}
+      className={`quran-reader ${scriptClass} ${displayFontClass(prefs.font)} ${displayThemeClass(prefs.theme)} quran-mushaf-${mushafKey.replace('/', '-')}${fallbackFs ? ' quran-fallback-fullscreen' : ''}`}
       style={{ '--quran-ayah-size': `${prefs.fontSize}px` } as React.CSSProperties}
     >
       {fallbackFs ? (
@@ -2134,28 +2246,49 @@ function QuranUmumReader({
                 className="quran-bookmark-btn"
                 onClick={() =>
                   toggleBookmark({
-                    id: pageBookmarkId(displayPage),
+                    id: pageBookmarkId(
+                      displayPage,
+                      viewMode === 'page' ? mushafKey : DEFAULT_SVG_MUSHAF,
+                    ),
                     kind: 'page',
                     surah: surah.number,
                     ayah: null,
                     page: displayPage,
+                    mushaf: viewMode === 'page' ? mushafKey : DEFAULT_SVG_MUSHAF,
                     label: labels.pageCurrent.replace('%n%', String(displayPage)),
                     favorite: false,
                     createdAt: Date.now(),
                   })
                 }
                 aria-label={
-                  bookmarkIds.has(pageBookmarkId(displayPage))
+                  bookmarkIds.has(
+                    pageBookmarkId(
+                      displayPage,
+                      viewMode === 'page' ? mushafKey : DEFAULT_SVG_MUSHAF,
+                    ),
+                  )
                     ? labels.bookmarkRemove
                     : labels.bookmarkPage
                 }
                 title={
-                  bookmarkIds.has(pageBookmarkId(displayPage))
+                  bookmarkIds.has(
+                    pageBookmarkId(
+                      displayPage,
+                      viewMode === 'page' ? mushafKey : DEFAULT_SVG_MUSHAF,
+                    ),
+                  )
                     ? labels.bookmarkRemove
                     : labels.bookmarkPage
                 }
               >
-                {bookmarkIds.has(pageBookmarkId(displayPage)) ? '★' : '☆'}
+                {bookmarkIds.has(
+                  pageBookmarkId(
+                    displayPage,
+                    viewMode === 'page' ? mushafKey : DEFAULT_SVG_MUSHAF,
+                  ),
+                )
+                  ? '★'
+                  : '☆'}
               </button>
             ) : null}
             <span className="quran-range-nav-steps">
@@ -2177,7 +2310,100 @@ function QuranUmumReader({
               </button>
             </span>
           </div>
-          {rangeLoading || !rangeGroups || (viewMode === 'juz' && (displayPage === null || !displayPageGroups)) ? (
+          {viewMode === 'page' && mushafKey !== DEFAULT_SVG_MUSHAF ? (
+            <>
+              {/* Round 6, non-Hafs page: the page is its OWN mushaf's
+              SVG — the Hafs pipeline (boundaries, exact lines, API
+              text) is never consulted for it, so no Hafs content can
+              leak under another key. The header's surah comes from
+              the page's own ayah list; juz/hizb are omitted (this
+              mushaf's per-page juz/hizb is not in the data used). */}
+              <QuranMushafPage
+                groups={[]}
+                exactLines={null}
+                pageNumber={rangeTarget}
+                juz={null}
+                hizb={null}
+                headerSurah=""
+                headerSurahTemplate={labels.mushafHeaderSurah}
+                pageCurrent={labels.pageCurrent}
+                juzCurrent={labels.juzCurrent}
+                hizbCurrent={labels.hizbCurrent}
+                bismillah={labels.bismillah}
+                scriptClass={scriptClass}
+                playingKey={null}
+                highlightKey={svgSelectedKey}
+                onPlayAyah={() => {}}
+                svgPage
+                mushafKey={mushafKey}
+                resolveSurahName={surahNameAr}
+                onSelectAyah={handleNonHafsTap}
+                svgFallbackNote={labels.svgFallbackNote}
+                svgUnavailableNote={labels.svgUnavailableNote}
+                svgCredit={labels.svgCredit}
+              />
+              {nonHafsSelected ? (
+                <div className="quran-svg-refpanel">
+                  <p className="quran-svg-refpanel-ref" lang="ar" dir="rtl">
+                    {mushafLabelFor(mushafKey)} · {surahNameAr(nonHafsSelected.surah)} ·{' '}
+                    {nonHafsSelected.ayah}
+                  </p>
+                  {nonHafsText === undefined ? (
+                    <p className="quran-mode-note">{labels.rangeLoading}</p>
+                  ) : nonHafsText ? (
+                    <div className="quran-svg-refpanel-text">
+                      <span className="ayah-sub-label">{labels.svgEditionTextLabel}</span>
+                      <p lang="ar" dir="rtl">
+                        {nonHafsText}
+                      </p>
+                    </div>
+                  ) : null}
+                  <p className="quran-svg-refpanel-note">{labels.svgRefPanelNote}</p>
+                  <button
+                    type="button"
+                    className="quran-bookmark-btn"
+                    onClick={() =>
+                      toggleBookmark({
+                        id: ayahBookmarkId(
+                          nonHafsSelected.surah,
+                          nonHafsSelected.ayah,
+                          mushafKey,
+                        ),
+                        kind: 'ayah',
+                        surah: nonHafsSelected.surah,
+                        ayah: nonHafsSelected.ayah,
+                        page: nonHafsSelected.page,
+                        mushaf: mushafKey,
+                        label: `${mushafLabelFor(mushafKey)} · ${surahNameAr(nonHafsSelected.surah)} · ${nonHafsSelected.ayah}`,
+                        favorite: false,
+                        createdAt: Date.now(),
+                      })
+                    }
+                    aria-label={
+                      bookmarkIds.has(
+                        ayahBookmarkId(nonHafsSelected.surah, nonHafsSelected.ayah, mushafKey),
+                      )
+                        ? labels.bookmarkRemove
+                        : labels.bookmarkAyah
+                    }
+                    title={
+                      bookmarkIds.has(
+                        ayahBookmarkId(nonHafsSelected.surah, nonHafsSelected.ayah, mushafKey),
+                      )
+                        ? labels.bookmarkRemove
+                        : labels.bookmarkAyah
+                    }
+                  >
+                    {bookmarkIds.has(
+                      ayahBookmarkId(nonHafsSelected.surah, nonHafsSelected.ayah, mushafKey),
+                    )
+                      ? '★'
+                      : '☆'}
+                  </button>
+                </div>
+              ) : null}
+            </>
+          ) : rangeLoading || !rangeGroups || (viewMode === 'juz' && (displayPage === null || !displayPageGroups)) ? (
             <p className="quran-mode-note">{rangeError ? labels.rangeFailed : labels.rangeLoading}</p>
           ) : viewMode === 'page' || viewMode === 'juz' ? (
             <>
@@ -2236,6 +2462,17 @@ function QuranUmumReader({
                   const idx = playMap.get(`${sn}:${an}`);
                   if (idx !== undefined) playIndex(idx);
                 }}
+                // Round 6: page mode shows the real printed SVG page;
+                // juz mode stays text-lines (20 scrolling SVG pages is
+                // the documented mobile performance trap).
+                svgPage={viewMode === 'page'}
+                mushafKey={mushafKey}
+                resolveSurahName={surahNameAr}
+                highlightKey={svgSelectedKey ?? playingKey}
+                onSelectAyah={playSvgAyah}
+                svgFallbackNote={labels.svgFallbackNote}
+                svgUnavailableNote={labels.svgUnavailableNote}
+                svgCredit={labels.svgCredit}
               />
             </>
           ) : (
@@ -2298,6 +2535,7 @@ function QuranUmumReader({
                                     surah: group.surahNumber,
                                     ayah: d.standardNumber,
                                     page: null,
+                                    mushaf: DEFAULT_SVG_MUSHAF,
                                     label: `${group.surahNameAr} · ${d.standardNumber}`,
                                     favorite: false,
                                     createdAt: Date.now(),
@@ -2359,6 +2597,7 @@ function QuranUmumReader({
                     surah: surah.number,
                     ayah: visible[clampedFocused].standardNumber,
                     page: null,
+                    mushaf: DEFAULT_SVG_MUSHAF,
                     label: `${surah.nameAr} · ${visible[clampedFocused].standardNumber}`,
                     favorite: false,
                     createdAt: Date.now(),
@@ -2395,6 +2634,16 @@ function QuranUmumReader({
               <p className="quran-mode-note">
                 {ayahPageError ? labels.rangeFailed : labels.rangeLoading}
               </p>
+            ) : mushafKey !== DEFAULT_SVG_MUSHAF ? (
+              // Round 6: the ayah view is a Hafs-text view (focused
+              // ayah + its page). Under a non-Hafs key, the page
+              // containing a Hafs ayah needs the ayah-number map,
+              // which is not wired yet — so NO page is shown here
+              // rather than a Hafs page under another key. The
+              // printed-page views (page + reading) carry the key.
+              <p className="quran-svg-fallback-note" role="note">
+                {labels.svgNonHafsAyahNote}
+              </p>
             ) : (
               <>
                 <QuranMushafPage
@@ -2421,6 +2670,21 @@ function QuranUmumReader({
                     const idx = playMap.get(`${sn}:${an}`);
                     if (idx !== undefined) playIndex(idx);
                   }}
+                  // Round 6: the ayah view's page is the real printed
+                  // SVG page; tapping a polygon moves the focus (and
+                  // the translation/tafsir panel below) to that ayah
+                  // when it belongs to the entry surah.
+                  svgPage
+                  mushafKey={mushafKey}
+                  resolveSurahName={surahNameAr}
+                  onSelectAyah={(sn, an) => {
+                    if (sn !== surah.number) return;
+                    const idx = visible.findIndex((d) => d.standardNumber === an);
+                    if (idx >= 0) setFocusedDisplayIdx(idx);
+                  }}
+                  svgFallbackNote={labels.svgFallbackNote}
+                  svgUnavailableNote={labels.svgUnavailableNote}
+                  svgCredit={labels.svgCredit}
                 />
                 {(() => {
                   const sajda = isSajda(surah.number, focusedAyah.standardNumber, madhhab)
@@ -2486,6 +2750,7 @@ function QuranUmumReader({
                             surah: surah.number,
                             ayah: d.standardNumber,
                             page: null,
+                            mushaf: DEFAULT_SVG_MUSHAF,
                             label: `${surah.nameAr} · ${d.standardNumber}`,
                             favorite: false,
                             createdAt: Date.now(),
@@ -2580,28 +2845,31 @@ function QuranUmumReader({
                     onClick={() => {
                       if (readingPage === null) return;
                       toggleBookmark({
-                        id: pageBookmarkId(readingPage),
+                        id: pageBookmarkId(readingPage, mushafKey),
                         kind: 'page',
                         surah: surah.number,
                         ayah: null,
                         page: readingPage,
+                        mushaf: mushafKey,
                         label: labels.pageCurrent.replace('%n%', String(readingPage)),
                         favorite: false,
                         createdAt: Date.now(),
                       });
                     }}
                     aria-label={
-                      readingPage !== null && bookmarkIds.has(pageBookmarkId(readingPage))
+                      readingPage !== null && bookmarkIds.has(pageBookmarkId(readingPage, mushafKey))
                         ? labels.bookmarkRemove
                         : labels.bookmarkPage
                     }
                     title={
-                      readingPage !== null && bookmarkIds.has(pageBookmarkId(readingPage))
+                      readingPage !== null && bookmarkIds.has(pageBookmarkId(readingPage, mushafKey))
                         ? labels.bookmarkRemove
                         : labels.bookmarkPage
                     }
                   >
-                    {readingPage !== null && bookmarkIds.has(pageBookmarkId(readingPage)) ? '★' : '☆'}
+                    {readingPage !== null && bookmarkIds.has(pageBookmarkId(readingPage, mushafKey))
+                      ? '★'
+                      : '☆'}
                   </button>
                   <button
                     type="button"
@@ -2637,6 +2905,26 @@ function QuranUmumReader({
                     linesClickable={false}
                     hideMeta
                     onPlayAyah={() => {}}
+                    // Round 6: the reading view shows the real printed
+                    // SVG page of the CURRENT mushaf; tapping a
+                    // polygon plays that ayah for Hafs, and only
+                    // highlights it otherwise (no Hafs audio under
+                    // another key).
+                    svgPage
+                    mushafKey={mushafKey}
+                    resolveSurahName={surahNameAr}
+                    highlightKey={mushafKey === DEFAULT_SVG_MUSHAF ? playingKey : svgSelectedKey}
+                    onSelectAyah={(sn, an) => {
+                      if (mushafKey !== DEFAULT_SVG_MUSHAF) {
+                        setSvgSelectedKey(`${sn}:${an}`);
+                        return;
+                      }
+                      const idx = playMap.get(`${sn}:${an}`);
+                      if (idx !== undefined) playIndex(idx);
+                    }}
+                    svgFallbackNote={labels.svgFallbackNote}
+                    svgUnavailableNote={labels.svgUnavailableNote}
+                    svgCredit={labels.svgCredit}
                   />
                 )}
               </div>

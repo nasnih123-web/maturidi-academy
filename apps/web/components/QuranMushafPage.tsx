@@ -25,9 +25,15 @@
  * double-ring ayah-end markers with the ayah number inside. Page
  * numbers use Arabic-Indic digits throughout, as in the print.
  */
-import { Fragment } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import type { DisplayAyah } from '@/lib/quran-madhhab';
 import type { MushafExactLine } from '@/lib/quran-mushaf-lines';
+import {
+  DEFAULT_SVG_MUSHAF,
+  type SvgMushafKey,
+  type SvgPageAyah,
+} from '@/lib/quran-svg-page';
+import { QuranSvgPage } from './QuranSvgPage';
 
 export interface MushafSurahGroup {
   surahNumber: number;
@@ -140,6 +146,13 @@ export function QuranMushafPage({
   hideMeta,
   onPlayAyah,
   onPlayLine,
+  svgPage,
+  onSelectAyah,
+  svgFallbackNote,
+  svgUnavailableNote,
+  svgCredit,
+  mushafKey,
+  resolveSurahName,
 }: {
   groups: MushafSurahGroup[];
   /** Exact print lines for this page; null → flowing fallback. */
@@ -174,14 +187,62 @@ export function QuranMushafPage({
   onPlayAyah: (surahNumber: number, displayItem: DisplayAyah) => void;
   /** Play from a print line's first verse (exact-lines path only). */
   onPlayLine?: (surahNumber: number, ayahNumber: number) => void;
+  /**
+   * Round 6: true when this view shows the REAL printed page as
+   * inline SVG (page view, ayah view's page, reading view). False
+   * keeps the exact-line text page — the juz view stays text-lines
+   * on purpose: 20 scrolling SVG pages is the documented mobile
+   * performance trap (a page is a few hundred KB of path data).
+   */
+  svgPage?: boolean;
+  /** SVG tap on a polygon: (surah, ayah) in Hafs print numbering. */
+  onSelectAyah?: (surahNumber: number, ayahNumber: number) => void;
+  /** Plain note shown only when the SVG fetch failed (fallback). */
+  svgFallbackNote?: string;
+  /** Note shown only when a NON-Hafs SVG page failed (no text exists). */
+  svgUnavailableNote?: string;
+  /** Small credit line under a rendered SVG page. */
+  svgCredit?: string;
+  /**
+   * The mushaf key: the SVG folder AND the numbering of every tap
+   * and header on this page. Default Hafs; never render one mushaf's
+   * page under another's key.
+   */
+  mushafKey?: SvgMushafKey;
+  /** Surah number → Arabic name, for the non-Hafs page header. */
+  resolveSurahName?: (surahNumber: number) => string;
 }) {
+  const mushaf = mushafKey ?? DEFAULT_SVG_MUSHAF;
+  // A failed SVG load falls back to the text page for the SAME page
+  // number — but ONLY for Hafs, whose exact lines exist. A non-Hafs
+  // failure shows a note and NO text: the Hafs lines are a different
+  // mushaf's pagination and must never stand in for Warsh/Qalun/
+  // Duri/Shubah. The flags reset whenever the page/key changes.
+  const [svgFailed, setSvgFailed] = useState(false);
+  const [svgAyahs, setSvgAyahs] = useState<SvgPageAyah[] | null>(null);
+  useEffect(() => {
+    setSvgFailed(false);
+    setSvgAyahs(null);
+  }, [pageNumber, svgPage, mushaf]);
+  const showSvg = svgPage === true && !svgFailed;
+  const nonHafsFallback = svgPage === true && svgFailed && mushaf !== DEFAULT_SVG_MUSHAF;
+  // Non-Hafs header comes from the page's OWN ayah list (last ayah's
+  // surah), never from the Hafs pipeline's groups: juz/hizb stay null
+  // (the caller passes null) and the surah part is omitted until the
+  // list loads, rather than showing a Hafs-derived surah.
+  const effectiveHeaderSurah =
+    mushaf !== DEFAULT_SVG_MUSHAF
+      ? svgAyahs && svgAyahs.length > 0
+        ? (resolveSurahName?.(svgAyahs[svgAyahs.length - 1].surah) ?? '')
+        : ''
+      : headerSurah;
   // Header meta, Bayan-style: page · juz · hizb · (surah) — each
   // part only when known. The footer repeats only the page number.
   const meta = [
     pageCurrent.replace('%n%', toArabicIndicDigits(pageNumber)),
     juz !== null ? juzCurrent.replace('%n%', toArabicIndicDigits(juz)) : null,
     hizb !== null ? hizbCurrent.replace('%n%', toArabicIndicDigits(hizb)) : null,
-    headerSurahTemplate.replace('%s%', headerSurah),
+    effectiveHeaderSurah ? headerSurahTemplate.replace('%s%', effectiveHeaderSurah) : null,
   ]
     .filter((x): x is string => x !== null)
     .join(' · ');
@@ -189,6 +250,21 @@ export function QuranMushafPage({
   return (
     <div className={`mushaf-page ${scriptClass}`}>
       {hideMeta ? null : <p className="mushaf-page-meta">{meta}</p>}
+      {svgPage === true && svgFailed ? (
+        <p className="quran-svg-fallback-note" role="note">
+          {nonHafsFallback ? svgUnavailableNote : svgFallbackNote}
+        </p>
+      ) : null}
+      {showSvg ? (
+        <QuranSvgPage
+          mushaf={mushaf}
+          pageNumber={pageNumber}
+          highlightKey={highlightKey ?? null}
+          onSelectAyah={(s, a) => onSelectAyah?.(s, a)}
+          onFailed={() => setSvgFailed(true)}
+          onAyahs={setSvgAyahs}
+        />
+      ) : nonHafsFallback ? null : (
       <div className="mushaf-frame">
         <MushafCorner pos="tl" />
         <MushafCorner pos="tr" />
@@ -285,6 +361,8 @@ export function QuranMushafPage({
           ))
         )}
       </div>
+      )}
+      {showSvg && svgCredit ? <p className="quran-svg-credit">{svgCredit}</p> : null}
       {hideMeta ? null : <p className="mushaf-page-meta mushaf-page-foot">{foot}</p>}
     </div>
   );

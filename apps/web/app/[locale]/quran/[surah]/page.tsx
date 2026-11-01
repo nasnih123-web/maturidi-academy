@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getQuranProviders, getSurah, getSurahs } from '@/lib/quran';
+import { parseSvgMushafKey } from '@/lib/quran-svg-page';
 import { RANGE_COUNTS, type QuranViewMode } from '@/lib/quran-view-modes';
 import { getSiteConfig, type QuranSettings } from '@/lib/settings';
 import { QuranReader } from '@/components/QuranReader';
@@ -49,6 +50,7 @@ export default async function SurahPage({
     tab?: string;
     view?: string;
     target?: string;
+    mushaf?: string;
   }>;
 }) {
   const { locale, surah } = await params;
@@ -107,6 +109,8 @@ export default async function SurahPage({
     Number.isInteger(targetParam) && targetParam >= 1 && targetParam <= maxTarget
       ? targetParam
       : null;
+  // Mushaf deep-link: only the five real keys; anything else is Hafs.
+  const initialMushaf = parseSvgMushafKey(searchParams.mushaf ?? null);
 
   let view: Awaited<ReturnType<typeof getSurah>> | null = null;
   try {
@@ -151,6 +155,7 @@ export default async function SurahPage({
         initialTab={initialTab}
         initialView={initialView}
         initialTarget={initialTarget}
+        initialMushaf={initialMushaf}
         surahList={surahList}
         translationEditions={providers?.translationEditions ?? []}
         tafsirEditions={providers?.tafsirEditions ?? []}
@@ -274,6 +279,8 @@ export default async function SurahPage({
           mushafHafs: t('mushafHafs'),
           mushafWarsh: t('mushafWarsh'),
           mushafQalun: t('mushafQalun'),
+          mushafDouri: t('mushafDouri'),
+          mushafShubah: t('mushafShubah'),
           mushafHafsMargins: t('mushafHafsMargins'),
           mushafWarshMargins: t('mushafWarshMargins'),
           mushafQalunMargins: t('mushafQalunMargins'),
@@ -284,6 +291,12 @@ export default async function SurahPage({
           mushafNote: t('mushafNote'),
           readingSettingsLabel: t('readingSettingsLabel'),
           readingPageOf: t('readingPageOf'),
+          svgFallbackNote: t('svgFallbackNote'),
+          svgUnavailableNote: t('svgUnavailableNote'),
+          svgRefPanelNote: t('svgRefPanelNote'),
+          svgNonHafsAyahNote: t('svgNonHafsAyahNote'),
+          svgEditionTextLabel: t('svgEditionTextLabel'),
+          svgCredit: t('svgCredit'),
           playAyah: t('playAyah'),
           playing: t('playing'),
           translationLabel: t('translationLabel'),

@@ -8,17 +8,30 @@
  * Everything here is per-device and never leaves the browser.
  */
 
+import {
+  DEFAULT_SVG_MUSHAF,
+  parseSvgMushafKey,
+  type SvgMushafKey,
+} from './quran-svg-page';
+
 export type BookmarkKind = 'ayah' | 'page';
 
 export interface Bookmark {
-  /** 's:a' for an ayah, 'page:n' for a mushaf page. */
+  /**
+   * Mushaf-scoped id: 'hafs/kfqc:2:255' for an ayah,
+   * 'page:hafs/kfqc:42' for a mushaf page. The key is part of the
+   * id because an ayah number without its riwayah is not a
+   * reference, and a page number without its mushaf is not a page.
+   */
   id: string;
   kind: BookmarkKind;
   surah: number;
-  /** Ayah number (ayah kind only). */
+  /** Ayah number (ayah kind only), in this bookmark's mushaf. */
   ayah: number | null;
-  /** Mushaf page number (page kind only). */
+  /** Mushaf page number (page kind only, or the page of a non-Hafs ayah). */
   page: number | null;
+  /** The mushaf key this bookmark belongs to (legacy: Hafs). */
+  mushaf: SvgMushafKey;
   /** Human label captured at save time (surah name + ref). */
   label: string;
   favorite: boolean;
@@ -34,6 +47,8 @@ export interface LastRead {
   target: number | null;
   /** Focused ayah number (ayah mode) or null. */
   ayah: number | null;
+  /** The mushaf key of the position (legacy: Hafs). */
+  mushaf: SvgMushafKey;
   savedAt: number;
 }
 
@@ -68,6 +83,7 @@ function validBookmark(o: unknown): Bookmark | null {
     surah: r.surah,
     ayah: typeof r.ayah === 'number' ? r.ayah : null,
     page: typeof r.page === 'number' ? r.page : null,
+    mushaf: parseSvgMushafKey(typeof r.mushaf === 'string' ? r.mushaf : null),
     label: r.label,
     favorite: r.favorite === true,
     createdAt: typeof r.createdAt === 'number' ? r.createdAt : 0,
@@ -87,20 +103,34 @@ export function saveBookmarks(items: Bookmark[]): void {
   writeJson(BOOKMARKS_KEY, items);
 }
 
-export function ayahBookmarkId(surah: number, ayah: number): string {
-  return `${surah}:${ayah}`;
+export function ayahBookmarkId(
+  surah: number,
+  ayah: number,
+  mushaf: SvgMushafKey = DEFAULT_SVG_MUSHAF,
+): string {
+  return `${mushaf}:${surah}:${ayah}`;
 }
 
-export function pageBookmarkId(page: number): string {
-  return `page:${page}`;
+export function pageBookmarkId(
+  page: number,
+  mushaf: SvgMushafKey = DEFAULT_SVG_MUSHAF,
+): string {
+  return `page:${mushaf}:${page}`;
 }
 
-/** Deep link back to a bookmark (reader params the page already honors). */
+/** Deep link back to a bookmark — always carrying the mushaf key. */
 export function bookmarkHref(b: Bookmark, locale: string): string {
+  const mushaf = encodeURIComponent(b.mushaf ?? DEFAULT_SVG_MUSHAF);
   if (b.kind === 'page' && b.page !== null) {
-    return `/${locale}/quran/${b.surah}?view=page&target=${b.page}`;
+    return `/${locale}/quran/${b.surah}?view=page&target=${b.page}&mushaf=${mushaf}`;
   }
-  return `/${locale}/quran/${b.surah}?view=ayah&ayah=${b.ayah ?? 1}`;
+  // A non-Hafs ayah bookmark stores its page: the ayah view is a
+  // Hafs-text view, so the bookmark lands on the ayah's own page
+  // instead of a Hafs-numbered ayah view under another key.
+  if (b.mushaf !== DEFAULT_SVG_MUSHAF && b.page !== null) {
+    return `/${locale}/quran/${b.surah}?view=page&target=${b.page}&mushaf=${mushaf}`;
+  }
+  return `/${locale}/quran/${b.surah}?view=ayah&ayah=${b.ayah ?? 1}&mushaf=${mushaf}`;
 }
 
 export function loadLastRead(): LastRead | null {
@@ -111,6 +141,7 @@ export function loadLastRead(): LastRead | null {
     view: raw.view,
     target: typeof raw.target === 'number' ? raw.target : null,
     ayah: typeof raw.ayah === 'number' ? raw.ayah : null,
+    mushaf: parseSvgMushafKey(typeof raw.mushaf === 'string' ? raw.mushaf : null),
     savedAt: typeof raw.savedAt === 'number' ? raw.savedAt : 0,
   };
 }
@@ -119,12 +150,14 @@ export function saveLastRead(value: LastRead): void {
   writeJson(LAST_READ_KEY, value);
 }
 
-/** Deep link that restores the last-read position. */
+/** Deep link that restores the last-read position (mushaf key carried). */
 export function lastReadHref(lr: LastRead, locale: string): string {
   const base = `/${locale}/quran/${lr.surah}`;
-  if (lr.view === 'ayah' && lr.ayah !== null) return `${base}?view=ayah&ayah=${lr.ayah}`;
+  const mushaf = encodeURIComponent(lr.mushaf ?? DEFAULT_SVG_MUSHAF);
+  if (lr.view === 'ayah' && lr.ayah !== null)
+    return `${base}?view=ayah&ayah=${lr.ayah}&mushaf=${mushaf}`;
   if ((lr.view === 'juz' || lr.view === 'hizb' || lr.view === 'page') && lr.target !== null) {
-    return `${base}?view=${lr.view}&target=${lr.target}`;
+    return `${base}?view=${lr.view}&target=${lr.target}&mushaf=${mushaf}`;
   }
   return base;
 }

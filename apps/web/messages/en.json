@@ -367,6 +367,8 @@
     "mushafHafs": "Hafs ʿan ʿAsim",
     "mushafWarsh": "Warsh ʿan Nafiʿ",
     "mushafQalun": "Qalun ʿan Nafiʿ",
+    "mushafDouri": "Duri",
+    "mushafShubah": "Shubah",
     "mushafHafsMargins": "Hafs with margins",
     "mushafWarshMargins": "Warsh with margins",
     "mushafQalunMargins": "Qalun with margins",
@@ -374,7 +376,7 @@
     "mushafTajweed": "Tajweed Mushaf",
     "mushafCurrent": "Current",
     "mushafSoon": "Coming soon",
-    "mushafNote": "Only the Hafs text is verified and available right now; the other mushafs will be added once a verified text is sourced.",
+    "mushafNote": "Five printed mushafs are available (Hafs, Warsh, Qalun, Duri, Shubah). The “with margins”, “Madina” and “Tajweed” rows need their own sources and are not added yet.",
     "readingSettingsLabel": "Display",
     "readingPageOf": "Page %current% of %total%",
     "autoScrollLabel": "Auto-scroll",
@@ -408,7 +410,13 @@
     "searchAyahHeading": "Ayahs",
     "searchPageHeading": "Page",
     "searchPageOutOfRange": "Page number must be between 1 and %max%",
-    "searchMore": "and %n% more matches — add more words"
+    "searchMore": "and %n% more matches — add more words",
+    "svgFallbackNote": "The printed page is unavailable; showing the text version of the same page.",
+    "svgUnavailableNote": "The printed page of this mushaf is unavailable; no text version is shown here, so another mushaf’s numbering is never displayed under this key.",
+    "svgRefPanelNote": "Translation, tafsir and audio are not yet connected to this mushaf’s numbering; the text below is this mushaf’s own text.",
+    "svgNonHafsAyahNote": "Showing an ayah under the selected mushaf needs the ayah-number mapping between mushafs, which is not connected yet; the ayah page is shown with Hafs only. See the same mushaf’s printed page from the “Page” view.",
+    "svgEditionTextLabel": "Selected mushaf’s text",
+    "svgCredit": "Printed page: Mushaf al-Madinah — King Fahd Glorious Quran Printing Complex; ayah layer: Quran.ws"
   },
   "tasbih": {
     "metaTitle": "Digital Tasbih",
