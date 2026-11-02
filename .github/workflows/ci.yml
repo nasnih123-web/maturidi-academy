@@ -237,6 +237,19 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      # FIX for run 41354976211: Compose smoke failed with
+      # "No space left on device" while the runner wrote diagnostics.
+      # The prod stack pulls/builds several large images (api, postgres,
+      # redis, minio, clamav, migrate) on a disk-constrained runner.
+      # Free the well-known unused toolchains BEFORE the compose build.
+      # This step changes no app code and no smoke assertions.
+      - name: Free disk space before compose build
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          docker system prune -af --volumes 2>/dev/null || true
+          df -h
       - name: Write CI-only .env.prod
         run: |
           cat > .env.prod <<'EOF'
