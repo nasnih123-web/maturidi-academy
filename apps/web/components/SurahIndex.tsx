@@ -53,7 +53,7 @@ export function SurahIndex({
         </Link>
       ) : null}
 
-      <QuranSearchBox locale={locale} surahs={surahs} labels={searchLabels} />
+      <QuranSearchBox locale={locale} surahs={surahs} labels={searchLabels} liveStrip />
 
       <h2 className="quran-sections-title">{labels.sectionsTitle}</h2>
       <nav className="quran-section-cards" aria-label={labels.sectionsTitle}>

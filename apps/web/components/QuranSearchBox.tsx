@@ -14,14 +14,26 @@
  * The ayah index (6236 rows) and the page boundaries load lazily on
  * the first search, never on page load. Results navigate to the reader:
  * surah → its surah view, ayah → its ayah view, page → its page view.
+ *
+ * Round 8 — live strip (index page only, `liveStrip` prop): results
+ * render as a scrollable strip below the box with an exact total-count
+ * line (the search layer's TOTAL, never the rendered count), windowed
+ * ayah rows (first 50, more on scroll), highlighted snippets, surah
+ * alias matches, and a recent-searches row. The reader keeps the old
+ * capped rendering. Normalization is unchanged — fa/ar-insensitive,
+ * exactly as before.
  */
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { loadBoundaries } from '@/lib/quran-boundaries-loader';
 import {
+  findAyahMatchSpan,
   isNumericQuery,
   matchSurahs,
+  matchSurahsWithAliases,
+  resetSearchIndex,
   searchAyahs,
+  searchAyahsRanked,
   toLatinDigits,
   type SearchIndexRow,
 } from '@/lib/quran-search';
@@ -41,7 +53,56 @@ export interface QuranSearchLabels {
   searchPageOutOfRange: string;
   /** Template with %n% (remaining matches beyond the shown hits). */
   searchMore: string;
+  /** Round 8 (live strip only, all optional): */
+  /** Template with %n% (true total) and %q% (query). */
+  searchResultCount?: string;
+  /** Template with %n% (surah count) and %q% (query). */
+  searchSurahResultCount?: string;
+  searchRecent?: string;
+  searchRecentClear?: string;
+  searchLoadMore?: string;
+  searchError?: string;
+  searchRetry?: string;
+  searchSurahWord?: string;
+  searchAyahWord?: string;
 }
+
+/** Fallbacks for the round-8 labels when a caller omits them. */
+const STRIP_FALLBACKS: Record<string, Record<string, string>> = {
+  fa: {
+    searchResultCount: '%n% نتیجه برای «%q%»',
+    searchSurahResultCount: '%n% سوره برای «%q%»',
+    searchRecent: 'جستجوهای اخیر',
+    searchRecentClear: 'پاک کردن',
+    searchLoadMore: 'نمایش بیشتر',
+    searchError: 'بارگذاری فهرست جستجو ناموفق بود؛ دوباره تلاش کنید',
+    searchRetry: 'تلاش دوباره',
+    searchSurahWord: 'سوره',
+    searchAyahWord: 'آیه',
+  },
+  ar: {
+    searchResultCount: '%n% نتيجة لـ«%q%»',
+    searchSurahResultCount: '%n% سورة لـ«%q%»',
+    searchRecent: 'عمليات البحث الأخيرة',
+    searchRecentClear: 'مسح',
+    searchLoadMore: 'عرض المزيد',
+    searchError: 'فشل تحميل فهرس البحث؛ حاول مجددًا',
+    searchRetry: 'إعادة المحاولة',
+    searchSurahWord: 'سورة',
+    searchAyahWord: 'آية',
+  },
+  en: {
+    searchResultCount: '%n% results for "%q%"',
+    searchSurahResultCount: '%n% surahs for "%q%"',
+    searchRecent: 'Recent searches',
+    searchRecentClear: 'Clear',
+    searchLoadMore: 'Show more',
+    searchError: 'Search index failed to load; try again',
+    searchRetry: 'Retry',
+    searchSurahWord: 'Surah',
+    searchAyahWord: 'Ayah',
+  },
+};
 
 type Results =
   | { kind: 'idle' }
@@ -54,19 +115,53 @@ type Results =
       ayahTotal: number;
     };
 
+const RECENT_KEY = 'quran-recent-searches';
+const STRIP_WINDOW = 50;
+const SNIPPET_RADIUS = 45;
+
+function loadRecents(): string[] {
+  try {
+    const raw = window.localStorage.getItem(RECENT_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecents(list: string[]): void {
+  try {
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 5)));
+  } catch {
+    /* private mode — recents are best-effort only */
+  }
+}
+
 export function QuranSearchBox({
   locale,
   surahs,
   labels,
+  liveStrip = false,
 }: {
   locale: string;
   surahs: SurahSummary[];
   labels: QuranSearchLabels;
+  /** Round 8 live strip (index page). Reader omits it and keeps the old rendering. */
+  liveStrip?: boolean;
 }) {
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const [results, setResults] = useState<Results>({ kind: 'idle' });
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(STRIP_WINDOW);
+  const [recents, setRecents] = useState<string[]>([]);
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  const fb = STRIP_FALLBACKS[locale] ?? STRIP_FALLBACKS.en;
+  const stripLabel = (key: keyof typeof fb): string =>
+    (labels[key as keyof QuranSearchLabels] as string | undefined) ?? fb[key];
 
   useEffect(() => {
     const id = setTimeout(() => setDebounced(query), 250);
@@ -74,13 +169,19 @@ export function QuranSearchBox({
   }, [query]);
 
   useEffect(() => {
+    setRecents(loadRecents());
+  }, []);
+
+  useEffect(() => {
     const q = debounced.trim();
     if (!q) {
       setResults({ kind: 'idle' });
       setLoading(false);
+      setLoadError(false);
       return;
     }
     let cancelled = false;
+    setLoadError(false);
     if (isNumericQuery(q)) {
       setLoading(true);
       loadBoundaries()
@@ -103,35 +204,103 @@ export function QuranSearchBox({
         cancelled = true;
       };
     }
-    const surahMatches = matchSurahs(surahs, q);
-    setLoading(true);
-    searchAyahs(q, 30)
-      .then((r) => {
-        if (cancelled) return;
-        setResults({ kind: 'results', surahMatches, ayahHits: r.hits, ayahTotal: r.total });
-        setLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setResults({ kind: 'results', surahMatches, ayahHits: [], ayahTotal: 0 });
-        setLoading(false);
-      });
+    setVisibleCount(STRIP_WINDOW);
+    if (liveStrip) {
+      const surahMatches = matchSurahsWithAliases(surahs, q);
+      setLoading(true);
+      searchAyahsRanked(q)
+        .then((r) => {
+          if (cancelled) return;
+          setResults({ kind: 'results', surahMatches, ayahHits: r.hits, ayahTotal: r.total });
+          setLoading(false);
+          setRecents((prev) => {
+            const next = [q, ...prev.filter((x) => x !== q)].slice(0, 5);
+            saveRecents(next);
+            return next;
+          });
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setResults({ kind: 'results', surahMatches, ayahHits: [], ayahTotal: 0 });
+          setLoading(false);
+          setLoadError(true);
+        });
+    } else {
+      const surahMatches = matchSurahs(surahs, q);
+      setLoading(true);
+      searchAyahs(q, 30)
+        .then((r) => {
+          if (cancelled) return;
+          setResults({ kind: 'results', surahMatches, ayahHits: r.hits, ayahTotal: r.total });
+          setLoading(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setResults({ kind: 'results', surahMatches, ayahHits: [], ayahTotal: 0 });
+          setLoading(false);
+        });
+    }
     return () => {
       cancelled = true;
     };
-  }, [debounced, surahs]);
+  }, [debounced, surahs, liveStrip, retryNonce]);
 
-  const surahName = (n: number): string => {
-    const s = surahs.find((x) => x.number === n);
+  const surahByNumber = (n: number): SurahSummary | undefined =>
+    surahs.find((x) => x.number === n);
+
+  const surahNameAr = (n: number): string => {
+    const s = surahByNumber(n);
     return s ? s.nameAr : String(n);
+  };
+
+  const surahNameLocal = (n: number): string => {
+    const s = surahByNumber(n);
+    return s ? s.name : String(n);
   };
 
   const showEmpty =
     !loading &&
+    !loadError &&
     ((results.kind === 'results' &&
       results.surahMatches.length === 0 &&
       results.ayahHits.length === 0) ||
       results.kind === 'pageInvalid');
+
+  const onStripScroll = (): void => {
+    const el = listRef.current;
+    if (!el || results.kind !== 'results') return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) {
+      setVisibleCount((v) => Math.min(v + STRIP_WINDOW, results.ayahTotal));
+    }
+  };
+
+  const snippetFor = (row: SearchIndexRow): { before: string; match: string; after: string } => {
+    const span = findAyahMatchSpan(row.t, debounced.trim());
+    if (!span) {
+      const head = row.t.slice(0, 90);
+      return { before: head, match: '', after: row.t.length > 90 ? '…' : '' };
+    }
+    const start = Math.max(0, span.start - SNIPPET_RADIUS);
+    const end = Math.min(row.t.length, span.end + SNIPPET_RADIUS);
+    return {
+      before: (start > 0 ? '…' : '') + row.t.slice(start, span.start),
+      match: row.t.slice(span.start, span.end),
+      after: row.t.slice(span.end, end) + (end < row.t.length ? '…' : ''),
+    };
+  };
+
+  const countLine =
+    results.kind === 'results' && !loading
+      ? results.ayahTotal > 0
+        ? stripLabel('searchResultCount')
+            .replace('%n%', String(results.ayahTotal))
+            .replace('%q%', debounced.trim())
+        : results.surahMatches.length > 0
+          ? stripLabel('searchSurahResultCount')
+              .replace('%n%', String(results.surahMatches.length))
+              .replace('%q%', debounced.trim())
+          : null
+      : null;
 
   return (
     <div className="quran-search-box">
@@ -147,7 +316,58 @@ export function QuranSearchBox({
         aria-label={labels.searchAria}
       />
       <p className="quran-search-hint">{labels.searchHint}</p>
+
+      {/* Round 8 recent searches: only when the strip is closed. */}
+      {liveStrip && results.kind === 'idle' && !loading && recents.length > 0 ? (
+        <div className="quran-search-recent">
+          <span className="quran-search-recent-label">{stripLabel('searchRecent')}</span>
+          <ul>
+            {recents.map((r) => (
+              <li key={r}>
+                <button
+                  type="button"
+                  className="quran-search-recent-chip"
+                  onClick={() => {
+                    setQuery(r);
+                    setDebounced(r);
+                  }}
+                >
+                  {r}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="quran-search-recent-clear"
+            onClick={() => {
+              saveRecents([]);
+              setRecents([]);
+            }}
+          >
+            {stripLabel('searchRecentClear')}
+          </button>
+        </div>
+      ) : null}
+
       {loading ? <p className="quran-search-status">{labels.searchLoading}</p> : null}
+
+      {loadError && liveStrip ? (
+        <p className="quran-search-status" role="status">
+          {stripLabel('searchError')}{' '}
+          <button
+            type="button"
+            className="quran-search-retry"
+            onClick={() => {
+              resetSearchIndex();
+              setRetryNonce((n) => n + 1);
+            }}
+          >
+            {stripLabel('searchRetry')}
+          </button>
+        </p>
+      ) : null}
+
       {results.kind === 'page' ? (
         <div className="quran-search-results">
           <h3>{labels.searchPageHeading}</h3>
@@ -159,7 +379,86 @@ export function QuranSearchBox({
           </Link>
         </div>
       ) : null}
-      {results.kind === 'results' ? (
+
+      {/* Round 8 live strip (index page). */}
+      {liveStrip && results.kind === 'results' ? (
+        <div className="quran-search-strip">
+          {countLine ? (
+            <p className="quran-search-count" role="status">
+              {countLine}
+            </p>
+          ) : null}
+          {results.surahMatches.length > 0 ? (
+            <>
+              <h3>{labels.searchSurahHeading}</h3>
+              <ul>
+                {results.surahMatches.map((s) => (
+                  <li key={s.number}>
+                    <Link href={`/${locale}/quran/${s.number}`} className="quran-search-row">
+                      {stripLabel('searchSurahWord')} {s.name} ·{' '}
+                      <span lang="ar" dir="rtl">
+                        {s.nameAr}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+          {results.ayahHits.length > 0 ? (
+            <>
+              <h3>{labels.searchAyahHeading}</h3>
+              <div
+                ref={listRef}
+                className="quran-search-strip-list"
+                onScroll={onStripScroll}
+                aria-label={labels.searchAyahHeading}
+              >
+                <ul>
+                  {results.ayahHits.slice(0, visibleCount).map((h) => {
+                    const sn = snippetFor(h);
+                    return (
+                      <li key={h.g}>
+                        <Link
+                          href={`/${locale}/quran/${h.s}?view=ayah&ayah=${h.a}`}
+                          className="quran-search-ayah-row"
+                        >
+                          <span className="quran-search-ayah-meta">
+                            {stripLabel('searchSurahWord')} {surahNameLocal(h.s)} ·{' '}
+                            {stripLabel('searchAyahWord')} {h.a} ·{' '}
+                            <span lang="ar" dir="rtl">
+                              {surahNameAr(h.s)}
+                            </span>
+                          </span>
+                          <span lang="ar" dir="rtl" className="quran-search-snippet">
+                            {sn.before}
+                            {sn.match ? <mark>{sn.match}</mark> : null}
+                            {sn.after}
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {visibleCount < results.ayahTotal ? (
+                  <button
+                    type="button"
+                    className="quran-search-more-btn"
+                    onClick={() =>
+                      setVisibleCount((v) => Math.min(v + STRIP_WINDOW, results.ayahTotal))
+                    }
+                  >
+                    {stripLabel('searchLoadMore')}
+                  </button>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Old capped rendering (reader). */}
+      {!liveStrip && results.kind === 'results' ? (
         <div className="quran-search-results">
           {results.surahMatches.length > 0 ? (
             <>
@@ -189,7 +488,7 @@ export function QuranSearchBox({
                       className="quran-search-row"
                     >
                       <span lang="ar" dir="rtl">
-                        {surahName(h.s)}
+                        {surahNameAr(h.s)}
                       </span>{' '}
                       · {h.a}
                     </Link>
@@ -205,6 +504,7 @@ export function QuranSearchBox({
           ) : null}
         </div>
       ) : null}
+
       {showEmpty ? (
         <p className="quran-search-status" role="status">
           {results.kind === 'pageInvalid'

@@ -376,16 +376,21 @@ function isWordOccurrence(
  * would match «حيت» inside «اوحيت» — a fragment of an unrelated
  * word, not the occurrence the user asked for.
  */
-export async function searchAyahs(query: string, limit = 30): Promise<AyahSearchResult> {
-  const words = normalizeQueryWords(query);
-  if (words.length === 0) return { hits: [], total: 0 };
+/** Build the skip-alif needle pattern shared by search + snippet spans. */
+function buildNeedlePattern(words: string[]): RegExp {
   const escapeChar = (ch: string) => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   // Within each word, any two needle letters may have one text alif
   // between them; words themselves are joined by a single space.
   const pattern = words
     .map((w) => [...w].map(escapeChar).join(`${ALEF}?`))
     .join(' ');
-  const re = new RegExp(pattern, 'g');
+  return new RegExp(pattern, 'g');
+}
+
+export async function searchAyahs(query: string, limit = 30): Promise<AyahSearchResult> {
+  const words = normalizeQueryWords(query);
+  if (words.length === 0) return { hits: [], total: 0 };
+  const re = buildNeedlePattern(words);
   const rows = await loadSearchIndex();
   const multiWord = words.length > 1;
   const firstWordLen = words[0].length;
@@ -437,4 +442,222 @@ export function matchSurahs(surahs: SurahSummary[], query: string): SurahSummary
       s.name.toLowerCase().includes(lq) ||
       s.englishName.toLowerCase().includes(lq),
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Round 8 — live-search strip additions. Nothing above this line     */
+/* changed behavior: normalization, searchAyahs and matchSurahs are    */
+/* untouched. These helpers only ADD: surah aliases, match spans,     */
+/* two-stage ranking, and a full ranked result set for the strip.     */
+/* ------------------------------------------------------------------ */
+
+/** Drop the search-index cache so a failed load can be retried. */
+export function resetSearchIndex(): void {
+  indexPromise = null;
+}
+
+/**
+ * Span of the first word-occurrence match of `query` inside the
+ * NORMALIZED ayah text, or null. Used only to place the snippet
+ * window and the <mark> highlight in the live strip.
+ */
+export function findAyahMatchSpan(
+  text: string,
+  query: string,
+): { start: number; end: number } | null {
+  const words = normalizeQueryWords(query);
+  if (words.length === 0) return null;
+  const re = buildNeedlePattern(words);
+  const multiWord = words.length > 1;
+  const firstWordLen = words[0].length;
+  const lastWord = words[words.length - 1];
+  const lastWordLen = lastWord.length;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const lastSegment = m[0].slice(m[0].lastIndexOf(' ') + 1);
+    if (
+      isWordOccurrence(
+        text,
+        m.index,
+        m.index + m[0].length,
+        multiWord,
+        firstWordLen,
+        lastWordLen,
+        lastSegment === lastWord,
+      )
+    )
+      return { start: m.index, end: m.index + m[0].length };
+    if (m[0].length === 0) re.lastIndex += 1;
+  }
+  return null;
+}
+
+/**
+ * Two-stage ranking (Tarteel-style): exact-word matches first,
+ * substring matches after, mushaf order preserved inside each stage.
+ * Single word: exact = a space-delimited token equals the word, or
+ * equals ال + the word. Multi-word: exact = consecutive tokens
+ * equal the query words.
+ */
+export function rankAyahHits(hits: SearchIndexRow[], query: string): SearchIndexRow[] {
+  const words = normalizeQueryWords(query);
+  if (words.length === 0) return hits;
+  const isExact = (r: SearchIndexRow): boolean => {
+    const tokens = r.t.split(' ');
+    if (words.length === 1) {
+      const w = words[0];
+      return tokens.some((tok) => tok === w || tok === `ال${w}`);
+    }
+    for (let i = 0; i + words.length <= tokens.length; i += 1) {
+      let ok = true;
+      for (let j = 0; j < words.length; j += 1) {
+        if (tokens[i + j] !== words[j]) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) return true;
+    }
+    return false;
+  };
+  const exact: SearchIndexRow[] = [];
+  const rest: SearchIndexRow[] = [];
+  for (const h of hits) (isExact(h) ? exact : rest).push(h);
+  return [...exact, ...rest];
+}
+
+/**
+ * Full ranked result set for the live strip: ALL matches (not the
+ * 30-cap of the old box) plus the true total. The lazy index load
+ * is unchanged — still first-search only.
+ */
+export async function searchAyahsRanked(query: string): Promise<AyahSearchResult> {
+  const r = await searchAyahs(query, Number.MAX_SAFE_INTEGER);
+  return { hits: rankAyahHits(r.hits, query), total: r.total };
+}
+
+/** Well-known Latin transliteration per surah (1..114), no invented forms. */
+export const SURAH_LATIN_NAMES: Record<number, string> = {
+  1: 'Al-Fatihah', 2: 'Al-Baqarah', 3: 'Aal-e-Imran', 4: 'An-Nisa',
+  5: "Al-Ma'idah", 6: "Al-An'am", 7: "Al-A'raf", 8: 'Al-Anfal',
+  9: 'At-Tawbah', 10: 'Yunus', 11: 'Hud', 12: 'Yusuf', 13: "Ar-Ra'd",
+  14: 'Ibrahim', 15: 'Al-Hijr', 16: 'An-Nahl', 17: 'Al-Isra',
+  18: 'Al-Kahf', 19: 'Maryam', 20: 'Ta-Ha', 21: 'Al-Anbiya',
+  22: 'Al-Hajj', 23: "Al-Mu'minun", 24: 'An-Nur', 25: 'Al-Furqan',
+  26: "Ash-Shu'ara", 27: 'An-Naml', 28: 'Al-Qasas', 29: 'Al-Ankabut',
+  30: 'Ar-Rum', 31: 'Luqman', 32: 'As-Sajdah', 33: 'Al-Ahzab',
+  34: 'Saba', 35: 'Fatir', 36: 'Ya-Sin', 37: 'As-Saffat', 38: 'Sad',
+  39: 'Az-Zumar', 40: 'Ghafir', 41: 'Fussilat', 42: 'Ash-Shura',
+  43: 'Az-Zukhruf', 44: 'Ad-Dukhan', 45: 'Al-Jathiyah', 46: 'Al-Ahqaf',
+  47: 'Muhammad', 48: 'Al-Fath', 49: 'Al-Hujurat', 50: 'Qaf',
+  51: 'Adh-Dhariyat', 52: 'At-Tur', 53: 'An-Najm', 54: 'Al-Qamar',
+  55: 'Ar-Rahman', 56: "Al-Waqi'ah", 57: 'Al-Hadid', 58: 'Al-Mujadila',
+  59: 'Al-Hashr', 60: 'Al-Mumtahanah', 61: 'As-Saff', 62: "Al-Jumu'ah",
+  63: 'Al-Munafiqun', 64: 'At-Taghabun', 65: 'At-Talaq', 66: 'At-Tahrim',
+  67: 'Al-Mulk', 68: 'Al-Qalam', 69: 'Al-Haqqah', 70: "Al-Ma'arij",
+  71: 'Nuh', 72: 'Al-Jinn', 73: 'Al-Muzzammil', 74: 'Al-Muddaththir',
+  75: 'Al-Qiyamah', 76: 'Al-Insan', 77: 'Al-Mursalat', 78: 'An-Naba',
+  79: "An-Nazi'at", 80: 'Abasa', 81: 'At-Takwir', 82: 'Al-Infitar',
+  83: 'Al-Mutaffifin', 84: 'Al-Inshiqaq', 85: 'Al-Buruj', 86: 'At-Tariq',
+  87: "Al-A'la", 88: 'Al-Ghashiyah', 89: 'Al-Fajr', 90: 'Al-Balad',
+  91: 'Ash-Shams', 92: 'Al-Layl', 93: 'Ad-Duha', 94: 'Ash-Sharh',
+  95: 'At-Tin', 96: 'Al-Alaq', 97: 'Al-Qadr', 98: 'Al-Bayyinah',
+  99: 'Az-Zalzalah', 100: 'Al-Adiyat', 101: "Al-Qari'ah", 102: 'At-Takathur',
+  103: 'Al-Asr', 104: 'Al-Humazah', 105: 'Al-Fil', 106: 'Quraysh',
+  107: "Al-Ma'un", 108: 'Al-Kawthar', 109: 'Al-Kafirun', 110: 'An-Nasr',
+  111: 'Al-Masad', 112: 'Al-Ikhlas', 113: 'Al-Falaq', 114: 'An-Nas',
+};
+
+/** A few common Latin spelling variants (only well-attested ones). */
+const SURAH_LATIN_VARIANTS: Record<number, string[]> = {
+  1: ['fatiha'],
+  2: ['baqara'],
+  5: ['maida'],
+  9: ['tawba'],
+  12: ['yousuf'],
+  36: ['yaseen'],
+  55: ['rehman'],
+};
+
+/**
+ * Famous alternative names (Arabic/Persian). Only widely attested
+ * names are listed; when in doubt a name is omitted, never invented.
+ * Pair names (الزهراوان، المعوذتین) map to both surahs of the pair.
+ */
+const SURAH_ALT_NAMES: Record<number, string[]> = {
+  1: ['فاتحة الکتاب', 'ام الکتاب', 'السبع المثانی', 'الحمد'],
+  2: ['سنام القرآن', 'فسطاط القرآن', 'الزهراوان'],
+  3: ['الزهراوان'],
+  17: ['بنی اسرائیل', 'سبحان'],
+  26: ['طسم'],
+  27: ['طس'],
+  28: ['طسم'],
+  36: ['قلب القرآن'],
+  47: ['القتال'],
+  55: ['عروس القرآن'],
+  67: ['تبارک', 'المنجیة', 'المانعة'],
+  68: ['نون'],
+  78: ['عم یتسائلون'],
+  112: ['التوحید', 'قل هو الله احد'],
+  113: ['المعوذتین'],
+  114: ['المعوذتین'],
+};
+
+/** Latin key: lowercase, hyphens/apostrophes/spaces stripped. */
+function latinKey(s: string): string {
+  return s.toLowerCase().replace(/[-'’\s]/g, '');
+}
+
+/** Strip a leading surah word (سوره/سورة/surah) from the query. */
+function stripSurahWord(query: string): string {
+  return query.replace(/^(سورهٔ?|سورة|surah)\s*/i, '').trim();
+}
+
+function stripSpaces(s: string): string {
+  return s.replace(/\s+/g, '');
+}
+
+/**
+ * Surah-name match for the live strip: fa name + ar name + localized
+ * name + famous alternative names + Latin transliteration (and its
+ * common variants) + attached/spaced forms (space-stripped compare).
+ * Bare numbers are DELIBERATELY not matched here: a bare number
+ * means PAGE, never surah (user rule; differs from Tarteel).
+ */
+export function matchSurahsWithAliases(
+  surahs: SurahSummary[],
+  query: string,
+): SurahSummary[] {
+  const raw = query.trim();
+  if (!raw) return [];
+  const digits = toLatinDigits(raw);
+  if (/^[0-9]+$/.test(digits)) return [];
+  const q = stripSurahWord(raw);
+  if (!q) return [];
+  const nq = normalizeQuranText(q);
+  const sq = stripSpaces(nq);
+  const isLatin = /[a-zA-Z]/.test(q);
+  const lq = latinKey(q);
+  return surahs.filter((s) => {
+    const candidates = [
+      s.nameAr,
+      s.name,
+      s.englishName,
+      ...(SURAH_ALT_NAMES[s.number] ?? []),
+    ];
+    for (const c of candidates) {
+      const nc = normalizeQuranText(c);
+      if (nc.includes(nq) || stripSpaces(nc).includes(sq)) return true;
+    }
+    if (isLatin) {
+      const latinForms = [
+        latinKey(SURAH_LATIN_NAMES[s.number] ?? s.englishName),
+        ...(SURAH_LATIN_VARIANTS[s.number] ?? []).map(latinKey),
+      ];
+      for (const f of latinForms) {
+        if (f === lq || (lq.length >= 3 && f.includes(lq))) return true;
+      }
+    }
+    return false;
+  });
 }

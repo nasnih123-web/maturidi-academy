@@ -61,6 +61,15 @@ export default async function QuranIndexPage({
           searchPageHeading: t('searchPageHeading'),
           searchPageOutOfRange: t('searchPageOutOfRange'),
           searchMore: t('searchMore'),
+          searchResultCount: t('searchResultCount'),
+          searchSurahResultCount: t('searchSurahResultCount'),
+          searchRecent: t('searchRecent'),
+          searchRecentClear: t('searchRecentClear'),
+          searchLoadMore: t('searchLoadMore'),
+          searchError: t('searchError'),
+          searchRetry: t('searchRetry'),
+          searchSurahWord: t('searchSurahWord'),
+          searchAyahWord: t('searchAyahWord'),
         }}
       />
     </div>
