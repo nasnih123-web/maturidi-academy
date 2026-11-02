@@ -3,7 +3,7 @@
     "@maturidi/design-tokens": "file:../../packages/design-tokens",
     "leaflet": "^1.9.4",
     "maplibre-gl": "^6.16.0",
-    "next": "16.4.2",
+    "next": "16.4.3",
     "next-intl": "4.14.9",
     "react": "19.3.1",
     "react-dom": "19.3.1"
@@ -14,7 +14,7 @@
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "axe-core": "^4.10.2",
+    "axe-core": "^4.14.0",
     "tailwindcss": "^4.1.4",
     "typescript": "5.9.3"
   },
