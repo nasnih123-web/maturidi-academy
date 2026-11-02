@@ -31,6 +31,7 @@ import {
   isNumericQuery,
   matchSurahs,
   matchSurahsWithAliases,
+  normalizeQuranText,
   resetSearchIndex,
   searchAyahs,
   searchAyahsRanked,
@@ -116,14 +117,44 @@ type Results =
     };
 
 const RECENT_KEY = 'quran-recent-searches';
+/* Round 9: store up to 10 (Bayan-style newest-first prune), show only the
+ * last 3 — the user's explicit display rule. */
+const RECENT_STORE_MAX = 10;
+const RECENT_SHOW_MAX = 3;
 const STRIP_WINDOW = 50;
 const SNIPPET_RADIUS = 45;
+
+/** Newest-first, deduped by normalized text. An entry that is a strict
+ *  prefix of a newer kept entry is typing pollution (e.g. تنا next to
+ *  تناوش) and is dropped — this also repairs lists polluted by round 8. */
+function cleanRecents(list: string[]): string[] {
+  const kept: string[] = [];
+  for (const raw of list) {
+    if (typeof raw !== 'string') continue;
+    const q = raw.trim();
+    if (!q) continue;
+    const nq = normalizeQuranText(q);
+    if (!nq) continue;
+    if (kept.some((k) => normalizeQuranText(k) === nq)) continue;
+    if (
+      kept.some((k) => {
+        const nk = normalizeQuranText(k);
+        return nk.length > nq.length && nk.startsWith(nq);
+      })
+    )
+      continue;
+    kept.push(q);
+  }
+  return kept.slice(0, RECENT_STORE_MAX);
+}
 
 function loadRecents(): string[] {
   try {
     const raw = window.localStorage.getItem(RECENT_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+    return Array.isArray(parsed)
+      ? cleanRecents(parsed.filter((x): x is string => typeof x === 'string'))
+      : [];
   } catch {
     return [];
   }
@@ -131,7 +162,7 @@ function loadRecents(): string[] {
 
 function saveRecents(list: string[]): void {
   try {
-    window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 5)));
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify(cleanRecents(list)));
   } catch {
     /* private mode — recents are best-effort only */
   }
@@ -169,8 +200,30 @@ export function QuranSearchBox({
   }, [query]);
 
   useEffect(() => {
-    setRecents(loadRecents());
+    const loaded = loadRecents();
+    setRecents(loaded);
+    /* Round 9: repair a polluted stored list in place, so storage matches
+     * the cleaned display even before the next intentional save. */
+    try {
+      const raw = window.localStorage.getItem(RECENT_KEY);
+      if (raw !== null && raw !== JSON.stringify(loaded)) saveRecents(loaded);
+    } catch {
+      /* private mode — best-effort only */
+    }
   }, []);
+
+  /* Round 9: a query becomes "recent" only when the user intentionally
+   * confirms it (Enter) or navigates from a result — never while typing,
+   * so debounced intermediates never pollute the list. */
+  const rememberQuery = (raw: string): void => {
+    const q = raw.trim();
+    if (!q) return;
+    setRecents((prev) => {
+      const next = cleanRecents([q, ...prev]);
+      saveRecents(next);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const q = debounced.trim();
@@ -213,11 +266,9 @@ export function QuranSearchBox({
           if (cancelled) return;
           setResults({ kind: 'results', surahMatches, ayahHits: r.hits, ayahTotal: r.total });
           setLoading(false);
-          setRecents((prev) => {
-            const next = [q, ...prev.filter((x) => x !== q)].slice(0, 5);
-            saveRecents(next);
-            return next;
-          });
+          /* Round 9: no save here — a completed debounced search is not
+           * an intentional search, and saving it is what polluted recents
+           * with typing intermediates. Saving happens on Enter / result tap. */
         })
         .catch(() => {
           if (cancelled) return;
@@ -310,24 +361,28 @@ export function QuranSearchBox({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') setDebounced(query);
+          if (e.key === 'Enter') {
+            setDebounced(query);
+            rememberQuery(query);
+          }
         }}
         placeholder={labels.searchPlaceholder}
         aria-label={labels.searchAria}
       />
       <p className="quran-search-hint">{labels.searchHint}</p>
 
-      {/* Round 8 recent searches: only when the strip is closed. */}
+      {/* Round 9 recent searches: only when the strip is closed, last 3 shown. */}
       {liveStrip && results.kind === 'idle' && !loading && recents.length > 0 ? (
         <div className="quran-search-recent">
           <span className="quran-search-recent-label">{stripLabel('searchRecent')}</span>
           <ul>
-            {recents.map((r) => (
+            {recents.slice(0, RECENT_SHOW_MAX).map((r) => (
               <li key={r}>
                 <button
                   type="button"
                   className="quran-search-recent-chip"
                   onClick={() => {
+                    rememberQuery(r);
                     setQuery(r);
                     setDebounced(r);
                   }}
@@ -374,6 +429,10 @@ export function QuranSearchBox({
           <Link
             href={`/${locale}/quran/${results.surah}?view=page&target=${results.page}`}
             className="quran-search-row"
+            onClick={() => {
+              /* Index strip only — the reader keeps no recents. */
+              if (liveStrip) rememberQuery(debounced.trim());
+            }}
           >
             {labels.searchPageHeading} {results.page}
           </Link>
@@ -394,7 +453,11 @@ export function QuranSearchBox({
               <ul>
                 {results.surahMatches.map((s) => (
                   <li key={s.number}>
-                    <Link href={`/${locale}/quran/${s.number}`} className="quran-search-row">
+                    <Link
+                      href={`/${locale}/quran/${s.number}`}
+                      className="quran-search-row"
+                      onClick={() => rememberQuery(debounced.trim())}
+                    >
                       {stripLabel('searchSurahWord')} {s.name} ·{' '}
                       <span lang="ar" dir="rtl">
                         {s.nameAr}
@@ -422,6 +485,7 @@ export function QuranSearchBox({
                         <Link
                           href={`/${locale}/quran/${h.s}?view=ayah&ayah=${h.a}`}
                           className="quran-search-ayah-row"
+                          onClick={() => rememberQuery(debounced.trim())}
                         >
                           <span className="quran-search-ayah-meta">
                             {stripLabel('searchSurahWord')} {surahNameLocal(h.s)} ·{' '}
