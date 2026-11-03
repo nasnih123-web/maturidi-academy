@@ -356,6 +356,14 @@ export async function getQuranProviders(): Promise<QuranDisplayConfig | null> {
   const translations = strList(body.translations);
   const tafsirs = strList(body.tafsirs);
   const reciterIds = strList(body.reciters);
+  const photosRaw =
+    body.reciter_photos && typeof body.reciter_photos === 'object'
+      ? (body.reciter_photos as Record<string, unknown>)
+      : {};
+  const photos: Record<string, string> = {};
+  for (const [k, v] of Object.entries(photosRaw)) {
+    if (typeof v === 'string' && v.length > 0) photos[k] = v;
+  }
   const mode = body.highlight_mode === 'word' ? 'word' : 'ayah';
   const playback =
     body.playback && typeof body.playback === 'object'
@@ -375,7 +383,7 @@ export async function getQuranProviders(): Promise<QuranDisplayConfig | null> {
     tafsirEditions: tafsirs,
     repeatDefault:
       repeatRaw === 'ayah' || repeatRaw === 'surah' || repeatRaw === 'off' ? repeatRaw : null,
-    reciters: reciterIds.map((id) => ({ id, name: id, rewaya: null, locale: null, photoUrl: null })),
+    reciters: reciterIds.map((id) => ({ id, name: id, rewaya: null, locale: null, photoUrl: photos[id] ?? null })),
     activeReciter: reciterIds[0] ?? null,
   };
 }

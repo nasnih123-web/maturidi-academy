@@ -79,6 +79,25 @@ _DEFAULTS: dict[str, object] = {
         "tr.vakfi-audio",
         "uz.sodik-audio",
     ],
+    "quran.reciter_photos": {
+        "ar.alafasy": "https://upload.wikimedia.org/wikipedia/commons/2/24/Мишари_Рашид.jpg",
+        "ar.alafasy-2": "https://upload.wikimedia.org/wikipedia/commons/2/24/Мишари_Рашид.jpg",
+        "ar.abdulbasitmurattal": "https://upload.wikimedia.org/wikipedia/commons/b/b9/Abdul_Basit_Abd_us-Samad_in_South_Africa_in_1966_%283%29_%28cropped%29.jpg",
+        "ar.abdulsamad": "https://upload.wikimedia.org/wikipedia/commons/b/b9/Abdul_Basit_Abd_us-Samad_in_South_Africa_in_1966_%283%29_%28cropped%29.jpg",
+        "ar.abdurrahmaansudais": "https://upload.wikimedia.org/wikipedia/commons/1/18/Abdul-Rahman_Al-Sudais_%28Cropped%2C_2011%29.jpg",
+        "ar.saoodshuraym": "https://upload.wikimedia.org/wikipedia/commons/1/1e/The_IMAM_of_Holy_Mosque_in_Makka_Al_Mukarramah%2C_Saudi_Arabia%2C_Sheikh_Dr._Saud_Bin_Ibrahem_Al_Shuraim_meeting_the_Vice_President%2C_Shri_Mohd._Hamid_Ansari%2C_in_New_Delhi_on_March_03%2C_2012_%28cropped%29.jpg",
+        "ar.husary": "https://upload.wikimedia.org/wikipedia/commons/7/70/Hussary.jpg",
+        "ar.husarymujawwad": "https://upload.wikimedia.org/wikipedia/commons/7/70/Hussary.jpg",
+        "ar.husary-2": "https://upload.wikimedia.org/wikipedia/commons/7/70/Hussary.jpg",
+        "ar.husarymujawwad-2": "https://upload.wikimedia.org/wikipedia/commons/7/70/Hussary.jpg",
+        "ar.hudhaify": "https://upload.wikimedia.org/wikipedia/commons/d/d7/Huthaify.jpg",
+        "ar.hudhaify-2": "https://upload.wikimedia.org/wikipedia/commons/d/d7/Huthaify.jpg",
+        "ar.mahermuaiqly": "https://upload.wikimedia.org/wikipedia/commons/b/b8/Maher_Al_Mueaqly.jpg",
+        "ar.mahermuaiqly-2": "https://upload.wikimedia.org/wikipedia/commons/b/b8/Maher_Al_Mueaqly.jpg",
+        "ar.minshawi": "https://upload.wikimedia.org/wikipedia/commons/e/ee/Elminshwey.jpg",
+        "ar.minshawimujawwad": "https://upload.wikimedia.org/wikipedia/commons/e/ee/Elminshwey.jpg",
+        "ar.minshawi-2": "https://upload.wikimedia.org/wikipedia/commons/e/ee/Elminshwey.jpg",
+    },
     "quran.active_languages": ["fa", "ar", "en"],
     "quran.show_translation": True,
     "quran.show_tafsir": True,
@@ -238,6 +257,13 @@ async def get_ayah_bundle(
     return _ayah_out(surah, ayah, data["editions"])
 
 
+def _clean_photo_map(raw: object) -> dict[str, str]:
+    """نگاشت شناسهٔ قاری → آدرس عکس؛ فقط جفت‌های رشته‌ای غیرتهی نگه داشته می‌شوند."""
+    if not isinstance(raw, dict):
+        return {}
+    return {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, str) and v.strip()}
+
+
 async def get_providers_config(db: AsyncSession) -> dict:
     provider_id = await _quran_setting(db, "quran.provider")
     provider = quran_providers.PROVIDERS.get(provider_id)
@@ -263,6 +289,7 @@ async def get_providers_config(db: AsyncSession) -> dict:
         "translations": await _quran_setting(db, "quran.translations"),
         "tafsirs": await _quran_setting(db, "quran.tafsirs"),
         "reciters": await _quran_setting(db, "quran.reciters"),
+        "reciter_photos": _clean_photo_map(await _quran_setting(db, "quran.reciter_photos")),
         "active_languages": await _quran_setting(db, "quran.active_languages"),
         "show_translation": await _quran_setting(db, "quran.show_translation"),
         "show_tafsir": await _quran_setting(db, "quran.show_tafsir"),
