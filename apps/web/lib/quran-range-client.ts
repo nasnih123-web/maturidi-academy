@@ -17,11 +17,13 @@ export async function fetchSurahClient(
   opts: {
     translation?: string | null;
     tafsir?: string | null;
+    reciter?: string | null;
   } = {},
 ): Promise<SurahView> {
   const params = new URLSearchParams();
   if (opts.translation) params.set('translation', opts.translation);
   if (opts.tafsir) params.set('tafsir', opts.tafsir);
+  if (opts.reciter) params.set('reciter', opts.reciter);
   const qs = params.toString();
   const res = await fetch(`${apiBaseUrl()}/api/v1/quran/surah/${number}${qs ? `?${qs}` : ''}`, {
     headers: { Accept: 'application/json' },

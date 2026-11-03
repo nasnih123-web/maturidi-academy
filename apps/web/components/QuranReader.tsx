@@ -816,6 +816,7 @@ function QuranUmumReader({
       const view = await fetchSurahClient(n, {
         translation: settings.defaultTranslation,
         tafsir: settings.defaultTafsir,
+        reciter: reciterId,
       });
       return { surah: view.surah, ayahs: view.ayahs };
     });
@@ -833,7 +834,7 @@ function QuranUmumReader({
     return () => {
       cancelled = true;
     };
-  }, [span, surah, ayahs, settings.defaultTranslation, settings.defaultTafsir]);
+  }, [span, surah, ayahs, settings.defaultTranslation, settings.defaultTafsir, reciterId]);
 
   // Display groups for the range (whole span, used by the hizb card
   // list and as the base for the page views).
@@ -1121,6 +1122,7 @@ function QuranUmumReader({
       const view = await fetchSurahClient(n, {
         translation: settings.defaultTranslation,
         tafsir: settings.defaultTafsir,
+        reciter: reciterId,
       });
       return { surah: view.surah, ayahs: view.ayahs };
     });
@@ -1138,7 +1140,7 @@ function QuranUmumReader({
     return () => {
       cancelled = true;
     };
-  }, [viewMode, displayPageSpan, surah, ayahs, settings.defaultTranslation, settings.defaultTafsir]);
+  }, [viewMode, displayPageSpan, surah, ayahs, settings.defaultTranslation, settings.defaultTafsir, reciterId]);
 
   // Flowing-fallback groups for the display page (page mode reuses
   // the range groups: its span IS the page span).
@@ -1290,6 +1292,7 @@ function QuranUmumReader({
       const view = await fetchSurahClient(n, {
         translation: settings.defaultTranslation,
         tafsir: settings.defaultTafsir,
+        reciter: reciterId,
       });
       return { surah: view.surah, ayahs: view.ayahs };
     });
@@ -1307,7 +1310,7 @@ function QuranUmumReader({
     return () => {
       cancelled = true;
     };
-  }, [readingOpen, readingSpan, surah, ayahs, settings.defaultTranslation, settings.defaultTafsir]);
+  }, [readingOpen, readingSpan, surah, ayahs, settings.defaultTranslation, settings.defaultTafsir, reciterId]);
   const readingGroups = useMemo(
     () =>
       readingSpan && readingSurahs
