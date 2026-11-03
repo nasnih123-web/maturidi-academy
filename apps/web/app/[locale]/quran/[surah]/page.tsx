@@ -119,6 +119,10 @@ export default async function SurahPage({
       tafsir: qs.defaultTafsir,
       translationEdition: qs.defaultTranslation,
       tafsirEdition: qs.defaultTafsir,
+      // The reciter dropdown reloads with ?reciter=<id>; without
+      // forwarding it here the bundle is always built with the first
+      // active reciter's audio, so playback never leaves Alafasy.
+      reciter: searchParams.reciter ?? null,
     });
   } catch {
     view = null;

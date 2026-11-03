@@ -317,11 +317,13 @@ export async function getSurah(
     tafsir?: string | null;
     translationEdition?: string | null;
     tafsirEdition?: string | null;
+    reciter?: string | null;
   } = {},
 ): Promise<SurahView> {
   const params = new URLSearchParams();
   if (opts.translation) params.set('translation', opts.translation);
   if (opts.tafsir) params.set('tafsir', opts.tafsir);
+  if (opts.reciter) params.set('reciter', opts.reciter);
   const qs = params.toString();
   const body = await getJson<SurahViewBody>(
     `/api/v1/quran/surah/${number}${qs ? `?${qs}` : ''}`,
