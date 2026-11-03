@@ -259,7 +259,7 @@ class AuditLog(Base):
     actor_type: Mapped[str] = mapped_column(String(32))  # user | admin | system
     action: Mapped[str] = mapped_column(String(128))
     entity_type: Mapped[str] = mapped_column(String(64))
-    entity_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    entity_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     old_values: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     new_values: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
