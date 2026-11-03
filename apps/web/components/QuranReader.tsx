@@ -8,9 +8,12 @@
  * their existing honest placeholders and nothing else. Back navigation
  * is via the site Quran menu — no back link is invented here.
  *
- * Umum view modes (switcher order, user-locked): سوره، آیه، جزء، حزب،
- * صفحه. Initial mode is سوره. Modes are deep-linkable (?view= + ?target=,
- * mirrored into the URL on change so refresh keeps the view).
+ * Umum views (round 10, user-locked): سوره، آیه، جزء، حزب، صفحه.
+ * Initial view is سوره. Views are deep-linkable (?view= + ?target=,
+ * mirrored into the URL on change so refresh keeps the view) and are
+ * chosen from the «فهرست قرآن» picker — the old mode-switcher pills
+ * were removed in round 10, so the picker is the only on-page UI
+ * path to a view (search deep links still land on ayah views).
  *
  * Juz / hizb / page views SPAN SURAH BOUNDARIES: the reader assembles
  * every spanned surah (entry surah from RSC props, the rest fetched
@@ -41,13 +44,24 @@
  * juz · hizb), the same exact 15-line QPC page, and a minimal bottom
  * bar (play, picker, mushaf, bookmarks, display, always-visible
  * exit); a bottom-sheet picker (surah/juz/hizb/page tabs + search +
- * card grid) navigating via the existing ?view=&target= deep links;
+ * row list) navigating via the existing ?view=&target= deep links;
  * a mushaf picker where ONLY Hafs is a real option and every other
  * row is disabled and labeled «به‌زودی»; and TRUE fullscreen (the
  * Fullscreen API, with a fixed-overlay fallback when the API is
  * unavailable or blocked — a page cannot hide browser chrome itself,
  * so the API is the web maximum). The phrase-chunk coloring in the
  * Hefz reference is a hifz-study feature and is NOT built here.
+ *
+ * Round 10 (reader index popup, user-locked 2026-11-03): the
+ * reader-page search box is removed (the index page's live search is
+ * the search path) and a «فهرست قرآن» button in its exact place
+ * opens the picker; the picker content is a Bayan-style row list
+ * (number + name + ayah count + Meccan/Medinan icon) instead of the
+ * card grid; the mode-switcher pills and the main-view Bismillah
+ * header are removed (the range-group Bismillah inside the reading
+ * view is untouched, as is the strip logic, so ayah texts are
+ * unchanged — for surahs 2–114 Bismillah simply no longer displays
+ * on the reader page, per the user's explicit choice).
  */
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -100,7 +114,6 @@ import {
   rangeContaining,
   rangeSpan,
   RANGE_COUNTS,
-  VIEW_MODE_ORDER,
   type QuranBoundaries,
   type QuranViewMode,
   type RangeKind,
@@ -131,7 +144,7 @@ import {
   QuranSheetShell,
   type PickerSheetLabels,
 } from './QuranPickerSheet';
-import { QuranSearchBox, type QuranSearchLabels } from './QuranSearchBox';
+import type { QuranSearchLabels } from './QuranSearchBox';
 
 export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   surahOf: string;
@@ -172,7 +185,7 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   nextAyah: string;
   speedLabel: string;
   volumeLabel: string;
-  /** View-mode switcher (order: surah, ayah, juz, hizb, page — user-locked). */
+  /** Picker tab labels (also the view names; order: surah, ayah, juz, hizb, page). */
   modeLabel: string;
   modeSurah: string;
   modeAyah: string;
@@ -264,6 +277,10 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   pickerSearchLabel: string;
   pickerSearchPlaceholder: string;
   pickerCloseLabel: string;
+  /** Round 10 picker row labels: ayah-count word + revelation words. */
+  ayahsCountLabel: string;
+  meccanLabel: string;
+  medinanLabel: string;
   mushafLabel: string;
   mushafTitle: string;
   mushafHafs: string;
@@ -1391,6 +1408,9 @@ function QuranUmumReader({
     tabJuz: labels.modeJuz,
     tabHizb: labels.modeHizb,
     tabPage: labels.modePage,
+    ayahsCount: labels.ayahsCountLabel,
+    meccan: labels.meccanLabel,
+    medinan: labels.medinanLabel,
   };
   const mushafLabels: MushafPickerLabels = {
     title: labels.mushafTitle,
@@ -1418,24 +1438,6 @@ function QuranUmumReader({
     const p = rangeContaining(boundaries, playingPlayItem.surahNumber, playingPlayItem.number).page;
     if (p !== null && juzPagesList.includes(p) && p !== juzPage) setJuzPage(p);
   }, [viewMode, playing, playingPlayItem, boundaries, juzPagesList, juzPage]);
-
-  const MODE_LABELS: Record<QuranViewMode, string> = {
-    surah: labels.modeSurah,
-    ayah: labels.modeAyah,
-    juz: labels.modeJuz,
-    hizb: labels.modeHizb,
-    page: labels.modePage,
-  };
-
-  const selectMode = (mode: QuranViewMode): void => {
-    // Clicking the active range mode returns to its list.
-    if (mode === viewMode && (mode === 'juz' || mode === 'hizb' || mode === 'page')) {
-      setRangeTarget(null);
-      return;
-    }
-    setViewMode(mode);
-    setRangeTarget(null);
-  };
 
   const ayahLink = (surahNum: number, n: number): string =>
     `/${locale}/quran/${surahNum}?ayah=${n}${reciterId ? `&reciter=${encodeURIComponent(reciterId)}` : ''}`;
@@ -2050,7 +2052,18 @@ function QuranUmumReader({
       {/* End of the round-7 mobile settings wrapper (toolbars +
           bookmarks panel). Search + player stay outside it. */}
 
-      <QuranSearchBox locale={locale} surahs={surahList} labels={searchLabels} />
+      {/* Round 10: the reader-page search box is removed — the index
+          page's live search is the search path. The «فهرست قرآن»
+          button below opens the same picker the nav/reading bars
+          open, in the search box's exact place. */}
+      <button
+        type="button"
+        className="quran-index-btn"
+        onClick={() => setSheet('picker')}
+        aria-haspopup="dialog"
+      >
+        {labels.pickerLabel}
+      </button>
 
       {/* Audio player bar — the waveform lives INSIDE the progress bar
           (no separate waveform row). Hidden for range LISTS (navigation,
@@ -2337,25 +2350,10 @@ function QuranUmumReader({
         </>
       ) : null}
 
-      {!isRangeMode && showBismillahHeader ? (
-        <p className="quran-bismillah" lang="ar" dir="rtl">
-          {labels.bismillah}
-        </p>
-      ) : null}
-
-      <div className="quran-view-modes" role="group" aria-label={labels.modeLabel}>
-        {VIEW_MODE_ORDER.map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            className={viewMode === mode ? 'quran-mode-btn quran-mode-active' : 'quran-mode-btn'}
-            aria-pressed={viewMode === mode}
-            onClick={() => selectMode(mode)}
-          >
-            {MODE_LABELS[mode]}
-          </button>
-        ))}
-      </div>
+      {/* Round 10: the main-view Bismillah header and the
+          mode-switcher pills are removed (user-locked 2026-11-03).
+          The range-group Bismillah inside the reading view below is
+          untouched, as is the strip logic — ayah texts are unchanged. */}
 
       {/* ---- Range LISTS (target null) ---- */}
       {isRangeMode && rangeTarget === null ? (

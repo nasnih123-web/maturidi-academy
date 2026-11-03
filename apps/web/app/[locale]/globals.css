@@ -833,9 +833,11 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .quran-player-note { margin: 0.5rem 0 0; font-size: 0.85rem; color: hsl(var(--text-muted)); }
 .quran-player-times { display: flex; gap: 1.2rem; margin-top: 0.6rem; font-size: 0.85rem; font-variant-numeric: tabular-nums; color: hsl(var(--text-secondary)); }
 .quran-waveform { display: block; width: 100%; height: 100%; }
-.quran-view-modes { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
-.quran-mode-btn { padding: 0.5rem 1.1rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.35); background: transparent; color: hsl(var(--text-secondary)); cursor: pointer; font-size: 0.95rem; }
-.quran-mode-btn.quran-mode-active { background: rgba(212, 175, 55, 0.2); color: #e5c07b; border-color: rgba(212, 175, 55, 0.75); font-weight: 700; }
+/* Round 10: the «فهرست قرآن» button sits in the removed reader-page
+   search box's exact place (after settings, before the player). */
+.quran-index-btn { display: block; width: 100%; min-height: 2.75rem; padding: 0.6rem 1rem; margin-bottom: 1rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.35); background: transparent; color: hsl(var(--text-secondary)); cursor: pointer; font-size: 1rem; }
+.quran-index-btn:hover { background: rgba(212, 175, 55, 0.12); border-color: rgba(212, 175, 55, 0.8); }
+.quran-index-btn:focus-visible { outline: 2px solid #e5c07b; outline-offset: 2px; }
 .quran-mode-nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; font-variant-numeric: tabular-nums; }
 .quran-mode-nav button { padding: 0.45rem 1rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.35); background: transparent; color: hsl(var(--text-secondary)); cursor: pointer; }
 .quran-mode-nav button:disabled { opacity: 0.4; cursor: default; }
@@ -2273,13 +2275,17 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
 .quran-sheet-search-label { display: block; margin-bottom: 0.3rem; font-size: 0.85rem; color: #6f6151; }
 .quran-sheet-search input { width: 100%; padding: 0.7rem 1rem; border-radius: 999px; border: 1px solid rgba(120, 90, 20, 0.45); background: #ffffff; color: #2b2118; font-size: 1rem; }
 .quran-sheet-empty { margin: 1rem 0; color: #6f6151; }
-.quran-picker-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
-@media (max-width: 360px) { .quran-picker-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.quran-picker-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.15rem; width: 100%; min-height: 4rem; padding: 0.6rem 0.3rem; border-radius: 0.7rem; border: 1px solid rgba(120, 90, 20, 0.35); background: #ffffff; color: #2b2118; cursor: pointer; text-decoration: none; }
-.quran-picker-card:hover { border-color: #8a6d1b; background: #fffdf4; }
-.quran-picker-card-current { border: 2px solid #8a6d1b; background: #efe6c8; font-weight: 800; }
-.quran-picker-num { font-size: 1.05rem; font-weight: 800; color: #8a6d1b; }
-.quran-picker-name { font-size: 0.95rem; line-height: 1.6; text-align: center; }
+/* Round 10: picker content is a row list (replaces the card grid).
+   Rows are full-width, 44px tap targets, on the sheet's light face. */
+.quran-picker-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.quran-picker-row { display: flex; align-items: center; gap: 0.75rem; width: 100%; min-height: 2.75rem; padding: 0.6rem 0.75rem; border: 0; border-bottom: 1px solid rgba(120, 90, 20, 0.2); background: transparent; color: #2b2118; cursor: pointer; text-decoration: none; text-align: start; font-size: 1rem; font-family: inherit; }
+.quran-picker-row:hover { background: #fffdf4; }
+.quran-picker-row-current { background: #efe6c8; font-weight: 800; }
+.quran-picker-row:focus-visible { outline: 2px solid #8a6d1b; outline-offset: -2px; }
+.quran-picker-row-num { font-weight: 800; color: #8a6d1b; min-width: 2rem; }
+.quran-picker-row-name { flex: 1; line-height: 1.6; }
+.quran-picker-row-count { color: #6f6151; font-size: 0.9rem; white-space: nowrap; }
+.quran-picker-row-rev { font-size: 1.15rem; line-height: 1; }
 .quran-mushaf-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
 .quran-mushaf-row { display: flex; align-items: center; }
 .quran-mushaf-row-current { padding: 0.7rem 0.9rem; border-radius: 0.7rem; border: 2px solid #8a6d1b; background: #efe6c8; }

@@ -1,24 +1,33 @@
 'use client';
 
 /**
- * QuranPickerSheet — Bayan-style bottom-sheet picker (round 5).
+ * QuranPickerSheet — Bayan-style bottom-sheet picker (round 5,
+ * row list since round 10).
  *
  * Four tabs (Bayan's sheet order): سوره / جزء / حزب / صفحه, a search
- * box, and a grid of light cards (number + name). Search filters the
- * CURRENT tab only: digits match the row number (any digit script),
- * otherwise the query matches the row's start-surah name after the
- * same fa/ar normalization as the round-4 text search
+ * box, and a ROW LIST (round 10 replaced the card grid): surah rows
+ * show number + Arabic name + ayah count + a Meccan/Medinan icon
+ * from the existing SurahSummary.revelationType field; range rows
+ * show the range number + real start surah + ayah. Search filters
+ * the CURRENT tab only: digits match the row number (any digit
+ * script), otherwise the query matches the row's start-surah name
+ * after the same fa/ar normalization as the round-4 text search
  * (normalizeQuranText). No names are invented here: range rows show
  * the range's real start surah + ayah from lib/quran-boundaries.json
- * (provider-derived, never hand-typed).
+ * (provider-derived, never hand-typed), and surah rows show the
+ * Arabic name the reader's own headers show (no Persian surah-name
+ * data exists in the codebase, so none is invented).
  *
- * Navigation uses the EXISTING deep links: a surah card is a real
- * <a href> to /{locale}/quran/{n}; a range card calls onSelectRange,
+ * Navigation uses the EXISTING deep links: a surah row is a real
+ * <a href> to /{locale}/quran/{n}; a range row calls onSelectRange,
  * and the reader mirrors the choice into ?view=&target= with the same
- * replaceState effect the mode switcher already uses. onSelectRange
+ * replaceState effect the picker already uses. onSelectRange
  * also receives the range's FIRST MUSHAR PAGE so a reading view can
  * jump straight to it (page tab: the page itself; juz: the juz's
  * first page; hizb: the page containing the hizb's start ayah).
+ *
+ * No bookmark buttons on rows: the user did not ask for them, and
+ * dead controls are forbidden — a row's only job is navigation.
  *
  * The sheet shell (backdrop + panel + header + close) is exported as
  * QuranSheetShell so the mushaf picker and the reading-view settings
@@ -87,6 +96,10 @@ export interface PickerSheetLabels {
   tabJuz: string;
   tabHizb: string;
   tabPage: string;
+  /** Round 10 row labels: ayah-count word + revelation words. */
+  ayahsCount: string;
+  meccan: string;
+  medinan: string;
 }
 
 const PICKER_TABS: { id: PickerTab; kind: RangeKind | null }[] = [
@@ -165,6 +178,16 @@ export function QuranPickerSheet({
     juz: labels.tabJuz,
     hizb: labels.tabHizb,
     page: labels.tabPage,
+  };
+
+  // Round 10: revelation icon from the existing provider field.
+  // Unknown values render no icon (never a guessed classification).
+  const revelationIcon = (
+    s: SurahSummary,
+  ): { icon: string; label: string } | null => {
+    if (s.revelationType === 'Meccan') return { icon: '🕋', label: labels.meccan };
+    if (s.revelationType === 'Medinan') return { icon: '🕌', label: labels.medinan };
+    return null;
   };
 
   const filteredSurahs = useMemo(() => {
@@ -247,27 +270,43 @@ export function QuranPickerSheet({
             {labels.noResults}
           </p>
         ) : (
-          <ul className="quran-picker-grid">
-            {filteredSurahs.map((s) => (
-              <li key={s.number}>
-                <Link
-                  href={`/${locale}/quran/${s.number}`}
-                  className={
-                    s.number === currentSurah
-                      ? 'quran-picker-card quran-picker-card-current'
-                      : 'quran-picker-card'
-                  }
-                  aria-current={s.number === currentSurah ? 'true' : undefined}
-                >
-                  <span className="quran-picker-num" lang="ar" dir="rtl">
-                    {toArabicIndicDigits(s.number)}
-                  </span>
-                  <span className="quran-picker-name" lang="ar" dir="rtl">
-                    {s.nameAr}
-                  </span>
-                </Link>
-              </li>
-            ))}
+          <ul className="quran-picker-list">
+            {filteredSurahs.map((s) => {
+              const rev = revelationIcon(s);
+              return (
+                <li key={s.number}>
+                  <Link
+                    href={`/${locale}/quran/${s.number}`}
+                    className={
+                      s.number === currentSurah
+                        ? 'quran-picker-row quran-picker-row-current'
+                        : 'quran-picker-row'
+                    }
+                    aria-current={s.number === currentSurah ? 'true' : undefined}
+                  >
+                    <span className="quran-picker-row-num" lang="ar" dir="rtl">
+                      {toArabicIndicDigits(s.number)}
+                    </span>
+                    <span className="quran-picker-row-name" lang="ar" dir="rtl">
+                      {s.nameAr}
+                    </span>
+                    <span className="quran-picker-row-count">
+                      {toArabicIndicDigits(s.ayahCount)} {labels.ayahsCount}
+                    </span>
+                    {rev ? (
+                      <span
+                        className="quran-picker-row-rev"
+                        role="img"
+                        aria-label={rev.label}
+                        title={rev.label}
+                      >
+                        {rev.icon}
+                      </span>
+                    ) : null}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         )
       ) : !filteredRanges ? (
@@ -279,7 +318,7 @@ export function QuranPickerSheet({
           {labels.noResults}
         </p>
       ) : (
-        <ul className="quran-picker-grid">
+        <ul className="quran-picker-list">
           {filteredRanges.map((e) => {
             const isCurrent = currentView === activeKind && currentTarget === e.n;
             return (
@@ -288,18 +327,18 @@ export function QuranPickerSheet({
                   type="button"
                   className={
                     isCurrent
-                      ? 'quran-picker-card quran-picker-card-current'
-                      : 'quran-picker-card'
+                      ? 'quran-picker-row quran-picker-row-current'
+                      : 'quran-picker-row'
                   }
                   aria-current={isCurrent ? 'true' : undefined}
                   onClick={() =>
                     activeKind && onSelectRange(activeKind, e.n, firstPageOf(activeKind, e.n))
                   }
                 >
-                  <span className="quran-picker-num" lang="ar" dir="rtl">
+                  <span className="quran-picker-row-num" lang="ar" dir="rtl">
                     {toArabicIndicDigits(e.n)}
                   </span>
-                  <span className="quran-picker-name" lang="ar" dir="rtl">
+                  <span className="quran-picker-row-name" lang="ar" dir="rtl">
                     {surahName(e.surah)} · {toArabicIndicDigits(e.ayah)}
                   </span>
                 </button>
