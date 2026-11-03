@@ -136,11 +136,16 @@ function apiUrl(path: string): string {
   return `${getApiBaseUrl().replace(/\/+$/, '')}${path}`;
 }
 
-async function getJson<T>(path: string): Promise<T> {
+async function getJson<T>(path: string, opts?: { noStore?: boolean }): Promise<T> {
   let res: Response;
   try {
     res = await fetch(apiUrl(path), {
-      next: { revalidate: 3600 },
+      // CRM-driven data must never sit in the 1-hour Data Cache: on
+      // 2026-11-03 the reader kept showing 1 reciter while the API
+      // already served 38, because the providers payload was cached.
+      ...(opts?.noStore
+        ? { cache: 'no-store' as const }
+        : { next: { revalidate: 3600 } }),
       headers: { Accept: 'application/json' },
     });
   } catch (err) {
@@ -342,7 +347,7 @@ export async function getSurah(
 export async function getQuranProviders(): Promise<QuranDisplayConfig | null> {
   let body: Record<string, unknown>;
   try {
-    body = await getJson<Record<string, unknown>>(`/api/v1/quran/providers`);
+    body = await getJson<Record<string, unknown>>(`/api/v1/quran/providers`, { noStore: true });
   } catch {
     return null;
   }
