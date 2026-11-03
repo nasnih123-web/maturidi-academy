@@ -200,7 +200,15 @@ body {
 }
 /* global living background — behind every page, even the footer */
 .site-atmosphere { position: fixed; inset: 0; z-index: -50; pointer-events: none; }
-main#main-content, .site-header, .site-footer { position: relative; z-index: 1; }
+main#main-content, .site-header { position: relative; z-index: 1; }
+/* Footer stays positioned (so it still paints above the z:-50
+   atmosphere) but WITHOUT z-index: a positioned z-auto footer paints
+   below main's z:1 stacking context, so fixed UI inside main — the
+   Quran mini player card, the expanded player sheet, the settings
+   sheet — is never covered by the footer at the bottom of a page.
+   (Previously footer z:1 + later DOM order painted the whole footer
+   above main's context, hiding the fixed player at page bottom.) */
+.site-footer { position: relative; }
 main#main-content { min-height: 40vh; }
 :focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
 ::selection { background: rgba(212, 175, 55, 0.28); }
@@ -1136,7 +1144,7 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
      The full player appears only as an expanded sheet overlay — it
      never pushes content — and the settings panel only as a bottom
      sheet. 768px matches the user's 720–768px phone viewport. */
-  .quran-reader { padding-bottom: calc(68px + env(safe-area-inset-bottom) + 1rem); }
+  .quran-reader { padding-bottom: calc(88px + max(0.75rem, env(safe-area-inset-bottom)) + 1rem); }
   /* One button replaces the tall settings pile. */
   .quran-settings-open-btn { display: flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; min-height: 2.75rem; margin-bottom: 1rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.4); background: rgba(7, 35, 28, 0.6); color: #e5c07b; font-size: 0.95rem; cursor: pointer; }
   /* Settings sheet: hidden until opened, then a bottom sheet over a
@@ -1146,25 +1154,59 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
   .quran-settings-backdrop { display: block; position: fixed; inset: 0; z-index: 355; border: 0; background: rgba(2, 8, 6, 0.7); cursor: pointer; }
   .quran-mobile-settings-open .quran-settings-close-btn { display: block; width: 100%; min-height: 2.75rem; margin-bottom: 0.8rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.4); background: transparent; color: #e5c07b; font-size: 0.9rem; cursor: pointer; }
   .quran-mobile-settings-open .quran-settings-group-title { display: block; margin: 1rem 0 0.5rem; font-size: 0.85rem; font-weight: 700; color: #e5c07b; }
-  /* Mini bar: 68px sticky bar (the reader padding above matches it). */
-  .quran-player-mini { display: flex; align-items: center; gap: 0.6rem; position: fixed; inset-inline: 0; bottom: 0; z-index: 40; height: calc(68px + env(safe-area-inset-bottom)); padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom)); border-top: 1px solid rgba(212, 175, 55, 0.4); background: #07231c; box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45); }
+  /* Mini bar: a floating frosted-glass card (not a full-width bar) —
+     the reader padding above matches its 88px height + bottom margin.
+     DIAGNOSIS (2026-11-04): the page backdrop behind the card is dark
+     and nearly flat, so a flat translucent color can only render as a
+     flat gray wash — blur cannot invent depth from a flat backdrop.
+     Hence the glass luminosity comes from a warm diagonal gradient
+     (not a flat color) plus inset rim light; the matte noise grain
+     was removed because it read as a matte tile, not glossy glass.
+     TUNING (v6b): the spec's 0.72/0.58/0.68 alphas still rendered flat
+     gray (~147) on this near-black backdrop, and 135deg shows no
+     vertical variation on a wide short card, so the gradient is now
+     vertical with brighter alphas (0.88/0.80/0.86) — milky-warm with
+     the backdrop still modulating the card as a soft glow.
+     v7 (2026-11-04): v6b read as white plastic, so alphas returned to
+     the spec range (0.72/0.58/0.68) and blur dropped 26px -> 18px so
+     diffused page structure stays visible through the glass; an A/B
+     with a transparent card proved the filter truly samples page
+     text (strip sharpness 0.19 filtered vs 0.54 unfiltered).
+     Dark text/icons on top (reference-style, NOT green/gold); a
+     near-opaque gradient fallback is defined below for browsers
+     without backdrop-filter. The bottom progress line is clipped to
+     the card's rounded corners by overflow:hidden; nothing inside the
+     bar overflows by design. */
+  .quran-player-mini { display: flex; align-items: center; gap: 0.6rem; position: fixed; inset-inline: 0.75rem; bottom: max(0.75rem, env(safe-area-inset-bottom)); z-index: 40; height: 88px; padding: 0.75rem 1rem; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.78); border-radius: 999px; background: linear-gradient(to bottom, rgba(255, 249, 246, 0.72), rgba(245, 237, 233, 0.58) 55%, rgba(255, 247, 243, 0.68)); -webkit-backdrop-filter: blur(18px) saturate(155%); backdrop-filter: blur(18px) saturate(155%); box-shadow: 0 16px 45px rgba(0, 0, 0, 0.22), 0 4px 12px rgba(0, 0, 0, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.95), inset 0 -1px 2px rgba(255, 255, 255, 0.35); }
+  /* Gentle light reflection on the upper glass: a ::before sheen
+     painted above the card background but below every control
+     (it is the first child, so positioned siblings paint above it),
+     and pointer-transparent so it never intercepts taps. */
+  /* Soft surface light reflection: a ::before wash above the card
+     background but below every control (first child, so positioned
+     siblings paint above it), pointer-transparent. */
+  .quran-player-mini::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(to bottom, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0) 50%); pointer-events: none; }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .quran-player-mini { background: linear-gradient(to bottom, rgba(255, 249, 246, 0.96), rgba(245, 237, 233, 0.94) 55%, rgba(255, 247, 243, 0.96)); }
+  }
   .quran-player-mini-hidden { display: none; }
-  .quran-player-mini-progress { position: absolute; top: 0; inset-inline: 0; height: 3px; background: rgba(212, 175, 55, 0.25); pointer-events: none; }
-  .quran-player-mini-progress-fill { height: 100%; background: #e5c07b; }
+  .quran-player-mini-progress { position: absolute; bottom: 0; inset-inline: 0; height: 3px; background: rgba(0, 0, 0, 0.08); pointer-events: none; }
+  .quran-player-mini-progress-fill { height: 100%; background: #d77f8a; }
   /* Full-bar tap target for expanding; control buttons sit above it.
      Photo/text are pointer-transparent so taps on them reach the
      expand button (a positioned text span would otherwise intercept
      the tap and the bar would not expand). */
   .quran-player-mini-expand { position: absolute; inset: 0; border: 0; background: transparent; cursor: pointer; }
-  .quran-player-mini-photo { position: relative; width: 2.5rem; height: 2.5rem; flex: none; pointer-events: none; }
+  .quran-player-mini-photo { position: relative; width: 3.75rem; height: 3.75rem; flex: none; pointer-events: none; border-radius: 999px; object-fit: cover; border: 1px solid rgba(0, 0, 0, 0.08); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
+  .quran-player-mini-photo.quran-reciter-photo-empty { background: rgba(0, 0, 0, 0.06); color: #374151; }
   .quran-player-mini-text { position: relative; display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.3; pointer-events: none; }
-  .quran-player-mini-reciter { font-size: 0.75rem; color: hsl(var(--text-secondary)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .quran-player-mini-title { font-size: 0.95rem; color: #e5c07b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .quran-player-mini-status { font-size: 0.7rem; color: hsl(var(--text-muted)); }
+  .quran-player-mini-reciter { font-size: 0.8rem; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .quran-player-mini-title { font-size: 1.05rem; color: #0f172a; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .quran-player-mini-status { font-size: 0.75rem; color: #4b5563; }
   .quran-player-mini-controls { position: relative; z-index: 1; display: flex; align-items: center; gap: 0.3rem; flex: none; }
-  .quran-mini-btn { width: 2.5rem; height: 2.5rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.4); background: transparent; color: #e5c07b; font-size: 1rem; cursor: pointer; }
+  .quran-mini-btn { width: 3rem; height: 3rem; border-radius: 999px; border: 0; background: transparent; color: #1f2937; font-size: 1.1rem; cursor: pointer; }
   .quran-mini-btn:disabled { opacity: 0.45; cursor: default; }
-  .quran-mini-play { width: 3rem; height: 3rem; font-size: 1.15rem; background: rgba(212, 175, 55, 0.15); }
+  .quran-mini-play { width: 3.75rem; height: 3.75rem; font-size: 1.15rem; background: #111827; color: #ffffff; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); order: 3; }
   /* Full player on mobile: hidden while the mini bar covers it;
      expanded it becomes a bottom-sheet overlay (never in-flow). */
   .quran-player-mini ~ .quran-player:not(.quran-player-expanded) { display: none; }
@@ -1182,6 +1224,46 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
   .quran-player-expanded .quran-player-times { justify-content: center; }
   .quran-player-expanded .quran-player-settings { justify-content: space-between; }
   .quran-player-expanded .quran-speed select { padding: 0.5rem 0.6rem; }
+}
+/* ---- Player glass card on desktop: the same floating mini card,
+   centered with a capped width, instead of the in-flow full player.
+   The in-flow player is hidden while the mini card covers it (same
+   rule as mobile); tapping the card expands the same full player as
+   a centered floating sheet, with its collapse button visible. No
+   JSX or playback logic changes — only presentation, mirroring the
+   mobile mini-bar behavior. ---- */
+@media (min-width: 769px) {
+  .quran-reader { padding-bottom: calc(88px + 1.25rem + 1rem); }
+  .quran-player-mini { display: flex; align-items: center; gap: 0.6rem; position: fixed; inset-inline: auto; left: 50%; transform: translateX(-50%); bottom: 1.25rem; z-index: 40; width: min(560px, calc(100% - 2rem)); height: 88px; padding: 0.75rem 1rem; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.78); border-radius: 999px; background: linear-gradient(to bottom, rgba(255, 249, 246, 0.72), rgba(245, 237, 233, 0.58) 55%, rgba(255, 247, 243, 0.68)); -webkit-backdrop-filter: blur(18px) saturate(155%); backdrop-filter: blur(18px) saturate(155%); box-shadow: 0 16px 45px rgba(0, 0, 0, 0.22), 0 4px 12px rgba(0, 0, 0, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.95), inset 0 -1px 2px rgba(255, 255, 255, 0.35); }
+  /* Gentle light reflection on the upper glass: a ::before sheen
+     painted above the card background but below every control
+     (it is the first child, so positioned siblings paint above it),
+     and pointer-transparent so it never intercepts taps. */
+  /* Soft surface light reflection: a ::before wash above the card
+     background but below every control (first child, so positioned
+     siblings paint above it), pointer-transparent. */
+  .quran-player-mini::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(to bottom, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0) 50%); pointer-events: none; }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .quran-player-mini { background: linear-gradient(to bottom, rgba(255, 249, 246, 0.96), rgba(245, 237, 233, 0.94) 55%, rgba(255, 247, 243, 0.96)); }
+  }
+  .quran-player-mini-hidden { display: none; }
+  .quran-player-mini-progress { position: absolute; bottom: 0; inset-inline: 0; height: 3px; background: rgba(0, 0, 0, 0.08); pointer-events: none; }
+  .quran-player-mini-progress-fill { height: 100%; background: #d77f8a; }
+  .quran-player-mini-expand { position: absolute; inset: 0; border: 0; background: transparent; cursor: pointer; }
+  .quran-player-mini-photo { position: relative; width: 3.75rem; height: 3.75rem; flex: none; pointer-events: none; border-radius: 999px; object-fit: cover; border: 1px solid rgba(0, 0, 0, 0.08); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
+  .quran-player-mini-photo.quran-reciter-photo-empty { background: rgba(0, 0, 0, 0.06); color: #374151; }
+  .quran-player-mini-text { position: relative; display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.3; pointer-events: none; }
+  .quran-player-mini-reciter { font-size: 0.8rem; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .quran-player-mini-title { font-size: 1.05rem; color: #0f172a; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .quran-player-mini-status { font-size: 0.75rem; color: #4b5563; }
+  .quran-player-mini-controls { position: relative; z-index: 1; display: flex; align-items: center; gap: 0.3rem; flex: none; }
+  .quran-mini-btn { width: 3rem; height: 3rem; border-radius: 999px; border: 0; background: transparent; color: #1f2937; font-size: 1.1rem; cursor: pointer; }
+  .quran-mini-btn:disabled { opacity: 0.45; cursor: default; }
+  .quran-mini-play { width: 3.75rem; height: 3.75rem; font-size: 1.15rem; background: #111827; color: #ffffff; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); order: 3; }
+  .quran-player-mini ~ .quran-player:not(.quran-player-expanded) { display: none; }
+  .quran-player.quran-player-expanded { display: block; position: fixed; left: 50%; transform: translateX(-50%); bottom: 1.25rem; z-index: 350; width: min(560px, calc(100% - 2rem)); max-height: 86dvh; overflow-y: auto; margin-bottom: 0; border-radius: 1.25rem; border: 1px solid rgba(212, 175, 55, 0.4); padding: 1rem 1rem 1.5rem; background: #07231c; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); }
+  .quran-player-expanded .quran-player-collapse-btn { display: block; width: 100%; min-height: 2.75rem; margin-bottom: 0.8rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.4); background: transparent; color: #e5c07b; font-size: 0.9rem; cursor: pointer; }
+  .quran-player-expanded .quran-player-status { display: inline; }
 }
 
 /* tasbih */
