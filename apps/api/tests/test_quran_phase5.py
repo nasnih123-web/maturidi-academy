@@ -199,6 +199,8 @@ async def test_providers_endpoint_settings_driven(tc):
     assert body["reciter_photos"]["ar.alafasy"].startswith("https://upload.wikimedia.org/")
     assert body["reciter_photos"]["ar.husary"].startswith("https://upload.wikimedia.org/")
     assert body["reciter_photos"]["ar.minshawi"].startswith("https://upload.wikimedia.org/")
+    assert body["reciter_photos"]["ar.abdullahbasfar"] == "https://recitid.ai/reciters/abdullah-basfar.jpg"
+    assert body["reciter_photos"]["uz.sodik-audio"].startswith("https://upload.wikimedia.org/")
 
 
 # ---------------------------------------------------------------------------
