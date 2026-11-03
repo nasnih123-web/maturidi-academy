@@ -150,7 +150,6 @@ export function QuranMushafPage({
   onSelectAyah,
   svgFallbackNote,
   svgUnavailableNote,
-  svgCredit,
   mushafKey,
   resolveSurahName,
 }: {
@@ -190,9 +189,10 @@ export function QuranMushafPage({
   /**
    * Round 6: true when this view shows the REAL printed page as
    * inline SVG (page view, ayah view's page, reading view). False
-   * keeps the exact-line text page — the juz view stays text-lines
-   * on purpose: 20 scrolling SVG pages is the documented mobile
-   * performance trap (a page is a few hundred KB of path data).
+   * keeps the exact-line text page. Round 11: page, juz and hizb
+   * views all pass true — each shows ONE page at a time, so the
+   * old "20 scrolling SVG pages" trap (rendering a whole juz at
+   * once) does not apply.
    */
   svgPage?: boolean;
   /** SVG tap on a polygon: (surah, ayah) in Hafs print numbering. */
@@ -201,8 +201,6 @@ export function QuranMushafPage({
   svgFallbackNote?: string;
   /** Note shown only when a NON-Hafs SVG page failed (no text exists). */
   svgUnavailableNote?: string;
-  /** Small credit line under a rendered SVG page. */
-  svgCredit?: string;
   /**
    * The mushaf key: the SVG folder AND the numbering of every tap
    * and header on this page. Default Hafs; never render one mushaf's
@@ -362,7 +360,6 @@ export function QuranMushafPage({
         )}
       </div>
       )}
-      {showSvg && svgCredit ? <p className="quran-svg-credit">{svgCredit}</p> : null}
       {hideMeta ? null : <p className="mushaf-page-meta mushaf-page-foot">{foot}</p>}
     </div>
   );

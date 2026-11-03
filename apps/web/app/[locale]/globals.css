@@ -1057,7 +1057,6 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .quran-svg-page .ayahPolygon { cursor: pointer; }
 .quran-svg-page #content, .quran-svg-page #ayah_markers { pointer-events: none; }
 .quran-svg-fallback-note { margin: 0 0 1rem; padding: 0.6rem 0.9rem; border-radius: 6px; background: rgba(138, 109, 27, 0.12); color: #6b5510; font-size: 0.9rem; text-align: center; }
-.quran-svg-credit { margin: 1rem 0 0; color: #6f6151; font-size: 0.75rem; text-align: center; }
 
 /* ---- Round 6: per-mushaf font for mushaf-page text ----
    The reader root carries quran-mushaf-<key>; the edition's own
@@ -1079,6 +1078,21 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .quran-mushaf-shubah-kfqc .mushaf-text,
 .quran-mushaf-shubah-kfqc .mushaf-line,
 .quran-mushaf-shubah-kfqc .quran-svg-refpanel-text p { font-family: "KFGQPC Shuba Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+
+/* ---- Round 11: mushaf font as the DEFAULT ayah-card typeface ----
+   The reader root carries quran-mushaf-<key>; the edition's own
+   KFGQPC font leads the ayah-text stack when the user has NOT
+   picked an explicit font stack. An explicit choice still wins:
+   the :not() clauses keep this rule from matching at all under
+   .quran-font-amiri or .quran-font-scheherazade, so those rules
+   apply untouched. Translation/tafsir text is not .ayah-text and
+   never changes. The script switch is untouched: it owns the
+   mushaf-page typeface, never the card text. */
+.quran-reader.quran-mushaf-hafs-kfqc:not(.quran-font-amiri):not(.quran-font-scheherazade) .ayah-text { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+.quran-reader.quran-mushaf-warsh-kfqc:not(.quran-font-amiri):not(.quran-font-scheherazade) .ayah-text { font-family: "KFGQPC Warsh Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+.quran-reader.quran-mushaf-qalon-kfqc:not(.quran-font-amiri):not(.quran-font-scheherazade) .ayah-text { font-family: "KFGQPC Qaloun Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+.quran-reader.quran-mushaf-douri-kfqc:not(.quran-font-amiri):not(.quran-font-scheherazade) .ayah-text { font-family: "KFGQPC Douri Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+.quran-reader.quran-mushaf-shubah-kfqc:not(.quran-font-amiri):not(.quran-font-scheherazade) .ayah-text { font-family: "KFGQPC Shuba Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
 
 /* ---- Round 6: non-Hafs tap reference panel ---- */
 .quran-svg-refpanel { margin: 1rem 0 0; padding: 0.9rem 1rem; border: 1px solid rgba(212, 175, 55, 0.4); border-radius: 8px; background: rgba(138, 109, 27, 0.08); }

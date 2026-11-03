@@ -118,6 +118,36 @@ export function juzPages(boundaries: QuranBoundaries, juz: number): number[] {
   return out;
 }
 
+/**
+ * Round 11: the mushaf pages a hizb spans, in order — the exact
+ * mirror of juzPages with the hizb starts. Every page intersecting
+ * the hizb's span; the first page may carry the previous hizb's
+ * tail and the last page the next hizb's head, exactly as the
+ * printed page does. Empty when the hizb is unknown.
+ */
+export function hizbPages(boundaries: QuranBoundaries, hizb: number): number[] {
+  const list = boundaries.hizb;
+  if (hizb < 1 || hizb > list.length) return [];
+  const start = list[hizb - 1];
+  const next = hizb < list.length ? list[hizb] : null;
+  const first = rangeContaining(boundaries, start.surah, start.ayah).page;
+  if (first === null) return [];
+  let last: number;
+  if (next === null) {
+    last = boundaries.page.length;
+  } else {
+    const nextPage = rangeContaining(boundaries, next.surah, next.ayah).page;
+    if (nextPage === null) return [];
+    const nextIsPageStart = boundaries.page.some(
+      (p) => p.surah === next.surah && p.ayah === next.ayah,
+    );
+    last = nextIsPageStart ? nextPage - 1 : nextPage;
+  }
+  const out: number[] = [];
+  for (let p = first; p <= last; p++) out.push(p);
+  return out;
+}
+
 /** True when (surah, ayah) lies inside [span.start, span.end). */
 export function inRangeSpan(surah: number, ayah: number, span: RangeSpan): boolean {
   const ref: AyahRef = { surah, ayah };

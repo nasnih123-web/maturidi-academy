@@ -312,7 +312,6 @@ export default async function SurahPage({
           svgRefPanelNote: t('svgRefPanelNote'),
           svgNonHafsAyahNote: t('svgNonHafsAyahNote'),
           svgEditionTextLabel: t('svgEditionTextLabel'),
-          svgCredit: t('svgCredit'),
           playAyah: t('playAyah'),
           playing: t('playing'),
           translationLabel: t('translationLabel'),
