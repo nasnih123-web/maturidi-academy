@@ -116,6 +116,18 @@ _DEFAULTS: dict[str, object] = {
     "quran.player_default_speed": 1,
     "quran.player_show_photo": True,
     "quran.waveform_style": "bars",
+    # --- فاز ۲ قرآن: رجیستری provider (ترکیب بر اساس نوع) ---
+    "quran.providers_by_type": {
+        "audio": "alquran_cloud",
+        "text": "self_hosted",
+        "translation": "alquran_cloud",
+        "tafsir": "alquran_cloud",
+    },
+    "quran.custom_providers": [],
+    "quran.custom_provider_keys": {},
+    "quran.qf_base_url": "https://api.quran.com/api/v4",
+    "quran.qf_client_id": "",
+    "quran.qf_client_secret": "",
     "munajat.enabled": True,
     "munajat.window": {"start": "02:00", "end": "05:00"},
     "adhan.defaults": {"calculation_method": "council", "madhab": "hanafi"},
@@ -162,8 +174,44 @@ def list_surahs() -> list[dict]:
     ]
 
 
+def _clean_custom_list(raw: object) -> list[dict]:
+    """providerهای سفارشی ذخیره‌شده — ورودی ناسازگار → فهرست تهی، نه خطا
+    (اعتبارسنجی سخت در زمان ذخیره انجام می‌شود؛ خواندن هرگز نباید ۵۰۰ بدهد)."""
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw:
+        try:
+            out.append(quran_providers.validate_custom_provider_entry(item))
+        except ValueError:
+            continue
+    return out
+
+
+def _clean_keys_map(raw: object) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        k: v for k, v in raw.items()
+        if isinstance(k, str) and isinstance(v, str) and v.strip()
+    }
+
+
+async def _resolve_providers_by_type(db: AsyncSession) -> dict[str, str]:
+    """انتخاب بر اساس نوع: پیش‌فرض‌ها + روی‌هم‌گذاری مقدار ذخیره‌شده.
+    کلید قدیمی quran.provider فقط سازگاری عقب‌رو دارد (مقدارش همیشه
+    alquran_cloud است) و دیگر در resolve نقشی ندارد."""
+    resolved = dict(quran_providers.DEFAULT_PROVIDERS_BY_TYPE)
+    stored = await _quran_setting(db, "quran.providers_by_type")
+    if isinstance(stored, dict):
+        for key, pid in stored.items():
+            if key in resolved and isinstance(pid, str) and pid.strip():
+                resolved[key] = pid.strip()
+    return resolved
+
+
 async def _edition_selection(db: AsyncSession, reciter: str | None = None) -> dict:
-    provider_id = await _quran_setting(db, "quran.provider")
+    providers_by_type = await _resolve_providers_by_type(db)
     translations = await _quran_setting(db, "quran.translations") or []
     tafsirs = await _quran_setting(db, "quran.tafsirs") or []
     reciters = await _quran_setting(db, "quran.reciters") or []
@@ -171,13 +219,53 @@ async def _edition_selection(db: AsyncSession, reciter: str | None = None) -> di
     reciter_edition = reciters[0] if reciters else None
     if reciter and reciter in reciters:
         reciter_edition = reciter
+    custom = _clean_custom_list(await _quran_setting(db, "quran.custom_providers"))
+    keys = _clean_keys_map(await _quran_setting(db, "quran.custom_provider_keys"))
     return {
-        "provider_id": provider_id,
+        "provider_id": providers_by_type["text"],
+        "providers_by_type": providers_by_type,
+        "provider_map": quran_providers.build_provider_map(custom, keys),
         "text_edition": "quran-uthmani",
         "translation_edition": translations[0] if translations else None,
         "tafsir_edition": tafsirs[0] if tafsirs else None,
         "reciter_edition": reciter_edition,
     }
+
+
+def _group_editions_by_provider(
+    sel: dict, *, translation: str | None, tafsir: str | None,
+) -> list[tuple[str, dict]]:
+    """بخش‌های درخواستی، گروه‌بندی‌شده بر اساس provider — وقتی همهٔ بخش‌ها
+    یک provider دارند فقط یک گروه برمی‌گردد. با پیش‌فرض‌های فاز ۲
+    (متن از self_hosted، بقیه از alquran_cloud) معمولاً دو گروه است:
+    یک خواندن محلی متن + یک round-trip ترکیبی AlQuran Cloud."""
+    by_type = sel["providers_by_type"]
+    groups: dict[str, dict] = {}
+
+    def add(pid: str, **kwargs: object) -> None:
+        groups.setdefault(pid, {}).update(kwargs)
+
+    add(by_type["text"], text_edition=sel["text_edition"])
+    tr = translation or sel["translation_edition"]
+    if tr:
+        add(by_type["translation"], translation_edition=tr)
+    tf = tafsir or sel["tafsir_edition"]
+    if tf:
+        add(by_type["tafsir"], tafsir_edition=tf)
+    if sel["reciter_edition"]:
+        add(by_type["audio"], reciter_edition=sel["reciter_edition"])
+    return list(groups.items())
+
+
+def _resolve_group_provider(
+    sel: dict, provider_id: str,
+) -> quran_providers.QuranProvider:
+    provider = sel["provider_map"].get(provider_id)
+    if provider is None:
+        raise quran_providers.QuranProviderError(
+            f"unknown quran provider: {provider_id}", provider_id=provider_id
+        )
+    return provider
 
 
 def _ayah_out(surah: int, number_in_surah: int, editions: dict) -> dict:
@@ -211,26 +299,29 @@ async def get_surah_bundle(
         raise APIError(404, "surah_not_found", "سوره‌ای با این شماره وجود ندارد")
     sel = await _edition_selection(db, reciter=reciter)
     try:
-        provider = quran_providers.get_provider(sel["provider_id"])
-        data = await provider.fetch_surah(
-            number,
-            text_edition=sel["text_edition"],
-            translation_edition=translation or sel["translation_edition"],
-            tafsir_edition=tafsir or sel["tafsir_edition"],
-            reciter_edition=sel["reciter_edition"],
-        )
+        merged_ayahs: dict[int, dict] = {}
+        edition_ids: list[str] = []
+        for pid, kwargs in _group_editions_by_provider(
+            sel, translation=translation, tafsir=tafsir,
+        ):
+            provider = _resolve_group_provider(sel, pid)
+            data = await provider.fetch_surah(number, **kwargs)
+            edition_ids.extend(data["edition_ids"])
+            for item in data["ayahs"]:
+                slot = merged_ayahs.setdefault(item["number_in_surah"], {})
+                for eid, etext in item["editions"].items():
+                    slot.setdefault(eid, etext)
     except quran_providers.QuranProviderError as exc:
         raise _provider_error_to_api(exc)
     ayahs = [
-        _ayah_out(number, item["number_in_surah"], item["editions"])
-        for item in data["ayahs"]
+        _ayah_out(number, n, merged_ayahs[n]) for n in sorted(merged_ayahs)
     ]
     return {
         "surah": number,
         "name_ar": meta.name_ar,
         "name_en": meta.name_en,
         "ayahs": ayahs,
-        "edition_ids": data["edition_ids"],
+        "edition_ids": edition_ids,
     }
 
 
@@ -251,18 +342,17 @@ async def get_ayah_bundle(
         raise APIError(404, "ayah_not_found", "آیه‌ای با این شماره در این سوره وجود ندارد")
     sel = await _edition_selection(db, reciter=reciter)
     try:
-        provider = quran_providers.get_provider(sel["provider_id"])
-        data = await provider.fetch_ayah(
-            surah,
-            ayah,
-            text_edition=sel["text_edition"],
-            translation_edition=translation or sel["translation_edition"],
-            tafsir_edition=tafsir or sel["tafsir_edition"],
-            reciter_edition=sel["reciter_edition"],
-        )
+        merged_editions: dict = {}
+        for pid, kwargs in _group_editions_by_provider(
+            sel, translation=translation, tafsir=tafsir,
+        ):
+            provider = _resolve_group_provider(sel, pid)
+            data = await provider.fetch_ayah(surah, ayah, **kwargs)
+            for eid, etext in data["editions"].items():
+                merged_editions.setdefault(eid, etext)
     except quran_providers.QuranProviderError as exc:
         raise _provider_error_to_api(exc)
-    return _ayah_out(surah, ayah, data["editions"])
+    return _ayah_out(surah, ayah, merged_editions)
 
 
 def _clean_photo_map(raw: object) -> dict[str, str]:
@@ -273,26 +363,54 @@ def _clean_photo_map(raw: object) -> dict[str, str]:
 
 
 async def get_providers_config(db: AsyncSession) -> dict:
-    provider_id = await _quran_setting(db, "quran.provider")
-    provider = quran_providers.PROVIDERS.get(provider_id)
-    providers = [
-        {
-            "id": p.id,
-            "name": p.name,
-            "base_url": getattr(p, "base_url", ""),
-            "active": pid == provider_id,
-        }
-        for pid, p in quran_providers.PROVIDERS.items()
-    ]
-    if provider is None:
+    by_type = await _resolve_providers_by_type(db)
+    custom = _clean_custom_list(await _quran_setting(db, "quran.custom_providers"))
+    keys = _clean_keys_map(await _quran_setting(db, "quran.custom_provider_keys"))
+    provider_map = quran_providers.build_provider_map(custom, keys)
+    # providerهای قابل سرو: AlQuran Cloud + سفارشی‌ها. active یعنی برای
+    # دست‌کم یک نوع انتخاب شده باشد (با انتخاب بر اساس نوع، دیگر یک
+    # provider واحدِ «فعال» وجود ندارد).
+    providers = []
+    for pid, p in provider_map.items():
+        if pid == "alquran_cloud":
+            entry_types = ["audio", "text", "translation", "tafsir"]
+        elif pid == "self_hosted":
+            entry_types = ["text"]
+        else:
+            entry_types = [next(c["type"] for c in custom if c["id"] == pid)]
+        providers.append(
+            {
+                "id": p.id,
+                "name": p.name,
+                "base_url": getattr(p, "base_url", ""),
+                "active": pid in by_type.values(),
+                "types": entry_types,
+                "implemented": True,
+            }
+        )
+    if by_type["text"] not in provider_map:
         raise APIError(
             503, "quran_provider_unavailable",
             "provider فعال قرآن شناخته‌شده نیست",
-            {"provider": provider_id},
+            {"provider": by_type["text"]},
         )
+    catalog = quran_providers.catalog_entries()
+    for entry in catalog:
+        if entry["id"] == "quran_foundation":
+            entry["base_url"] = await _quran_setting(db, "quran.qf_base_url")
+    qf_secret = await _quran_setting(db, "quran.qf_client_secret")
     return {
         "providers": providers,
-        "active_provider": provider_id,
+        "active_provider": by_type["text"],
+        "providers_by_type": by_type,
+        "custom_providers": custom,
+        "provider_catalog": catalog,
+        "qf_base_url": await _quran_setting(db, "quran.qf_base_url"),
+        "qf_client_id": await _quran_setting(db, "quran.qf_client_id"),
+        "qf_client_secret_set": isinstance(qf_secret, str) and bool(qf_secret.strip()),
+        "custom_provider_keys_set": sorted(
+            pid for pid in keys if any(c["id"] == pid for c in custom)
+        ),
         "text_edition": "quran-uthmani",
         "translations": await _quran_setting(db, "quran.translations"),
         "tafsirs": await _quran_setting(db, "quran.tafsirs"),
@@ -305,6 +423,45 @@ async def get_providers_config(db: AsyncSession) -> dict:
         "font_size": await _quran_setting(db, "quran.font_size"),
         "playback": await _quran_setting(db, "quran.playback"),
     }
+
+
+async def set_custom_provider_key(
+    db: AsyncSession, provider_id: str, key: str | None,
+) -> dict:
+    """تنظیم یا پاک‌کردن کلید یک provider سفارشی — تنها راه امن ویرایش
+    کلیدها بدون بازنویسی کل نگاشت (مقادیر حساس از CRM هرگز خوانده نمی‌شوند).
+    مقدار کلید هرگز در پاسخ یا لاگ برنمی‌گردد؛ فقط key_set."""
+    from app.core.platform_settings import (
+        bump_settings_version,
+        encode_setting_value,
+        stage_setting,
+    )
+
+    custom = _clean_custom_list(await _quran_setting(db, "quran.custom_providers"))
+    if not any(c["id"] == provider_id for c in custom):
+        raise APIError(
+            404, "custom_provider_not_found",
+            "provider سفارشی با این شناسه ثبت نشده است",
+        )
+    if key is not None and (not isinstance(key, str) or len(key) > 500):
+        raise APIError(
+            400, "invalid_setting_value",
+            "custom provider key must be a string (max 500 chars) or null",
+        )
+    keys = _clean_keys_map(await _quran_setting(db, "quran.custom_provider_keys"))
+    if key and key.strip():
+        keys[provider_id] = key
+    else:
+        keys.pop(provider_id, None)
+    await stage_setting(
+        db,
+        "quran.custom_provider_keys",
+        encode_setting_value("json", keys, "quran.custom_provider_keys"),
+    )
+    await db.commit()
+    # باطل‌سازی کش تنظیمات — وگرنه خواندن بعدی همان نگاشت قدیمی را می‌دهد
+    bump_settings_version(["quran.custom_provider_keys"])
+    return {"provider_id": provider_id, "key_set": provider_id in keys}
 
 
 # ---------------------------------------------------------------------------

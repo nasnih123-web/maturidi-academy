@@ -191,8 +191,27 @@ async def test_providers_endpoint_settings_driven(tc):
     r = await client.get(f"{BASE}/quran/providers")
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["active_provider"] == "alquran_cloud"
-    assert any(p["id"] == "alquran_cloud" and p["active"] for p in body["providers"])
+    # پیش‌فرض فاز ۲: متن از self_hosted، بقیه از AlQuran Cloud
+    assert body["active_provider"] == "self_hosted"
+    assert body["providers_by_type"] == {
+        "audio": "alquran_cloud",
+        "text": "self_hosted",
+        "translation": "alquran_cloud",
+        "tafsir": "alquran_cloud",
+    }
+    by_id = {p["id"]: p for p in body["providers"]}
+    assert by_id["self_hosted"]["active"] is True
+    assert by_id["self_hosted"]["types"] == ["text"]
+    assert by_id["self_hosted"]["implemented"] is True
+    assert by_id["alquran_cloud"]["active"] is True
+    assert by_id["alquran_cloud"]["types"] == [
+        "audio", "text", "translation", "tafsir",
+    ]
+    assert {e["id"] for e in body["provider_catalog"]} == {
+        "everyayah", "fawazahmed0", "quran_foundation",
+    }
+    assert body["qf_client_secret_set"] is False
+    assert body["custom_provider_keys_set"] == []
     assert "en.sahih" in body["translations"]
     assert body["highlight_mode"] in ("word", "ayah", "off")
     assert isinstance(body["reciter_photos"], dict)
@@ -201,6 +220,274 @@ async def test_providers_endpoint_settings_driven(tc):
     assert body["reciter_photos"]["ar.minshawi"].startswith("https://upload.wikimedia.org/")
     assert body["reciter_photos"]["ar.abdullahbasfar"] == "https://recitid.ai/reciters/abdullah-basfar.jpg"
     assert body["reciter_photos"]["uz.sodik-audio"].startswith("https://upload.wikimedia.org/")
+
+
+# ---------------------------------------------------------------------------
+# فاز ۲ قرآن: رجیستری provider + متن خودمیزبان Tanzil
+# ---------------------------------------------------------------------------
+
+_DEFAULT_BY_TYPE = {
+    "audio": "alquran_cloud",
+    "text": "self_hosted",
+    "translation": "alquran_cloud",
+    "tafsir": "alquran_cloud",
+}
+
+
+async def _stage(db_session, key, value, setting_type="json"):
+    from app.core.platform_settings import (
+        encode_setting_value,
+        reset_settings_cache,
+        stage_setting,
+    )
+
+    await stage_setting(db_session, key, encode_setting_value(setting_type, value, key))
+    await db_session.commit()
+    reset_settings_cache()
+
+
+async def _restore_registry_defaults(db_session):
+    await _stage(db_session, "quran.providers_by_type", _DEFAULT_BY_TYPE)
+    await _stage(db_session, "quran.custom_providers", [])
+    await _stage(db_session, "quran.custom_provider_keys", {})
+    await _stage(db_session, "quran.qf_client_secret", "", "secret")
+
+
+async def _admin_headers(tc):
+    """کاربر تست با مجوز platform.settings (الگوی RBAC واقعی فاز ۱۰/۱۱)."""
+    from datetime import datetime as _dt
+
+    from sqlalchemy import select
+
+    from app.core.security import create_access_token, hash_password
+    from app.models.models import Permission, Role, RolePermission, User, UserRole
+
+    suffix = _dt.now(UTC).strftime("%H%M%S%f")
+    async with tc["maker"]() as db:
+        p = (
+            await db.execute(
+                select(Permission).where(Permission.key == "platform.settings"),
+            )
+        ).scalar_one_or_none()
+        if p is None:
+            p = Permission(key="platform.settings", description="platform.settings")
+            db.add(p)
+            await db.flush()
+        role = Role(name=f"quran_reg_test_role_{suffix}", description="registry test")
+        db.add(role)
+        await db.flush()
+        db.add(RolePermission(role_id=role.id, permission_id=p.id))
+        user = User(
+            full_name="مدیر تست رجیستری",
+            email=f"quran-reg-{suffix}@example.com",
+            phone=f"+98901{abs(hash(suffix)) % 10**7:07d}",
+            password_hash=hash_password("TestPass123"),
+            locale="fa",
+            is_active=True,
+            is_verified=True,
+        )
+        db.add(user)
+        await db.flush()
+        db.add(UserRole(user_id=user.id, role_id=role.id))
+        await db.commit()
+        return _auth(create_access_token(str(user.id)))
+
+
+def _bare(text: str) -> str:
+    """متن بدون اعراب و علامت‌ها — مقایسهٔ محتوایی بدون حساسیت به ترتیب
+    combining markها (که در تایپ دستی به‌راحتی جابه‌جا می‌شود)."""
+    strip = set()
+    for a, b in [(0x064B, 0x065F), (0x06D6, 0x06DC), (0x06DF, 0x06E4),
+                 (0x06E7, 0x06E8), (0x06EB, 0x06ED)]:
+        strip.update(chr(c) for c in range(a, b + 1))
+    strip.update(["\u0670", "\u0640", "\u06E5", "\u06E6", "\u06E9", "\u06DE"])
+    return "".join(c for c in text.replace("\u0671", "\u0627") if c not in strip)
+
+
+async def test_self_hosted_provider_serves_fatiha():
+    from app.modules.quran import providers as prov
+
+    p = prov.SelfHostedProvider()
+    data = await p.fetch_surah(1, text_edition="quran-uthmani")
+    assert data["edition_ids"] == ["quran-uthmani"]
+    assert len(data["ayahs"]) == 7
+    first = data["ayahs"][0]["editions"]["quran-uthmani"]
+    assert _bare(first.text) == "بسم الله الرحمن الرحيم"
+    # فایل Tanzil شمارهٔ جزء/صفحه ندارد — خواننده null را تحمل می‌کند
+    assert first.juz is None and first.page is None
+    # فقط متن: درخواست edition دیگر خطا می‌دهد، نه پاسخ ناقص بی‌صدا
+    with pytest.raises(prov.QuranProviderError):
+        await p.fetch_surah(
+            1, text_edition="quran-uthmani", translation_edition="en.sahih",
+        )
+
+
+async def test_self_hosted_provider_covers_all_surahs():
+    from app.modules.quran import providers as prov
+    from app.modules.quran.surahs import get_surah
+
+    p = prov.SelfHostedProvider()
+    total = 0
+    for n in range(1, 115):
+        data = await p.fetch_surah(n, text_edition="quran-uthmani")
+        assert len(data["ayahs"]) == get_surah(n).ayahs
+        total += len(data["ayahs"])
+    assert total == 6236
+    ayah = await p.fetch_ayah(2, 255, text_edition="quran-uthmani")
+    assert _bare(ayah["editions"]["quran-uthmani"].text).startswith("الله لا")
+
+
+def test_custom_provider_entry_validation():
+    from app.modules.quran import providers as prov
+
+    good = prov.validate_custom_provider_entry({
+        "id": "my-prov_1", "name": "  Mine  ",
+        "base_url": "https://x.example/api/", "type": "translation",
+    })
+    assert good == {
+        "id": "my-prov_1", "name": "Mine",
+        "base_url": "https://x.example/api", "type": "translation",
+    }
+    for bad in (
+        {"id": "bad id!", "name": "x",
+         "base_url": "https://x.example/", "type": "text"},
+        {"id": "ok", "name": "",
+         "base_url": "https://x.example/", "type": "text"},
+        {"id": "ok", "name": "x",
+         "base_url": "ftp://x.example/", "type": "text"},
+        {"id": "ok", "name": "x",
+         "base_url": "https://x.example/", "type": "video"},
+        # برخورد با شناسهٔ داخلی
+        {"id": "alquran_cloud", "name": "x",
+         "base_url": "https://x.example/", "type": "text"},
+        {"id": "self_hosted", "name": "x",
+         "base_url": "https://x.example/", "type": "text"},
+    ):
+        with pytest.raises(ValueError):
+            prov.clean_custom_providers([bad])
+    with pytest.raises(ValueError):
+        prov.validate_providers_by_type({"video": "self_hosted"})
+    assert prov.validate_providers_by_type({"text": "self_hosted"}) == {
+        "text": "self_hosted",
+    }
+
+
+async def test_per_type_defaults_and_override(db_session):
+    from app.modules.quran import service as qsvc
+
+    assert await qsvc._resolve_providers_by_type(db_session) == _DEFAULT_BY_TYPE
+    try:
+        await _stage(db_session, "quran.providers_by_type", {"text": "alquran_cloud"})
+        by_type = await qsvc._resolve_providers_by_type(db_session)
+        assert by_type["text"] == "alquran_cloud"
+        assert by_type["audio"] == "alquran_cloud"
+        assert by_type["translation"] == "alquran_cloud"
+    finally:
+        await _restore_registry_defaults(db_session)
+
+
+async def test_mixed_provider_bundle_merges(tc, monkeypatch):
+    _patch_provider_get(monkeypatch, payload=_FAKE_EDITIONS_PAYLOAD)
+    r = await tc["client"].get(f"{BASE}/quran/surah/112")
+    assert r.status_code == 200, r.text
+    first = r.json()["ayahs"][0]
+    by_ed = {e["edition"]: e for e in first["editions"]}
+    # متن از Tanzil محلی (بسملهٔ ابتدای سوره هم مثل AlQuran در متن است)
+    assert _bare(by_ed["quran-uthmani"]["text"]) == (
+        "بسم الله الرحمن الرحيم قل هو الله أحد"
+    )
+    assert by_ed["quran-uthmani"]["juz"] is None
+    # ترجمه و صوت از AlQuran ماک‌شده؛ متن ماک نادیده گرفته می‌شود (first wins)
+    assert by_ed["en.sahih"]["text"].startswith("Say,")
+    assert by_ed["ar.alafasy"]["audio_url"].startswith("https://cdn.islamic.network")
+
+
+async def test_unknown_provider_in_selection_503(tc, db_session):
+    try:
+        await _stage(
+            db_session, "quran.providers_by_type", {"text": "no-such-provider"},
+        )
+        r = await tc["client"].get(f"{BASE}/quran/surah/112")
+        assert r.status_code == 503, r.text
+        assert r.json()["error"]["code"] == "quran_provider_unavailable"
+    finally:
+        await _restore_registry_defaults(db_session)
+
+
+async def test_nonconforming_custom_shape_503(tc, monkeypatch, db_session):
+    try:
+        await _stage(db_session, "quran.custom_providers", [
+            {"id": "bad-shape", "name": "Bad",
+             "base_url": "https://bad.example/api", "type": "translation"},
+        ])
+        await _stage(
+            db_session, "quran.providers_by_type", {"translation": "bad-shape"},
+        )
+        _patch_provider_get(monkeypatch, payload=[])
+        r = await tc["client"].get(f"{BASE}/quran/surah/112")
+        assert r.status_code == 503, r.text
+        assert r.json()["error"]["code"] == "quran_provider_unavailable"
+    finally:
+        await _restore_registry_defaults(db_session)
+
+
+async def test_custom_provider_key_endpoint(tc, db_session):
+    client = tc["client"]
+    try:
+        await _stage(db_session, "quran.custom_providers", [
+            {"id": "keyed-prov", "name": "Keyed",
+             "base_url": "https://keyed.example/api", "type": "translation"},
+        ])
+        # بدون احراز هویت → ۴۰۱
+        r = await client.put(
+            f"{BASE}/quran/registry/custom-providers/keyed-prov/key",
+            json={"key": "secret-123"},
+        )
+        assert r.status_code == 401, r.text
+        headers = await _admin_headers(tc)
+        # تنظیم کلید: فقط key_set برمی‌گردد، هرگز خود مقدار
+        r = await client.put(
+            f"{BASE}/quran/registry/custom-providers/keyed-prov/key",
+            json={"key": "secret-123"}, headers=headers,
+        )
+        assert r.status_code == 200, r.text
+        assert r.json() == {"provider_id": "keyed-prov", "key_set": True}
+        assert "secret-123" not in r.text
+        # پاک‌کردن با null
+        r = await client.put(
+            f"{BASE}/quran/registry/custom-providers/keyed-prov/key",
+            json={"key": None}, headers=headers,
+        )
+        assert r.json() == {"provider_id": "keyed-prov", "key_set": False}
+        # provider ناشناخته → ۴۰۴
+        r = await client.put(
+            f"{BASE}/quran/registry/custom-providers/nope/key",
+            json={"key": "x"}, headers=headers,
+        )
+        assert r.status_code == 404, r.text
+    finally:
+        await _restore_registry_defaults(db_session)
+
+
+async def test_providers_endpoint_never_leaks_secrets(tc, db_session):
+    from app.modules.quran import service as qsvc
+
+    try:
+        await _stage(db_session, "quran.custom_providers", [
+            {"id": "keyed-prov", "name": "Keyed",
+             "base_url": "https://keyed.example/api", "type": "translation"},
+        ])
+        await _stage(db_session, "quran.qf_client_secret", "qf-secret-value-123", "secret")
+        await qsvc.set_custom_provider_key(db_session, "keyed-prov", "custom-secret-123")
+        r = await tc["client"].get(f"{BASE}/quran/providers")
+        assert r.status_code == 200, r.text
+        assert "qf-secret-value-123" not in r.text
+        assert "custom-secret-123" not in r.text
+        body = r.json()
+        assert body["qf_client_secret_set"] is True
+        assert body["custom_provider_keys_set"] == ["keyed-prov"]
+    finally:
+        await _restore_registry_defaults(db_session)
 
 
 # ---------------------------------------------------------------------------
@@ -592,6 +879,9 @@ def test_quran_settings_seed_defaults():
         "quran.provider", "quran.translations", "quran.tafsirs", "quran.reciters",
         "quran.active_languages", "quran.show_translation", "quran.show_tafsir",
         "quran.highlight_mode", "quran.font_size", "quran.playback",
+        "quran.providers_by_type", "quran.custom_providers",
+        "quran.custom_provider_keys", "quran.qf_base_url",
+        "quran.qf_client_id", "quran.qf_client_secret",
         "munajat.enabled", "munajat.window", "adhan.defaults",
     ):
         assert f'"{key}"' in src, key

@@ -120,6 +120,8 @@ export interface QuranDisplayConfig {
   repeatDefault: 'off' | 'ayah' | 'surah' | null;
   reciters: Reciter[];
   activeReciter: string | null;
+  /** Phase 2 registry: selected provider id per content type. */
+  providersByType: Record<string, string>;
 }
 
 export interface AyahNote {
@@ -370,6 +372,14 @@ export async function getQuranProviders(): Promise<QuranDisplayConfig | null> {
       ? (body.playback as Record<string, unknown>)
       : null;
   const repeatRaw = playback?.repeat;
+  const byTypeRaw =
+    body.providers_by_type && typeof body.providers_by_type === 'object'
+      ? (body.providers_by_type as Record<string, unknown>)
+      : {};
+  const providersByType: Record<string, string> = {};
+  for (const [k, v] of Object.entries(byTypeRaw)) {
+    if (typeof v === 'string' && v.length > 0) providersByType[k] = v;
+  }
   return {
     showTranslation: body.show_translation !== false,
     showTafsir: body.show_tafsir === true,
@@ -385,6 +395,7 @@ export async function getQuranProviders(): Promise<QuranDisplayConfig | null> {
       repeatRaw === 'ayah' || repeatRaw === 'surah' || repeatRaw === 'off' ? repeatRaw : null,
     reciters: reciterIds.map((id) => ({ id, name: id, rewaya: null, locale: null, photoUrl: photos[id] ?? null })),
     activeReciter: reciterIds[0] ?? null,
+    providersByType,
   };
 }
 

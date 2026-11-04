@@ -50,6 +50,24 @@ class ProviderInfo(BaseModel):
     name: str
     base_url: str
     active: bool
+    types: list[str] = []
+    implemented: bool = True
+
+
+class CustomProviderInfo(BaseModel):
+    id: str
+    name: str
+    base_url: str
+    type: str
+
+
+class ProviderCatalogInfo(BaseModel):
+    id: str
+    name: str
+    base_url: str
+    types: list[str] = []
+    implemented: bool = False
+    note: str = ""
 
 
 class QuranProvidersOut(BaseModel):
@@ -66,6 +84,22 @@ class QuranProvidersOut(BaseModel):
     highlight_mode: str
     font_size: float
     playback: dict
+    providers_by_type: dict[str, str] = {}
+    custom_providers: list[CustomProviderInfo] = []
+    provider_catalog: list[ProviderCatalogInfo] = []
+    qf_base_url: str = ""
+    qf_client_id: str = ""
+    qf_client_secret_set: bool = False
+    custom_provider_keys_set: list[str] = []
+
+
+class CustomProviderKeyIn(BaseModel):
+    key: str | None = Field(default=None, max_length=500)
+
+
+class CustomProviderKeyOut(BaseModel):
+    provider_id: str
+    key_set: bool
 
 
 # --- یادداشت آیه ---

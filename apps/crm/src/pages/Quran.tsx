@@ -9,6 +9,7 @@ import {
   isTimeString,
   moveString,
   parseActiveLanguages,
+  parseCustomProviders,
   parseFlag,
   parseFontSize,
   parseHighlightMode,
@@ -16,20 +17,24 @@ import {
   parseDisplayTheme,
   parseMadhhabDefault,
   parseMunajatWindow,
+  parsePhotosMap,
+  parsePlainString,
   parsePlayback,
   parsePlayerSpeed,
-  parsePhotosMap,
-  parseProviderId,
+  parseProvidersByType,
   parseWaveformStyle,
   parseStringList,
+  setCustomProviderKey,
   useQuranProvidersQuery,
   useQuranSettingsQuery,
   useWriteQuranKeys,
+  type CustomProviderInfo,
   type DisplayFont,
   type DisplayTheme,
   type HighlightMode,
   type MunajatWindow,
   type PlaybackConfig,
+  type ProviderContentType,
   type QuranMadhhab,
   type RepeatMode,
   type WaveformStyle,
@@ -40,7 +45,10 @@ import {
  *
  * Three configuration areas backed by platform_settings (Phase 5, json type,
  * keys as registered by the Track 1 backend — see lib/quran.ts):
- *   1. Providers → quran.provider, quran.translations, quran.tafsirs, quran.reciters
+ *   1. Providers → quran.providers_by_type (one provider per content type),
+ *      quran.custom_providers, quran.qf_base_url / qf_client_id /
+ *      qf_client_secret, quran.translations, quran.tafsirs, quran.reciters
+ *      (Phase 2 registry; the old single quran.provider radio is gone)
  *   2. Display   → quran.active_languages, quran.show_translation,
  *                   quran.show_tafsir, quran.highlight_mode, quran.font_size,
  *                   quran.playback, quran.madhhab_default,
@@ -302,31 +310,279 @@ function ReciterPhotoManager({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Phase 2 registry: per-type selection + custom providers + catalog   */
+/* ------------------------------------------------------------------ */
+
+const PROVIDER_TYPE_KEYS: { id: ProviderContentType; key: string }[] = [
+  { id: "audio", key: "quran.providerTypeAudio" },
+  { id: "text", key: "quran.providerTypeText" },
+  { id: "translation", key: "quran.providerTypeTranslation" },
+  { id: "tafsir", key: "quran.providerTypeTafsir" },
+];
+
+function CustomProviderManager({
+  items,
+  setItems,
+  savedItems,
+  keySetIds,
+  onSave,
+  pending,
+  savedTick,
+  error,
+  onKeysChanged,
+}: {
+  items: CustomProviderInfo[];
+  setItems: (items: CustomProviderInfo[]) => void;
+  savedItems: CustomProviderInfo[];
+  keySetIds: string[];
+  onSave: () => void;
+  pending: boolean;
+  savedTick: number;
+  error: unknown;
+  onKeysChanged: () => void;
+}): React.ReactElement {
+  const { t } = useI18n();
+  const [newName, setNewName] = React.useState("");
+  const [newUrl, setNewUrl] = React.useState("");
+  const [newType, setNewType] = React.useState<ProviderContentType>("translation");
+  const [formError, setFormError] = React.useState<string | null>(null);
+  const [keyDrafts, setKeyDrafts] = React.useState<Record<string, string>>({});
+  const [keyBusy, setKeyBusy] = React.useState<string | null>(null);
+  const [keyError, setKeyError] = React.useState<string | null>(null);
+  const savedIds = new Set(savedItems.map((i) => i.id));
+
+  const addItem = (): void => {
+    const name = newName.trim();
+    const url = newUrl.trim();
+    if (!name) {
+      setFormError(t("quran.customProviderNameRequired"));
+      return;
+    }
+    if (!url.startsWith("https://") && !url.startsWith("http://")) {
+      setFormError(t("quran.customProviderUrlInvalid"));
+      return;
+    }
+    const id = name
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 64);
+    if (!id || items.some((i) => i.id === id)) {
+      setFormError(t("quran.customProviderIdInvalid"));
+      return;
+    }
+    setFormError(null);
+    setItems([...items, { id, name, base_url: url, type: newType }]);
+    setNewName("");
+    setNewUrl("");
+  };
+
+  const saveKey = async (id: string, key: string | null): Promise<void> => {
+    setKeyBusy(id);
+    setKeyError(null);
+    try {
+      await setCustomProviderKey(id, key);
+      setKeyDrafts((d) => ({ ...d, [id]: "" }));
+      onKeysChanged();
+    } catch (e) {
+      setKeyError(errText(e));
+    } finally {
+      setKeyBusy(null);
+    }
+  };
+
+  return (
+    <section className="panel" aria-label={t("quran.customProvidersTitle")}>
+      <div className="panel-head">
+        <h2>{t("quran.customProvidersTitle")}</h2>
+        <span className="panel-hint">{QURAN_SETTINGS_KEYS.customProviders}</span>
+      </div>
+      <p className="hint" style={{ marginTop: 0 }}>
+        {t("quran.customProvidersHint")}
+      </p>
+
+      {items.length === 0 && <div className="empty">{t("quran.noEntries")}</div>}
+
+      <ol className="slot-list">
+        {items.map((item) => (
+          <li key={item.id} className="slot-row">
+            <div className="slot-main">
+              <code className="slot-id" dir="ltr">
+                {item.id}
+              </code>
+              <span>
+                <strong>{item.name}</strong>
+                <span className="hint">
+                  {" "}
+                  · <code dir="ltr">{item.base_url}</code> ·{" "}
+                  {t(
+                    PROVIDER_TYPE_KEYS.find((k) => k.id === item.type)?.key ??
+                      "quran.providerTypeTranslation",
+                  )}
+                </span>
+              </span>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                {savedIds.has(item.id) ? (
+                  <>
+                    <input
+                      className="input"
+                      dir="ltr"
+                      type="password"
+                      value={keyDrafts[item.id] ?? ""}
+                      placeholder={t("quran.customProviderKey")}
+                      onChange={(e) =>
+                        setKeyDrafts((d) => ({ ...d, [item.id]: e.target.value }))
+                      }
+                      aria-label={t("quran.customProviderKey")}
+                      autoComplete="off"
+                    />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={keyBusy === item.id || !(keyDrafts[item.id] ?? "").trim()}
+                      onClick={() => void saveKey(item.id, keyDrafts[item.id] ?? "")}
+                    >
+                      {t("quran.customProviderSaveKey")}
+                    </Button>
+                    {keySetIds.includes(item.id) && (
+                      <>
+                        <Badge tone="success">{t("quran.customProviderKeySet")}</Badge>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={keyBusy === item.id}
+                          onClick={() => void saveKey(item.id, null)}
+                        >
+                          {t("quran.customProviderClearKey")}
+                        </Button>
+                      </>
+                    )}
+                    {!keySetIds.includes(item.id) && (
+                      <Badge tone="info">{t("quran.customProviderKeyEmpty")}</Badge>
+                    )}
+                  </>
+                ) : (
+                  <span className="hint">{t("quran.customProviderSaveFirst")}</span>
+                )}
+              </div>
+            </div>
+            <div className="slot-actions">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setItems(items.filter((i) => i.id !== item.id))}
+              >
+                {t("quran.removeEntry")}
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
+        <input
+          className="input"
+          value={newName}
+          placeholder={t("quran.customProviderName")}
+          onChange={(e) => setNewName(e.target.value)}
+          aria-label={t("quran.customProviderName")}
+        />
+        <input
+          className="input"
+          dir="ltr"
+          value={newUrl}
+          placeholder="https://…"
+          onChange={(e) => setNewUrl(e.target.value)}
+          aria-label={t("quran.customProviderUrl")}
+        />
+        <select
+          className="input"
+          value={newType}
+          onChange={(e) => setNewType(e.target.value as ProviderContentType)}
+          aria-label={t("quran.customProviderType")}
+        >
+          {PROVIDER_TYPE_KEYS.map((k) => (
+            <option key={k.id} value={k.id}>
+              {t(k.key)}
+            </option>
+          ))}
+        </select>
+        <Button size="sm" variant="secondary" onClick={addItem}>
+          {t("quran.customProviderAdd")}
+        </Button>
+      </div>
+      {formError && (
+        <p className="hint" role="alert" style={{ color: "var(--danger, #c0392b)" }}>
+          {formError}
+        </p>
+      )}
+      {keyError && (
+        <p className="hint" role="alert" style={{ color: "var(--danger, #c0392b)" }}>
+          {keyError}
+        </p>
+      )}
+
+      <SaveRow pending={pending} savedTick={savedTick} error={error} onSave={onSave} />
+    </section>
+  );
+}
+
 function ProvidersPanel(): React.ReactElement {
   const { t } = useI18n();
   const settings = useQuranSettingsQuery();
   const providers = useQuranProvidersQuery();
   const writer = useWriteQuranKeys();
 
-  const [provider, setProvider] = React.useState("");
+  const [byType, setByType] = React.useState<Record<string, string> | null>(null);
   const [translations, setTranslations] = React.useState<string[]>([]);
   const [tafsirs, setTafsirs] = React.useState<string[]>([]);
   const [reciters, setReciters] = React.useState<string[]>([]);
   const [reciterPhotos, setReciterPhotos] = React.useState<Record<string, string>>({});
-  const [saved, setSaved] = React.useState({ text: 0, tr: 0, tafsir: 0, rec: 0, photos: 0 });
+  const [customProviders, setCustomProviders] = React.useState<CustomProviderInfo[]>([]);
+  const [qfBaseUrl, setQfBaseUrl] = React.useState("");
+  const [qfClientId, setQfClientId] = React.useState("");
+  const [qfSecret, setQfSecret] = React.useState("");
+  const [saved, setSaved] = React.useState({
+    byType: 0,
+    tr: 0,
+    tafsir: 0,
+    rec: 0,
+    photos: 0,
+    custom: 0,
+    qf: 0,
+  });
 
   React.useEffect(() => {
     if (settings.data) {
-      setProvider(parseProviderId(settings.data[QURAN_SETTINGS_KEYS.provider]));
+      const parsed = parseProvidersByType(settings.data[QURAN_SETTINGS_KEYS.providersByType]);
+      if (Object.keys(parsed).length > 0) setByType(parsed);
       setTranslations(parseStringList(settings.data[QURAN_SETTINGS_KEYS.translations]));
       setTafsirs(parseStringList(settings.data[QURAN_SETTINGS_KEYS.tafsirs]));
       setReciters(parseStringList(settings.data[QURAN_SETTINGS_KEYS.reciters]));
       setReciterPhotos(parsePhotosMap(settings.data[QURAN_SETTINGS_KEYS.reciterPhotos]));
+      setCustomProviders(
+        parseCustomProviders(settings.data[QURAN_SETTINGS_KEYS.customProviders]),
+      );
+      setQfBaseUrl(parsePlainString(settings.data[QURAN_SETTINGS_KEYS.qfBaseUrl]));
+      setQfClientId(parsePlainString(settings.data[QURAN_SETTINGS_KEYS.qfClientId]));
     }
   }, [settings.data]);
 
+  React.useEffect(() => {
+    if (byType === null && providers.data && Object.keys(providers.data.providers_by_type).length > 0) {
+      setByType(providers.data.providers_by_type);
+    }
+  }, [byType, providers.data]);
+
   const bump = (k: keyof typeof saved): void => setSaved((p) => ({ ...p, [k]: p[k] + 1 }));
   const writeErr = writer.isError ? writer.error : null;
+  const selectedFor = (type: string): string =>
+    byType?.[type] ?? providers.data?.providers_by_type?.[type] ?? "";
+  const eligibleFor = (type: string): { id: string; name: string; base_url: string }[] =>
+    (providers.data?.providers ?? []).filter(
+      (p) => p.implemented && p.types.includes(type),
+    );
 
   return (
     <>
@@ -352,11 +608,14 @@ function ProvidersPanel(): React.ReactElement {
 
       {settings.data && (
         <>
-          <section className="panel" aria-label={t("quran.textSourceTitle")}>
+          <section className="panel" aria-label={t("quran.registryByTypeTitle")}>
             <div className="panel-head">
-              <h2>{t("quran.textSourceTitle")}</h2>
-              <span className="panel-hint">{QURAN_SETTINGS_KEYS.provider}</span>
+              <h2>{t("quran.registryByTypeTitle")}</h2>
+              <span className="panel-hint">{QURAN_SETTINGS_KEYS.providersByType}</span>
             </div>
+            <p className="hint" style={{ marginTop: 0 }}>
+              {t("quran.registryByTypeHint")}
+            </p>
             {providers.isLoading && <div className="empty">{t("common.loading")}</div>}
             {providers.isError && (
               <div className="empty">
@@ -366,34 +625,36 @@ function ProvidersPanel(): React.ReactElement {
                 </Button>
               </div>
             )}
-            {providers.data && providers.data.providers.length === 0 && (
-              <div className="empty">{t("quran.noEntries")}</div>
-            )}
-            <div role="radiogroup" aria-label={t("quran.textSourceTitle")}>
-              {providers.data?.providers.map((p) => (
-                <label className="check-row" key={p.id} style={{ marginBottom: "0.5rem" }}>
-                  <input
-                    type="radio"
-                    name="quran-provider"
-                    checked={provider === p.id}
-                    onChange={() => setProvider(p.id)}
-                  />
-                  <span>
-                    <strong>{p.name}</strong>
-                    <span className="hint">
-                      {" "}
-                      — <code dir="ltr">{p.id}</code>
-                      {p.base_url ? ` · ${p.base_url}` : ""}
-                    </span>
-                    {p.active && (
-                      <span style={{ marginInlineStart: "0.5rem" }}>
-                        <Badge tone="success">{t("quran.activeProvider")}</Badge>
+            {PROVIDER_TYPE_KEYS.map((tk) => (
+              <div key={tk.id} style={{ marginBottom: "1rem" }}>
+                <h3 style={{ margin: "0 0 0.5rem" }}>{t(tk.key)}</h3>
+                {eligibleFor(tk.id).length === 0 && (
+                  <div className="empty">{t("quran.noEntries")}</div>
+                )}
+                <div role="radiogroup" aria-label={t(tk.key)}>
+                  {eligibleFor(tk.id).map((p) => (
+                    <label className="check-row" key={p.id} style={{ marginBottom: "0.5rem" }}>
+                      <input
+                        type="radio"
+                        name={`quran-provider-${tk.id}`}
+                        checked={selectedFor(tk.id) === p.id}
+                        onChange={() =>
+                          setByType((prev) => ({ ...(prev ?? {}), [tk.id]: p.id }))
+                        }
+                      />
+                      <span>
+                        <strong>{p.name}</strong>
+                        <span className="hint">
+                          {" "}
+                          · <code dir="ltr">{p.id}</code>
+                          {p.base_url ? ` · ${p.base_url}` : ""}
+                        </span>
                       </span>
-                    )}
-                  </span>
-                </label>
-              ))}
-            </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
             {providers.data && providers.data.text_edition && (
               <p className="hint">
                 {t("quran.textEdition")}: <code dir="ltr">{providers.data.text_edition}</code>
@@ -401,14 +662,144 @@ function ProvidersPanel(): React.ReactElement {
             )}
             <SaveRow
               pending={writer.isPending}
-              savedTick={saved.text}
+              savedTick={saved.byType}
               error={writeErr}
               onSave={() =>
                 writer.mutate(
-                  { [QURAN_SETTINGS_KEYS.provider]: provider },
-                  { onSuccess: () => bump("text") },
+                  { [QURAN_SETTINGS_KEYS.providersByType]: byType ?? {} },
+                  {
+                    onSuccess: () => {
+                      bump("byType");
+                      void providers.refetch();
+                    },
+                  },
                 )
               }
+            />
+          </section>
+
+          <CustomProviderManager
+            items={customProviders}
+            setItems={setCustomProviders}
+            savedItems={providers.data?.custom_providers ?? []}
+            keySetIds={providers.data?.custom_provider_keys_set ?? []}
+            pending={writer.isPending}
+            savedTick={saved.custom}
+            error={writeErr}
+            onSave={() =>
+              writer.mutate(
+                { [QURAN_SETTINGS_KEYS.customProviders]: customProviders },
+                {
+                  onSuccess: () => {
+                    bump("custom");
+                    void providers.refetch();
+                  },
+                },
+              )
+            }
+            onKeysChanged={() => void providers.refetch()}
+          />
+
+          <section className="panel" aria-label={t("quran.providerCatalogTitle")}>
+            <div className="panel-head">
+              <h2>{t("quran.providerCatalogTitle")}</h2>
+            </div>
+            <p className="hint" style={{ marginTop: 0 }}>
+              {t("quran.providerCatalogHint")}
+            </p>
+            {providers.isLoading && <div className="empty">{t("common.loading")}</div>}
+            {(providers.data?.provider_catalog ?? []).length === 0 &&
+              !providers.isLoading && <div className="empty">{t("quran.noEntries")}</div>}
+            <ol className="slot-list">
+              {(providers.data?.provider_catalog ?? []).map((entry) => (
+                <li key={entry.id} className="slot-row">
+                  <div className="slot-main">
+                    <code className="slot-id" dir="ltr">
+                      {entry.id}
+                    </code>
+                    <span>
+                      <strong>{entry.name}</strong>
+                      <span className="hint">
+                        {" "}
+                        · <code dir="ltr">{entry.base_url}</code>
+                        {entry.types.length > 0 ? ` · ${entry.types.join(", ")}` : ""}
+                      </span>
+                    </span>
+                  </div>
+                  <div className="slot-actions">
+                    <Badge tone="info">
+                      {entry.config_only
+                        ? t("quran.providerConfigOnly")
+                        : t("quran.providerNotConnected")}
+                    </Badge>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+
+          <section className="panel" aria-label={t("quran.qfConfigTitle")}>
+            <div className="panel-head">
+              <h2>{t("quran.qfConfigTitle")}</h2>
+              <span className="panel-hint">{QURAN_SETTINGS_KEYS.qfBaseUrl}</span>
+              {providers.data?.qf_client_secret_set && (
+                <span style={{ marginInlineStart: "0.5rem" }}>
+                  <Badge tone="success">{t("quran.customProviderKeySet")}</Badge>
+                </span>
+              )}
+            </div>
+            <p className="hint" style={{ marginTop: 0 }}>
+              {t("quran.qfConfigHint")}
+            </p>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <input
+                className="input"
+                dir="ltr"
+                value={qfBaseUrl}
+                placeholder="https://api.quran.com/api/v4"
+                onChange={(e) => setQfBaseUrl(e.target.value)}
+                aria-label={t("quran.customProviderUrl")}
+              />
+              <input
+                className="input"
+                dir="ltr"
+                value={qfClientId}
+                placeholder={t("quran.qfClientId")}
+                onChange={(e) => setQfClientId(e.target.value)}
+                aria-label={t("quran.qfClientId")}
+              />
+              <input
+                className="input"
+                dir="ltr"
+                type="password"
+                value={qfSecret}
+                placeholder={t("quran.qfClientSecret")}
+                onChange={(e) => setQfSecret(e.target.value)}
+                aria-label={t("quran.qfClientSecret")}
+                autoComplete="off"
+              />
+            </div>
+            <p className="hint">{t("quran.qfSecretHint")}</p>
+            <SaveRow
+              pending={writer.isPending}
+              savedTick={saved.qf}
+              error={writeErr}
+              onSave={() => {
+                const entries: Record<string, unknown> = {
+                  [QURAN_SETTINGS_KEYS.qfBaseUrl]: qfBaseUrl,
+                  [QURAN_SETTINGS_KEYS.qfClientId]: qfClientId,
+                };
+                if (qfSecret.trim()) {
+                  entries[QURAN_SETTINGS_KEYS.qfClientSecret] = qfSecret;
+                }
+                writer.mutate(entries, {
+                  onSuccess: () => {
+                    setQfSecret("");
+                    bump("qf");
+                    void providers.refetch();
+                  },
+                });
+              }}
             />
           </section>
 
