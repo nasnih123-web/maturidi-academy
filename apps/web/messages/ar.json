@@ -240,6 +240,7 @@
     "meccan": "مكية",
     "medinan": "مدنية",
     "loadFailed": "تعذّر تحميل بيانات القرآن. تحقق من الاتصال وحاول مجددًا.",
+    "textCredit": "النص العربي من مشروع تنزيل (tanzil.net) برخصة CC BY 3.0",
     "surahMetaTitle": "سورة {n}",
     "surahOf": "سورة",
     "reciterLabel": "القارئ",

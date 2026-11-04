@@ -374,6 +374,18 @@ async def seed_platform_settings_defaults(db: AsyncSession) -> list[str]:
         "quran.highlight_mode": "ayah",
         "quran.font_size": 20,
         "quran.playback": {"autoplay": False, "repeat": "off"},
+        # --- فاز ۲ قرآن: رجیستری provider (ترکیب بر اساس نوع) ---
+        "quran.providers_by_type": {
+            "audio": "alquran_cloud",
+            "text": "self_hosted",
+            "translation": "alquran_cloud",
+            "tafsir": "alquran_cloud",
+        },
+        "quran.custom_providers": [],
+        "quran.custom_provider_keys": {},
+        "quran.qf_base_url": "https://api.quran.com/api/v4",
+        "quran.qf_client_id": "",
+        "quran.qf_client_secret": "",
         "munajat.enabled": True,
         "munajat.window": {"start": "02:00", "end": "05:00"},
         "adhan.defaults": {"calculation_method": "council", "madhab": "hanafi"},

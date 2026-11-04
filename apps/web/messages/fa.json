@@ -240,6 +240,7 @@
     "meccan": "مکی",
     "medinan": "مدنی",
     "loadFailed": "دریافت اطلاعات قرآن ممکن نشد. لطفاً اتصال را بررسی و دوباره تلاش کنید.",
+    "textCredit": "متن عربی از پروژهٔ تنزیل (tanzil.net) با مجوز CC BY 3.0",
     "surahMetaTitle": "سوره {n}",
     "surahOf": "سوره",
     "reciterLabel": "قاری",

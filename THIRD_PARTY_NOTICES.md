@@ -145,3 +145,38 @@ sources.
 - **Attribution in product:** a credit line under every rendered SVG
   page ("Printed page: Mushaf al-Madinah — King Fahd Glorious Quran
   Printing Complex; ayah layer: Quran.ws", localized in fa/ar/en).
+
+## Quran Arabic text (Tanzil Project) — Phase 2 self-hosted text
+
+- **Work:** Tanzil Quran Text, Uthmani, Version 1.1 (Hafs),
+  downloaded from tanzil.net (download options: pause marks on,
+  sajdah signs on, rub-el-hizb signs off, tatweel on; plain-text
+  `txt-2` format, 6,236 verse records, 1,396,087 bytes).
+- **License status:** Creative Commons Attribution 3.0, with the
+  project's no-change condition: verbatim copies only, the source
+  clearly indicated with a link to tanzil.net, and the copyright
+  notice reproduced. The downloaded file's own copyright block
+  ("Copyright (C) 2007-2026 Tanzil Project") is kept verbatim at the
+  end of the stored file.
+- **How it is used:** stored server-side, verbatim, at
+  `apps/api/app/modules/quran/data/tanzil_uthmani.txt` and served by
+  the academy API through the `self_hosted` provider (default for the
+  text type in the Phase 2 provider registry). The stored copy is
+  never modified: search normalization and the Fatiha 6/7 display
+  split happen at index/display time only, never in the stored text.
+  Translations, tafsirs and audio are NOT bundled here; they keep
+  coming from the selected provider.
+- **Verification (2026-11-04):** SHA-256 of the stored file is
+  `6933e133dd56db778c801bf738848454e43648105a151e8d84d86a7cae39ec5f`
+  (matches an independent project's recorded hash for the same
+  download options). Word-level diff gate against the live AlQuran
+  Cloud `quran-uthmani` text: 1,320 verses byte-identical; 4,911
+  verses differ in marks only (identical words); 3 verses differ
+  only in spacing ("بَعْدَ مَا" vs "بَعْدَمَا"); 2 verses differ in
+  one letter form (dagger-alef vs alef-maksura in "صَاحِبَيِ",
+  12:39 and 12:41); 0 word-content mismatches. Full catalogue:
+  `tanzil-diff-report.json` (worktree report, not shipped).
+- **Attribution in product:** a visible line at the bottom of the
+  Quran reader ("Arabic text: Tanzil Project (tanzil.net), CC BY
+  3.0", localized in fa/ar/en), shown when the self-hosted text
+  provider serves the text.

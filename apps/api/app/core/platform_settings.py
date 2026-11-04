@@ -96,6 +96,13 @@ SETTING_DEFS: dict[str, dict] = {
     "quran.waveform_style": {"type": "json", "sensitive": False, "label": "سبک موج پخش‌کنندهٔ قرآن"},
     "quran.display_font": {"type": "json", "sensitive": False, "label": "فونت پیش‌فرض نمایش قرآن"},
     "quran.display_theme": {"type": "json", "sensitive": False, "label": "تم رنگی پیش‌فرض نمایش قرآن"},
+    # --- فاز ۲ قرآن: رجیستری provider (ترکیب بر اساس نوع) ---
+    "quran.providers_by_type": {"type": "json", "sensitive": False, "label": "provider هر نوع محتوای قرآن (audio/text/translation/tafsir)"},
+    "quran.custom_providers": {"type": "json", "sensitive": False, "label": "providerهای سفارشی قرآن (سازگار با AlQuran Cloud)"},
+    "quran.custom_provider_keys": {"type": "json", "sensitive": True, "label": "کلیدهای providerهای سفارشی قرآن (هرگز نمایش داده نمی‌شود)"},
+    "quran.qf_base_url": {"type": "json", "sensitive": False, "label": "نشانی پایه Quran Foundation v4 (فقط پیکربندی)"},
+    "quran.qf_client_id": {"type": "json", "sensitive": False, "label": "شناسه کاربری Quran Foundation v4"},
+    "quran.qf_client_secret": {"type": "secret", "sensitive": True, "label": "رمز کاربری Quran Foundation v4 (هرگز نمایش داده نمی‌شود)"},
     "munajat.enabled": {"type": "json", "sensitive": False, "label": "فعال‌بودن مناجات شبانه"},
     "munajat.window": {"type": "json", "sensitive": False, "label": "پنجرهٔ زمانی مناجات"},
     "adhan.defaults": {"type": "json", "sensitive": False, "label": "پیش‌فرض محاسبهٔ اذان (روش + مذهب)"},
@@ -582,6 +589,29 @@ def _validate_json_setting(key: str, value: Any) -> Any:
     # --- فاز ۵: قرآن / مناجات ---
     if key == "quran.provider":
         return _validate_quran_provider(value)
+    if key == "quran.providers_by_type":
+        from app.modules.quran.providers import validate_providers_by_type
+
+        return validate_providers_by_type(value)
+    if key == "quran.custom_providers":
+        from app.modules.quran.providers import clean_custom_providers
+
+        return clean_custom_providers(value)
+    if key == "quran.custom_provider_keys":
+        from app.modules.quran.providers import validate_custom_provider_keys
+
+        return validate_custom_provider_keys(value)
+    if key == "quran.qf_base_url":
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("quran.qf_base_url must be a non-empty string")
+        url = value.strip().rstrip("/")
+        if not url.startswith(("https://", "http://")):
+            raise ValueError("quran.qf_base_url must be an http(s) URL")
+        return url
+    if key == "quran.qf_client_id":
+        if not isinstance(value, str):
+            raise ValueError("quran.qf_client_id must be a string")
+        return value.strip()
     if key in ("quran.translations", "quran.tafsirs", "quran.reciters"):
         return _validate_edition_list(key, value)
     if key == "quran.active_languages":

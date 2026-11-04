@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.models import User
-from app.modules.auth.dependencies import get_current_user
+from app.modules.auth.dependencies import get_current_user, require_permission
 
 from . import service
 from .schemas import (
@@ -22,6 +22,8 @@ from .schemas import (
     AdhanRangeOut,
     AdhanTimesOut,
     AyahOut,
+    CustomProviderKeyIn,
+    CustomProviderKeyOut,
     DhikrTotalOut,
     GeocodePlaceOut,
     GeocodeSearchOut,
@@ -101,6 +103,26 @@ async def get_providers(db: AsyncSession = Depends(get_db)):
         providers=[ProviderInfo(**p) for p in cfg["providers"]],
         **{k: v for k, v in cfg.items() if k != "providers"},
     )
+
+
+_registry_key_perm = require_permission("platform.settings")
+
+
+@quran_router.put(
+    "/registry/custom-providers/{provider_id}/key",
+    response_model=CustomProviderKeyOut,
+)
+async def set_custom_provider_key(
+    provider_id: str,
+    body: CustomProviderKeyIn,
+    user: User = Depends(_registry_key_perm),
+    db: AsyncSession = Depends(get_db),
+):
+    """تنظیم یا پاک‌کردن کلید یک provider سفارشی (null پاک می‌کند) —
+    تنها راه ویرایش کلیدها بدون بازنویسی کل نگاشت حساس. مقدار کلید
+    هرگز در پاسخ برنمی‌گردد؛ فقط key_set."""
+    result = await service.set_custom_provider_key(db, provider_id, body.key)
+    return CustomProviderKeyOut(**result)
 
 
 @quran_router.get("/munajat/status")

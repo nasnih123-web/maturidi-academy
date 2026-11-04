@@ -66,6 +66,11 @@ export const QURAN_SETTINGS_KEYS = {
   waveformStyle: "quran.waveform_style",
   displayFont: "quran.display_font",
   displayTheme: "quran.display_theme",
+  providersByType: "quran.providers_by_type",
+  customProviders: "quran.custom_providers",
+  qfBaseUrl: "quran.qf_base_url",
+  qfClientId: "quran.qf_client_id",
+  qfClientSecret: "quran.qf_client_secret",
   munajatEnabled: "munajat.enabled",
   munajatWindow: "munajat.window",
   adhanDefaults: "adhan.defaults",
@@ -111,6 +116,33 @@ export interface TextProviderInfo {
   name: string;
   base_url: string;
   active: boolean;
+  types: string[];
+  implemented: boolean;
+}
+
+/** Content types — the API's own ids; exactly one provider per type. */
+export const PROVIDER_CONTENT_TYPES = [
+  "audio",
+  "text",
+  "translation",
+  "tafsir",
+] as const;
+export type ProviderContentType = (typeof PROVIDER_CONTENT_TYPES)[number];
+
+export interface CustomProviderInfo {
+  id: string;
+  name: string;
+  base_url: string;
+  type: string;
+}
+
+export interface ProviderCatalogInfo {
+  id: string;
+  name: string;
+  base_url: string;
+  types: string[];
+  implemented: boolean;
+  config_only: boolean;
 }
 
 export type RepeatMode = "off" | "ayah" | "surah";
@@ -134,6 +166,13 @@ export interface QuranProvidersOut {
   highlight_mode: HighlightMode;
   font_size: number;
   playback: PlaybackConfig;
+  providers_by_type: Record<string, string>;
+  custom_providers: CustomProviderInfo[];
+  provider_catalog: ProviderCatalogInfo[];
+  qf_base_url: string;
+  qf_client_id: string;
+  qf_client_secret_set: boolean;
+  custom_provider_keys_set: string[];
 }
 
 export const EMPTY_PROVIDERS_OUT: QuranProvidersOut = {
@@ -149,6 +188,13 @@ export const EMPTY_PROVIDERS_OUT: QuranProvidersOut = {
   highlight_mode: "ayah",
   font_size: 20,
   playback: { autoplay: false, repeat: "off" },
+  providers_by_type: {},
+  custom_providers: [],
+  provider_catalog: [],
+  qf_base_url: "",
+  qf_client_id: "",
+  qf_client_secret_set: false,
+  custom_provider_keys_set: [],
 };
 
 function parseProviderList(raw: unknown): TextProviderInfo[] {
@@ -163,6 +209,71 @@ function parseProviderList(raw: unknown): TextProviderInfo[] {
       name: typeof r.name === "string" && r.name ? r.name : r.id,
       base_url: typeof r.base_url === "string" ? r.base_url : "",
       active: r.active === true,
+      types: parseStringList(r.types),
+      implemented: r.implemented !== false,
+    });
+  }
+  return out;
+}
+
+/** quran.providers_by_type — {type: provider id}, known types only. */
+export function parseProvidersByType(raw: unknown): Record<string, string> {
+  const v = typeof raw === "string" ? decodeJson(raw) : raw;
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (
+      (PROVIDER_CONTENT_TYPES as readonly string[]).includes(k) &&
+      typeof val === "string" &&
+      val.trim()
+    ) {
+      out[k] = val.trim();
+    }
+  }
+  return out;
+}
+
+/** quran.custom_providers — [{id, name, base_url, type}], invalid entries dropped. */
+export function parseCustomProviders(raw: unknown): CustomProviderInfo[] {
+  const v = typeof raw === "string" ? decodeJson(raw) : raw;
+  if (!Array.isArray(v)) return [];
+  const out: CustomProviderInfo[] = [];
+  for (const it of v) {
+    if (!it || typeof it !== "object") continue;
+    const r = it as Record<string, unknown>;
+    if (
+      typeof r.id !== "string" || !r.id ||
+      typeof r.name !== "string" || !r.name.trim() ||
+      typeof r.base_url !== "string" || !r.base_url.trim() ||
+      typeof r.type !== "string" ||
+      !(PROVIDER_CONTENT_TYPES as readonly string[]).includes(r.type)
+    ) {
+      continue;
+    }
+    out.push({
+      id: r.id,
+      name: r.name.trim(),
+      base_url: r.base_url.trim(),
+      type: r.type,
+    });
+  }
+  return out;
+}
+
+function parseCatalogList(raw: unknown): ProviderCatalogInfo[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ProviderCatalogInfo[] = [];
+  for (const it of raw) {
+    if (!it || typeof it !== "object") continue;
+    const r = it as Record<string, unknown>;
+    if (typeof r.id !== "string" || !r.id) continue;
+    out.push({
+      id: r.id,
+      name: typeof r.name === "string" && r.name ? r.name : r.id,
+      base_url: typeof r.base_url === "string" ? r.base_url : "",
+      types: parseStringList(r.types),
+      implemented: r.implemented === true,
+      config_only: r.config_only === true,
     });
   }
   return out;
@@ -184,12 +295,31 @@ export function parseQuranProvidersOut(raw: unknown): QuranProvidersOut {
     highlight_mode: parseHighlightMode(r.highlight_mode),
     font_size: parseFontSize(typeof r.font_size === "number" ? String(r.font_size) : null),
     playback: parsePlayback(typeof r.playback === "string" ? r.playback : JSON.stringify(r.playback ?? {})),
+    providers_by_type: parseProvidersByType(r.providers_by_type),
+    custom_providers: parseCustomProviders(r.custom_providers),
+    provider_catalog: parseCatalogList(r.provider_catalog),
+    qf_base_url: typeof r.qf_base_url === "string" ? r.qf_base_url : "",
+    qf_client_id: typeof r.qf_client_id === "string" ? r.qf_client_id : "",
+    qf_client_secret_set: r.qf_client_secret_set === true,
+    custom_provider_keys_set: parseStringList(r.custom_provider_keys_set),
   };
 }
 
 export async function fetchQuranProviders(): Promise<QuranProvidersOut> {
   const raw = await apiFetch<unknown>("/api/v1/quran/providers");
   return parseQuranProvidersOut(raw);
+}
+
+/** Custom provider key — write-only endpoint; the value is never returned.
+ *  key null clears. Response is {provider_id, key_set} only. */
+export async function setCustomProviderKey(
+  providerId: string,
+  key: string | null,
+): Promise<{ provider_id: string; key_set: boolean }> {
+  return apiFetch<{ provider_id: string; key_set: boolean }>(
+    `/api/v1/quran/registry/custom-providers/${encodeURIComponent(providerId)}/key`,
+    { method: "PUT", body: { key } },
+  );
 }
 
 export function useQuranProvidersQuery() {
@@ -216,6 +346,12 @@ function decodeJson(raw: string | null | undefined): unknown {
 
 /** quran.provider — plain non-empty string. */
 export function parseProviderId(raw: string | null | undefined): string {
+  const v = decodeJson(raw);
+  return typeof v === "string" ? v : "";
+}
+
+/** quran.qf_base_url / quran.qf_client_id — JSON-encoded plain strings. */
+export function parsePlainString(raw: string | null | undefined): string {
   const v = decodeJson(raw);
   return typeof v === "string" ? v : "";
 }

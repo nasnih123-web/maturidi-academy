@@ -198,6 +198,10 @@ async def test_seed_polish_defaults(tc, db_session):
         "quran.reciter_photos",
         "quran.active_languages", "quran.show_translation", "quran.show_tafsir",
         "quran.highlight_mode", "quran.font_size", "quran.playback",
+        # فاز ۲ قرآن: رجیستری provider
+        "quran.providers_by_type", "quran.custom_providers",
+        "quran.custom_provider_keys", "quran.qf_base_url",
+        "quran.qf_client_id", "quran.qf_client_secret",
         "munajat.enabled", "munajat.window",
         # یکپارچه‌سازی coordinator: پیش‌فرض اذان
         "adhan.defaults",

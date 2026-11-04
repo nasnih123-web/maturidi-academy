@@ -351,6 +351,13 @@ export default async function SurahPage({
           searchMore: t('searchMore'),
         }}
       />
+      {providers?.providersByType?.text === 'self_hosted' && (
+        <p style={{ textAlign: 'center', fontSize: '0.85rem', marginTop: '2rem' }}>
+          <a href="https://tanzil.net" target="_blank" rel="noreferrer">
+            {t('textCredit')}
+          </a>
+        </p>
+      )}
     </div>
   );
 }
