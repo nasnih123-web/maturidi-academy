@@ -32,12 +32,22 @@ import {
 const HIGHLIGHT_FILL = '#D6AD64';
 const HIGHLIGHT_OPACITY = '0.35';
 
+/** Hifz ayah mask: hidden = not yet revealed, skipped = gray, graded = gold. */
+export type HifzPageMask = 'hidden' | 'skipped' | 'graded';
+
+const MASK_STYLE: Record<HifzPageMask, [string, string]> = {
+  hidden: ['#0c1612', '0.94'],
+  skipped: ['#808080', '0.55'],
+  graded: [HIGHLIGHT_FILL, HIGHLIGHT_OPACITY],
+};
+
 const svgTextCache = new Map<string, string>();
 
 export function QuranSvgPage({
   mushaf,
   pageNumber,
   highlightKey,
+  masks,
   onSelectAyah,
   onFailed,
   onAyahs,
@@ -47,6 +57,8 @@ export function QuranSvgPage({
   pageNumber: number;
   /** `${surah}:${ayah}` of the ayah to gold-highlight, or null. */
   highlightKey: string | null;
+  /** Hifz ayah masks: `${surah}:${ayah}` → state (optional). */
+  masks?: Record<string, HifzPageMask>;
   /** Tap on a polygon: (surah, ayah) in THIS mushaf's numbering. */
   onSelectAyah: (surah: number, ayah: number) => void;
   /** Called once when this page cannot be shown as SVG. */
@@ -58,6 +70,7 @@ export function QuranSvgPage({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const failedRef = useRef(false);
   const prevHighlightRef = useRef<SVGPathElement | null>(null);
+  const prevMasksRef = useRef<SVGPathElement[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [ayahs, setAyahs] = useState<SvgPageAyah[] | null>(null);
 
@@ -146,6 +159,33 @@ export function QuranSvgPage({
       prevHighlightRef.current = match;
     }
   }, [highlightKey, status, mushaf, pageNumber]);
+
+  // Hifz masks: clear the previous set, then paint the new one.
+  // A masked polygon keeps its fill, so taps still land on it.
+  useEffect(() => {
+    for (const el of prevMasksRef.current) {
+      el.removeAttribute('fill');
+      el.setAttribute('fill-opacity', '0');
+    }
+    prevMasksRef.current = [];
+    if (!masks || status !== 'ready') return;
+    const root = svgRef.current;
+    if (!root) return;
+    const applied: SVGPathElement[] = [];
+    for (const [key, mask] of Object.entries(masks)) {
+      const [s, a] = key.split(':').map(Number);
+      if (!Number.isFinite(s) || !Number.isFinite(a)) continue;
+      const match = root.querySelector(
+        `.ayahPolygon[surah="${s}"][ayah="${a}"]`,
+      ) as SVGPathElement | null;
+      if (!match) continue;
+      const [fill, opacity] = MASK_STYLE[mask];
+      match.setAttribute('fill', fill);
+      match.setAttribute('fill-opacity', opacity);
+      applied.push(match);
+    }
+    prevMasksRef.current = applied;
+  }, [masks, status, mushaf, pageNumber]);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>): void => {
     const target = e.target as Element | null;

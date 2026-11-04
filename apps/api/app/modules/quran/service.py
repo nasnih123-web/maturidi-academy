@@ -128,6 +128,9 @@ _DEFAULTS: dict[str, object] = {
     "quran.qf_base_url": "https://api.quran.com/api/v4",
     "quran.qf_client_id": "",
     "quran.qf_client_secret": "",
+    # --- فاز ۳ قرآن: حفاظ ---
+    "quran.asr_engine": "zipformer",
+    "quran.hifz_thresholds": {"green": 0.8, "amber": 0.5},
     "munajat.enabled": True,
     "munajat.window": {"start": "02:00", "end": "05:00"},
     "adhan.defaults": {"calculation_method": "council", "madhab": "hanafi"},

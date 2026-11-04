@@ -202,6 +202,8 @@ async def test_seed_polish_defaults(tc, db_session):
         "quran.providers_by_type", "quran.custom_providers",
         "quran.custom_provider_keys", "quran.qf_base_url",
         "quran.qf_client_id", "quran.qf_client_secret",
+        # فاز ۳ قرآن: حفاظ
+        "quran.asr_engine", "quran.hifz_thresholds",
         "munajat.enabled", "munajat.window",
         # یکپارچه‌سازی coordinator: پیش‌فرض اذان
         "adhan.defaults",

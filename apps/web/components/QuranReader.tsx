@@ -4,8 +4,9 @@
  * QuranReader — client shell for the Quran reader (umum section).
  *
  * User-locked 2026-11-01: NO section tabs. The reader renders ONLY the
- * section selected via ?tab= (default umum); hifz / children render
- * their existing honest placeholders and nothing else. Back navigation
+ * section selected via ?tab= (default umum); children still renders
+ * its honest placeholder and nothing else. Hifz (Phase 3) renders the
+ * real study screen (QuranHifzStudy), not a placeholder. Back navigation
  * is via the site Quran menu — no back link is invented here.
  *
  * Umum views (round 10, user-locked): سوره، آیه، جزء، حزب، صفحه.
@@ -132,6 +133,7 @@ import { editionAyahText } from '@/lib/quran-text-edition';
 import { normalizeQuranText, toLatinDigits } from '@/lib/quran-search';
 import type { QuranSettings } from '@/lib/settings';
 import { AyahCard, type AyahCardLabels } from './AyahCard';
+import { QuranHifzStudy, type HifzLabels } from './QuranHifzStudy';
 import { AyahNotes, type AyahNotesLabels } from './AyahNotes';
 import { QuranWaveform } from './QuranWaveform';
 import {
@@ -164,6 +166,8 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   bismillah: string;
   hifzPlaceholder: string;
   childrenPlaceholder: string;
+  /** Phase 3 hifz study labels (built in the RSC page from messages). */
+  hifz: HifzLabels;
   madhhabLabel: string;
   madhhabHanafi: string;
   madhhabShafii: string;
@@ -451,13 +455,28 @@ export function QuranReader({
 }) {
   const section: QuranSection = initialTab ?? 'general';
 
-  // Non-umum sections render ONLY their honest placeholder — no header,
+  // Non-umum sections render ONLY their own content — no header,
   // no toolbar, no player, no modes, no other section's content.
+  // Hifz (Phase 3) is the real study screen; children is still an
+  // honest placeholder until its phase.
+  if (section === 'hifz') {
+    return (
+      <div className="quran-reader">
+        <QuranHifzStudy
+          locale={locale}
+          surahList={surahList}
+          initialSurah={surah.number}
+          initialMushaf={initialMushaf ?? 'hafs/kfqc'}
+          labels={labels.hifz}
+        />
+      </div>
+    );
+  }
   if (section !== 'general') {
     return (
       <div className="quran-reader">
         <div className="quran-placeholder" role="note">
-          <p>{section === 'hifz' ? labels.hifzPlaceholder : labels.childrenPlaceholder}</p>
+          <p>{labels.childrenPlaceholder}</p>
         </div>
       </div>
     );

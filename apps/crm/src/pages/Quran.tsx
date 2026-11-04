@@ -1,6 +1,8 @@
 import React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Badge, Button } from "@maturidi/ui-web";
 import { LOCALES, useI18n, type Locale } from "../lib/i18n";
+import { apiFetch } from "../lib/api";
 import {
   DEFAULT_MUNAJAT_WINDOW,
   DEFAULT_PLAYBACK,
@@ -9,9 +11,11 @@ import {
   isTimeString,
   moveString,
   parseActiveLanguages,
+  parseAsrEngine,
   parseCustomProviders,
   parseFlag,
   parseFontSize,
+  parseHifzThresholds,
   parseHighlightMode,
   parseDisplayFont,
   parseDisplayTheme,
@@ -29,6 +33,7 @@ import {
   useQuranSettingsQuery,
   useWriteQuranKeys,
   type CustomProviderInfo,
+  type AsrEngineId,
   type DisplayFont,
   type DisplayTheme,
   type HighlightMode,
@@ -65,19 +70,20 @@ import {
  * There is deliberately no text-editing affordance for ayahs anywhere here.
  */
 
-type QuranTab = "providers" | "display" | "munajat";
-const TABS: QuranTab[] = ["providers", "display", "munajat"];
+type QuranTab = "providers" | "display" | "munajat" | "hifz";
+const TABS: QuranTab[] = ["providers", "display", "munajat", "hifz"];
 
 const TAB_KEY: Record<QuranTab, string> = {
   providers: "quran.tabProviders",
   display: "quran.tabDisplay",
   munajat: "quran.tabMunajat",
+  hifz: "quran.tabHifz",
 };
 
 function initialTab(): QuranTab {
   try {
     const t = new URLSearchParams(window.location.search).get("tab");
-    if (t === "display" || t === "munajat" || t === "providers") return t;
+    if (t === "display" || t === "munajat" || t === "providers" || t === "hifz") return t;
   } catch {
     // ignore
   }
@@ -1313,6 +1319,165 @@ function MunajatPanel(): React.ReactElement {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* hifz (فاز ۳ قرآن)                                                    */
+/* ------------------------------------------------------------------ */
+
+interface HifzAdminAttempt {
+  id: string;
+  user_id: string;
+  surah: number;
+  page: number | null;
+  status: string;
+  engine: string;
+  counts: { correct: number; close: number; wrong: number; skipped: number };
+  created_at: string;
+}
+
+function HifzPanel(): React.ReactElement {
+  const { t } = useI18n();
+  const settings = useQuranSettingsQuery();
+  const writer = useWriteQuranKeys();
+  const [engine, setEngine] = React.useState<AsrEngineId>("zipformer");
+  const [green, setGreen] = React.useState(0.8);
+  const [amber, setAmber] = React.useState(0.5);
+  const [savedTick, setSavedTick] = React.useState(0);
+
+  React.useEffect(() => {
+    if (settings.data) {
+      setEngine(parseAsrEngine(settings.data[QURAN_SETTINGS_KEYS.asrEngine]));
+      const th = parseHifzThresholds(
+        settings.data[QURAN_SETTINGS_KEYS.hifzThresholds],
+      );
+      setGreen(th.green);
+      setAmber(th.amber);
+    }
+  }, [settings.data]);
+
+  const attempts = useQuery({
+    queryKey: ["hifz-admin-attempts"],
+    queryFn: () =>
+      apiFetch<HifzAdminAttempt[]>("/api/v1/quran/hifz/admin/attempts?limit=50"),
+  });
+
+  if (settings.isLoading) return <div className="empty">{t("common.loading")}</div>;
+  if (settings.isError)
+    return (
+      <div className="empty">
+        <p>{t("common.error")}</p>
+        <Button size="sm" variant="secondary" onClick={() => settings.refetch()}>
+          {t("common.retry")}
+        </Button>
+      </div>
+    );
+
+  const thresholdsValid = amber > 0 && amber < green && green <= 1;
+
+  const handleSave = (): void => {
+    if (!thresholdsValid) return;
+    writer.mutate(
+      {
+        [QURAN_SETTINGS_KEYS.asrEngine]: engine,
+        [QURAN_SETTINGS_KEYS.hifzThresholds]: { green, amber },
+      },
+      { onSuccess: () => setSavedTick((n) => n + 1) },
+    );
+  };
+
+  return (
+    <section className="panel" aria-label={t("quran.tabHifz")}>
+      <div className="panel-head">
+        <h2>{t("quran.tabHifz")}</h2>
+        <span className="panel-hint">{t("quran.hifzThresholdsHint")}</span>
+      </div>
+
+      <div className="form-row">
+        <label>
+          {t("quran.hifzEngineLabel")}
+          <select
+            value={engine}
+            onChange={(e) => setEngine(e.target.value as AsrEngineId)}
+          >
+            <option value="zipformer">{t("quran.hifzEngineZipformer")}</option>
+            <option value="whisper_quran">{t("quran.hifzEngineWhisper")}</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="form-row">
+        <label>
+          {t("quran.hifzGreenLabel")}
+          <input
+            type="number"
+            min={0}
+            max={1}
+            step={0.05}
+            value={green}
+            onChange={(e) => setGreen(Number(e.target.value))}
+          />
+        </label>
+        <label>
+          {t("quran.hifzAmberLabel")}
+          <input
+            type="number"
+            min={0}
+            max={1}
+            step={0.05}
+            value={amber}
+            onChange={(e) => setAmber(Number(e.target.value))}
+          />
+        </label>
+      </div>
+      {!thresholdsValid && (
+        <p className="form-error">{t("quran.hifzThresholdsInvalid")}</p>
+      )}
+
+      <SaveRow
+        pending={writer.isPending}
+        savedTick={savedTick}
+        error={writer.error}
+        onSave={handleSave}
+      />
+
+      <h3 style={{ marginTop: "2rem" }}>{t("quran.hifzAttemptsTitle")}</h3>
+      {attempts.isLoading && <p className="hint">{t("common.loading")}</p>}
+      {attempts.isError && <p className="form-error">{t("common.error")}</p>}
+      {attempts.data && attempts.data.length === 0 && (
+        <p className="hint">{t("quran.hifzAttemptsEmpty")}</p>
+      )}
+      {attempts.data && attempts.data.length > 0 && (
+        <table className="table">
+          <thead>
+            <tr>
+              <th>{t("quran.hifzAttemptsUser")}</th>
+              <th>{t("quran.hifzAttemptsSurah")}</th>
+              <th>{t("quran.hifzAttemptsPage")}</th>
+              <th>{t("quran.hifzAttemptsStatus")}</th>
+              <th>{t("quran.hifzAttemptsEngine")}</th>
+              <th>{t("quran.hifzAttemptsCounts")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {attempts.data.map((a) => (
+              <tr key={a.id}>
+                <td style={{ wordBreak: "break-all" }}>{a.user_id}</td>
+                <td>{a.surah}</td>
+                <td>{a.page ?? "—"}</td>
+                <td>{a.status}</td>
+                <td>{a.engine}</td>
+                <td>
+                  {a.counts.correct}/{a.counts.close}/{a.counts.wrong}/
+                  {a.counts.skipped}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
 /* page                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -1367,6 +1532,7 @@ export default function Quran(): React.ReactElement {
       {tab === "providers" && <ProvidersPanel />}
       {tab === "display" && <DisplayPanel />}
       {tab === "munajat" && <MunajatPanel />}
+      {tab === "hifz" && <HifzPanel />}
     </div>
   );
 }

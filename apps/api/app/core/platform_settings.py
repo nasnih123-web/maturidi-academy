@@ -103,6 +103,8 @@ SETTING_DEFS: dict[str, dict] = {
     "quran.qf_base_url": {"type": "json", "sensitive": False, "label": "نشانی پایه Quran Foundation v4 (فقط پیکربندی)"},
     "quran.qf_client_id": {"type": "json", "sensitive": False, "label": "شناسه کاربری Quran Foundation v4"},
     "quran.qf_client_secret": {"type": "secret", "sensitive": True, "label": "رمز کاربری Quran Foundation v4 (هرگز نمایش داده نمی‌شود)"},
+    "quran.asr_engine": {"type": "json", "sensitive": False, "label": "موتور ASR حفاظ (zipformer|whisper_quran)"},
+    "quran.hifz_thresholds": {"type": "json", "sensitive": False, "label": "آستانه‌های رنگ نمرهٔ حفاظ (green/amber)"},
     "munajat.enabled": {"type": "json", "sensitive": False, "label": "فعال‌بودن مناجات شبانه"},
     "munajat.window": {"type": "json", "sensitive": False, "label": "پنجرهٔ زمانی مناجات"},
     "adhan.defaults": {"type": "json", "sensitive": False, "label": "پیش‌فرض محاسبهٔ اذان (روش + مذهب)"},
@@ -612,6 +614,21 @@ def _validate_json_setting(key: str, value: Any) -> Any:
         if not isinstance(value, str):
             raise ValueError("quran.qf_client_id must be a string")
         return value.strip()
+    if key == "quran.asr_engine":
+        if value not in ("zipformer", "whisper_quran"):
+            raise ValueError("quran.asr_engine must be one of zipformer|whisper_quran")
+        return value
+    if key == "quran.hifz_thresholds":
+        if not isinstance(value, dict):
+            raise ValueError("quran.hifz_thresholds must be an object")
+        try:
+            green = float(value.get("green", 0.8))
+            amber = float(value.get("amber", 0.5))
+        except (TypeError, ValueError):
+            raise ValueError("quran.hifz_thresholds green/amber must be numbers") from None
+        if not (0.0 < amber < green <= 1.0):
+            raise ValueError("quran.hifz_thresholds requires 0 < amber < green <= 1")
+        return {"green": green, "amber": amber}
     if key in ("quran.translations", "quran.tafsirs", "quran.reciters"):
         return _validate_edition_list(key, value)
     if key == "quran.active_languages":
