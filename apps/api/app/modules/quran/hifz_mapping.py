@@ -390,6 +390,21 @@ def _resolve_dir(data_dir: str | Path | None) -> Path:
     return _DEFAULT_DIR
 
 
+def map_files_present(data_dir: str | Path | None = None) -> tuple[bool, str]:
+    """بررسی ارزانِ حضور فایل‌های نقشه — بدون بارگذاری (برای /status).
+
+    فقط وجود و ناخالی بودن دو فایل لازم را می‌سنجد؛ اعتبارسنجی کامل
+    (DP روی ۶٬۲۳۶ آیه) همان بار ۲۲۷ ثانیه‌ای است و موقع نمره‌دهی
+    انجام می‌شود، نه این‌جا.
+    """
+    resolved = _resolve_dir(data_dir)
+    for filename in (_ORDERED_FILE, _TOKENS_FILE):
+        path = resolved / filename
+        if not path.is_file() or path.stat().st_size == 0:
+            return False, f"map file missing or empty: {path}"
+    return True, ""
+
+
 def load_phoneme_mapping(data_dir: str | Path | None = None) -> PhonemeMapping:
     """بارگذاری + اعتبارسنجی نگاشت؛ نبود/خرابی → MappingPendingError."""
     resolved = _resolve_dir(data_dir)

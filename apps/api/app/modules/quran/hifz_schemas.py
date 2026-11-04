@@ -130,6 +130,8 @@ class HifzStatusOut(BaseModel):
     engine: str
     available: bool
     reason: str = ""
+    map_available: bool = False
+    map_reason: str = ""
 
 
 class HifzAdminAttemptOut(BaseModel):

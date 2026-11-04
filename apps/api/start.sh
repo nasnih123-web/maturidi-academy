@@ -5,4 +5,7 @@
 # a seed failure or timeout must never again leave the service down.
 alembic upgrade head || echo "start.sh: alembic failed, continuing to uvicorn" >&2
 timeout -k 10 180 python -u -m app.seed || echo "start.sh: seed failed or timed out, continuing to uvicorn" >&2
+# حفاظ: دانلود استارتاپ مدل + نقشه از URLهای محیطی (پیش‌فرض: درایو).
+# ناموفق بودن دانلود هرگز استارت را نمی‌شکند — موتور همان ۵۰۳ صادقانه را می‌دهد.
+python -u -m app.core.hifz_assets || echo "start.sh: hifz assets download failed, continuing to uvicorn" >&2
 exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --proxy-headers --timeout-graceful-shutdown 30

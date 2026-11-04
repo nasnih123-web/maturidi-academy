@@ -175,8 +175,34 @@ async def lifespan(app: FastAPI):
     from app.modules.api_keys.counter import run_usage_flush_loop
 
     flush_task = _asyncio.create_task(run_usage_flush_loop())
+    # حفاظ: وارم‌آپ پس‌زمینهٔ نقشهٔ واج — بار اولش حدود ۴ دقیقه است و
+    # اگر موقع اولین نمره انجام شود، درخواست همان‌قدر معطل می‌ماند.
+    # فقط وقتی فایل‌ها حاضرند و زیر pytest نیستیم اجرا می‌شود؛ هرگز
+    # بوت را نمی‌شکند و در خاموشی لغو می‌شود.
+    async def _warmup_hifz() -> None:
+        try:
+            import os as _os
+
+            if _os.environ.get("PYTEST_CURRENT_TEST"):
+                return
+            from app.modules.quran import hifz_mapping
+
+            ok, _reason = hifz_mapping.map_files_present()
+            if not ok:
+                return
+            await _asyncio.to_thread(hifz_mapping.load_phoneme_mapping)
+            from app.core.logging import logger as _logger
+
+            _logger.info("hifz phoneme map warmed up")
+        except Exception:  # noqa: BLE001 — warm-up must never break boot
+            from app.core.logging import logger as _logger
+
+            _logger.warning("hifz map warm-up failed", exc_info=True)
+
+    warmup_task = _asyncio.create_task(_warmup_hifz())
     yield
     flush_task.cancel()
+    warmup_task.cancel()
     await stop_realtime(app)
 
 
