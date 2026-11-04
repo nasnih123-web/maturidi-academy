@@ -51,7 +51,7 @@
  * fake saved state).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getApiBaseUrl } from '@/lib/api';
+import { apiBaseUrl } from '@/lib/api-base';
 import { authFetch, authJson, getAccessToken } from '@/lib/auth-client';
 import { getSurah, type SurahSummary } from '@/lib/quran';
 import { loadMushafLines, type MushafExactLine } from '@/lib/quran-mushaf-lines';
@@ -434,7 +434,7 @@ export function QuranHifzStudy({
 
   useEffect(() => {
     setAuthed(Boolean(getAccessToken()));
-    fetch(`${getApiBaseUrl().replace(/\/+$/, '')}${HIFZ_API}/status`)
+    fetch(`${apiBaseUrl()}${HIFZ_API}/status`)
       .then((r) => (r.ok ? r.json() : null))
       .then((j: HifzStatus | null) => setEngineStatus(j))
       .catch(() => {});
@@ -909,7 +909,7 @@ export function QuranHifzStudy({
       const ticketRes = await authFetch('/api/v1/auth/ws-ticket', { method: 'POST' });
       if (!ticketRes.ok) throw new Error('ticket');
       const { ticket } = (await ticketRes.json()) as { ticket: string };
-      const base = getApiBaseUrl().replace(/\/+$/, '');
+      const base = apiBaseUrl();
       const wsBase = /^https?:/i.test(base)
         ? base.replace(/^http/i, 'ws')
         : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}${base}`;
