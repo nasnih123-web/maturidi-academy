@@ -81,6 +81,7 @@ SETTING_DEFS: dict[str, dict] = {
     "quran.translations": {"type": "json", "sensitive": False, "label": "ترجمه‌های فعال (ترتیب نمایش)"},
     "quran.tafsirs": {"type": "json", "sensitive": False, "label": "تفسیرهای فعال (ترتیب نمایش)"},
     "quran.reciters": {"type": "json", "sensitive": False, "label": "قاری‌های فعال"},
+    "quran.reciter_photos": {"type": "json", "sensitive": False, "label": "عکس قاری‌ها (شناسه → آدرس)"},
     "quran.active_languages": {"type": "json", "sensitive": False, "label": "زبان‌های فعال قرآن"},
     "quran.show_translation": {"type": "json", "sensitive": False, "label": "نمایش ترجمه"},
     "quran.show_tafsir": {"type": "json", "sensitive": False, "label": "نمایش تفسیر"},

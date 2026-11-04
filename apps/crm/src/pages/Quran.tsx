@@ -18,6 +18,7 @@ import {
   parseMunajatWindow,
   parsePlayback,
   parsePlayerSpeed,
+  parsePhotosMap,
   parseProviderId,
   parseWaveformStyle,
   parseStringList,
@@ -219,6 +220,88 @@ function EditionListManager({
   );
 }
 
+/**
+ * Per-reciter photo URLs (quran.reciter_photos: id -> URL).
+ * One row per reciter id in the active reciters list; empty URL means the
+ * reader keeps its ♪ placeholder. Keys for ids no longer in the list are
+ * preserved untouched (they live in `photos` state but render no row).
+ */
+function ReciterPhotoManager({
+  reciters,
+  photos,
+  setPhotos,
+  onSave,
+  pending,
+  savedTick,
+  error,
+}: {
+  reciters: string[];
+  photos: Record<string, string>;
+  setPhotos: (photos: Record<string, string>) => void;
+  onSave: () => void;
+  pending: boolean;
+  savedTick: number;
+  error: unknown;
+}): React.ReactElement {
+  const { t } = useI18n();
+  return (
+    <section className="panel" aria-label={t("quran.reciterPhotosTitle")}>
+      <div className="panel-head">
+        <h2>{t("quran.reciterPhotosTitle")}</h2>
+        <span className="panel-hint">{QURAN_SETTINGS_KEYS.reciterPhotos}</span>
+      </div>
+      <p className="hint" style={{ marginTop: 0 }}>
+        {t("quran.reciterPhotosHint")}
+      </p>
+
+      {reciters.length === 0 && <div className="empty">{t("quran.noEntries")}</div>}
+
+      <ol className="slot-list">
+        {reciters.map((id) => {
+          const url = photos[id] ?? "";
+          return (
+            <li key={id} className="slot-row">
+              <div className="slot-main">
+                <code className="slot-id" dir="ltr">
+                  {id}
+                </code>
+                <input
+                  className="input"
+                  dir="ltr"
+                  value={url}
+                  placeholder="https://…"
+                  onChange={(e) =>
+                    setPhotos({ ...photos, [id]: e.target.value })
+                  }
+                  aria-label={id}
+                />
+              </div>
+              <div className="slot-actions">
+                {url ? (
+                  <img
+                    src={url}
+                    alt=""
+                    style={{
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "50%",
+                      objectFit: "cover",
+                    }}
+                  />
+                ) : (
+                  <span aria-hidden="true">♪</span>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+
+      <SaveRow pending={pending} savedTick={savedTick} error={error} onSave={onSave} />
+    </section>
+  );
+}
+
 function ProvidersPanel(): React.ReactElement {
   const { t } = useI18n();
   const settings = useQuranSettingsQuery();
@@ -229,7 +312,8 @@ function ProvidersPanel(): React.ReactElement {
   const [translations, setTranslations] = React.useState<string[]>([]);
   const [tafsirs, setTafsirs] = React.useState<string[]>([]);
   const [reciters, setReciters] = React.useState<string[]>([]);
-  const [saved, setSaved] = React.useState({ text: 0, tr: 0, tafsir: 0, rec: 0 });
+  const [reciterPhotos, setReciterPhotos] = React.useState<Record<string, string>>({});
+  const [saved, setSaved] = React.useState({ text: 0, tr: 0, tafsir: 0, rec: 0, photos: 0 });
 
   React.useEffect(() => {
     if (settings.data) {
@@ -237,6 +321,7 @@ function ProvidersPanel(): React.ReactElement {
       setTranslations(parseStringList(settings.data[QURAN_SETTINGS_KEYS.translations]));
       setTafsirs(parseStringList(settings.data[QURAN_SETTINGS_KEYS.tafsirs]));
       setReciters(parseStringList(settings.data[QURAN_SETTINGS_KEYS.reciters]));
+      setReciterPhotos(parsePhotosMap(settings.data[QURAN_SETTINGS_KEYS.reciterPhotos]));
     }
   }, [settings.data]);
 
@@ -371,6 +456,21 @@ function ProvidersPanel(): React.ReactElement {
               writer.mutate(
                 { [QURAN_SETTINGS_KEYS.reciters]: reciters },
                 { onSuccess: () => bump("rec") },
+              )
+            }
+          />
+
+          <ReciterPhotoManager
+            reciters={reciters}
+            photos={reciterPhotos}
+            setPhotos={setReciterPhotos}
+            pending={writer.isPending}
+            savedTick={saved.photos}
+            error={writeErr}
+            onSave={() =>
+              writer.mutate(
+                { [QURAN_SETTINGS_KEYS.reciterPhotos]: reciterPhotos },
+                { onSuccess: () => bump("photos") },
               )
             }
           />

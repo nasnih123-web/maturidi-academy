@@ -53,6 +53,7 @@ export const QURAN_SETTINGS_KEYS = {
   translations: "quran.translations",
   tafsirs: "quran.tafsirs",
   reciters: "quran.reciters",
+  reciterPhotos: "quran.reciter_photos",
   activeLanguages: "quran.active_languages",
   showTranslation: "quran.show_translation",
   showTafsir: "quran.show_tafsir",
@@ -227,6 +228,16 @@ export function parseStringList(raw: unknown): string[] {
   const out: string[] = [];
   for (const it of v) {
     if (typeof it === "string" && it.trim() && !out.includes(it.trim())) out.push(it.trim());
+  }
+  return out;
+}
+
+export function parsePhotosMap(raw: unknown): Record<string, string> {
+  const v = typeof raw === "string" ? decodeJson(raw) : raw;
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof val === "string" && val.trim()) out[k] = val.trim();
   }
   return out;
 }

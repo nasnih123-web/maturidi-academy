@@ -195,6 +195,7 @@ async def test_seed_polish_defaults(tc, db_session):
         "hero.fa", "hero.ar", "hero.en",
         # فاز ۵ (Track 1): قرآن / مناجات
         "quran.provider", "quran.translations", "quran.tafsirs", "quran.reciters",
+        "quran.reciter_photos",
         "quran.active_languages", "quran.show_translation", "quran.show_tafsir",
         "quran.highlight_mode", "quran.font_size", "quran.playback",
         "munajat.enabled", "munajat.window",

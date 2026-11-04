@@ -59,6 +59,7 @@ class QuranProvidersOut(BaseModel):
     translations: list[str]
     tafsirs: list[str]
     reciters: list[str]
+    reciter_photos: dict[str, str] = {}
     active_languages: list[str]
     show_translation: bool
     show_tafsir: bool

@@ -195,6 +195,12 @@ async def test_providers_endpoint_settings_driven(tc):
     assert any(p["id"] == "alquran_cloud" and p["active"] for p in body["providers"])
     assert "en.sahih" in body["translations"]
     assert body["highlight_mode"] in ("word", "ayah", "off")
+    assert isinstance(body["reciter_photos"], dict)
+    assert body["reciter_photos"]["ar.alafasy"].startswith("https://upload.wikimedia.org/")
+    assert body["reciter_photos"]["ar.husary"].startswith("https://upload.wikimedia.org/")
+    assert body["reciter_photos"]["ar.minshawi"].startswith("https://upload.wikimedia.org/")
+    assert body["reciter_photos"]["ar.abdullahbasfar"] == "https://recitid.ai/reciters/abdullah-basfar.jpg"
+    assert body["reciter_photos"]["uz.sodik-audio"].startswith("https://upload.wikimedia.org/")
 
 
 # ---------------------------------------------------------------------------
