@@ -242,6 +242,10 @@ export interface HifzLabels {
   liveListening: string;
   liveConnecting: string;
   liveEnded: string;
+  liveDisconnected: string;
+  liveDiagSampleRate: string;
+  liveDiagFrames: string;
+  liveDiagSocket: string;
   liveOnlyZipformer: string;
   ayahLabel: string;
   prevAyah: string;
@@ -422,7 +426,20 @@ export function QuranHifzStudy({
     ctx: AudioContext;
     proc: ScriptProcessorNode;
   } | null>(null);
-  const liveWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A close is "expected" when the user pressed stop or the server ended
+  // the session normally (final/error). Any other close means the
+  // connection died mid-recitation and must surface, not hang in
+  // "listening" forever (the 02:58 Railway restart did exactly that).
+  const liveCloseExpectedRef = useRef(false);
+  // Live diagnostics, shown while a live session runs: the ACTUAL audio
+  // rate (browsers may ignore the requested 16 kHz) and how many frames
+  // really left the phone. The visible count updates ~once a second,
+  // not per frame; the counter itself is exact.
+  const liveFramesRef = useRef(0);
+  const [liveDiag, setLiveDiag] = useState<{ sampleRate: number | null; frames: number }>({
+    sampleRate: null,
+    frames: 0,
+  });
   // Line page: the bundled 15-line Madinah page of the SELECTED
   // ayah (undefined = loading, null = load failed). The page
   // follows the selected ayah only: when live writing advances to
@@ -507,13 +524,13 @@ export function QuranHifzStudy({
   // Stop the live stream when leaving the screen.
   useEffect(
     () => () => {
+      liveCloseExpectedRef.current = true;
       liveWsRef.current?.close();
       const mic = liveMicRef.current;
       if (mic) {
         mic.stream.getTracks().forEach((t) => t.stop());
         void mic.ctx.close();
       }
-      if (liveWatchdogRef.current) clearTimeout(liveWatchdogRef.current);
     },
     [],
   );
@@ -905,6 +922,9 @@ export function QuranHifzStudy({
     if (!attemptId) return;
     setLiveError(null);
     setLiveState('connecting');
+    liveCloseExpectedRef.current = false;
+    liveFramesRef.current = 0;
+    setLiveDiag({ sampleRate: null, frames: 0 });
     try {
       const ticketRes = await authFetch('/api/v1/auth/ws-ticket', { method: 'POST' });
       if (!ticketRes.ok) throw new Error('ticket');
@@ -933,21 +953,32 @@ export function QuranHifzStudy({
         } else if (msg.type === 'extra') {
           setLiveExtraCount((c) => c + 1);
         } else if (msg.type === 'final') {
-          if (liveWatchdogRef.current) clearTimeout(liveWatchdogRef.current);
+          liveCloseExpectedRef.current = true;
           setLiveState('ended');
           void refreshDetail(attemptId);
           void refreshPanels();
         } else if (msg.type === 'error') {
-          if (liveWatchdogRef.current) clearTimeout(liveWatchdogRef.current);
+          liveCloseExpectedRef.current = true;
           cleanupLiveMic();
           setLiveError(msg.message ?? labels.errorGeneric);
           setLiveState('idle');
         }
       };
       ws.onerror = () => {
+        liveCloseExpectedRef.current = true;
         cleanupLiveMic();
         setLiveError(labels.errorGeneric);
         setLiveState('idle');
+      };
+      ws.onclose = () => {
+        cleanupLiveMic();
+        // An unexpected close (server restart, network drop) must end
+        // the session visibly. Expected closes (stop, final, error)
+        // already set the flag and the state.
+        if (!liveCloseExpectedRef.current) {
+          setLiveError(labels.liveDisconnected);
+          setLiveState('idle');
+        }
       };
       // Microphone at the model's native rate: 16 kHz mono. Frames go
       // out as Int16LE over the socket and are never stored anywhere.
@@ -957,6 +988,10 @@ export function QuranHifzStudy({
         audio: { sampleRate: 16000, channelCount: 1 },
       });
       const ctx = new AudioContext({ sampleRate: 16000 });
+      // Record the ACTUAL rate: browsers may ignore the requested
+      // 16 kHz (phones often run 48 kHz), and the model receives
+      // whatever this rate is. The diagnostic line shows it live.
+      setLiveDiag({ sampleRate: ctx.sampleRate, frames: 0 });
       const src = ctx.createMediaStreamSource(stream);
       const proc = ctx.createScriptProcessor(4096, 1, 1);
       proc.onaudioprocess = (e: AudioProcessingEvent) => {
@@ -969,11 +1004,26 @@ export function QuranHifzStudy({
           view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
         }
         ws.send(buf);
+        liveFramesRef.current += 1;
+        // Throttle the visible counter to ~once a second (4096-sample
+        // frames arrive ~4x/s at 16 kHz); the counter itself is exact.
+        if (liveFramesRef.current % 4 === 0) {
+          setLiveDiag((prev) => ({ ...prev, frames: liveFramesRef.current }));
+        }
       };
       src.connect(proc);
       proc.connect(ctx.destination);
       liveMicRef.current = { stream, ctx, proc };
     } catch {
+      // A failed start must not leave a dangling socket that could flip
+      // the page to "listening" later: close it as expected, then clean.
+      liveCloseExpectedRef.current = true;
+      try {
+        liveWsRef.current?.close();
+      } catch {
+        /* already closed */
+      }
+      liveWsRef.current = null;
       cleanupLiveMic();
       setLiveError(labels.errorGeneric);
       setLiveState('idle');
@@ -981,18 +1031,28 @@ export function QuranHifzStudy({
   }, [authed, ensureAttempt, labels, surah, ayah, refreshDetail, refreshPanels, cleanupLiveMic]);
 
   const stopLive = useCallback(() => {
+    // Stop is immediate. The old code waited for the server's final
+    // message or a 10s timer, and every re-press restarted that timer,
+    // so repeated pressing never stopped anything. Frames are ordered
+    // on one connection, so 'end' reaches the server before the close
+    // frame and the session is still saved server-side.
+    liveCloseExpectedRef.current = true;
     const ws = liveWsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'end' }));
+      try {
+        ws.send(JSON.stringify({ type: 'end' }));
+      } catch {
+        /* socket closing; the server treats a bare close as no-save */
+      }
+    }
+    liveWsRef.current = null;
+    try {
+      ws?.close();
+    } catch {
+      /* already closed */
     }
     cleanupLiveMic();
-    // If the server never answers with final, do not hang in
-    // "listening" forever: close after 10s and let the user retry.
-    if (liveWatchdogRef.current) clearTimeout(liveWatchdogRef.current);
-    liveWatchdogRef.current = setTimeout(() => {
-      liveWsRef.current?.close();
-      setLiveState((s) => (s === 'listening' ? 'idle' : s));
-    }, 10000);
+    setLiveState('idle');
   }, [cleanupLiveMic]);
 
   const peekNext = useCallback(async () => {
@@ -1334,6 +1394,17 @@ export function QuranHifzStudy({
           <p className="hifz-hint">{labels.liveListening}</p>
         )}
         {isZipformer && liveState === 'ended' && <p className="hifz-hint">{labels.liveEnded}</p>}
+        {isZipformer && liveState !== 'idle' && (
+          <p className="hifz-hint">
+            {labels.liveDiagSampleRate}: {liveDiag.sampleRate ?? '—'} Hz · {labels.liveDiagFrames}:{' '}
+            {liveDiag.frames} · {labels.liveDiagSocket}:{' '}
+            {liveState === 'listening'
+              ? labels.liveListening
+              : liveState === 'connecting'
+                ? labels.liveConnecting
+                : labels.liveEnded}
+          </p>
+        )}
         {isWhisper && <p className="hifz-hint">{labels.liveOnlyZipformer}</p>}
         {isWhisper && recState === 'recording' && <p className="hifz-hint">{labels.recording}</p>}
         {!authed && <p className="hifz-hint">{labels.signInHint}</p>}
