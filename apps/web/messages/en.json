@@ -240,6 +240,7 @@
     "meccan": "Meccan",
     "medinan": "Medinan",
     "loadFailed": "Could not load Quran data. Check your connection and try again.",
+    "textCredit": "Arabic text from the Tanzil Project (tanzil.net), CC BY 3.0",
     "surahMetaTitle": "Surah {n}",
     "surahOf": "Surah",
     "reciterLabel": "Reciter",
