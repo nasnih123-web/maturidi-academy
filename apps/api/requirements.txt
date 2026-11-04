@@ -19,6 +19,10 @@ pgvector==0.5.1
 # faster-whisper (B-04 — ADR-0027): موتور STT صدا و رونویسی کتابخانه؛
 # مدل نام‌دار در app/core/media_tools.py پین شده (FASTER_WHISPER_MODEL).
 faster-whisper==1.2.1
+# sherpa-onnx — موتور Zipformer حفاظ (ASR واجی)؛ ویل cp314 برای
+# پایتون ۳٫۱۴ دارد (manylinux x86_64) و موقع استارت لازم نیست، فقط
+# موقع نمره‌دهی import می‌شود.
+sherpa-onnx==2.0.1
 # sentence-transformers (M-07 — ADR-0038): provider محلی واقعی embedding
 # ‏(local_model — پیش‌فرض production). سنگین است (torch می‌آورد) ولی
 # جست‌وجوی معنایی production بدون کلید خارجی را ممکن می‌کند؛ مدل

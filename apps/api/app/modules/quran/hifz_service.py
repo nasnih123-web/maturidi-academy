@@ -637,10 +637,15 @@ async def engine_status(db: AsyncSession) -> dict:
     raw = await get_typed_setting(db, "quran.asr_engine", "zipformer")
     if raw not in hifz_engines.ENGINE_IDS:
         return {"engine": str(raw), "available": False,
-                "reason": f"stored asr engine is not valid: {raw!r}"}
+                "reason": f"stored asr engine is not valid: {raw!r}",
+                "map_available": False, "map_reason": "engine invalid"}
     engine = hifz_engines.get_engine(raw)
     available, reason = engine.is_configured()
-    return {"engine": raw, "available": available, "reason": reason}
+    from app.modules.quran.hifz_mapping import map_files_present
+
+    map_available, map_reason = map_files_present()
+    return {"engine": raw, "available": available, "reason": reason,
+            "map_available": map_available, "map_reason": map_reason}
 
 
 async def delete_attempt(db: AsyncSession, user: User, attempt_id: UUID) -> None:
