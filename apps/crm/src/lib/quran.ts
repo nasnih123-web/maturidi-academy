@@ -71,6 +71,8 @@ export const QURAN_SETTINGS_KEYS = {
   qfBaseUrl: "quran.qf_base_url",
   qfClientId: "quran.qf_client_id",
   qfClientSecret: "quran.qf_client_secret",
+  asrEngine: "quran.asr_engine",
+  hifzThresholds: "quran.hifz_thresholds",
   munajatEnabled: "munajat.enabled",
   munajatWindow: "munajat.window",
   adhanDefaults: "adhan.defaults",
@@ -470,6 +472,38 @@ export function parseWaveformStyle(raw: string | null | undefined): WaveformStyl
   return typeof v === "string" && (WAVEFORM_STYLES as readonly string[]).includes(v)
     ? (v as WaveformStyle)
     : "bars";
+}
+
+/** Phase 3 hifz: ASR engine id (zipformer default, whisper_quran selectable). */
+export type AsrEngineId = "zipformer" | "whisper_quran";
+
+export function parseAsrEngine(raw: string | null | undefined): AsrEngineId {
+  const v = decodeJson(raw);
+  return v === "whisper_quran" ? "whisper_quran" : "zipformer";
+}
+
+export interface HifzThresholds {
+  green: number;
+  amber: number;
+}
+
+/** Phase 3 hifz: word-color thresholds; invalid values fall back to 0.8/0.5. */
+export function parseHifzThresholds(raw: string | null | undefined): HifzThresholds {
+  const v = decodeJson(raw);
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const green = Number((v as Record<string, unknown>).green);
+    const amber = Number((v as Record<string, unknown>).amber);
+    if (
+      Number.isFinite(green) &&
+      Number.isFinite(amber) &&
+      amber > 0 &&
+      amber < green &&
+      green <= 1
+    ) {
+      return { green, amber };
+    }
+  }
+  return { green: 0.8, amber: 0.5 };
 }
 
 /**

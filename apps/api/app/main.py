@@ -77,6 +77,7 @@ from app.modules.places.router import (
     places_router,
 )
 from app.modules.projects import projects_router, staff_router
+from app.modules.quran.hifz_router import hifz_router
 from app.modules.quran.router import (
     adhan_router,
     quran_router,
@@ -230,6 +231,7 @@ app.include_router(cms_router)
 app.include_router(home_router)
 app.include_router(home_admin_router)
 app.include_router(quran_router)
+app.include_router(hifz_router)
 app.include_router(tasbih_router)
 app.include_router(adhan_router)
 app.include_router(fatwa_router)

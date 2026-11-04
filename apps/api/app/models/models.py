@@ -2498,3 +2498,106 @@ class StaffMember(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# فاز ۳ قرآن — حفاظ (record-then-grade)
+# ---------------------------------------------------------------------------
+# صوت نمره‌دهی گذراست و هرگز این‌جا ذخیره نمی‌شود: فقط نمره‌ها و خطاها
+# می‌مانند. جدول‌ها فقط دادهٔ کاربر را نگه می‌دارند، نه فایل صوت را.
+
+
+class HifzAttempt(Base):
+    """یک نشست حفظ: سوره + صفحهٔ مصحف، با وضعیت پیشرفت.
+
+    engine: موتور ASR در لحظهٔ ساخت نشست (نمایش)؛ نمره‌دهی هر بار موتور
+    را از تنظیم ذخیره‌شده می‌خواند و موتور استفاده‌شده در پاسخ نمره می‌آید.
+    extra_words: کلمه‌های اضافهٔ شنیده‌شده در آخرین نمره (JSON).
+    """
+
+    __tablename__ = "hifz_attempts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    surah: Mapped[int] = mapped_column(Integer, index=True)
+    page: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="in_progress", index=True)
+    engine: Mapped[str] = mapped_column(String(40), default="zipformer")
+    extra_words: Mapped[list] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class HifzWordScore(Base):
+    """نمرهٔ یک کلمهٔ موردانتظار در یک نشست — آخرین نمره برنده است.
+
+    یکتایی (attempt_id, surah, ayah, word_index) یعنی نمره‌دهی دوبارهٔ
+    همان آیه در همان نشست، ردیف را به‌روز می‌کند نه این‌که تکثیر کند.
+    status: correct | close | wrong | skipped (extra این‌جا نمی‌آید؛
+    کلمه‌های اضافه در extra_words نشست و پاسخ نمره می‌آیند).
+    mistake_type: wrong_word | wrong_tashkeel | skipped | peek | null.
+    """
+
+    __tablename__ = "hifz_word_scores"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    attempt_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("hifz_attempts.id"), index=True
+    )
+    surah: Mapped[int] = mapped_column(Integer, index=True)
+    ayah: Mapped[int] = mapped_column(Integer, index=True)
+    word_index: Mapped[int] = mapped_column(Integer)
+    expected_text: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(20), index=True)
+    prob: Mapped[float] = mapped_column(Float, default=0.0)
+    heard: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    mistake_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    disputed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "attempt_id", "surah", "ayah", "word_index",
+            name="uq_hifz_word_score_attempt_word",
+        ),
+        Index("ix_hifz_word_score_attempt_ayah", "attempt_id", "surah", "ayah"),
+    )
+
+
+class HifzMistake(Base):
+    """تاریخچهٔ خطاها برای مرور (SRS-lite) — برخلاف نمره‌ها، با نمره‌دهی
+    دوباره پاک نمی‌شود؛ صف مرور از آخرین وضعیت هر آیه ساخته می‌شود.
+
+    mistake_type: wrong_word | wrong_tashkeel | skipped | peek.
+    Peek ردیف نمره نمی‌سازد: فقط همین ردیف خطا را می‌سازد و کلمه در
+    نوار متن با نشان Peek آشکار می‌شود.
+    """
+
+    __tablename__ = "hifz_mistakes"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    attempt_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("hifz_attempts.id"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    surah: Mapped[int] = mapped_column(Integer, index=True)
+    ayah: Mapped[int] = mapped_column(Integer, index=True)
+    word_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mistake_type: Mapped[str] = mapped_column(String(20), index=True)
+    expected_text: Mapped[str] = mapped_column(String(120))
+    heard: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
