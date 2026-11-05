@@ -408,10 +408,10 @@ def map_files_present(data_dir: str | Path | None = None) -> tuple[bool, str]:
 def load_phoneme_mapping(data_dir: str | Path | None = None) -> PhonemeMapping:
     """بارگذاری + اعتبارسنجی نگاشت؛ نبود/خرابی → MappingPendingError."""
     resolved = _resolve_dir(data_dir)
-    key = str(resolved)
+    cache_key = str(resolved)
     with _cache_lock:
-        if key in _cache:
-            return _cache[key]
+        if cache_key in _cache:
+            return _cache[cache_key]
     ordered_path = resolved / _ORDERED_FILE
     tokens_path = resolved / _TOKENS_FILE
     if not ordered_path.is_file() or not tokens_path.is_file():
@@ -557,5 +557,5 @@ def load_phoneme_mapping(data_dir: str | Path | None = None) -> PhonemeMapping:
 
     mapping = PhonemeMapping(final, report)
     with _cache_lock:
-        _cache[key] = mapping
+        _cache[cache_key] = mapping
     return mapping
