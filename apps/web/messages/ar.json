@@ -332,6 +332,7 @@
     "hifzHeardLabel": "سُمع:",
     "hifzLiveStart": "بدء القراءة الحيّة",
     "hifzLiveStop": "إنهاء القراءة الحيّة",
+    "hifzLiveCancel": "إلغاء الاتصال",
     "hifzLiveListening": "جارٍ الاستماع الحيّ… تُكتب الكلمات مع التلاوة.",
     "hifzLiveConnecting": "جارٍ الاتصال بالبثّ الحيّ…",
     "hifzLiveEnded": "انتهت القراءة الحيّة وحُفظت النتيجة.",

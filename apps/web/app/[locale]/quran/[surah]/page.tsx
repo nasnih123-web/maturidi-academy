@@ -192,6 +192,7 @@ export default async function SurahPage({
             studyModeOff: t('hifzStudyModeOff'),
             liveStart: t('hifzLiveStart'),
             liveStop: t('hifzLiveStop'),
+            liveCancel: t('hifzLiveCancel'),
             liveListening: t('hifzLiveListening'),
             liveConnecting: t('hifzLiveConnecting'),
             liveEnded: t('hifzLiveEnded'),

@@ -332,6 +332,7 @@
     "hifzHeardLabel": "Heard:",
     "hifzLiveStart": "Start live reading",
     "hifzLiveStop": "Stop live reading",
+    "hifzLiveCancel": "Cancel",
     "hifzLiveListening": "Listening live… words are written as you recite.",
     "hifzLiveConnecting": "Connecting to the live stream…",
     "hifzLiveEnded": "Live reading ended and the result was saved.",

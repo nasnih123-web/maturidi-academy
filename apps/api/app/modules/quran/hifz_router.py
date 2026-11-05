@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from uuid import UUID
 
 from fastapi import (
@@ -275,7 +276,11 @@ async def stream_attempt(
         session = await hifz_stream.start_live_session(
             db, user, attempt_id, surah, ayah, queue.put_nowait, mapping
         )
+        # ساخت بازشناس در حلقهٔ رویداد اجرا می‌شود؛ زمانش را بسنج تا
+        # معلوم شود هر نشست چقدر حلقه را قفل می‌کند (مدل ۷۳ مگابایتی).
+        _build_started = time.perf_counter()
         recognizer = hifz_stream.SherpaPhonemeStream()
+        build_ms = (time.perf_counter() - _build_started) * 1000.0
     except APIError as exc:
         close_code = 4404 if exc.status_code == 404 else 4500
         await send_error(exc.code, exc.message, close_code)
@@ -283,6 +288,14 @@ async def stream_attempt(
     except Exception as exc:  # noqa: BLE001 — خطای ناشناختهٔ شروع هم باید پیام خطا بشود، نه قطع بی‌صدا
         await send_error("hifz_stream_error", f"خطای شروع جریان زنده: {exc}", 1011)
         return
+    logger.info(
+        "hifz live session started attempt=%s surah=%s ayah=%s engine=zipformer "
+        "recognizer_build_ms=%.1f",
+        attempt_id,
+        surah,
+        ayah,
+        build_ms,
+    )
     await serve_stream(websocket, session, recognizer, queue)
 
 
@@ -292,19 +305,31 @@ async def serve_stream(websocket, session, recognizer, queue: asyncio.Queue) -> 
     قاب باینری → واج‌های sherpa → کلمه‌های زنده؛ پیام end → تخلیهٔ
     واج‌های مانده → ذخیرهٔ نشست → پیام final → بستن ۱۰۰۰. قطع ناگهانی
     (بدون end) چیزی ذخیره نمی‌کند.
+
+    شمارنده‌ها فقط تعدادند، هرگز محتوا: در پایان نشست، قاب‌های رسیده،
+    واج‌های feed/flush، رویدادهای کلمه و جاافتاده، و طول بافر مانده
+    لاگ می‌شود تا «هیچ کلمه‌ای نوشته نشد» قابل تشخیص باشد.
     """
     pump_task = asyncio.create_task(_pump_events(websocket, queue))
+    frames_received = 0
+    phonemes_from_feed = 0
+    phonemes_from_flush = 0
+    close_reason = "disconnect"
     try:
         while True:
             try:
                 message = await websocket.receive()
             except (WebSocketDisconnect, RuntimeError):
+                close_reason = "disconnect"
                 break
             if "bytes" in message and message["bytes"] is not None:
                 try:
+                    frames_received += 1
                     phonemes = recognizer.feed(message["bytes"])
+                    phonemes_from_feed += len(phonemes)
                     await session.feed_phonemes(phonemes)
                 except APIError as exc:
+                    close_reason = "error"
                     close_code = 4404 if exc.status_code == 404 else 4500
                     try:
                         await websocket.send_json(
@@ -314,6 +339,29 @@ async def serve_stream(websocket, session, recognizer, queue: asyncio.Queue) -> 
                         logger.debug("hifz stream error send failed: %s", send_exc)
                     try:
                         await websocket.close(code=close_code, reason=exc.code)
+                    except (WebSocketDisconnect, RuntimeError) as close_exc:
+                        logger.debug("hifz stream error close failed: %s", close_exc)
+                    return
+                except Exception:  # خطای ناشناختهٔ feed هم باید پیام خطا بشود، نه قطع بی‌صدا
+                    close_reason = "error"
+                    logger.exception(
+                        "hifz live stream feed failed attempt=%s surah=%s ayah=%s",
+                        session.attempt.id,
+                        session.surah,
+                        session.start_ayah,
+                    )
+                    try:
+                        await websocket.send_json(
+                            {
+                                "type": "error",
+                                "code": "hifz_stream_error",
+                                "message": "خطای داخلی در جریان زنده؛ دوباره تلاش کنید.",
+                            }
+                        )
+                    except (WebSocketDisconnect, RuntimeError) as send_exc:
+                        logger.debug("hifz stream error send failed: %s", send_exc)
+                    try:
+                        await websocket.close(code=1011, reason="hifz_stream_error")
                     except (WebSocketDisconnect, RuntimeError) as close_exc:
                         logger.debug("hifz stream error close failed: %s", close_exc)
                     return
@@ -333,9 +381,11 @@ async def serve_stream(websocket, session, recognizer, queue: asyncio.Queue) -> 
             if data.get("type") == "end":
                 try:
                     remaining = recognizer.flush()
+                    phonemes_from_flush += len(remaining)
                     await session.feed_phonemes(remaining)
                     await session.finish()
                 except APIError as exc:
+                    close_reason = "error"
                     try:
                         await websocket.send_json(
                             {"type": "error", "code": exc.code, "message": exc.message}
@@ -343,13 +393,71 @@ async def serve_stream(websocket, session, recognizer, queue: asyncio.Queue) -> 
                     except (WebSocketDisconnect, RuntimeError) as send_exc:
                         logger.debug("hifz stream error send failed: %s", send_exc)
                     break
+                except Exception:  # خطای ناشناختهٔ تخلیه هم باید پیام خطا بشود، نه قطع بی‌صدا
+                    close_reason = "error"
+                    logger.exception(
+                        "hifz live stream flush failed attempt=%s surah=%s ayah=%s",
+                        session.attempt.id,
+                        session.surah,
+                        session.start_ayah,
+                    )
+                    try:
+                        await websocket.send_json(
+                            {
+                                "type": "error",
+                                "code": "hifz_stream_error",
+                                "message": "خطای داخلی در جریان زنده؛ دوباره تلاش کنید.",
+                            }
+                        )
+                    except (WebSocketDisconnect, RuntimeError) as send_exc:
+                        logger.debug("hifz stream error send failed: %s", send_exc)
+                    break
+                close_reason = "end"
                 break
             if data.get("type") == "cancel":
+                close_reason = "cancel"
                 break
             await websocket.send_json(
                 {"type": "error", "code": "unknown_message", "message": "پیام ناشناخته"}
             )
     finally:
+        counts = session.live_counts()
+        phonemes_total = phonemes_from_feed + phonemes_from_flush
+        word_events = counts["words"] + counts["skipped"]
+        logger.info(
+            "hifz live session ended attempt=%s surah=%s ayah=%s reason=%s "
+            "frames=%d phonemes_feed=%d phonemes_flush=%d words=%d skipped=%d "
+            "buffer_chars=%d",
+            session.attempt.id,
+            session.surah,
+            session.start_ayah,
+            close_reason,
+            frames_received,
+            phonemes_from_feed,
+            phonemes_from_flush,
+            counts["words"],
+            counts["skipped"],
+            counts["buffer_chars"],
+        )
+        if frames_received > 0 and phonemes_total == 0:
+            logger.warning(
+                "hifz live session ended with frames but zero phonemes "
+                "attempt=%s surah=%s ayah=%s frames=%d",
+                session.attempt.id,
+                session.surah,
+                session.start_ayah,
+                frames_received,
+            )
+        elif phonemes_total > 0 and word_events == 0:
+            logger.warning(
+                "hifz live session produced phonemes but zero word events "
+                "attempt=%s surah=%s ayah=%s phonemes=%d buffer_chars=%d",
+                session.attempt.id,
+                session.surah,
+                session.start_ayah,
+                phonemes_total,
+                counts["buffer_chars"],
+            )
         pump_task.cancel()
         # پیام final (اگر finish صدا زده شده) باید پیش از بستن برسد.
         await _drain_queue(websocket, queue)
