@@ -9,11 +9,18 @@
  * (lib/quran-mushaf-lines.json, QPC1 Hafs), faint ayah-end markers
  * are visible from the start at their line positions, and as the
  * memorizer recites, text is WRITTEN word-by-word in UthmanicHafs
- * font into its line slots. Words appear with live colors:
- * green >=0.8 / amber 0.5-0.8 / red <0.5 / gray skipped, thresholds
- * from the CRM settings. Unwritten words occupy hidden slots
- * (visibility:hidden) so marker positions never jump as words are
- * revealed; the page looks blank until written.
+ * font into its line slots. A word appears in black ink with its
+ * tajweed letters colored (green ghunnah/ikhfaa, blue heavy raa,
+ * pink madd, gray waslah — lib/quran-tajweed, only the rules
+ * verified against the Tarteel reference clip); the newest word
+ * just heard is blue until the next word arrives. Grading colors
+ * (green >=0.8 / amber 0.5-0.8 / red <0.5 / gray skipped,
+ * thresholds from the CRM settings) appear ONLY after the session
+ * ends and the server grade arrives — never live. Unwritten words
+ * occupy hidden slots (visibility:hidden) so marker positions
+ * never jump as words are revealed; the page looks blank until
+ * written. Ayah-end markers are ornate rosettes (own SVG, like
+ * the printed mushaf), visible from the start.
  *
  * HONEST GAP (never present as exact glyph positions): the line
  * breaks are exact (the dataset's), but intra-line spacing is the
@@ -55,6 +62,7 @@ import { apiBaseUrl } from '@/lib/api-base';
 import { authFetch, authJson, getAccessToken } from '@/lib/auth-client';
 import { getSurah, type SurahSummary } from '@/lib/quran';
 import { loadMushafLines, type MushafExactLine } from '@/lib/quran-mushaf-lines';
+import { colorizeTajweedWord } from '@/lib/quran-tajweed';
 
 /** Arabic-Indic digits, as printed at ayah ends. */
 const ARABIC_INDIC = '٠١٢٣٤٥٦٧٨٩';
@@ -233,10 +241,11 @@ export interface HifzLabels {
   selectAyahHint: string;
   svgFailedNote: string;
   loadingPage: string;
+  textsFailed: string;
+  textsRetry: string;
   errorGeneric: string;
   noAttemptHint: string;
   revealedByPeek: string;
-  heardLabel: string;
   liveStart: string;
   liveStop: string;
   liveCancel: string;
@@ -350,6 +359,49 @@ interface WallWord {
   heard: string | null;
   scoreId: string | null;
   disputed: boolean;
+  /** True while the word is only a live hearing (ink on the page);
+      false once the server grade for it has arrived. */
+  live: boolean;
+}
+
+/** Render one Uthmani word with its tajweed letters colored
+    (lib/quran-tajweed). Uncolored letters render as plain text. */
+function renderTajweedText(text: string) {
+  return colorizeTajweedWord(text).map((seg, i) =>
+    seg.color ? (
+      <span key={i} className={`hifz-tj-${seg.color}`}>
+        {seg.text}
+      </span>
+    ) : (
+      seg.text
+    ),
+  );
+}
+
+/** Ayah-end marker as an ornate rosette (own SVG, like the printed
+    mushaf): an 8-petal ring with a small knob on top and the ayah
+    number inside. Replaces the old plain double-ring circle. */
+function HifzRosette({ digit }: { digit: string }) {
+  return (
+    <span className="hifz-line-marker" aria-hidden="true">
+      <svg viewBox="0 0 48 48" role="presentation" focusable="false">
+        <g fill="none" stroke="#a89f8d" strokeWidth="1.6">
+          <circle cx="24" cy="24" r="14" />
+          {[0, 45, 90, 135, 180, 225, 270, 315].map((a) => (
+            <path
+              key={a}
+              d="M24 4.5 L26.8 9.5 L24 12.5 L21.2 9.5 Z"
+              transform={`rotate(${a} 24 24)`}
+            />
+          ))}
+          <circle cx="24" cy="2.5" r="1.4" />
+        </g>
+        <text x="24" y="29.5" textAnchor="middle" fontSize="15" fill="#8a8378">
+          {digit}
+        </text>
+      </svg>
+    </span>
+  );
 }
 
 const HIFZ_API = '/api/v1/quran/hifz';
@@ -480,8 +532,14 @@ export function QuranHifzStudy({
   }, []);
 
   // Surah change: load its ayah texts (public) and restart at ayah 1.
+  // The line page cannot place words without these texts: while they
+  // load, the page waits instead of silently dropping every ayah to
+  // the wall below. A failed load shows a retry instead of the wall.
+  const [textsFailed, setTextsFailed] = useState(false);
+  const [textsReload, setTextsReload] = useState(0);
   useEffect(() => {
     let cancelled = false;
+    setTextsFailed(false);
     getSurah(surah)
       .then((view) => {
         if (cancelled) return;
@@ -490,13 +548,15 @@ export function QuranHifzStudy({
         setTextsBySurah((prev) => ({ ...prev, [surah]: texts }));
         setAyahCount(view.ayahs.length);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setTextsFailed(true);
+      });
     setAyah(1);
     setPracticeWord(null);
     return () => {
       cancelled = true;
     };
-  }, [surah]);
+  }, [surah, textsReload]);
 
   const refreshDetail = useCallback(async (attemptId: string) => {
     const detail = await authJson<{
@@ -589,6 +649,7 @@ export function QuranHifzStudy({
         heard: w.heard,
         scoreId: w.id,
         disputed: w.disputed,
+        live: false,
       });
     }
     for (const w of liveWords) {
@@ -602,6 +663,7 @@ export function QuranHifzStudy({
         heard: w.heard,
         scoreId: byKey.get(`${w.ayah}:${w.word_index}`)?.scoreId ?? null,
         disputed: false,
+        live: true,
       });
     }
     const peekedKeys = new Set<string>();
@@ -621,6 +683,7 @@ export function QuranHifzStudy({
             heard: null,
             scoreId: null,
             disputed: false,
+            live: false,
           });
         }
       }
@@ -640,6 +703,7 @@ export function QuranHifzStudy({
             heard: null,
             scoreId: null,
             disputed: false,
+            live: false,
           });
         }
       }
@@ -676,6 +740,12 @@ export function QuranHifzStudy({
   const pageLines = pageIndex === null ? null : (mushafPages?.[pageIndex] ?? null);
   const pageReady = pageLines !== null;
   const pageFailed = mushafPages !== undefined && !pageReady;
+  // Surah texts settled (loaded, or failed): only then may the wall
+  // claim an ayah is unplaced. While they still load, placedAyahs is
+  // empty by construction and the wall would wrongly swallow the
+  // whole surah, so both the page and the wall wait.
+  const textsReady = textsBySurah[surah] !== undefined;
+  const textsSettled = textsReady || textsFailed;
 
   // Ayahs of the current surah whose study words match the printed
   // segment totals on this page: only those render in line slots.
@@ -1026,7 +1096,23 @@ export function QuranHifzStudy({
           clearLiveConnectTimeout();
           cleanupLiveMic();
           setLiveState('ended');
-          void refreshDetail(attemptId);
+          // The graded detail replaces the live overlay: once the
+          // server grades arrive, live words (ink) give way to the
+          // graded colors. Clearing only here (never in
+          // refreshDetail) keeps peek/dispute refreshes from wiping
+          // a live run, and the isCurrent guard keeps a newer run's
+          // words safe if it started while the detail was in flight.
+          // If the detail fails (network), the live ink words stay:
+          // they are the true record of this session, and the grades
+          // arrive on the next load.
+          void (async () => {
+            try {
+              await refreshDetail(attemptId);
+            } catch {
+              return;
+            }
+            if (isCurrent()) setLiveWords([]);
+          })();
           void refreshPanels();
         } else if (msg.type === 'error') {
           if (!isCurrent()) return;
@@ -1234,7 +1320,9 @@ export function QuranHifzStudy({
   const isWhisper = engineStatus?.engine === 'whisper_quran';
 
   // One line-page word slot: a hidden slot (unwritten, or a printed
-  // spacer) renders invisible but keeps its place; a written slot
+  // spacer) renders invisible but keeps its place; a live-heard slot
+  // is written in plain mushaf ink as recited (no live color, no
+  // heard label: hearing stays in the background); a graded slot
   // renders its status color, practice selection, and dispute.
   const renderLineWord = (slot: LineWordSlot, key: string) => {
     if (slot.hidden || slot.written === null) {
@@ -1246,14 +1334,27 @@ export function QuranHifzStudy({
     }
     const w = slot.written;
     const isPractice = practiceWord?.ayah === slot.ayah && practiceWord?.index === slot.index;
+    // The newest word just heard stays blue (the clip's live word)
+    // until the next word arrives; older live words settle to black
+    // ink with their tajweed colors. Grades never color live words.
+    const newestLive = liveWords.length > 0 ? liveWords[liveWords.length - 1] : null;
+    const isNewestLive =
+      w.live &&
+      newestLive !== null &&
+      newestLive.ayah === slot.ayah &&
+      newestLive.word_index === slot.index;
+    const tone =
+      w.status === 'peeked'
+        ? 'hifz-word-peeked'
+        : w.live
+          ? isNewestLive
+            ? 'hifz-word-live hifz-word-live-new'
+            : 'hifz-word-live'
+          : `hifz-word-${w.status}`;
     return (
       <span
         key={key}
-        className={[
-          'hifz-line-word',
-          w.status === 'peeked' ? 'hifz-word-peeked' : `hifz-word-${w.status}`,
-          isPractice ? 'hifz-word-practice' : '',
-        ].join(' ')}
+        className={['hifz-line-word', tone, isPractice ? 'hifz-word-practice' : ''].join(' ')}
       >
         <button
           type="button"
@@ -1261,11 +1362,12 @@ export function QuranHifzStudy({
           onClick={() =>
             setPracticeWord({ ayah: slot.ayah, index: slot.index, text: slot.text })
           }
-          title={w.heard ? `${labels.heardLabel} ${w.heard}` : labels.practiceWordHint}
+          title={labels.practiceWordHint}
         >
-          {slot.text}
+          {renderTajweedText(slot.text)}
         </button>
-        {w.status !== 'peeked' &&
+        {!w.live &&
+          w.status !== 'peeked' &&
           (w.status === 'wrong' || w.status === 'close') &&
           w.scoreId &&
           !w.disputed && (
@@ -1375,7 +1477,7 @@ export function QuranHifzStudy({
       {mushafPages === undefined && (
         <p className="hifz-line-loading">{labels.loadingPage}</p>
       )}
-      {pageReady && (
+      {pageReady && textsReady && (
         <section className="hifz-line-page" aria-label={labels.title}>
           <p className="hifz-line-caption">
             {surahName} · {labels.pageLabel} {(pageIndex ?? 0) + 1}
@@ -1406,9 +1508,7 @@ export function QuranHifzStudy({
               <p key={line.key} className="hifz-line" dir="rtl">
                 {line.slots.map((slot, si) =>
                   slot.kind === 'marker' ? (
-                    <span key={`m${si}`} className="hifz-line-marker" aria-hidden="true">
-                      {slot.text}
-                    </span>
+                    <HifzRosette key={`m${si}`} digit={slot.text} />
                   ) : (
                     renderLineWord(slot, `${line.key}-${si}`)
                   ),
@@ -1418,12 +1518,35 @@ export function QuranHifzStudy({
           })}
         </section>
       )}
+      {pageReady && !textsReady && (
+        <div className="hifz-line-loading">
+          {textsFailed ? (
+            <>
+              {labels.textsFailed}{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setTextsFailed(false);
+                  setTextsReload((n) => n + 1);
+                }}
+              >
+                {labels.textsRetry}
+              </button>
+            </>
+          ) : (
+            labels.loadingPage
+          )}
+        </div>
+      )}
 
       {/* The wall: everything when the page failed, otherwise only the
           ayahs whose words are NOT placed on the line page. Nothing
           written yet on a ready page means no wall section at all (the
-          blank page above is the whole state). */}
-      {(pageFailed || (pageReady && unplacedGroups.length > 0)) && (
+          blank page above is the whole state). While the surah texts
+          still load, the wall stays hidden: placement is undecided
+          until they arrive, and showing the whole surah below would
+          repeat the silent fallback. */}
+      {(pageFailed || (pageReady && textsSettled && unplacedGroups.length > 0)) && (
       <section className="hifz-wall" aria-label={labels.title}>
         {pageFailed && <p className="hifz-line-failed-note">{labels.svgFailedNote}</p>}
         {(pageFailed ? wallAyahs : unplacedGroups).length === 0 ? (
@@ -1438,16 +1561,27 @@ export function QuranHifzStudy({
                 {group.words.map((word) => {
                   const isPractice =
                     practiceWord?.ayah === group.ayah && practiceWord?.index === word.index;
+                  const newestLive =
+                    liveWords.length > 0 ? liveWords[liveWords.length - 1] : null;
+                  const isNewestLive =
+                    word.live &&
+                    newestLive !== null &&
+                    newestLive.ayah === group.ayah &&
+                    newestLive.word_index === word.index;
+                  const tone =
+                    word.status === 'peeked'
+                      ? 'hifz-word-peeked'
+                      : word.live
+                        ? isNewestLive
+                          ? 'hifz-word-live hifz-word-live-new'
+                          : 'hifz-word-live'
+                        : `hifz-word-${word.status}`;
                   return (
                     <span
                       key={word.index}
-                      className={[
-                        'hifz-word',
-                        word.status === 'peeked'
-                          ? 'hifz-word-peeked'
-                          : `hifz-word-${word.status}`,
-                        isPractice ? 'hifz-word-practice' : '',
-                      ].join(' ')}
+                      className={['hifz-word', tone, isPractice ? 'hifz-word-practice' : ''].join(
+                        ' ',
+                      )}
                     >
                       <button
                         type="button"
@@ -1457,9 +1591,10 @@ export function QuranHifzStudy({
                         }
                         title={labels.practiceWordHint}
                       >
-                        {word.text}
+                        {renderTajweedText(word.text)}
                       </button>
-                      {word.status !== 'peeked' &&
+                      {!word.live &&
+                        word.status !== 'peeked' &&
                         (word.status === 'wrong' || word.status === 'close') &&
                         word.scoreId &&
                         !word.disputed && (
@@ -1473,11 +1608,6 @@ export function QuranHifzStudy({
                         )}
                       {word.disputed && (
                         <span className="hifz-word-disputed">{labels.disputed}</span>
-                      )}
-                      {word.heard && (
-                        <span className="hifz-word-heard">
-                          {labels.heardLabel} {word.heard}
-                        </span>
                       )}
                       {word.status === 'peeked' && (
                         <span className="hifz-word-peeked-tag">{labels.revealedByPeek}</span>
