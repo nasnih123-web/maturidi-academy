@@ -229,15 +229,12 @@ export interface HifzLabels {
   wrongLabel: string;
   skippedLabel: string;
   extraLabel: string;
-  reviewTitle: string;
-  reviewEmpty: string;
   historyTitle: string;
   historyEmpty: string;
   statsTitle: string;
   attemptsLabel: string;
   gradedWordsLabel: string;
   dominantMistakeLabel: string;
-  dueLabel: string;
   selectAyahHint: string;
   svgFailedNote: string;
   loadingPage: string;
@@ -324,13 +321,6 @@ interface HifzStats {
   counts: HifzCounts;
   dominant_mistake: string | null;
   due_ayahs: number;
-}
-
-interface HifzReview {
-  surah: number;
-  ayah: number;
-  mistake_count: number;
-  last_activity_at: string;
 }
 
 interface HifzStatus {
@@ -437,6 +427,7 @@ export function QuranHifzStudy({
   locale,
   surahList,
   initialSurah,
+  initialTexts,
   labels,
 }: {
   locale: string;
@@ -444,12 +435,19 @@ export function QuranHifzStudy({
   initialSurah: number;
   /** Ignored: the line data is always Hafs (see header). */
   initialMushaf: string;
+  /** Ayah texts of the initial surah, from the server render. */
+  initialTexts: Record<number, string>;
   labels: HifzLabels;
 }) {
   const [surah, setSurah] = useState(initialSurah);
   const [ayah, setAyah] = useState(1);
   const [ayahCount, setAyahCount] = useState(0);
-  const [textsBySurah, setTextsBySurah] = useState<Record<number, Record<number, string>>>({});
+  const [textsBySurah, setTextsBySurah] = useState<Record<number, Record<number, string>>>(
+    () =>
+      initialTexts && Object.keys(initialTexts).length > 0
+        ? { [initialSurah]: initialTexts }
+        : {},
+  );
   const [authed, setAuthed] = useState(false);
   const [attempt, setAttempt] = useState<HifzAttempt | null>(null);
   const [attemptWords, setAttemptWords] = useState<HifzWordScore[]>([]);
@@ -469,7 +467,6 @@ export function QuranHifzStudy({
   const [lastGrade, setLastGrade] = useState<HifzGrade | null>(null);
   const [engineStatus, setEngineStatus] = useState<HifzStatus | null>(null);
   const [stats, setStats] = useState<HifzStats | null>(null);
-  const [review, setReview] = useState<HifzReview[]>([]);
   const [history, setHistory] = useState<HifzAttempt[]>([]);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -535,22 +532,41 @@ export function QuranHifzStudy({
   // The line page cannot place words without these texts: while they
   // load, the page waits instead of silently dropping every ayah to
   // the wall below. A failed load shows a retry instead of the wall.
+  // Texts for the initial surah arrive with the server render, so the
+  // first page never depends on a client fetch. A fetch that fails is
+  // retried twice: the phone is often on a flaky VPN and one dropped
+  // request must not strand the page.
+  const initialTextsRef = useRef(initialTexts);
   const [textsFailed, setTextsFailed] = useState(false);
   const [textsReload, setTextsReload] = useState(0);
   useEffect(() => {
+    const seeded = initialTextsRef.current;
+    if (surah === initialSurah && seeded && Object.keys(seeded).length > 0) {
+      setAyahCount(Object.keys(seeded).length);
+      setAyah(1);
+      setPracticeWord(null);
+      return;
+    }
     let cancelled = false;
     setTextsFailed(false);
-    getSurah(surah)
-      .then((view) => {
+    void (async () => {
+      for (let attemptNo = 0; attemptNo < 3; attemptNo++) {
         if (cancelled) return;
-        const texts: Record<number, string> = {};
-        for (const a of view.ayahs) texts[a.number] = a.text;
-        setTextsBySurah((prev) => ({ ...prev, [surah]: texts }));
-        setAyahCount(view.ayahs.length);
-      })
-      .catch(() => {
-        if (!cancelled) setTextsFailed(true);
-      });
+        try {
+          const view = await getSurah(surah);
+          if (cancelled) return;
+          const texts: Record<number, string> = {};
+          for (const a of view.ayahs) texts[a.number] = a.text;
+          setTextsBySurah((prev) => ({ ...prev, [surah]: texts }));
+          setAyahCount(view.ayahs.length);
+          return;
+        } catch {
+          if (cancelled) return;
+          if (attemptNo < 2) await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+      if (!cancelled) setTextsFailed(true);
+    })();
     setAyah(1);
     setPracticeWord(null);
     return () => {
@@ -571,13 +587,11 @@ export function QuranHifzStudy({
 
   const refreshPanels = useCallback(async () => {
     try {
-      const [s, r, h] = await Promise.all([
+      const [s, h] = await Promise.all([
         authJson<HifzStats>(`${HIFZ_API}/stats`),
-        authJson<HifzReview[]>(`${HIFZ_API}/review`),
         authJson<HifzAttempt[]>(`${HIFZ_API}/attempts?limit=20`),
       ]);
       setStats(s);
-      setReview(r);
       setHistory(h);
     } catch {
       /* panels stay empty; grading still works */
@@ -590,17 +604,31 @@ export function QuranHifzStudy({
     // Resume the user's in-progress attempt for this surah (if any):
     // without this, a returning student would see an empty wall and
     // their earlier scores would only appear via the history list.
+    // An attempt belongs to ONE surah: when no attempt matches the
+    // new surah, drop the previous surah's attempt, or its scores
+    // would keep piling into the wrong surah's counts (e.g. a
+    // Fatiha attempt showing skipped=1149 from long surahs).
+    let cancelled = false;
     void (async () => {
       try {
         const list = await authJson<HifzAttempt[]>(`${HIFZ_API}/attempts?limit=5`);
+        if (cancelled) return;
         const current =
           list.find((a) => a.surah === surah && a.status === 'in_progress') ??
           list.find((a) => a.surah === surah);
         if (current) await refreshDetail(current.id);
+        else {
+          setAttempt(null);
+          setAttemptWords([]);
+          setMistakes([]);
+        }
       } catch {
         /* grading still works; the wall just starts fresh */
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [authed, refreshPanels, refreshDetail, surah]);
 
   // Stop the live stream when leaving the screen.
@@ -880,7 +908,10 @@ export function QuranHifzStudy({
   }, [textsBySurah, surah, ayah, ayahCount, wallKeys]);
 
   const ensureAttempt = useCallback(async (): Promise<string | null> => {
-    if (attempt) return attempt.id;
+    // An attempt belongs to one surah: a stale attempt from another
+    // surah must not receive this surah's grades (that is how one
+    // Fatiha attempt accumulated skipped=1149 from long surahs).
+    if (attempt && attempt.surah === surah) return attempt.id;
     try {
       const created = await authJson<HifzAttempt>(`${HIFZ_API}/attempts`, {
         method: 'POST',
@@ -1741,30 +1772,10 @@ export function QuranHifzStudy({
             <p>
               {labels.attemptsLabel} {stats.attempts} · {labels.gradedWordsLabel}{' '}
               {stats.graded_words} · {labels.dominantMistakeLabel}{' '}
-              {dominantMistakeText} · {labels.dueLabel} {stats.due_ayahs}
+              {dominantMistakeText}
             </p>
           ) : (
             <p>—</p>
-          )}
-          <h3>{labels.reviewTitle}</h3>
-          {review.length === 0 ? (
-            <p>{labels.reviewEmpty}</p>
-          ) : (
-            <ul>
-              {review.map((r) => (
-                <li key={`${r.surah}:${r.ayah}`}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSurah(r.surah);
-                      setAyah(r.ayah);
-                    }}
-                  >
-                    {r.surah}:{r.ayah} ({r.mistake_count})
-                  </button>
-                </li>
-              ))}
-            </ul>
           )}
           <h3>{labels.historyTitle}</h3>
           {history.length === 0 ? (

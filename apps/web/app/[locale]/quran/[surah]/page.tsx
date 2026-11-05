@@ -229,15 +229,12 @@ export default async function SurahPage({
             wrongLabel: t('hifzWrongLabel'),
             skippedLabel: t('hifzSkippedLabel'),
             extraLabel: t('hifzExtraLabel'),
-            reviewTitle: t('hifzReviewTitle'),
-            reviewEmpty: t('hifzReviewEmpty'),
             historyTitle: t('hifzHistoryTitle'),
             historyEmpty: t('hifzHistoryEmpty'),
             statsTitle: t('hifzStatsTitle'),
             attemptsLabel: t('hifzAttemptsLabel'),
             gradedWordsLabel: t('hifzGradedWordsLabel'),
             dominantMistakeLabel: t('hifzDominantMistakeLabel'),
-            dueLabel: t('hifzDueLabel'),
             selectAyahHint: t('hifzSelectAyahHint'),
             svgFailedNote: t('hifzSvgFailedNote'),
             loadingPage: t('hifzLoadingPage'),
@@ -418,7 +415,7 @@ export default async function SurahPage({
         }}
       />
       {providers?.providersByType?.text === 'self_hosted' && (
-        <p style={{ textAlign: 'center', fontSize: '0.85rem', marginTop: '2rem' }}>
+        <p style={{ textAlign: 'center', fontSize: '0.7rem', opacity: 0.6, marginTop: '2rem' }}>
           <a href="https://tanzil.net" target="_blank" rel="noreferrer">
             {t('textCredit')}
           </a>

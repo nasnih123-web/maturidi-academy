@@ -460,6 +460,10 @@ export function QuranReader({
   // Hifz (Phase 3) is the real study screen; children is still an
   // honest placeholder until its phase.
   if (section === 'hifz') {
+    // The study's first page must not depend on a client fetch: the
+    // server already loaded this surah's ayah texts for the reader.
+    const initialTexts: Record<number, string> = {};
+    for (const a of ayahs) initialTexts[a.number] = a.text;
     return (
       <div className="quran-reader">
         <QuranHifzStudy
@@ -467,6 +471,7 @@ export function QuranReader({
           surahList={surahList}
           initialSurah={surah.number}
           initialMushaf={initialMushaf ?? 'hafs/kfqc'}
+          initialTexts={initialTexts}
           labels={labels.hifz}
         />
       </div>
