@@ -239,6 +239,7 @@ async def stream_attempt(
     except _HandshakeRejected:
         return
     await websocket.accept()
+    _t_accepted = time.perf_counter()
 
     async def send_error(code: str, message: str, close_code: int) -> None:
         try:
@@ -255,6 +256,7 @@ async def stream_attempt(
         first = await websocket.receive_json()
     except (WebSocketDisconnect, RuntimeError, ValueError):
         return
+    _t_start_msg = time.perf_counter()
     if not isinstance(first, dict) or first.get("type") != "start":
         await send_error("hifz_stream_start_required", "نخستین پیام باید start باشد", 4400)
         return
@@ -272,14 +274,17 @@ async def stream_attempt(
     try:
         # دروازهٔ نگاشت، پیش از هر صوتی: بدون نگاشت تأییدشده، نشست
         # ساخته نمی‌شود و هیچ واجی به کلمه تبدیل نمی‌شود.
+        _t_mapping_started = time.perf_counter()
         mapping = hifz_stream.require_phoneme_mapping()
+        _t_mapping = time.perf_counter()
         session = await hifz_stream.start_live_session(
             db, user, attempt_id, surah, ayah, queue.put_nowait, mapping
         )
-        # ساخت بازشناس در حلقهٔ رویداد اجرا می‌شود؛ زمانش را بسنج تا
-        # معلوم شود هر نشست چقدر حلقه را قفل می‌کند (مدل ۷۳ مگابایتی).
+        _t_session = time.perf_counter()
+        # ساخت بازشناس، کارِ بومیِ همگام است (بارگذاری مدل ۷۳ مگابایتی)؛
+        # در نخ جدا ساخته می‌شود تا حلقهٔ رویداد قفل نشود.
         _build_started = time.perf_counter()
-        recognizer = hifz_stream.SherpaPhonemeStream()
+        recognizer = await asyncio.to_thread(hifz_stream.SherpaPhonemeStream)
         build_ms = (time.perf_counter() - _build_started) * 1000.0
     except APIError as exc:
         close_code = 4404 if exc.status_code == 404 else 4500
@@ -288,6 +293,12 @@ async def stream_attempt(
     except Exception as exc:  # noqa: BLE001 — خطای ناشناختهٔ شروع هم باید پیام خطا بشود، نه قطع بی‌صدا
         await send_error("hifz_stream_error", f"خطای شروع جریان زنده: {exc}", 1011)
         return
+    _start_timings = {
+        "wait_start_ms": (_t_start_msg - _t_accepted) * 1000.0,
+        "mapping_ms": (_t_mapping - _t_mapping_started) * 1000.0,
+        "session_ms": (_t_session - _t_mapping) * 1000.0,
+        "build_ms": build_ms,
+    }
     logger.info(
         "hifz live session started attempt=%s surah=%s ayah=%s engine=zipformer "
         "recognizer_build_ms=%.1f",
@@ -296,7 +307,62 @@ async def stream_attempt(
         ayah,
         build_ms,
     )
+    logger.info(
+        "hifz live session start timing attempt=%s wait_start_ms=%.1f "
+        "mapping_ms=%.1f session_ms=%.1f build_ms=%.1f total_ms=%.1f",
+        attempt_id,
+        _start_timings["wait_start_ms"],
+        _start_timings["mapping_ms"],
+        _start_timings["session_ms"],
+        _start_timings["build_ms"],
+        (_t_session - _t_accepted) * 1000.0 + build_ms,
+    )
+    _slow = _slow_start_steps(_start_timings)
+    if _slow:
+        logger.warning(
+            "hifz live session start slow steps attempt=%s steps=%s",
+            attempt_id,
+            ",".join(_slow),
+        )
     await serve_stream(websocket, session, recognizer, queue)
+
+
+_SLOW_START_STEP_MS = 5000.0
+
+
+def _slow_start_steps(timings: dict[str, float]) -> list[str]:
+    """نام قدم‌های شروع نشست که بیش از آستانه طول کشیده‌اند (برای هشدار)."""
+    return [
+        name
+        for name, ms in timings.items()
+        if ms > _SLOW_START_STEP_MS
+    ]
+
+
+async def _drop_stale_frames(websocket) -> tuple[int, object]:
+    """قاب‌های مانده از پیش از شروع نشست را دور بریز.
+
+    تا وقتی نشست ساخته می‌شد، مرورگر قاب می‌فرستاد و آن‌ها در صف
+    انتقال ماندند؛ خوراندن همه‌شان یعنی دقیقه‌ها تأخیر. فقط پیام‌های
+    باینری دور ریخته می‌شوند. اگر پیام متنی (مثل end) رسید، همان را
+    برمی‌گردانیم تا حلقهٔ اصلی آن را پردازش کند؛ اگر سوکت قطع شده بود،
+    رشتهٔ "disconnect" برمی‌گردد. تعداد دورریخته‌شده هم لاگ می‌شود.
+    """
+    dropped = 0
+    while True:
+        try:
+            # تایم‌اوت مثبتِ کوتاه: wait_for با تایم‌اوت صفر ممکن است
+            # کار را پیش از اجرا لغو کند؛ ۵ میلی‌ثانیه برای پیامِ
+            # آماده، بی‌درنگ برمی‌گردد و برای صفِ خالی زود تمام می‌شود.
+            message = await asyncio.wait_for(websocket.receive(), timeout=0.005)
+        except TimeoutError:
+            return dropped, None
+        except (WebSocketDisconnect, RuntimeError):
+            return dropped, "disconnect"
+        if "bytes" in message and message["bytes"] is not None:
+            dropped += 1
+            continue
+        return dropped, message
 
 
 async def serve_stream(websocket, session, recognizer, queue: asyncio.Queue) -> None:
@@ -315,16 +381,42 @@ async def serve_stream(websocket, session, recognizer, queue: asyncio.Queue) -> 
     phonemes_from_feed = 0
     phonemes_from_flush = 0
     close_reason = "disconnect"
+    _serve_started = time.perf_counter()
+    first_feed_ms: float | None = None
+    frames_first_second = 0
+    # قاب‌های مانده از پیش از شروع نشست (فرستاده‌شده در فاصلهٔ انتظار)
+    # را دور بریز؛ خوراندنشان یعنی دقیقه‌ها تأخیر. پیام متنیِ رسیده
+    # (مثل end) همان اولِ حلقه پردازش می‌شود، نه دور ریخته.
+    _dropped_stale, _pending = await _drop_stale_frames(websocket)
+    if _dropped_stale:
+        logger.info(
+            "hifz live session dropped stale frames attempt=%s surah=%s ayah=%s "
+            "dropped=%d",
+            session.attempt.id,
+            session.surah,
+            session.start_ayah,
+            _dropped_stale,
+        )
     try:
-        while True:
-            try:
-                message = await websocket.receive()
-            except (WebSocketDisconnect, RuntimeError):
-                close_reason = "disconnect"
-                break
+        while _pending != "disconnect":
+            if _pending is not None:
+                message = _pending
+                _pending = None
+            else:
+                try:
+                    message = await websocket.receive()
+                except (WebSocketDisconnect, RuntimeError):
+                    close_reason = "disconnect"
+                    break
             if "bytes" in message and message["bytes"] is not None:
                 try:
                     frames_received += 1
+                    if first_feed_ms is None:
+                        first_feed_ms = (
+                            time.perf_counter() - _serve_started
+                        ) * 1000.0
+                    if time.perf_counter() - _serve_started <= 1.0:
+                        frames_first_second += 1
                     phonemes = recognizer.feed(message["bytes"])
                     phonemes_from_feed += len(phonemes)
                     await session.feed_phonemes(phonemes)
@@ -427,7 +519,7 @@ async def serve_stream(websocket, session, recognizer, queue: asyncio.Queue) -> 
         logger.info(
             "hifz live session ended attempt=%s surah=%s ayah=%s reason=%s "
             "frames=%d phonemes_feed=%d phonemes_flush=%d words=%d skipped=%d "
-            "buffer_chars=%d",
+            "buffer_chars=%d first_feed_ms=%s frames_first_s=%d",
             session.attempt.id,
             session.surah,
             session.start_ayah,
@@ -438,6 +530,8 @@ async def serve_stream(websocket, session, recognizer, queue: asyncio.Queue) -> 
             counts["words"],
             counts["skipped"],
             counts["buffer_chars"],
+            f"{first_feed_ms:.1f}" if first_feed_ms is not None else "none",
+            frames_first_second,
         )
         if frames_received > 0 and phonemes_total == 0:
             logger.warning(

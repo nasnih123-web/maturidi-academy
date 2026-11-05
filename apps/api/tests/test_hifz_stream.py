@@ -10,6 +10,12 @@
   hifz_word_alignment_pending می‌دهد؛ feed_phonemes بدون نگاشت هم.
 - حلقهٔ WebSocket با سوکت و بازشناسِ ساختگی: رویدادهای کلمه (با
   خاکستری پس از جاافتادگی)، پیام final، بستن ۱۰۰۰، و ذخیرهٔ نشست.
+- قاب‌های مانده از پیش از شروع نشست دور ریخته می‌شوند (فقط قاب‌های
+  زنده خورانده می‌شوند)؛ قدم‌های کند شروع نشست در
+  `_slow_start_steps` جدا می‌شوند.
+- دروازهٔ `is_ready` در `SherpaPhonemeStream` (با sherpaی ساختگی):
+  دیکد فقط وقتی چانک کامل آماده است، و واج‌ها از JSON نتیجهٔ رسمی
+  sherpa-onnx 2.0.1 خوانده می‌شوند.
 - شمارنده‌های جلسهٔ زنده (فقط تعداد): کلمه‌ها/جاافتاده‌ها و طول بافر.
 - خطای ناشناختهٔ feed/flush: لاگ ERROR با traceback + پیام خطا به
   کلاینت (نه قطع بی‌صدا)؛ هشدار پایان نشست برای قابِ بدون واج و
@@ -23,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import sys
 import uuid
 from types import SimpleNamespace
 
@@ -35,6 +42,7 @@ from app.modules.quran.hifz_stream import (
     LiveSession,
     LiveUnavailableError,
     MappingPendingError,
+    SherpaPhonemeStream,
     StreamWord,
     require_phoneme_mapping,
 )
@@ -303,16 +311,26 @@ async def test_live_counts_only_counts_words_and_skips(monkeypatch):
 
 
 class _FakeWebSocket:
-    """سوکت ساختگی: پیام‌های ازپیش‌نوشته‌شده را می‌دهد، ارسال‌ها را ضبط می‌کند."""
+    """سوکت ساختگی: پیام‌های ازپیش‌نوشته‌شده را می‌دهد، ارسال‌ها را ضبط می‌کند.
 
-    def __init__(self, messages):
+    `stale` یعنی چند پیامِ اول از پیش در صف‌اند (قاب‌های مانده از پیش
+    از شروع نشست) و بی‌درنگ برمی‌گردند؛ بقیه «زنده»‌اند و با تأخیر
+    کوتاه می‌رسند تا تخلیهٔ قاب‌های مانده، آن‌ها را نخورد.
+    """
+
+    def __init__(self, messages, stale=0):
         self._messages = list(messages)
+        self._stale = stale
         self.sent = []
         self.close_code = None
 
     async def receive(self):
         if not self._messages:
             raise WebSocketDisconnect()
+        if self._stale > 0:
+            self._stale -= 1
+        else:
+            await asyncio.sleep(0.01)
         return self._messages.pop(0)
 
     async def send_json(self, event):
@@ -327,8 +345,10 @@ class _FakePhonemeRecognizer:
 
     def __init__(self, chunks):
         self._chunks = list(chunks)
+        self.calls = 0
 
     def feed(self, pcm16: bytes):
+        self.calls += 1
         return self._chunks.pop(0) if self._chunks else []
 
     def flush(self):
@@ -486,6 +506,184 @@ async def test_serve_stream_phonemes_without_words_warns(monkeypatch, caplog):
         "zero word events" in r.message and r.levelname == "WARNING"
         for r in caplog.records
     )
+
+
+# ---------------------------------------------------------------------------
+# قاب‌های مانده + زمان‌بندی شروع + دروازهٔ is_ready
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_serve_stream_drops_stale_frames(monkeypatch, caplog):
+    """قاب‌های مانده از پیش از شروع نشست دور ریخته می‌شوند؛ قاب زنده می‌رسد."""
+    from app.modules.quran.hifz_router import serve_stream
+
+    events = []
+    session, stored = _session(monkeypatch, events)
+    queue: asyncio.Queue = asyncio.Queue()
+    session.sender = queue.put_nowait
+    session.mapping = _fake_mapping()
+    ws = _FakeWebSocket(
+        [
+            {"bytes": b"\x00\x00" * 100},  # مانده
+            {"bytes": b"\x00\x00" * 100},  # مانده
+            {"bytes": b"\x00\x00" * 100},  # زنده
+            {"text": json.dumps({"type": "end"})},
+        ],
+        stale=2,
+    )
+    recognizer = _FakePhonemeRecognizer(
+        [["q", "u", "l", "a", "l", "a", "h", "a", "h", "a", "d"]]
+    )
+    with caplog.at_level(logging.INFO, logger="app.modules.quran.hifz_router"):
+        await serve_stream(ws, session, recognizer, queue)
+    # فقط قاب زنده خورانده شد (یک بار feed) و همان یک واج‌چین، کل
+    # آیهٔ اول را ساخت؛ قاب‌های مانده، واجی تولید نکردند.
+    assert recognizer.calls == 1
+    words = [e for e in ws.sent if e.get("type") == "word"]
+    assert [(w["expected"], w["status"]) for w in words] == [
+        ("قُلْ", "correct"),
+        ("هُوَ", "skipped"),
+        ("اللَّهُ", "correct"),
+        ("أَحَدٌ", "correct"),
+    ]
+    assert any(
+        "dropped stale frames" in r.message and "dropped=2" in r.message
+        for r in caplog.records
+    )
+    assert ws.close_code == 1000
+    assert stored and stored[0][0] == 1
+
+
+def test_slow_start_steps_flags_only_slow_steps():
+    """_slow_start_steps: فقط قدم‌های بیش از ۵ ثانیه را نام می‌برد."""
+    from app.modules.quran.hifz_router import _slow_start_steps
+
+    assert _slow_start_steps(
+        {
+            "wait_start_ms": 10.0,
+            "mapping_ms": 6000.0,
+            "session_ms": 100.0,
+            "build_ms": 2000.0,
+        }
+    ) == ["mapping_ms"]
+    assert _slow_start_steps({"wait_start_ms": 10.0, "mapping_ms": 100.0}) == []
+    assert _slow_start_steps({}) == []
+    assert _slow_start_steps({"build_ms": 5000.0}) == []
+
+
+class _FakeSherpaStream:
+    """جریان ساختگی sherpa: قاب‌ها را می‌شمارد؛ هر دیکد یک چانک مصرف می‌کند."""
+
+    def __init__(self, chunk_frames=2):
+        self.accepted = 0
+        self.consumed = 0
+        self.chunk_frames = chunk_frames
+        self.finished = False
+
+    def accept_waveform(self, sample_rate, samples):
+        self.accepted += 1
+
+    def input_finished(self):
+        self.finished = True
+
+    @property
+    def buffered(self):
+        return self.accepted - self.consumed
+
+
+class _FakeSherpaRecognizer:
+    """بازشناس ساختگی: وقتی چانک کامل بافر شده، آماده است.
+
+    هر دیکد یک چانک مصرف می‌کند و واج‌چینِ بعدیِ `tokens_per_decode`
+    را برمی‌گرداند (تکرار آخری اگر تمام شد)؛ پیش از نخستین دیکد،
+    واجی نیست.
+    """
+
+    def __init__(self, ready_after=2, tokens_per_decode=None):
+        self._stream = _FakeSherpaStream(chunk_frames=ready_after)
+        self._tokens_per_decode = list(tokens_per_decode or [])
+        self._tokens: list[str] = []
+        self.decode_calls = 0
+
+    def create_stream(self):
+        return self._stream
+
+    def is_ready(self, stream):
+        return stream.buffered >= stream.chunk_frames
+
+    def decode_stream(self, stream):
+        self.decode_calls += 1
+        stream.consumed += stream.chunk_frames
+        if self._tokens_per_decode:
+            self._tokens = list(self._tokens_per_decode.pop(0))
+
+    def get_result_as_json_string(self, stream):
+        return json.dumps({"tokens": self._tokens, "text": "".join(self._tokens)})
+
+
+def _fake_sherpa_stream(monkeypatch, tmp_path, recognizer):
+    """sherpaی ساختگی + پوشهٔ مدلِ ساختگی (فقط برای آزمون دروازه)."""
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    (model_dir / "model.int8.onnx").write_bytes(b"fake")
+    (model_dir / "tokens.txt").write_text("<blank> 250\n", encoding="utf-8")
+    monkeypatch.setenv("HIFZ_ZIPFORMER_MODEL_DIR", str(model_dir))
+    fake_module = SimpleNamespace(
+        OnlineRecognizer=SimpleNamespace(
+            from_zipformer2_ctc=lambda **kwargs: recognizer
+        )
+    )
+    monkeypatch.setitem(sys.modules, "sherpa_onnx", fake_module)
+    return SherpaPhonemeStream()
+
+
+def test_feed_decodes_only_when_ready(monkeypatch, tmp_path):
+    """قاب کوتاه، بدون دیکد برمی‌گردد؛ دیکد فقط وقتی چانک کامل آماده است."""
+    recognizer = _FakeSherpaRecognizer(
+        ready_after=2, tokens_per_decode=[["a", "b"]]
+    )
+    stream = _fake_sherpa_stream(monkeypatch, tmp_path, recognizer)
+    frame = b"\x00\x00" * 4096
+    assert stream.feed(frame) == []
+    assert recognizer.decode_calls == 0
+    assert stream.feed(frame) == ["a", "b"]
+    assert recognizer.decode_calls == 1
+    # قاب سوم: چانک ناقص است (یک قاب در بافر)، پس دیکد نمی‌شود.
+    assert stream.feed(frame) == []
+    assert recognizer.decode_calls == 1
+    # قاب چهارم: چانک کامل شد؛ دیکد می‌شود ولی واج تازه‌ای نیست.
+    assert stream.feed(frame) == []
+    assert recognizer.decode_calls == 2
+
+
+def test_flush_decodes_remaining_chunks(monkeypatch, tmp_path):
+    """flush: چانک‌های مانده در بافر را دیکد می‌کند، بعد می‌ایستد."""
+    recognizer = _FakeSherpaRecognizer(
+        ready_after=2, tokens_per_decode=[["a", "b"], ["a", "b", "c"]]
+    )
+    stream = _fake_sherpa_stream(monkeypatch, tmp_path, recognizer)
+    frame = b"\x00\x00" * 4096
+    assert stream.feed(frame) == []
+    assert stream.feed(frame) == ["a", "b"]
+    # دو قاب را مستقیم بپذیر (بدون feed) تا بافر، یک چانک کامل شود.
+    stream._stream.accept_waveform(16000, [0.0] * 4096)
+    stream._stream.accept_waveform(16000, [0.0] * 4096)
+    assert stream.flush() == ["c"]
+    assert recognizer.decode_calls == 2
+    assert recognizer._stream.finished is True
+
+
+def test_feed_without_ready_chunk_never_decodes(monkeypatch, tmp_path):
+    """یک قابِ تنها (همان حالت زندهٔ ۲۵۶ میلی‌ثانیه‌ای) هرگز دیکد نمی‌شود."""
+    recognizer = _FakeSherpaRecognizer(
+        ready_after=2, tokens_per_decode=[["a", "b"]]
+    )
+    stream = _fake_sherpa_stream(monkeypatch, tmp_path, recognizer)
+    assert stream.feed(b"\x00\x00" * 4096) == []
+    assert recognizer.decode_calls == 0
+    assert stream.flush() == []
+    assert recognizer.decode_calls == 0
 
 
 # ---------------------------------------------------------------------------
