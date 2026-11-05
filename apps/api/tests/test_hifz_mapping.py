@@ -249,6 +249,28 @@ def test_load_synthetic_dir_rejects_unknown_symbol_and_impossible(
     assert mapping.segments_for(112, 3) is None  # تراز ناممکن
 
 
+def test_load_returns_cached_mapping_object_on_second_call(tmp_path, monkeypatch):
+    # رگرسیون: سایه‌اندازی `key` باعث می‌شد نگاشت زیر کلید آیه ذخیره
+    # شود و جست‌وجوی کش هیچ‌وقت برخورد نکند؛ هر فراخوانی کل ساخت
+    # نگاشت (DP روی ۶٬۲۳۶ آیه، حدود ۱۲۴ ثانیه روی Railway) را از صفر
+    # تکرار می‌کرد و نشست زنده همان‌قدر فریز می‌شد. فراخوانی دوم روی
+    # همان پوشه باید همان شیء اول را برگرداند.
+    words112 = _tanzil_ayah(112, 1).split()[4:]
+    words11 = _tanzil_ayah(1, 1).split()
+    words255 = _tanzil_ayah(2, 255).split()
+    adjusted255 = [w for w in words255 if not (len(w) == 1 and w in "ۖۗۘۙۚۛۜ")]
+    entries = {
+        "1:1": _entry(words11),
+        "112:1": _entry(words112),
+        "2:255": _entry(adjusted255),
+    }
+    d = _write_fixture(tmp_path, entries)
+    monkeypatch.setenv("QURAN_PHONEME_MAP_DIR", str(d))
+    first = load_phoneme_mapping()
+    second = load_phoneme_mapping()
+    assert second is first
+
+
 def test_load_missing_dir_raises_pending(tmp_path, monkeypatch):
     monkeypatch.setenv("QURAN_PHONEME_MAP_DIR", str(tmp_path / "no-such-dir"))
     with pytest.raises(MappingPendingError) as exc:
