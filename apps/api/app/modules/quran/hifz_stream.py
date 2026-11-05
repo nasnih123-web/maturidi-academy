@@ -36,6 +36,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 import struct
 from collections.abc import Callable
@@ -55,6 +57,8 @@ from .hifz_mapping import (
     Segment,
     load_phoneme_mapping,
 )
+
+logger = logging.getLogger(__name__)
 
 # کلمهٔ قابل‌فهم برای آزمون: پنجرهٔ جست‌وجوی جلو در تراز زنده.
 _LIVE_LOOKAHEAD = 40
@@ -124,6 +128,15 @@ class SherpaPhonemeStream:
     جایگزینی با front-end دیگر (مثلاً slaney-mel) خطا را بالا می‌برد.
     این کلاس هرگز خودش کلمه نمی‌سازد؛ واج‌ها را به `feed_phonemes`
     می‌دهد که بدون نگاشت تأییدشده، خطا می‌دهد.
+
+    قرارداد دیکد (مستند sherpa): `decode_stream` فقط وقتی مجاز است که
+    `is_ready(stream)` درست باشد. دیکد روی چانک ناقص (کمتر از ~۶۱ فریم،
+    یعنی کمتر از ~۰٫۶ ثانیه صدا) قرارداد را می‌شکند و در sherpa-onnx
+    2.0.1 همان‌جا فرایند را می‌کشد (خروج ۲۵۵، بدون traceback)؛ به همین
+    دلیل `feed`/`flush` پیش از دیکد، `is_ready` را چک می‌کنند و اگر
+    آماده نبود، فقط قاب را می‌پذیرند و برمی‌گردند. نتیجه هم از API
+    رسمی 2.0.1 خوانده می‌شود (`get_result_as_json_string` با فیلد
+    `tokens`)، چون `OnlineStream` در این نسخه ویژگی `result` ندارد.
     """
 
     def __init__(self) -> None:
@@ -150,15 +163,38 @@ class SherpaPhonemeStream:
         self._recognizer = recognizer
         self._seen_tokens = 0
 
+    def _current_tokens(self) -> list[str]:
+        """واج‌های تاکنون شناخته‌شده، از JSON نتیجهٔ رسمی sherpa 2.0.1."""
+        try:
+            data = json.loads(
+                self._recognizer.get_result_as_json_string(self._stream)
+            )
+        except (ValueError, TypeError):
+            logger.warning("hifz sherpa result json unreadable")
+            return []
+        tokens = data.get("tokens") if isinstance(data, dict) else None
+        return list(tokens) if isinstance(tokens, list) else []
+
+    def _decode_if_ready(self) -> bool:
+        """اگر چانک کامل آماده است دیکد کن؛ در غیر این صورت هیچ‌کار نکن.
+
+        True یعنی دیکد انجام شد و واج تازه ممکن است آمده باشد؛ False
+        یعنی هنوز صدای کافی نرسیده و دیکد، قرارداد sherpa را می‌شکند.
+        """
+        if self._recognizer.is_ready(self._stream):
+            self._recognizer.decode_stream(self._stream)
+            return True
+        return False
+
     def feed(self, pcm16: bytes) -> list[str]:
         """قاب صوتی Int16LE را بده، واج‌های تازه را بگیر."""
         count = len(pcm16) // 2
         samples = struct.unpack(f"<{count}h", pcm16[: count * 2])
         floats = [s / 32768.0 for s in samples]
         self._stream.accept_waveform(16000, floats)
-        self._recognizer.decode_stream(self._stream)
-        result = self._stream.result
-        tokens = list(result.tokens)
+        if not self._decode_if_ready():
+            return []
+        tokens = self._current_tokens()
         fresh = tokens[self._seen_tokens :]
         self._seen_tokens = len(tokens)
         return fresh
@@ -166,8 +202,9 @@ class SherpaPhonemeStream:
     def flush(self) -> list[str]:
         """پایان جریان: واج‌های باقی‌مانده را بگیر."""
         self._stream.input_finished()
-        self._recognizer.decode_stream(self._stream)
-        tokens = list(self._stream.result.tokens)
+        while self._decode_if_ready():
+            pass
+        tokens = self._current_tokens()
         fresh = tokens[self._seen_tokens :]
         self._seen_tokens = len(tokens)
         return fresh
