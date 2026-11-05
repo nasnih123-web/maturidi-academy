@@ -239,6 +239,7 @@ export interface HifzLabels {
   heardLabel: string;
   liveStart: string;
   liveStop: string;
+  liveCancel: string;
   liveListening: string;
   liveConnecting: string;
   liveEnded: string;
@@ -440,6 +441,27 @@ export function QuranHifzStudy({
     sampleRate: null,
     frames: 0,
   });
+  // Generation counter for live runs: bumped at the start of every
+  // startLive and on cancel. Async continuations check it after each
+  // await and abort silently when a newer run superseded them, so a
+  // stale run can never flip the page state or corrupt the shared
+  // diagnostics (a second start once produced sampleRate '—' with
+  // 300 frames from a first capture that was still alive).
+  const liveRunIdRef = useRef(0);
+  // True while a live run is starting or live. A second startLive
+  // while this is true is a no-op — double-taps must not start two
+  // captures that share liveWsRef/liveMicRef/liveDiag.
+  const liveRunActiveRef = useRef(false);
+  // Timeout for the 'connecting' phase: a handshake that never
+  // completes (or a mic prompt that never resolves) must end on its
+  // own instead of leaving the page unusable except by reload.
+  const liveConnectTimeoutRef = useRef<number | null>(null);
+  const clearLiveConnectTimeout = useCallback(() => {
+    if (liveConnectTimeoutRef.current !== null) {
+      window.clearTimeout(liveConnectTimeoutRef.current);
+      liveConnectTimeoutRef.current = null;
+    }
+  }, []);
   // Line page: the bundled 15-line Madinah page of the SELECTED
   // ayah (undefined = loading, null = load failed). The page
   // follows the selected ayah only: when live writing advances to
@@ -525,6 +547,8 @@ export function QuranHifzStudy({
   useEffect(
     () => () => {
       liveCloseExpectedRef.current = true;
+      liveRunActiveRef.current = false;
+      clearLiveConnectTimeout();
       liveWsRef.current?.close();
       const mic = liveMicRef.current;
       if (mic) {
@@ -532,7 +556,7 @@ export function QuranHifzStudy({
         void mic.ctx.close();
       }
     },
-    [],
+    [clearLiveConnectTimeout],
   );
 
   // Line data loads once (dynamic import, like the reader's search
@@ -913,20 +937,61 @@ export function QuranHifzStudy({
     }
   }, []);
 
+  const cancelLive = useCallback(
+    (showMessage: boolean) => {
+      // Abandon a live run that never reached 'listening' (stuck
+      // handshake, hung mic prompt, timed out). Unlike stopLive,
+      // nothing is saved: the server stores nothing for a close
+      // without 'end', so there is no 'end' to send — just close.
+      // Bumping the run id makes any in-flight startLive continuation
+      // abort silently instead of reviving the dead run.
+      liveRunIdRef.current += 1;
+      liveRunActiveRef.current = false;
+      clearLiveConnectTimeout();
+      liveCloseExpectedRef.current = true;
+      const ws = liveWsRef.current;
+      liveWsRef.current = null;
+      try {
+        ws?.close();
+      } catch {
+        /* already closed */
+      }
+      cleanupLiveMic();
+      if (showMessage) setLiveError(labels.liveDisconnected);
+      setLiveState('idle');
+    },
+    [clearLiveConnectTimeout, cleanupLiveMic, labels],
+  );
+
   const startLive = useCallback(async () => {
     if (!authed) {
       setError(labels.signInHint);
       return;
     }
+    // A run is already starting or live — ignore the second call.
+    if (liveRunActiveRef.current) return;
+    liveRunActiveRef.current = true;
+    const runId = (liveRunIdRef.current += 1);
+    const isCurrent = () => liveRunIdRef.current === runId;
     const attemptId = await ensureAttempt();
-    if (!attemptId) return;
+    // A cancel superseded this run while it waited: abort silently.
+    // The newer run (or the idle page) owns the shared refs now.
+    if (!isCurrent()) return;
+    if (!attemptId) {
+      liveRunActiveRef.current = false;
+      return;
+    }
     setLiveError(null);
     setLiveState('connecting');
     liveCloseExpectedRef.current = false;
     liveFramesRef.current = 0;
     setLiveDiag({ sampleRate: null, frames: 0 });
+    // 15s from 'connecting': on expiry, abort exactly like a manual
+    // cancel and say the connection was lost.
+    liveConnectTimeoutRef.current = window.setTimeout(() => cancelLive(true), 15000);
     try {
       const ticketRes = await authFetch('/api/v1/auth/ws-ticket', { method: 'POST' });
+      if (!isCurrent()) return;
       if (!ticketRes.ok) throw new Error('ticket');
       const { ticket } = (await ticketRes.json()) as { ticket: string };
       const base = apiBaseUrl();
@@ -938,6 +1003,8 @@ export function QuranHifzStudy({
       );
       liveWsRef.current = ws;
       ws.onopen = () => {
+        if (!isCurrent()) return;
+        clearLiveConnectTimeout();
         ws.send(JSON.stringify({ type: 'start', surah, ayah }));
         setLiveState('listening');
       };
@@ -953,24 +1020,37 @@ export function QuranHifzStudy({
         } else if (msg.type === 'extra') {
           setLiveExtraCount((c) => c + 1);
         } else if (msg.type === 'final') {
+          if (!isCurrent()) return;
           liveCloseExpectedRef.current = true;
+          liveRunActiveRef.current = false;
+          clearLiveConnectTimeout();
+          cleanupLiveMic();
           setLiveState('ended');
           void refreshDetail(attemptId);
           void refreshPanels();
         } else if (msg.type === 'error') {
+          if (!isCurrent()) return;
           liveCloseExpectedRef.current = true;
+          liveRunActiveRef.current = false;
+          clearLiveConnectTimeout();
           cleanupLiveMic();
           setLiveError(msg.message ?? labels.errorGeneric);
           setLiveState('idle');
         }
       };
       ws.onerror = () => {
+        if (!isCurrent()) return;
         liveCloseExpectedRef.current = true;
+        liveRunActiveRef.current = false;
+        clearLiveConnectTimeout();
         cleanupLiveMic();
         setLiveError(labels.errorGeneric);
         setLiveState('idle');
       };
       ws.onclose = () => {
+        if (!isCurrent()) return;
+        liveRunActiveRef.current = false;
+        clearLiveConnectTimeout();
         cleanupLiveMic();
         // An unexpected close (server restart, network drop) must end
         // the session visibly. Expected closes (stop, final, error)
@@ -987,6 +1067,12 @@ export function QuranHifzStudy({
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { sampleRate: 16000, channelCount: 1 },
       });
+      if (!isCurrent()) {
+        // Cancelled while the mic prompt was open: stop the tracks we
+        // just acquired, then leave quietly — the mic must not stay on.
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       const ctx = new AudioContext({ sampleRate: 16000 });
       // Record the ACTUAL rate: browsers may ignore the requested
       // 16 kHz (phones often run 48 kHz), and the model receives
@@ -1017,7 +1103,12 @@ export function QuranHifzStudy({
     } catch {
       // A failed start must not leave a dangling socket that could flip
       // the page to "listening" later: close it as expected, then clean.
+      // A superseded run owns nothing here — the newer run (or the
+      // cancel) already tore its own resources down.
+      if (!isCurrent()) return;
       liveCloseExpectedRef.current = true;
+      liveRunActiveRef.current = false;
+      clearLiveConnectTimeout();
       try {
         liveWsRef.current?.close();
       } catch {
@@ -1028,7 +1119,18 @@ export function QuranHifzStudy({
       setLiveError(labels.errorGeneric);
       setLiveState('idle');
     }
-  }, [authed, ensureAttempt, labels, surah, ayah, refreshDetail, refreshPanels, cleanupLiveMic]);
+  }, [
+    authed,
+    ensureAttempt,
+    labels,
+    surah,
+    ayah,
+    refreshDetail,
+    refreshPanels,
+    cleanupLiveMic,
+    cancelLive,
+    clearLiveConnectTimeout,
+  ]);
 
   const stopLive = useCallback(() => {
     // Stop is immediate. The old code waited for the server's final
@@ -1037,6 +1139,8 @@ export function QuranHifzStudy({
     // on one connection, so 'end' reaches the server before the close
     // frame and the session is still saved server-side.
     liveCloseExpectedRef.current = true;
+    liveRunActiveRef.current = false;
+    clearLiveConnectTimeout();
     const ws = liveWsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       try {
@@ -1053,7 +1157,7 @@ export function QuranHifzStudy({
     }
     cleanupLiveMic();
     setLiveState('idle');
-  }, [cleanupLiveMic]);
+  }, [cleanupLiveMic, clearLiveConnectTimeout]);
 
   const peekNext = useCallback(async () => {
     if (!peekTarget) return;
@@ -1182,19 +1286,30 @@ export function QuranHifzStudy({
   // action follows the selected engine (live stream for zipformer,
   // record-then-grade for whisper). It replaces the old record
   // buttons below; it never duplicates them.
+  // The mic shows the stop square (and pulses) while live OR while a
+  // run is still connecting — in both states tapping it stops the run.
   const micActive =
-    (isZipformer && liveState === 'listening') || (isWhisper && recState === 'recording');
-  const micBusy = liveState === 'connecting' || recState === 'processing';
+    (isZipformer && (liveState === 'listening' || liveState === 'connecting')) ||
+    (isWhisper && recState === 'recording');
+  // While a live run is connecting, the mic is NOT busy: tapping it
+  // cancels the run. Before this fix it was disabled with no timeout
+  // and no cancel, so a stuck handshake left the page usable only
+  // after a reload. Only the Whisper record path still disables the
+  // mic while its recording is being graded.
+  const micBusy = !isZipformer && recState === 'processing';
   const micLabel = isZipformer
-    ? micActive
-      ? labels.liveStop
-      : labels.liveStart
+    ? liveState === 'connecting'
+      ? labels.liveCancel
+      : micActive
+        ? labels.liveStop
+        : labels.liveStart
     : micActive
       ? labels.stopRecording
       : labels.recordGrade;
   const micOnClick = (): void => {
     if (isZipformer) {
       if (liveState === 'listening') stopLive();
+      else if (liveState === 'connecting') cancelLive(false);
       else void startLive();
     } else if (isWhisper) {
       if (recState === 'recording') stopRecording();
@@ -1390,6 +1505,11 @@ export function QuranHifzStudy({
         <button type="button" disabled={!peekTarget} onClick={() => void peekNext()}>
           {labels.peek}
         </button>
+        {isZipformer && liveState === 'connecting' && (
+          <button type="button" onClick={() => cancelLive(false)}>
+            {labels.liveCancel}
+          </button>
+        )}
         {isZipformer && liveState === 'listening' && (
           <p className="hifz-hint">{labels.liveListening}</p>
         )}

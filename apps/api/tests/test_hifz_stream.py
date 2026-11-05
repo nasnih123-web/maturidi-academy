@@ -10,6 +10,10 @@
   hifz_word_alignment_pending می‌دهد؛ feed_phonemes بدون نگاشت هم.
 - حلقهٔ WebSocket با سوکت و بازشناسِ ساختگی: رویدادهای کلمه (با
   خاکستری پس از جاافتادگی)، پیام final، بستن ۱۰۰۰، و ذخیرهٔ نشست.
+- شمارنده‌های جلسهٔ زنده (فقط تعداد): کلمه‌ها/جاافتاده‌ها و طول بافر.
+- خطای ناشناختهٔ feed/flush: لاگ ERROR با traceback + پیام خطا به
+  کلاینت (نه قطع بی‌صدا)؛ هشدار پایان نشست برای قابِ بدون واج و
+  واجِ بدون هیچ کلمه‌ای.
 - یکپارچگی با دیتابیس واقعی (tc): جریان زنده → پایان → جزئیات نشست
   از HTTP، نمره‌ها و خاکستری پس از آیهٔ جاافتاده در جدول‌ها هستند.
 """
@@ -18,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 from types import SimpleNamespace
 
@@ -279,6 +284,19 @@ async def test_feed_phonemes_exact_skip_continue_with_fake_mapping(monkeypatch):
     ]
 
 
+@pytest.mark.asyncio
+async def test_live_counts_only_counts_words_and_skips(monkeypatch):
+    """شمارنده‌های جلسه: کلمه‌های درست/نزدیک جدا از جاافتاده‌ها؛ بافر خالی."""
+    events = []
+    session, _ = _session(monkeypatch, events, mapping=_fake_mapping())
+    await session.feed_phonemes(
+        ["q", "u", "l"]
+        + ["a", "l", "a", "h"]
+        + ["a", "h", "a", "d"]
+    )
+    assert session.live_counts() == {"words": 3, "skipped": 1, "buffer_chars": 0}
+
+
 # ---------------------------------------------------------------------------
 # حلقهٔ WebSocket با سوکت و بازشناسِ ساختگی
 # ---------------------------------------------------------------------------
@@ -371,6 +389,103 @@ async def test_serve_stream_disconnect_without_end_stores_nothing(monkeypatch):
     await serve_stream(ws, session, recognizer, queue)
     assert stored == []
     assert [e for e in ws.sent if e.get("type") == "final"] == []
+
+
+class _FailingPhonemeRecognizer:
+    """بازشناس ساختگی که در feed خطای ناشناخته می‌دهد."""
+
+    def feed(self, pcm16: bytes):
+        raise RuntimeError("boom")
+
+    def flush(self):
+        return []
+
+
+class _CloseRecordingWebSocket(_FakeWebSocket):
+    """سوکت ساختگی که همهٔ کدهای بستن را ثبت می‌کند."""
+
+    def __init__(self, messages):
+        super().__init__(messages)
+        self.close_codes: list[int] = []
+
+    async def close(self, code=1000, reason=""):
+        self.close_codes.append(code)
+        await super().close(code, reason)
+
+
+@pytest.mark.asyncio
+async def test_serve_stream_feed_error_sends_error_json_not_silent_close(
+    monkeypatch, caplog
+):
+    """خطای ناشناختهٔ feed: پیام خطا به کلاینت + بستن ۱۰۱۱ + لاگ ERROR."""
+    from app.modules.quran.hifz_router import serve_stream
+
+    events = []
+    session, _ = _session(monkeypatch, events)
+    queue: asyncio.Queue = asyncio.Queue()
+    session.sender = queue.put_nowait
+    session.mapping = _fake_mapping()
+    ws = _CloseRecordingWebSocket([{"bytes": b"\x00\x00" * 100}])
+    recognizer = _FailingPhonemeRecognizer()
+    with caplog.at_level(logging.ERROR, logger="app.modules.quran.hifz_router"):
+        await serve_stream(ws, session, recognizer, queue)
+    errors = [e for e in ws.sent if e.get("type") == "error"]
+    assert errors == [
+        {
+            "type": "error",
+            "code": "hifz_stream_error",
+            "message": "خطای داخلی در جریان زنده؛ دوباره تلاش کنید.",
+        }
+    ]
+    # بستن ۱۰۱۱ برای خطا فرستاده می‌شود (بستن پایانی ۱۰۰۰ در finally
+    # پس از آن می‌آید؛ کلاینت نخستین بستن را می‌بیند).
+    assert 1011 in ws.close_codes
+    assert any(
+        "hifz live stream feed failed" in r.message for r in caplog.records
+    )
+    assert any(r.exc_info is not None for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_serve_stream_frames_without_phonemes_warns(monkeypatch, caplog):
+    """قاب رسید ولی واجی برنگشت: هشدار پایان نشست در لاگ است."""
+    from app.modules.quran.hifz_router import serve_stream
+
+    events = []
+    session, _ = _session(monkeypatch, events)
+    queue: asyncio.Queue = asyncio.Queue()
+    session.sender = queue.put_nowait
+    session.mapping = _fake_mapping()
+    ws = _FakeWebSocket([{"bytes": b"\x00\x00" * 100}])
+    recognizer = _FakePhonemeRecognizer([[]])
+    with caplog.at_level(logging.WARNING, logger="app.modules.quran.hifz_router"):
+        await serve_stream(ws, session, recognizer, queue)
+    assert any(
+        "zero phonemes" in r.message and r.levelname == "WARNING"
+        for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_serve_stream_phonemes_without_words_warns(monkeypatch, caplog):
+    """واج رسید ولی هیچ کلمه‌ای (حتی جاافتاده) تولید نشد: هشدار در لاگ است."""
+    from app.modules.quran.hifz_router import serve_stream
+
+    events = []
+    session, _ = _session(monkeypatch, events)
+    queue: asyncio.Queue = asyncio.Queue()
+    session.sender = queue.put_nowait
+    session.mapping = _fake_mapping()
+    ws = _FakeWebSocket([{"bytes": b"\x00\x00" * 100}])
+    # واج‌های بی‌معنا که با هیچ واحدی نمی‌خوانند و بافر را هم به حد
+    # رد خودکار نمی‌رسانند: هیچ رویدادی تولید نمی‌شود.
+    recognizer = _FakePhonemeRecognizer([["z", "z"]])
+    with caplog.at_level(logging.WARNING, logger="app.modules.quran.hifz_router"):
+        await serve_stream(ws, session, recognizer, queue)
+    assert any(
+        "zero word events" in r.message and r.levelname == "WARNING"
+        for r in caplog.records
+    )
 
 
 # ---------------------------------------------------------------------------

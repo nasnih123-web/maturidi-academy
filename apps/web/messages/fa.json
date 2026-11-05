@@ -332,6 +332,7 @@
     "hifzHeardLabel": "شنیده شد:",
     "hifzLiveStart": "شروع خواندن زنده",
     "hifzLiveStop": "پایان خواندن زنده",
+    "hifzLiveCancel": "لغو اتصال",
     "hifzLiveListening": "در حال گوش‌دادن زنده… کلمه‌ها هم‌زمان با تلاوت نوشته می‌شوند.",
     "hifzLiveConnecting": "در حال اتصال به جریان زنده…",
     "hifzLiveEnded": "خواندن زنده به پایان رسید و نتیجه ذخیره شد.",

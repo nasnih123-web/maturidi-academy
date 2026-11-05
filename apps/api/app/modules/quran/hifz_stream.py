@@ -222,6 +222,11 @@ class LiveSession:
     _exhausted: bool = False
     _ended: bool = False
     _phoneme_buffer: str = ""
+    # شمارنده‌های جلسهٔ زنده — فقط تعداد، هرگز محتوا: برای اینکه
+    # «هیچ کلمه‌ای نوشته نشد» از روی لاگ قابل تشخیص باشد (قاب رسید؟
+    # واج برگشت؟ واج به کلمه تبدیل شد؟).
+    _live_word_events: int = 0
+    _live_skipped_events: int = 0
     _assigned: dict = field(default_factory=dict)  # (ayah, idx) -> (heard, prob)
     _touched_ayahs: list = field(default_factory=list)
     _extras: list = field(default_factory=list)
@@ -290,10 +295,22 @@ class LiveSession:
             return self._words[self._index]
         return None
 
+    def live_counts(self) -> dict[str, int]:
+        """شمارنده‌های جلسهٔ زنده — فقط تعداد، هرگز محتوا."""
+        return {
+            "words": self._live_word_events,
+            "skipped": self._live_skipped_events,
+            "buffer_chars": len(self._phoneme_buffer),
+        }
+
     def _emit_word(
         self, ayah: int, index: int, expected: str, status: str,
         prob: float, heard: str | None,
     ) -> None:
+        if status == "skipped":
+            self._live_skipped_events += 1
+        else:
+            self._live_word_events += 1
         self._touch(ayah)
         self._assigned[(ayah, index)] = (heard, prob)
         self._emit(LiveWord(self.surah, ayah, index, expected, status, prob, heard).event())
