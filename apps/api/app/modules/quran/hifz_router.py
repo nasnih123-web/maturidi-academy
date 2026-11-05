@@ -24,6 +24,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.types import Message
 
 from app.core.database import get_db
 from app.core.errors import APIError
@@ -339,7 +340,7 @@ def _slow_start_steps(timings: dict[str, float]) -> list[str]:
     ]
 
 
-async def _drop_stale_frames(websocket) -> tuple[int, object]:
+async def _drop_stale_frames(websocket) -> tuple[int, Message | str | None]:
     """قاب‌های مانده از پیش از شروع نشست را دور بریز.
 
     تا وقتی نشست ساخته می‌شد، مرورگر قاب می‌فرستاد و آن‌ها در صف
@@ -402,6 +403,10 @@ async def serve_stream(websocket, session, recognizer, queue: asyncio.Queue) -> 
             if _pending is not None:
                 message = _pending
                 _pending = None
+                if not isinstance(message, dict):
+                    # رشتهٔ "disconnect" به اینجا نمی‌رسد (شرط while)؛
+                    # این نگه‌دارنده فقط تایپ پیام ASGI را تثبیت می‌کند.
+                    continue
             else:
                 try:
                     message = await websocket.receive()
