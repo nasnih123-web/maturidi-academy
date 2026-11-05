@@ -55,6 +55,7 @@ from .hifz_mapping import (
     MappingPendingError,
     PhonemeMapping,
     Segment,
+    collapse_phoneme_runs,
     load_phoneme_mapping,
 )
 
@@ -264,6 +265,8 @@ class LiveSession:
     # واج برگشت؟ واج به کلمه تبدیل شد؟).
     _live_word_events: int = 0
     _live_skipped_events: int = 0
+    # واج‌های دورریخته در هم‌ترازی دوباره — فقط تعداد، هرگز محتوا.
+    _resync_dropped: int = 0
     _assigned: dict = field(default_factory=dict)  # (ayah, idx) -> (heard, prob)
     _touched_ayahs: list = field(default_factory=list)
     _extras: list = field(default_factory=list)
@@ -295,7 +298,13 @@ class LiveSession:
         return True
 
     async def _load_units(self, ayah: int) -> list[Segment]:
-        """قطعه‌های یک آیه از نگاشت؛ آیهٔ پذیرفته‌نشده خطای صادقانه است."""
+        """قطعه‌های یک آیه از نگاشت؛ آیهٔ پذیرفته‌نشده خطای صادقانه است.
+
+        رشتهٔ واجیِ هر قطعه پیش از تطابق فروپاشیده می‌شود (کششِ مد
+        به یک نمونه) تا شمارِ مدِ نگاشت با شمارِ شنیده‌شده فرق نکند؛
+        بافرِ شنیده‌شده هم در `feed_phonemes` همان‌طور فروپاشیده
+        می‌شود، پس هر دو سو در یک فضا مقایسه می‌شوند.
+        """
         if self.mapping is None:
             raise MappingPendingError()
         segs = self.mapping.segments_for(self.surah, ayah)
@@ -306,7 +315,18 @@ class LiveSession:
                 f"تراز واجی آیهٔ {self.surah}:{ayah} پذیرفته نشده است؛ "
                 "نمرهٔ زنده برای این آیه در دسترس نیست.",
             )
-        return list(segs)
+        return [
+            Segment(
+                word_indices=s.word_indices,
+                phoneme=(
+                    collapse_phoneme_runs(s.phoneme)
+                    if s.phoneme is not None
+                    else None
+                ),
+                leading_waslah=s.leading_waslah,
+            )
+            for s in segs
+        ]
 
     async def _ensure_units(self) -> None:
         if self._units is None:
@@ -338,6 +358,7 @@ class LiveSession:
             "words": self._live_word_events,
             "skipped": self._live_skipped_events,
             "buffer_chars": len(self._phoneme_buffer),
+            "resync_dropped": self._resync_dropped,
         }
 
     def _emit_word(
@@ -442,6 +463,62 @@ class LiveSession:
             self._index = max(word_indices) + 1
         self._unit_pos += 1
 
+    def _next_unit_phon(self) -> str | None:
+        """رشتهٔ واجیِ نزدیک‌ترین واحدِ واقعیِ بعد (ردِ وقف را رد کن).
+
+        اگر واحدِ جاری آخرینِ آیه باشد، واحدِ بعد سرِ آیهٔ بعد است؛
+        پس قطعه‌های آیهٔ بعد را هم (بی‌جلو بردنِ نشست) نگاه می‌کند.
+        رشتهٔ آیهٔ بعد هم مثل `_load_units` فروپاشیده می‌شود.
+        """
+        if self._units is None:
+            return None
+        for j in range(self._unit_pos + 1, len(self._units)):
+            phon = self._units[j].phoneme
+            if phon is not None:
+                return phon
+        if self.mapping is None:
+            return None
+        nxt_segs = self.mapping.segments_for(self.surah, self._ayah + 1)
+        if not nxt_segs:
+            return None
+        for seg in nxt_segs:
+            if seg.phoneme is not None:
+                return collapse_phoneme_runs(seg.phoneme)
+        return None
+
+    def _anchor_close(self, buf: str, phon: str) -> int | None:
+        """موضعِ مصرفِ کلمهٔ نزدیک را روی شروعِ واحدِ بعد لنگر کن.
+
+        نزدیک‌ترین موضع به len(phon) (در بازهٔ ±۲) که واحدِ بعد
+        دقیقاً از آنجا شروع می‌شود را برمی‌گرداند؛ اگر واحدِ بعدی
+        نباشد یا در بافر پیدا نشد، None. همزهٔ وصلِ اولِ واحدِ بعد
+        (ء + حرکت) هم به‌عنوانِ شکلِ وصل در نظر گرفته می‌شود، چون
+        در خواندنِ پیوسته خوانده نمی‌شود.
+        """
+        nxt = self._next_unit_phon()
+        if nxt is None:
+            return None
+        forms = [nxt]
+        if nxt.startswith("ء"):
+            rest = nxt[1:]
+            if rest and 0x064B <= ord(rest[0]) <= 0x0652:
+                rest = rest[1:]
+            if rest:
+                forms.append(rest)
+        for c in (
+            len(phon),
+            len(phon) - 1,
+            len(phon) + 1,
+            len(phon) - 2,
+            len(phon) + 2,
+        ):
+            if c < 1 or c > len(buf):
+                continue
+            for form in forms:
+                if buf[c:].startswith(form):
+                    return c
+        return None
+
     def _find_ahead_unit(self, buf: str) -> int | None:
         """نزدیک‌ترین واحد بعدیِ مطابق با ابتدای بافر (حداکثر ۴۰ واحد)."""
         if self._units is None:
@@ -462,17 +539,25 @@ class LiveSession:
         تطابق روی رشتهٔ واجی است: توکن‌های بازشناس به هم چسبانده
         می‌شوند و با رشتهٔ واجیِ واحد جاری مقایسه می‌شوند. واحد کامل
         در ابتدای بافر → «درست» (۰٫۹۵)؛ تفاوت اندک (لوونشتاین ≤ ۲ و
-        طول > ۳) → «نزدیک» (۰٫۶۵). وقتی بافر با واحدی جلوتر بخواند،
+        طول > ۳) → «نزدیک» (۰٫۶۵)، ولی مصرفِ آن روی شروعِ واحدِ بعد
+        لنگر می‌شود تا جابه‌جاییِ یک‌حرفیِ مرزِ کلمه (همخوانِ مشترک،
+        حرکتِ پایانیِ وصل) به کلمه‌های بعد سرایت نکند. وقتی بافر با واحدی جلوتر بخواند،
         واحدهای بین‌شان «جاافتاده» می‌شوند (gray) و خواندن ادامه
         می‌یابد. واحدِ رد خودکار (نشانهٔ وقف) واج مصرف نمی‌کند.
         شنیده‌شدهٔ درست/نزدیک، همان متن موردانتظار است — نه حدسِ
-        بازشناس. توجه: خوانشِ کاملاً غلط، بافر را مسموم می‌کند تا
-        هم‌ترازی دوباره (محدودیت شناخته‌شدهٔ مسیر زنده؛ نمره‌دهی
-        ضبطی با تراز کلمه‌ای این را ندارد).
+        بازشناس. هم‌ترازی دوباره: اگر سرِ بافر با هیچ واحدی
+        نمی‌خواند، واج‌های اول یکی‌یکی کنار گذاشته می‌شوند تا ادامهٔ
+        بافر با واحد جاری یا واحدی جلوتر بخواند؛ واج‌های دورریخته
+        فقط شمرده می‌شوند (resync_dropped)، نه ثبت. اگر هیچ
+        هم‌ترازی‌ای پیدا نشد، بافر دست‌نخورده می‌ماند و منطق قبلی
+        (رد واحد / انتظار) کار می‌کند.
         """
         if self.mapping is None:
             raise MappingPendingError()
-        self._phoneme_buffer += "".join(t for t in phonemes if t != "<blank>")
+        self._phoneme_buffer = collapse_phoneme_runs(
+            self._phoneme_buffer
+            + "".join(t for t in phonemes if t != "<blank>")
+        )
         while self._phoneme_buffer:
             if not await self._ensure_position():
                 self._phoneme_buffer = ""
@@ -495,14 +580,37 @@ class LiveSession:
                 self._phoneme_buffer = buf[len(phon):]
                 self._emit_unit(word_indices, "correct", 0.95)
                 continue
+            if unit.leading_waslah and phon.startswith("ء"):
+                # همزهٔ وصل در آغاز کلمه: در خواندنِ پیوسته خوانده
+                # نمی‌شود؛ اگر بافر با رشتهٔ بی‌همزه بخواند، درست
+                # است (همزهٔ قطع — أ/إ — این‌گونه نیست و این شاخه
+                # برای آن نمی‌افتد).
+                stripped = phon[1:]
+                if stripped and 0x064B <= ord(stripped[0]) <= 0x0652:
+                    stripped = stripped[1:]
+                if stripped and buf.startswith(stripped):
+                    self._phoneme_buffer = buf[len(stripped):]
+                    self._emit_unit(word_indices, "correct", 0.95)
+                    continue
             if (
                 len(buf) >= len(phon)
                 and len(phon) > 3
                 and alignment.levenshtein(buf[: len(phon)], phon) <= 2
             ):
-                self._phoneme_buffer = buf[len(phon):]
-                self._emit_unit(word_indices, "close", 0.65)
-                continue
+                # کلمهٔ نزدیک: مرزِ کلمه را روی شروعِ واحدِ بعد لنگر
+                # کن تا جابه‌جاییِ یک‌حرفیِ مرز (همخوانِ مشترکِ دو
+                # کلمه، حرکتِ پایانیِ خوانده‌شده در وصل) به کلمه‌های
+                # بعد سرایت نکند. اگر واحدِ بعد هنوز نرسیده، صبر کن؛
+                # اگر با وجودِ بافرِ بلند لنگر پیدا نشد، مصرف نکن و
+                # به جست‌وجوی جلو / هم‌ترازیِ دوباره (پایین) بسپار.
+                anchored = self._anchor_close(buf, phon)
+                if anchored is not None:
+                    self._phoneme_buffer = buf[anchored:]
+                    self._emit_unit(word_indices, "close", 0.65)
+                    continue
+                nxt = self._next_unit_phon()
+                if nxt is not None and len(buf) < len(phon) + len(nxt):
+                    break
             if phon.startswith(buf):
                 break
             found = self._find_ahead_unit(buf)
@@ -511,6 +619,34 @@ class LiveSession:
                     u_idxs = self._units[self._unit_pos].word_indices
                     self._emit_unit(u_idxs, "skipped", 0.0)
                 continue
+            if len(buf) >= len(phon):
+                # هم‌ترازی دوباره: سرِ بافر شاید یک کلمهٔ
+                # غلط‌خوانده‌شده (یا واج‌های اضافی) است که واحد جاری
+                # و هیچ واحدِ جلوتر را نمی‌سازد. واج‌های اول را
+                # یکی‌یکی کنار بگذار و ببین آیا ادامهٔ بافر با واحد
+                # جاری یا واحدی جلوتر می‌خواند؛ اگر خواند، آن واج‌ها
+                # دور ریخته می‌شوند و خواندن ادامه می‌یابد. اگر نه،
+                # بافر دست‌نخورده می‌ماند — پس خواندنِ خیلی جلوتر
+                # آسیب نمی‌بیند و ردِ واحدِ قبلی انجام می‌شود.
+                cap = 2 * max(len(phon), 1)
+                resynced = False
+                for d in range(1, min(cap, len(buf)) + 1):
+                    rest = buf[d:]
+                    if (
+                        rest.startswith(phon)
+                        or (
+                            len(rest) >= len(phon)
+                            and len(phon) > 3
+                            and alignment.levenshtein(rest[: len(phon)], phon) <= 2
+                        )
+                        or self._find_ahead_unit(rest) is not None
+                    ):
+                        self._phoneme_buffer = rest
+                        self._resync_dropped += d
+                        resynced = True
+                        break
+                if resynced:
+                    continue
             if len(buf) >= 2 * max(len(phon), 1):
                 # بافر حداقل دو برابرِ طولِ موردانتظار شده و هنوز با
                 # واحد جاری نمی‌خواند: این واحد جاافتاده است و خواندن

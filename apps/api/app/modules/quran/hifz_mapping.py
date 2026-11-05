@@ -111,11 +111,44 @@ class Segment:
 
     `word_indices` شاخص‌های کلمه در متن ارائه‌شده (Tanzil، با بسمله
     و وقف) است. `phoneme` رشتهٔ واجیِ واحد است؛ None یعنی «رد
-    خودکار» (نشانهٔ وقف): بی‌مصرف واج، خاکستری.
+    خودکار» (نشانهٔ وقف): بی‌مصرف واج، خاکستری. `leading_waslah`
+    یعنی نخستین کلمهٔ واحد با الفِ وصله (ٱ) شروع می‌شود و همزهٔ
+    اولِ رشتهٔ واجی‌اش در خواندنِ پیوسته خوانده نمی‌شود.
     """
 
     word_indices: tuple[int, ...]
     phoneme: str | None
+    leading_waslah: bool = False
+
+
+# نشانه‌های کششِ مد در الفبای واجی: الف (U+0627)، الف خنجری
+# (U+06E6)، واو کوچک (U+06E5). تکرارشان «مدت» است، نه واجِ تازه:
+# نگاشت یک شمارِ ثابت می‌نویسد، بازشناس شمارِ شنیده‌شده را برمی‌گرداند
+# و خوانندهٔ درست هم مد را ۲ یا ۴ یا ۶ می‌خواند. فروپاشیِ یک رشتهٔ
+# پیاپی به یک نمونه، تطابق را از طولِ مد بی‌نیاز می‌کند (طولِ تجوید
+# را بازشناس هرگز نمره نمی‌دهد) و همخوان‌ها — از جمله تشدید که با
+# تکرارِ همخوان نوشته می‌شود (ررَ، ببِ، للَ) — دست‌نخورده می‌مانند.
+PHONEME_LENGTH_MARKERS = frozenset({"ا", "ۦ", "ۥ"})
+
+
+def collapse_phoneme_runs(s: str) -> str:
+    """رشته‌های پیاپیِ نشانه‌های کشش مد را به یک نمونه فروبپاش.
+
+    فقط برای نشانه‌های کشش (الف، الف خنجری، واو کوچک)؛ تکرارِ
+    همخوان (تشدید) و بقیهٔ رشته دست نمی‌خورد. تابع خودمعکوس نیست،
+    ولی روی رشتهٔ فروپاشیده بی‌اثر است، پس هر دو سویِ تطابق
+    (رشتهٔ موردانتظار و بافرِ شنیده‌شده) را می‌توان با آن یکی کرد.
+    """
+    if not s:
+        return s
+    out: list[str] = []
+    prev: str | None = None
+    for ch in s:
+        if ch == prev and ch in PHONEME_LENGTH_MARKERS:
+            continue
+        out.append(ch)
+        prev = ch
+    return "".join(out)
 
 
 @dataclass
@@ -494,10 +527,15 @@ def load_phoneme_mapping(data_dir: str | Path | None = None) -> PhonemeMapping:
             # Split groups (one word, several phonetic words): the
             # session matches the concatenated string (the stream has
             # no spaces between phonetic words).
+            phon = "".join(plist[p] for p in phon_idxs)
             segs.append(
                 Segment(
                     word_indices=tuple(_index_map[w] for w in word_idxs),
-                    phoneme="".join(plist[p] for p in phon_idxs),
+                    phoneme=phon,
+                    leading_waslah=(
+                        adjusted[word_idxs[0]].startswith("ٱ")
+                        and phon.startswith("ء")
+                    ),
                 )
             )
         adjusted_segments[(surah, ayah)] = segs

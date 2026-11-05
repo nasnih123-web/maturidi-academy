@@ -293,6 +293,170 @@ async def test_feed_phonemes_exact_skip_continue_with_fake_mapping(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_feed_phonemes_resync_after_misread_word(monkeypatch):
+    """یک کلمهٔ غلط‌خوانده‌شده در ابتدا، بقیه را مسموم نمی‌کند:
+    واج‌های اضافی دور ریخته می‌شوند و کلمه‌های بعد هم‌تراز می‌شوند."""
+    events = []
+    session, _ = _session(monkeypatch, events, mapping=_fake_mapping())
+    # واج‌های یک کلمهٔ غلط (zzzz) + واج‌های درستِ هُوَ، اللَّهُ، أَحَدٌ.
+    await session.feed_phonemes(
+        ["z", "z", "z", "z"]  # کلمهٔ غلط به‌جای قُلْ
+        + ["h", "u", "w", "a"]  # هُوَ
+        + ["a", "l", "a", "h"]  # اللَّهُ
+        + ["a", "h", "a", "d"]  # أَحَدٌ
+    )
+    words = _word_events(events)
+    assert [(w["expected"], w["status"]) for w in words] == [
+        ("قُلْ", "skipped"),
+        ("هُوَ", "correct"),
+        ("اللَّهُ", "correct"),
+        ("أَحَدٌ", "correct"),
+    ]
+    assert session.live_counts()["resync_dropped"] == 4
+
+
+@pytest.mark.asyncio
+async def test_feed_phonemes_madd_length_ignored(monkeypatch):
+    """کششِ مد (شمارِ الف/الف خنجری) در تطابق اثر نمی‌کند: نگاشت
+    ۴ الف خنجری می‌نویسد، بازشناس ۲ تا می‌شنود، کلمه درست می‌خورد
+    و کلمه‌های بعد هم سر جایشان می‌مانند (نه نزدیک، نه جاافتاده)."""
+    events = []
+
+    class _MaddMapping:
+        def segments_for(self, surah, ayah):
+            if surah != 112 or ayah != 1:
+                return None
+            return [
+                Segment((0,), "ررَحِۦۦۦۦم"),  # قُلْ، با مدِ ۴ الف خنجری
+                Segment((1,), "huwa"),
+                Segment((2,), "alah"),
+                Segment((3,), "ahad"),
+            ]
+
+    session, _ = _session(monkeypatch, events, mapping=_MaddMapping())
+    await session.feed_phonemes(
+        ["ررَ", "حِ", "ۦۦ", "م"]  # همان کلمه، با مدِ ۲ الف خنجری
+        + ["h", "u", "w", "a"]
+        + ["a", "l", "a", "h"]
+        + ["a", "h", "a", "d"]
+    )
+    words = _word_events(events)
+    assert [(w["expected"], w["status"]) for w in words] == [
+        ("قُلْ", "correct"),
+        ("هُوَ", "correct"),
+        ("اللَّهُ", "correct"),
+        ("أَحَدٌ", "correct"),
+    ]
+    assert session.live_counts()["resync_dropped"] == 0
+
+
+@pytest.mark.asyncio
+async def test_feed_phonemes_close_anchored_on_next_word(monkeypatch):
+    """کلمهٔ نزدیک با یک حرفِ اضافه در سرِ بافر: مصرف روی شروعِ
+    واحدِ بعد لنگر می‌شود (len+1)، نه طولِ ثابتِ موردانتظار؛ پس
+    کلمه‌های بعد دقیق می‌خورند و جابه‌جایی سرایت نمی‌کند."""
+    events = []
+
+    class _AnchorMapping:
+        def segments_for(self, surah, ayah):
+            if surah != 112 or ayah != 1:
+                return None
+            return [
+                Segment((0,), "qulhu"),  # قُلْ، ۵ حرف (شرطِ len > 3)
+                Segment((1,), "huwa"),
+                Segment((2,), "alah"),
+                Segment((3,), "ahad"),
+            ]
+
+    session, _ = _session(monkeypatch, events, mapping=_AnchorMapping())
+    # حرفِ اضافهٔ 'x' در سرِ بافر (مثل حرکتِ پایانیِ کلمهٔ قبل در
+    # وصل) + واج‌های درستِ هُوَ، اللَّهُ، أَحَدٌ.
+    await session.feed_phonemes(
+        ["x", "q", "u", "l", "h", "u"]
+        + ["h", "u", "w", "a"]
+        + ["a", "l", "a", "h"]
+        + ["a", "h", "a", "d"]
+    )
+    words = _word_events(events)
+    assert [(w["expected"], w["status"]) for w in words] == [
+        ("قُلْ", "close"),
+        ("هُوَ", "correct"),
+        ("اللَّهُ", "correct"),
+        ("أَحَدٌ", "correct"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_feed_phonemes_waslah_hamza_optional(monkeypatch):
+    """همزهٔ وصلِ اولِ کلمه در خواندنِ پیوسته اختیاری است: واحدی که
+    با الفِ وصله شروع می‌شود، بی‌همزه هم درست می‌خورد؛ ولی همزهٔ
+    قطع (leading_waslah=False) بی‌همزه درست نمی‌خورد."""
+    events = []
+
+    class _WaslahMapping:
+        def segments_for(self, surah, ayah):
+            if surah != 112 or ayah != 1:
+                return None
+            return [
+                Segment((0,), "ءqulhu", leading_waslah=True),
+                Segment((1,), "huwa"),
+                Segment((2,), "alah"),
+                Segment((3,), "ahad"),
+            ]
+
+    session, _ = _session(monkeypatch, events, mapping=_WaslahMapping())
+    # واج‌ها بی‌همزه می‌آیند (خواندنِ پیوسته).
+    await session.feed_phonemes(
+        ["q", "u", "l", "h", "u"]
+        + ["h", "u", "w", "a"]
+        + ["a", "l", "a", "h"]
+        + ["a", "h", "a", "d"]
+    )
+    words = _word_events(events)
+    assert [(w["expected"], w["status"]) for w in words] == [
+        ("قُلْ", "correct"),
+        ("هُوَ", "correct"),
+        ("اللَّهُ", "correct"),
+        ("أَحَدٌ", "correct"),
+    ]
+
+    events2 = []
+
+    class _QataMapping:
+        def segments_for(self, surah, ayah):
+            if surah != 112 or ayah != 1:
+                return None
+            return [
+                Segment((0,), "ءqulhu", leading_waslah=False),
+                Segment((1,), "huwa"),
+                Segment((2,), "alah"),
+                Segment((3,), "ahad"),
+            ]
+
+    session2, _ = _session(monkeypatch, events2, mapping=_QataMapping())
+    await session2.feed_phonemes(
+        ["q", "u", "l", "h", "u"]
+        + ["h", "u", "w", "a"]
+        + ["a", "l", "a", "h"]
+        + ["a", "h", "a", "d"]
+    )
+    words2 = _word_events(events2)
+    assert words2[0]["status"] != "correct"
+
+
+def test_collapse_phoneme_runs_keeps_shadda():
+    """فروپاشیِ کشش فقط الف/الف خنجری/واو کوچک را می‌گیرد؛ تشدید
+    (تکرارِ همخوان) و بقیهٔ رشته دست نمی‌خورد."""
+    from app.modules.quran.hifz_mapping import collapse_phoneme_runs
+
+    assert collapse_phoneme_runs("ررَحِۦۦۦۦم") == "ررَحِۦم"
+    assert collapse_phoneme_runs("ضضَااااااللِۦۦۦۦن") == "ضضَاللِۦن"
+    assert collapse_phoneme_runs("ررَ") == "ررَ"
+    assert collapse_phoneme_runs("للَ") == "للَ"
+    assert collapse_phoneme_runs("") == ""
+
+
+@pytest.mark.asyncio
 async def test_live_counts_only_counts_words_and_skips(monkeypatch):
     """شمارنده‌های جلسه: کلمه‌های درست/نزدیک جدا از جاافتاده‌ها؛ بافر خالی."""
     events = []
@@ -302,7 +466,12 @@ async def test_live_counts_only_counts_words_and_skips(monkeypatch):
         + ["a", "l", "a", "h"]
         + ["a", "h", "a", "d"]
     )
-    assert session.live_counts() == {"words": 3, "skipped": 1, "buffer_chars": 0}
+    assert session.live_counts() == {
+        "words": 3,
+        "skipped": 1,
+        "buffer_chars": 0,
+        "resync_dropped": 0,
+    }
 
 
 # ---------------------------------------------------------------------------
