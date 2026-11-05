@@ -2469,6 +2469,7 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
 .quran-hifz-study .hifz-wall .hifz-word-wrong { background: rgba(179,38,30,0.14); color: #8f1d17; }
 .quran-hifz-study .hifz-wall .hifz-word-skipped { background: rgba(128,128,128,0.35); color: #333333; }
 .quran-hifz-study .hifz-wall .hifz-word-peeked { background: rgba(0,0,0,0.06); outline: 1px dashed rgba(0,0,0,0.45); color: #1c1710; }
+.quran-hifz-study .hifz-wall .hifz-word-live { background: rgba(0,0,0,0.04); color: #1c1710; }
 .quran-hifz-study .hifz-wall .hifz-word-practice { outline: 2px solid #8a6d1b; outline-offset: 2px; }
 .quran-hifz-study .hifz-wall .hifz-word-heard,
 .quran-hifz-study .hifz-wall .hifz-word-peeked-tag,
@@ -2483,11 +2484,15 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
 .quran-hifz-study { padding-bottom: 110px; }
 .quran-hifz-study .hifz-line-page { background: #ffffff; color: #1c1710; border: none; border-top: 1px solid #e5e0d5; border-bottom: 1px solid #e5e0d5; border-radius: 0; box-shadow: none; padding: 1.25rem 1.5rem 1.5rem; margin-bottom: 0; }
 .quran-hifz-study .hifz-line-caption { text-align: center; font-family: system-ui, sans-serif; font-size: 0.85rem; color: #8a8378; margin: 0 0 1rem; }
-.quran-hifz-study .hifz-line { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: clamp(1.25rem, 4.2vw, 2.1rem); line-height: 2.1; text-align: justify; text-align-last: justify; margin: 0; padding: 0.15rem 0; border-bottom: 1px solid rgba(0,0,0,0.06); }
+.quran-hifz-study .hifz-line { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: clamp(1.25rem, 4.2vw, 2.1rem); line-height: 2.1; text-align: justify; text-align-last: justify; margin: 0; padding: 0.15rem 0; border-bottom: 1px solid rgba(0,0,0,0.10); }
 .quran-hifz-study .hifz-line:last-child { border-bottom: none; }
 .quran-hifz-study .hifz-line-header { text-align: center; text-align-last: center; font-size: 0.85em; color: #8a8378; border-top: 1px solid #e5e0d5; border-bottom: 1px solid #e5e0d5; padding: 0.4rem 0; margin: 0.5rem 0; }
 .quran-hifz-study .hifz-line-basmala { text-align: center; text-align-last: center; }
-.quran-hifz-study .hifz-line-marker { display: inline-block; font-size: 0.55em; line-height: 1; color: #8a8378; border: 1.5px solid #a89f8d; border-radius: 50%; padding: 0.35em 0.3em 0.25em; margin: 0 0.15em; vertical-align: middle; box-shadow: 0 0 0 2px #ffffff, 0 0 0 3.5px #c9c2b2; }
+/* Ayah-end marker: an ornate rosette (own SVG, like the printed
+   mushaf). The outline and number live in the SVG, so this span
+   carries no border or shadow of its own. */
+.quran-hifz-study .hifz-line-marker { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; margin: 0 0.15em; }
+.quran-hifz-study .hifz-line-marker svg { display: block; width: 1.5em; height: 1.5em; }
 .quran-hifz-study .hifz-line-word-hidden { visibility: hidden; }
 .quran-hifz-study .hifz-line-word { display: inline-flex; align-items: baseline; gap: 0.2rem; padding: 0 0.25rem; border-radius: 6px; }
 .quran-hifz-study .hifz-line-word .hifz-word-text { min-height: 0; }
@@ -2496,6 +2501,21 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
 .quran-hifz-study .hifz-line-word.hifz-word-wrong { background: rgba(179,38,30,0.14); color: #8f1d17; }
 .quran-hifz-study .hifz-line-word.hifz-word-skipped { background: rgba(128,128,128,0.35); color: #333333; }
 .quran-hifz-study .hifz-line-word.hifz-word-peeked { background: rgba(0,0,0,0.06); outline: 1px dashed rgba(0,0,0,0.45); color: #1c1710; }
+/* Tajweed letter colors (the clip's mushaf ink). They apply only to
+   LIVE words: once a word is graded, the grade color wins and the
+   letters inherit it, so a wrong word never shows a green letter.
+   The newest word just heard is blue all over until the next word
+   arrives (the clip's live word); older live words settle to black
+   ink with their tajweed letters. */
+.quran-hifz-study .hifz-word-live .hifz-tj-green { color: #2e9e44; }
+.quran-hifz-study .hifz-word-live .hifz-tj-blue { color: #1a9fd4; }
+.quran-hifz-study .hifz-word-live .hifz-tj-pink { color: #d6336c; }
+.quran-hifz-study .hifz-word-live .hifz-tj-gray { color: #a39d90; }
+.quran-hifz-study .hifz-word-live-new { color: #1a9fd4; }
+.quran-hifz-study .hifz-word-live-new .hifz-tj-green,
+.quran-hifz-study .hifz-word-live-new .hifz-tj-blue,
+.quran-hifz-study .hifz-word-live-new .hifz-tj-pink,
+.quran-hifz-study .hifz-word-live-new .hifz-tj-gray { color: #1a9fd4; }
 .quran-hifz-study .hifz-line-word.hifz-word-practice { outline: 2px solid #8a6d1b; outline-offset: 2px; }
 .quran-hifz-study .hifz-line-word .hifz-word-dispute { min-height: 28px; padding: 0 0.5rem; font-size: 0.7rem; }
 .quran-hifz-study .hifz-line-word .hifz-word-disputed { font-size: 0.65rem; color: #444444; font-family: system-ui, sans-serif; }
