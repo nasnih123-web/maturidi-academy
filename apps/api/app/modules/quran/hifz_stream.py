@@ -593,7 +593,7 @@ class LiveSession:
         for wi in word_indices:
             expected = self._words[wi] if wi < len(self._words) else ""
             if heard is not None:
-                h = heard
+                h: str | None = heard
             else:
                 h = expected if status in ("correct", "close") else None
             self._emit_word(self._ayah, wi, expected, status, prob, h)
