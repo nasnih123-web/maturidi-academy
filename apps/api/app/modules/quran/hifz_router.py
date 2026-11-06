@@ -524,7 +524,8 @@ async def serve_stream(websocket, session, recognizer, queue: asyncio.Queue) -> 
         logger.info(
             "hifz live session ended attempt=%s surah=%s ayah=%s reason=%s "
             "frames=%d phonemes_feed=%d phonemes_flush=%d words=%d skipped=%d "
-            "buffer_chars=%d resync_dropped=%d first_feed_ms=%s frames_first_s=%d",
+            "buffer_chars=%d resync_dropped=%d located=%d "
+            "first_feed_ms=%s frames_first_s=%d",
             session.attempt.id,
             session.surah,
             session.start_ayah,
@@ -536,6 +537,7 @@ async def serve_stream(websocket, session, recognizer, queue: asyncio.Queue) -> 
             counts["skipped"],
             counts["buffer_chars"],
             counts["resync_dropped"],
+            counts["located"],
             f"{first_feed_ms:.1f}" if first_feed_ms is not None else "none",
             frames_first_second,
         )

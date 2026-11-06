@@ -470,6 +470,7 @@ export function QuranReader({
           locale={locale}
           surahList={surahList}
           initialSurah={surah.number}
+          initialAyah={initialAyah}
           initialMushaf={initialMushaf ?? 'hafs/kfqc'}
           initialTexts={initialTexts}
           labels={labels.hifz}

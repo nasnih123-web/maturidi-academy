@@ -44,6 +44,7 @@ from app.modules.quran.hifz_stream import (
     MappingPendingError,
     SherpaPhonemeStream,
     StreamWord,
+    locate_ayah,
     require_phoneme_mapping,
 )
 
@@ -444,6 +445,183 @@ async def test_feed_phonemes_waslah_hamza_optional(monkeypatch):
     assert words2[0]["status"] != "correct"
 
 
+# ---------------------------------------------------------------------------
+# یافتنِ آیه از روی صدا + قانونِ خاکستریِ ≤۵ آیه
+# ---------------------------------------------------------------------------
+
+
+def test_locate_ayah_finds_start_ayah_from_phonemes():
+    """یافتنِ آیه: واج‌های آیهٔ ۳ را با راهنمای ۱ پیدا می‌کند؛ بافرِ
+    کوتاه یا بی‌ربط → None."""
+    mapping = _fake_mapping()
+    buf = "lamyalidwalamyulad" + "walamyakunlahukufuwanahad"
+    assert locate_ayah(mapping, 112, buf, hint_ayah=1) == (3, 0)
+    # همان آیهٔ راهنما هم پیدا می‌شود.
+    buf1 = "qulhuwaalahahad" + "alahsamad"
+    assert locate_ayah(mapping, 112, buf1, hint_ayah=1) == (1, 0)
+    # بافرِ کوتاه‌تر از آستانه → None.
+    assert locate_ayah(mapping, 112, "lamyalid", hint_ayah=1) is None
+    # بافرِ بی‌ربط → None.
+    assert locate_ayah(mapping, 112, "zzzzzzzzzzzzzzzzzzzzzzzz", hint_ayah=1) is None
+
+
+def test_locate_ayah_prefers_hint_on_tie_and_none_when_ambiguous():
+    """تساویِ دقیق: اگر راهنما در میانِ برندگان باشد همان برمی‌گردد،
+    وگرنه مبهم است و None (نشست روی راهنما می‌ماند)."""
+    shared = "abcdefghij0123456789abcd"
+
+    class _TieMapping:
+        def segments_for(self, surah, ayah):
+            if surah != 112:
+                return None
+            if ayah == 1:
+                return [Segment((0,), shared), Segment((1,), "diff11111")]
+            if ayah == 2:
+                return [Segment((0,), shared), Segment((1,), "diff22222")]
+            return None
+
+    mapping = _TieMapping()
+    assert locate_ayah(mapping, 112, shared, hint_ayah=1) == (1, 0)
+    assert locate_ayah(mapping, 112, shared, hint_ayah=3) is None
+
+
+def _wide_session(monkeypatch, events=None, start_ayah=1):
+    """نشستِ مصنوعی روی سورهٔ ۸آیه‌ایِ ۱۱۲ با رشته‌های واجیِ بلند و
+    متمایز (هر آیه ۲ کلمه، ۲۶ حرفِ واجی؛ آیه‌ها با دست‌کم ۳ حرف از هم
+    فرق می‌کنند تا قانونِ «نزدیک» به‌اشتباه لنگر نیندازد). برای
+    آزمونِ یافتن/خاکستری لازم است، چون رشته‌های کوتاهِ _FAKE_SEGMENTS
+    در هم‌ترازیِ دوباره جویده می‌شوند."""
+    from app.modules.quran import hifz_stream
+    from app.modules.quran import service as quran_service
+
+    words = {a: [f"w{a}a", f"w{a}b"] for a in range(1, 9)}
+    segs = {}
+    for a in range(1, 9):
+        letter = chr(ord("a") + a - 1)
+        segs[a] = [
+            Segment((0,), letter * 3 + "m" * 10),
+            Segment((1,), letter * 3 + "n" * 10),
+        ]
+
+    class _WideMapping:
+        def segments_for(self, surah, ayah):
+            if surah != 112:
+                return None
+            return list(segs.get(ayah, [])) or None
+
+    async def _wide_ayah_words(db, surah, ayah):
+        return list(words[ayah])
+
+    real_get_surah = quran_service.get_surah
+
+    def _wide_get_surah(number):
+        if number == 112:
+            return SimpleNamespace(ayahs=8)
+        return real_get_surah(number)
+
+    async def fake_store(db, attempt, surah, ayah, aligned, extra):
+        return [SimpleNamespace(status=w.status) for w in aligned]
+
+    monkeypatch.setattr(hifz_service, "_ayah_words", _wide_ayah_words)
+    monkeypatch.setattr(hifz_service, "_store_grade", fake_store)
+    monkeypatch.setattr(hifz_stream.quran_service, "get_surah", _wide_get_surah)
+
+    events = events if events is not None else []
+    attempt = SimpleNamespace(id=uuid.uuid4())
+    session = LiveSession(
+        db=None,
+        attempt=attempt,
+        surah=112,
+        start_ayah=start_ayah,
+        green=0.8,
+        amber=0.5,
+        sender=events.append,
+        mapping=_WideMapping(),
+    )
+    session._ayah = start_ayah
+    session._words = list(words[start_ayah])
+    session._index = 0
+    session._touch(start_ayah)
+    return session, events, words, segs
+
+
+@pytest.mark.asyncio
+async def test_feed_phonemes_locates_start_ayah_when_hint_is_wrong(monkeypatch):
+    """نشست با راهنمای آیهٔ ۱ ولی خواندن از آیهٔ ۳: نشست همان‌جا
+    لنگر می‌اندازد، آیه‌های ۱ و ۲ خاکستری نمی‌شوند و کلمه‌ها شنیده
+    می‌شوند (نه ۱۶۳۱ جاافتاده)."""
+    events = []
+    session, events, _words, segs = _wide_session(
+        monkeypatch, events, start_ayah=1
+    )
+    session._locating = True
+    phon3 = "".join(s.phoneme for s in segs[3])
+    phon4 = "".join(s.phoneme for s in segs[4])
+    await session.feed_phonemes(list(phon3 + phon4))
+    words_out = _word_events(events)
+    assert [w["ayah"] for w in words_out] == [3, 3, 4, 4]
+    assert all(w["status"] == "correct" for w in words_out)
+    assert session.live_counts()["skipped"] == 0
+    assert session.live_counts()["located"] == 1
+    assert [e for e in events if e["type"] == "located"] == [
+        {"type": "located", "surah": 112, "ayah": 3}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_feed_phonemes_gray_skipped_within_five_ayahs(monkeypatch):
+    """پرشِ ≤۵ آیه: آیهٔ جاافتاده خاکستری می‌شود و خواندن ادامه پیدا
+    می‌کند؛ رویدادِ located نمی‌آید."""
+    events = []
+    session, events, _words, segs = _wide_session(
+        monkeypatch, events, start_ayah=1
+    )
+    phon1 = "".join(s.phoneme for s in segs[1])
+    phon3 = "".join(s.phoneme for s in segs[3])
+    await session.feed_phonemes(list(phon1))
+    await session.feed_phonemes(list(phon3))
+    words_out = _word_events(events)
+    assert [(w["ayah"], w["status"]) for w in words_out] == [
+        (1, "correct"),
+        (1, "correct"),
+        (2, "skipped"),
+        (2, "skipped"),
+        (3, "correct"),
+        (3, "correct"),
+    ]
+    assert session.live_counts()["located"] == 0
+    assert [e for e in events if e["type"] == "located"] == []
+
+
+@pytest.mark.asyncio
+async def test_feed_phonemes_relocates_after_more_than_five_skipped_ayahs(
+    monkeypatch,
+):
+    """پرشِ بیش از ۵ آیه: آیه‌های تا ۵ آیه خاکستری می‌شوند، ولی آیهٔ
+    بعد از آن خاکستری نمی‌شود؛ نشست از نو می‌یابد و همان‌جا ادامه
+    می‌دهد (رویداد `located`)."""
+    events = []
+    session, events, _words, segs = _wide_session(
+        monkeypatch, events, start_ayah=1
+    )
+    phon1 = "".join(s.phoneme for s in segs[1])
+    phon8 = "".join(s.phoneme for s in segs[8])
+    await session.feed_phonemes(list(phon1))
+    await session.feed_phonemes(list(phon8))
+
+    words_out = _word_events(events)
+    heard = [(w["ayah"], w["status"]) for w in words_out if w["status"] != "skipped"]
+    skipped_ayahs = sorted({w["ayah"] for w in words_out if w["status"] == "skipped"})
+    assert heard == [(1, "correct"), (1, "correct"), (8, "correct"), (8, "correct")]
+    # فقط آیه‌های ۲ تا ۶ خاکستری‌اند (۵ آیه)؛ آیهٔ ۷ هرگز لمس نشد.
+    assert skipped_ayahs == [2, 3, 4, 5, 6]
+    assert 7 not in {w["ayah"] for w in words_out}
+    assert session.live_counts()["located"] == 1
+    assert [e for e in events if e["type"] == "located"] == [
+        {"type": "located", "surah": 112, "ayah": 8}
+    ]
+
+
 def test_collapse_phoneme_runs_keeps_shadda():
     """فروپاشیِ کشش فقط الف/الف خنجری/واو کوچک را می‌گیرد؛ تشدید
     (تکرارِ همخوان) و بقیهٔ رشته دست نمی‌خورد."""
@@ -471,6 +649,7 @@ async def test_live_counts_only_counts_words_and_skips(monkeypatch):
         "skipped": 1,
         "buffer_chars": 0,
         "resync_dropped": 0,
+        "located": 0,
     }
 
 

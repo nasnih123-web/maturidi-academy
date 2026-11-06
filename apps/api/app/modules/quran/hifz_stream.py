@@ -8,6 +8,12 @@
   می‌فرستد؛ سرور کلمه‌های شناخته‌شده را با وضعیت و احتمال برمی‌گرداند.
 - ادامه پس از جاافتادگی حفظ می‌شود: کلمه/آیهٔ جاافتاده خاکستری نوشته
   می‌شود و نوشتن از آن رد می‌شود؛ نمره‌دهی هرگز سر جاافتادگی نمی‌ایستد.
+- یافتنِ آیه از روی صدا: نشست با آیهٔ انتخاب‌شده به‌عنوانِ راهنما
+  شروع می‌شود، ولی اگر خواندن از آیهٔ دیگری شروع شود، چند ثانیهٔ
+  اولِ واج‌ها درونِ همان سوره جست‌وجو می‌شود و نشست همان‌جا لنگر
+  می‌اندازد (رویداد `located`)؛ قانونِ کاربر: آیهٔ جاافتاده فقط تا
+  ۵ آیه خاکستری می‌شود؛ بیشتر از آن، نشست از نو می‌یابد و آیه‌های
+  بینِ راه خاکستری نمی‌شوند (نه در صفحه، نه در نمرهٔ ذخیره‌شده).
 - پایان جریان، نشست را با همان جدول‌های نمره‌دهیِ ضبطی ذخیره می‌کند
   (hifz_attempts / hifz_word_scores / hifz_mistakes)؛ منطق ذخیره‌سازی
   تکرار نشده، بلکه همان `_store_grade` دوباره استفاده می‌شود.
@@ -63,6 +69,92 @@ logger = logging.getLogger(__name__)
 
 # کلمهٔ قابل‌فهم برای آزمون: پنجرهٔ جست‌وجوی جلو در تراز زنده.
 _LIVE_LOOKAHEAD = 40
+
+# کمترین طولِ واجی برای یافتنِ آیه: کمتر از این، جست‌وجو مبهم است
+# (چند حرفِ واجی در چند آیه تکرار می‌شود).
+_LOCATE_MIN_CHARS = 24
+# بیشترین طولِ کاوشِ یافتن: چند ثانیهٔ اولِ خواندن برای لنگر کافی است.
+_LOCATE_PROBE_CHARS = 40
+# کمترین طولِ تطابقِ یک آیه: آیهٔ کوتاه (رشتهٔ واجیِ کمتر از ۲۴ حرف)
+# هم باید پیدا شود؛ ۸ حرفِ واجی (حدود ۲ کلمه) هنوز متمایز است و
+# تساویِ دقیق با قانونِ راهنما/ابهام حل می‌شود.
+_LOCATE_MIN_MATCH = 8
+# قانونِ کاربر: آیهٔ جاافتاده فقط تا ۵ آیه خاکستری می‌شود؛ بیشتر از
+# آن، نشست از نو می‌یابد (جست‌وجوی تازه)، نه اینکه سوره را خاکستری کند.
+_MAX_GRAY_AYAH_GAP = 5
+
+
+def locate_ayah(mapping, surah, buf, hint_ayah=None, allow_backward=True):
+    """آیه‌ای از سوره را پیدا کن که واج‌های شنیده‌شده در آن باشد.
+
+    `buf` رشتهٔ واجیِ فروپاشیدهٔ شنیده‌شده (چند ثانیهٔ اول) است؛
+    کاوش، چند ده کاراکترِ اولِ آن است. برای هر آیه، بلندترین پیشوندِ
+    کاوش که دقیقاً زیررشته‌ای از رشتهٔ واجیِ موردانتظارِ آن آیه باشد
+    امتیاز می‌گیرد؛ آیهٔ برنده باید دست‌کم `_LOCATE_MIN_CHARS`
+    کاراکتر بخواند. اگر آیهٔ راهنما (hint) در میانِ برندگانِ مساوی
+    باشد، همان برمی‌گردد (کاربر معمولاً همان‌جایی است که انتخاب
+    کرده)؛ اگر چند آیه دقیقاً مساوی باشند، مبهم است و None
+    برمی‌گردد (نشست روی راهنما می‌ماند). `allow_backward=False`
+    یعنی فقط آیه‌های جلوتر از راهنما پذیرفته می‌شوند (یافتنِ دوبارهٔ
+    وسطِ نشست فقط به جلو می‌رود، مثل ترتیل — خواندنِ دوبارهٔ آیهٔ
+    قبلی، نشست را به عقب نمی‌برد).
+    """
+    if mapping is None or len(buf) < _LOCATE_MIN_CHARS:
+        return None
+    probe = buf[:_LOCATE_PROBE_CHARS]
+    meta = quran_service.get_surah(surah)
+    best_len = 0
+    best: list[tuple[int, int, int]] = []  # (ayah, offset, unit_pos)
+    for ayah in range(1, meta.ayahs + 1):
+        if not allow_backward and hint_ayah is not None and ayah <= hint_ayah:
+            continue
+        segs = mapping.segments_for(surah, ayah)
+        if not segs:
+            continue
+        expected = "".join(
+            collapse_phoneme_runs(s.phoneme) for s in segs if s.phoneme is not None
+        )
+        if not expected:
+            continue
+        # بلندترین پیشوندِ کاوش که در رشتهٔ موردانتظار هست؛ آیهٔ
+        # کوتاه هم با همین کفِ ۸ حرف پیدا می‌شود.
+        k = min(len(probe), len(expected))
+        found_len = 0
+        found_off = -1
+        while k >= _LOCATE_MIN_MATCH:
+            off = expected.find(probe[:k])
+            if off >= 0:
+                found_len = k
+                found_off = off
+                break
+            k -= 1
+        if found_len == 0:
+            continue
+        # واحدی که تطابق از آن شروع می‌شود.
+        unit_pos = len(segs) - 1
+        acc = 0
+        for j, s in enumerate(segs):
+            if s.phoneme is None:
+                continue
+            plen = len(collapse_phoneme_runs(s.phoneme))
+            if acc + plen > found_off:
+                unit_pos = j
+                break
+            acc += plen
+        if found_len > best_len:
+            best_len = found_len
+            best = [(ayah, found_off, unit_pos)]
+        elif found_len == best_len:
+            best.append((ayah, found_off, unit_pos))
+    if not best:
+        return None
+    if hint_ayah is not None:
+        for ayah, _off, unit_pos in best:
+            if ayah == hint_ayah:
+                return (ayah, unit_pos)
+    if len(best) == 1:
+        return (best[0][0], best[0][2])
+    return None
 
 
 class LiveUnavailableError(APIError):
@@ -267,10 +359,23 @@ class LiveSession:
     _live_skipped_events: int = 0
     # واج‌های دورریخته در هم‌ترازی دوباره — فقط تعداد، هرگز محتوا.
     _resync_dropped: int = 0
+    # یافتنِ آیه: نشست با راهنما شروع می‌شود و تا لنگر نینداخته، در
+    # حالتِ یافتن است؛ `_last_heard_ayah` آخرین آیهٔ شنیده‌شده است
+    # (پنجرهٔ ۵آیه‌ایِ خاکستری از همان‌جا شمرده می‌شود) و
+    # `_relocate_pending` یعنی اشاره‌گر بیش از ۵ آیه از آن جلو رفته
+    # و یافتنِ دوباره لازم است.
+    _locating: bool = False
+    _last_heard_ayah: int = 0
+    _relocate_pending: bool = False
+    _located_count: int = 0
     _assigned: dict = field(default_factory=dict)  # (ayah, idx) -> (heard, prob)
     _touched_ayahs: list = field(default_factory=list)
     _extras: list = field(default_factory=list)
     _events: list = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        # آخرین آیهٔ شنیده‌شده از آیهٔ شروع (راهنما) آغاز می‌شود.
+        self._last_heard_ayah = self.start_ayah
 
     def _emit(self, event: dict) -> None:
         self._events.append(event)
@@ -295,6 +400,16 @@ class LiveSession:
         self._index = 0
         self._units = None
         self._unit_pos = 0
+        # قانونِ خاکستریِ ≤۵ آیه: اگر اشاره‌گر بیش از ۵ آیه از آخرین
+        # کلمهٔ شنیده‌شده جلو رفته، یافتنِ دوباره لازم است — نه
+        # خاکستریِ بیشتر. پرچم را بگذار تا feed_phonemes روی بافرِ
+        # جاری یافتن را امتحان کند؛ آیه‌های ردشده تا این‌جا (≤۵)
+        # خاکستری مانده‌اند و آیه‌های بعد از آن هرگز لمس نمی‌شوند.
+        if (
+            self._last_heard_ayah
+            and self._ayah - self._last_heard_ayah > _MAX_GRAY_AYAH_GAP
+        ):
+            self._relocate_pending = True
         return True
 
     async def _load_units(self, ayah: int) -> list[Segment]:
@@ -359,6 +474,7 @@ class LiveSession:
             "skipped": self._live_skipped_events,
             "buffer_chars": len(self._phoneme_buffer),
             "resync_dropped": self._resync_dropped,
+            "located": self._located_count,
         }
 
     def _emit_word(
@@ -369,6 +485,9 @@ class LiveSession:
             self._live_skipped_events += 1
         else:
             self._live_word_events += 1
+            # آخرین آیهٔ شنیده‌شده: پنجرهٔ ۵آیه‌ایِ خاکستری از این‌جا
+            # شمرده می‌شود.
+            self._last_heard_ayah = ayah
         self._touch(ayah)
         self._assigned[(ayah, index)] = (heard, prob)
         self._emit(LiveWord(self.surah, ayah, index, expected, status, prob, heard).event())
@@ -532,6 +651,108 @@ class LiveSession:
                 return j
         return None
 
+    async def _jump_to(self, ayah: int, unit_pos: int) -> None:
+        """پرش به آیه/واحدِ یافته‌شده؛ آیه‌های بینِ راه خاکستری نمی‌شوند.
+
+        فقط آیهٔ مقصد لمس می‌شود؛ آیه‌های ردشده (بیش از ۵ آیه) نه
+        خاکستری می‌شوند و نه ذخیره — نشست از نو می‌یابد و از همان‌جا
+        ادامه می‌دهد. آیهٔ مبدأ که هیچ کلمه‌ای برایش ثبت نشده،
+        «لمس‌شده» نمی‌ماند: کاربر اصلاً از آن‌جا شروع نکرده، پس
+        جاافتاده هم ثبت نمی‌شود.
+        """
+        from_ayah = self._ayah
+        self._ayah = ayah
+        self._words = await self._load_ayah(ayah)
+        self._units = None
+        self._unit_pos = 0
+        await self._ensure_units()
+        assert self._units is not None
+        self._unit_pos = min(unit_pos, max(len(self._units) - 1, 0))
+        unit = self._units[self._unit_pos]
+        self._index = min(unit.word_indices) if unit.word_indices else 0
+        self._last_heard_ayah = ayah
+        self._located_count += 1
+        if from_ayah != ayah and not any(
+            a == from_ayah for (a, _i) in self._assigned
+        ):
+            self._touched_ayahs = [a for a in self._touched_ayahs if a != from_ayah]
+        self._touch(ayah)
+        self._emit({"type": "located", "surah": self.surah, "ayah": ayah})
+
+    async def _try_anchor_or_locate(self) -> bool:
+        """لنگرِ سریع یا یافتنِ آیه؛ True یعنی به حلقهٔ اصلی برو.
+
+        - بافر با واحدِ جاری (یا شکلِ وصل/نزدیکِ آن) بخواند → لنگرِ
+          فوری، بی‌تأخیر (حالتِ رایج: کاربر همان آیهٔ انتخاب‌شده را
+          می‌خواند).
+        - بافر کوتاه‌تر از آستانه باشد → False (منتظر واجِ بیشتر
+          بمان؛ بافر مصرف نمی‌شود).
+        - وگرنه یافتن را روی بافر اجرا کن: آیه پیدا شد → پرش
+          (رویداد `located`)؛ پیدا نشد → روی همان آیهٔ راهنما بمان
+          (رفتارِ پیشین) و دیگر منتظر نمان.
+        """
+        buf = self._phoneme_buffer
+        if not buf:
+            return False
+        await self._ensure_units()
+        assert self._units is not None
+        phon = None
+        waslah = False
+        for j in range(self._unit_pos, len(self._units)):
+            p = self._units[j].phoneme
+            if p is not None:
+                phon = p
+                waslah = self._units[j].leading_waslah
+                break
+        if phon is not None:
+            if buf.startswith(phon) or phon.startswith(buf):
+                self._locating = False
+                self._relocate_pending = False
+                return True
+            if waslah and phon.startswith("ء"):
+                stripped = phon[1:]
+                if stripped and 0x064B <= ord(stripped[0]) <= 0x0652:
+                    stripped = stripped[1:]
+                if stripped and (
+                    buf.startswith(stripped) or stripped.startswith(buf)
+                ):
+                    self._locating = False
+                    self._relocate_pending = False
+                    return True
+            if (
+                len(buf) >= len(phon)
+                and len(phon) > 3
+                and alignment.levenshtein(buf[: len(phon)], phon) <= 2
+            ):
+                self._locating = False
+                self._relocate_pending = False
+                return True
+        if len(buf) < _LOCATE_MIN_CHARS:
+            return False
+        # یافتن: در شروعِ نشست هر آیه‌ای مجاز است؛ در یافتنِ دوبارهٔ
+        # وسطِ نشست فقط آیه‌های جلوتر از اشاره‌گرِ جاری.
+        if self._locating:
+            found = locate_ayah(
+                self.mapping, self.surah, buf,
+                hint_ayah=self.start_ayah, allow_backward=True,
+            )
+        else:
+            found = locate_ayah(
+                self.mapping, self.surah, buf,
+                hint_ayah=self._ayah, allow_backward=False,
+            )
+        if found is not None:
+            ayah, unit_pos = found
+            if ayah != self._ayah or unit_pos != self._unit_pos:
+                await self._jump_to(ayah, unit_pos)
+            self._locating = False
+            self._relocate_pending = False
+            return True
+        # پیدا نشد: روی همان آیه بمان و دیگر منتظر نمان.
+        self._locating = False
+        self._relocate_pending = False
+        return True
+
     async def feed_phonemes(self, phonemes: list[str]) -> None:
         """واج‌های Zipformer را با نگاشت قطعه‌ای به کلمه تبدیل کن.
 
@@ -561,6 +782,19 @@ class LiveSession:
         while self._phoneme_buffer:
             if not await self._ensure_position():
                 self._phoneme_buffer = ""
+                return
+            # یافتنِ آیه (شروعِ نشست یا یافتنِ دوباره پس از پرشِ بیش
+            # از ۵ آیه): این چک، پس از `_ensure_position` است تا
+            # پرچمی که همان `_ensure_position` (در `_advance_ayah`)
+            # بلند کرده، پیش از لمسِ واحدهای آیهٔ تازه دیده شود —
+            # وگرنه نخستین واحدِ آیهٔ تازه خاکستری می‌شد و بعد
+            # یافتن اجرا می‌شد. تا لنگر نینداخته، حلقهٔ اصلی اجرا
+            # نمی‌شود؛ اگر بافر هنوز کوتاه است، این فراخوانی
+            # هیچ‌کار نمی‌کند و واج‌ها برای فراخوانیِ بعد می‌مانند.
+            if (
+                (self._locating or self._relocate_pending)
+                and not await self._try_anchor_or_locate()
+            ):
                 return
             await self._ensure_units()
             assert self._units is not None
@@ -764,4 +998,8 @@ async def start_live_session(
     # بی‌آنکه چیزی بخواند جریان را تمام کند، همان یک آیه جاافتاده
     # ثبت می‌شود (مثل نمره‌دهی ضبطی با صوت خالی)؛ بقیهٔ سوره هرگز.
     session._touch(ayah)
+    # آیهٔ شروع فقط راهنماست: اگر خواندن از آیهٔ دیگری شروع شود،
+    # نشست با چند ثانیهٔ اولِ واج‌ها درونِ همان سوره می‌یابد و
+    # همان‌جا لنگر می‌اندازد (feed_phonemes → _try_anchor_or_locate).
+    session._locating = True
     return session
