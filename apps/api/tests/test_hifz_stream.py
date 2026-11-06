@@ -317,6 +317,40 @@ async def test_feed_phonemes_resync_after_misread_word(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_feed_phonemes_wrong_surahm_does_not_write_unrecited_ayahs(monkeypatch):
+    """خواندنِ چیزی که با سوره نمی‌خواند، آیه‌های نخوانده را نمی‌نویسد.
+
+    عیبِ گزارش‌شده (سورهٔ ۲۴، ۲۰۲۶-۱۱-۰۶): کاربر چیزِ دیگری خواند و
+    تطبیق‌دهنده ۵۳ کلمه را خاکستری (جاافتاده) نوشت و جلو رفت. رفتارِ
+    درست (پرمیوم): واج‌های بی‌تطابق، کلمهٔ جاری را «غلط» (قرمز) علامت
+    می‌زنند و یک طولِ کلمه مصرف می‌کنند؛ اشاره‌گر فقط به‌اندازهٔ
+    واج‌های شنیده‌شده جلو می‌رود و هیچ کلمه‌ای خاکستری نمی‌شود.
+    واج‌های «z» با هیچ قطعهٔ نگاشتِ مصنوعی نمی‌خوانند.
+    """
+    events = []
+    session, _ = _session(monkeypatch, events, mapping=_fake_mapping())
+    # مثل شروعِ واقعی: نشست در حالتِ یافتن است.
+    session._locating = True
+    await session.feed_phonemes(["z"] * 30)
+    words = _word_events(events)
+    assert [(w["ayah"], w["expected"], w["status"]) for w in words] == [
+        (1, "قُلْ", "wrong"),
+        (1, "هُوَ", "wrong"),
+        (1, "اللَّهُ", "wrong"),
+        (1, "أَحَدٌ", "wrong"),
+        (2, "اللَّهُ", "wrong"),
+        (2, "الصَّمَدُ", "wrong"),
+        (3, "لَمْ", "wrong"),
+    ]
+    # هیچ خاکستری‌ای نیست و هم‌ترازیِ دوباره هم چیزی دور نریخته است.
+    assert all(w["status"] != "skipped" for w in words)
+    assert session.live_counts()["resync_dropped"] == 0
+    # بافرِ مانده کوتاه‌تر از یک کلمهٔ کامل است: نشست منتظرِ واجِ
+    # بیشتر می‌ماند، نه اینکه جلو برود.
+    assert session.live_counts()["buffer_chars"] == 3
+
+
+@pytest.mark.asyncio
 async def test_feed_phonemes_madd_length_ignored(monkeypatch):
     """کششِ مد (شمارِ الف/الف خنجری) در تطابق اثر نمی‌کند: نگاشت
     ۴ الف خنجری می‌نویسد، بازشناس ۲ تا می‌شنود، کلمه درست می‌خورد
