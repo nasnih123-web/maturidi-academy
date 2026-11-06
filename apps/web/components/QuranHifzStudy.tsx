@@ -427,12 +427,17 @@ export function QuranHifzStudy({
   locale,
   surahList,
   initialSurah,
+  initialAyah,
   initialTexts,
   labels,
 }: {
   locale: string;
   surahList: SurahSummary[];
   initialSurah: number;
+  /** Deep-link hint (?ayah=): the ayah the session starts from.
+    It is only a hint — the live session locates the recited ayah
+    from the audio and the page follows it. */
+  initialAyah: number | null;
   /** Ignored: the line data is always Hafs (see header). */
   initialMushaf: string;
   /** Ayah texts of the initial surah, from the server render. */
@@ -440,7 +445,14 @@ export function QuranHifzStudy({
   labels: HifzLabels;
 }) {
   const [surah, setSurah] = useState(initialSurah);
-  const [ayah, setAyah] = useState(1);
+  const [ayah, setAyah] = useState(initialAyah ?? 1);
+  // The live-socket handler closes over the ayah from when the socket
+  // was opened; the ref always holds the current selection so the page
+  // can follow the heard ayah without a stale closure.
+  const ayahRef = useRef(ayah);
+  useEffect(() => {
+    ayahRef.current = ayah;
+  }, [ayah]);
   const [ayahCount, setAyahCount] = useState(0);
   const [textsBySurah, setTextsBySurah] = useState<Record<number, Record<number, string>>>(
     () =>
@@ -512,10 +524,11 @@ export function QuranHifzStudy({
     }
   }, []);
   // Line page: the bundled 15-line Madinah page of the SELECTED
-  // ayah (undefined = loading, null = load failed). The page
-  // follows the selected ayah only: when live writing advances to
-  // another page, those ayahs stay in the wall below. The page
-  // never jumps mid-recitation.
+  // ayah (undefined = loading, null = load failed). The page follows
+  // the heard ayah while a live session runs: when the matcher
+  // locates or advances to another ayah, the selection moves with it
+  // (see the socket handler) so the heard words land on the page,
+  // not in the wall below.
   const [mushafPages, setMushafPages] = useState<MushafExactLine[][] | null | undefined>(
     undefined,
   );
@@ -536,6 +549,9 @@ export function QuranHifzStudy({
   // first page never depends on a client fetch. A fetch that fails is
   // retried twice: the phone is often on a flaky VPN and one dropped
   // request must not strand the page.
+  // The initial ayah comes from the ?ayah= hint (state init above),
+  // so the seeded branch must NOT reset it to 1; only a real surah
+  // change restarts at ayah 1.
   const initialTextsRef = useRef(initialTexts);
   const [textsFailed, setTextsFailed] = useState(false);
   const [textsReload, setTextsReload] = useState(0);
@@ -543,7 +559,6 @@ export function QuranHifzStudy({
     const seeded = initialTextsRef.current;
     if (surah === initialSurah && seeded && Object.keys(seeded).length > 0) {
       setAyahCount(Object.keys(seeded).length);
-      setAyah(1);
       setPracticeWord(null);
       return;
     }
@@ -1118,6 +1133,22 @@ export function QuranHifzStudy({
         }
         if (msg.type === 'word') {
           setLiveWords((prev) => [...prev, msg as LiveWordEvent]);
+          // The page follows the heard ayah: a word from another ayah
+          // moves the selection (and its line page) there, so the
+          // heard words land on the page, not in the wall below.
+          if (
+            typeof msg.ayah === 'number' &&
+            msg.ayah !== ayahRef.current
+          ) {
+            setAyah(msg.ayah);
+          }
+        } else if (msg.type === 'located') {
+          // The server located the recited ayah (session start from
+          // another ayah, or a re-locate after a >5-ayah jump): move
+          // the page there before the first word of it arrives.
+          if (typeof msg.ayah === 'number' && msg.ayah !== ayahRef.current) {
+            setAyah(msg.ayah);
+          }
         } else if (msg.type === 'extra') {
           setLiveExtraCount((c) => c + 1);
         } else if (msg.type === 'final') {
