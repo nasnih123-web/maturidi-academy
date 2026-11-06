@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * QuranHifzStudy: Phase 3 (hifz) study screen, Tarteel-style blank
- * mushaf page with true line layout.
+ * QuranHifzStudy: Phase 3 (hifz) study screen, rebuilt to match the
+ * Tarteel app (premium behavior).
  *
  * The study screen is a WHITE blank page in true mushaf LINE layout:
  * the 15-line Madinah page breaks come from the bundled line data
@@ -13,14 +13,49 @@
  * tajweed letters colored (green ghunnah/ikhfaa, blue heavy raa,
  * pink madd, gray waslah — lib/quran-tajweed, only the rules
  * verified against the Tarteel reference clip); the newest word
- * just heard is blue until the next word arrives. Grading colors
- * (green >=0.8 / amber 0.5-0.8 / red <0.5 / gray skipped,
- * thresholds from the CRM settings) appear ONLY after the session
- * ends and the server grade arrives — never live. Unwritten words
- * occupy hidden slots (visibility:hidden) so marker positions
- * never jump as words are revealed; the page looks blank until
- * written. Ayah-end markers are ornate rosettes (own SVG, like
- * the printed mushaf), visible from the start.
+ * just heard is GREEN when correct and RED when wrong (a tashkeel
+ * error counts as wrong) until the next word arrives. A wrong word
+ * is red text with a red dashed underline. Graded words use TEXT
+ * colors (correct = plain ink, close = amber text, wrong = red
+ * text + dashed underline, skipped = gray text) — never background
+ * pills. Unwritten words occupy hidden slots (visibility:hidden) so
+ * marker positions never jump as words are revealed; the page looks
+ * blank until written. Ayah-end markers are ornate rosettes (own
+ * SVG, like the printed mushaf), visible from the start.
+ *
+ * PREMIUM behavior (no freeze): on a misread, the word is marked
+ * red and the flow continues — the page never freezes, and ayahs
+ * the user did not recite are never written (the live matcher
+ * marks a word wrong + consumes its phonemes instead of marching
+ * through the surah gray). Extra words the user says are NEVER
+ * written on the page; they are recorded in the error sheet.
+ *
+ * The page is blank on load: a previous attempt's words are NOT
+ * resumed into the wall. The practice result, stats and practice
+ * history are REMOVED from this page (user order). There is NO
+ * end-of-session results page: tapping stop returns the mic to its
+ * green circle, the timer pill disappears, and the page stays on
+ * the mushaf. Errors are opened DURING the session by hand (the
+ * bottom sheet): wrong words (expected vs recited) and extra words.
+ *
+ * Live pills above the page (during a session): error count (red),
+ * accuracy % (green >=95 / amber 80-95 / red <80), session timer
+ * (gray, MM:SS, counts up). The header shows the surah name +
+ * printed page / juz / hizb + the current surah:ayah while live.
+ * The footer of the mushaf area shows the printed page number
+ * (Eastern Arabic digits). The page follows the heard ayah and
+ * turns automatically.
+ *
+ * Display modes (bottom menu, persisted): page-flip (one page),
+ * scrolling (all pages of the surah, current page scrolled into
+ * view), card (the page inside a framed mushaf card).
+ *
+ * Listen mode: the reciter's audio plays (per-surah file with real
+ * word timings from the timing endpoint, or per-ayah audio with
+ * interpolated timings as an honest fallback) and the current word
+ * is highlighted green (#188653 + white text, like the QUL Segment
+ * builder) in sync with the audio; the page's words are all visible
+ * for following along and the page turns automatically.
  *
  * HONEST GAP (never present as exact glyph positions): the line
  * breaks are exact (the dataset's), but intra-line spacing is the
@@ -54,18 +89,38 @@
  * the NEXT unwritten word.
  *
  * Unauthenticated visitors see the blank page and local Peek only;
- * grading, history, SRS and stats need sign-in (honest hint, never
- * fake saved state).
+ * grading needs sign-in (honest hint, never fake saved state).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiBaseUrl } from '@/lib/api-base';
 import { authFetch, authJson, getAccessToken } from '@/lib/auth-client';
 import { getSurah, type SurahSummary } from '@/lib/quran';
+import { useQuranListen } from '@/lib/quran-listen';
+import { loadBoundaries } from '@/lib/quran-boundaries-loader';
 import { loadMushafLines, type MushafExactLine } from '@/lib/quran-mushaf-lines';
 import { colorizeTajweedWord } from '@/lib/quran-tajweed';
+import { rangeContaining } from '@/lib/quran-view-modes';
 
 /** Arabic-Indic digits, as printed at ayah ends. */
 const ARABIC_INDIC = '٠١٢٣٤٥٦٧٨٩';
+
+/** A number in Eastern Arabic digits (page numbers, surah:ayah). */
+function toArabicIndic(n: number): string {
+  return String(n).replace(/[0-9]/g, (d) => ARABIC_INDIC[Number(d)]);
+}
+
+/** The three page display modes (bottom menu): page-flip, scrolling, card. */
+type DisplayMode = 'page' | 'scroll' | 'card';
+const DISPLAY_MODE_KEY = 'hifz-display-mode';
+function readDisplayMode(): DisplayMode {
+  try {
+    const v = window.localStorage.getItem(DISPLAY_MODE_KEY);
+    if (v === 'scroll' || v === 'card' || v === 'page') return v;
+  } catch {
+    /* storage unavailable */
+  }
+  return 'page';
+}
 
 /** True for a pure Arabic-Indic digit token: an ayah-end marker. */
 function isMarkerToken(tok: string): boolean {
@@ -205,10 +260,6 @@ export interface HifzLabels {
   pageJump: string;
   studyModeOn: string;
   studyModeOff: string;
-  startSession: string;
-  sessionActive: string;
-  completeSession: string;
-  sessionCompleted: string;
   recordGrade: string;
   stopRecording: string;
   recording: string;
@@ -221,20 +272,7 @@ export interface HifzLabels {
   disputed: string;
   disclaimer: string;
   signInHint: string;
-  engineLabel: string;
   engineUnavailable: string;
-  countsTitle: string;
-  correctLabel: string;
-  closeLabel: string;
-  wrongLabel: string;
-  skippedLabel: string;
-  extraLabel: string;
-  historyTitle: string;
-  historyEmpty: string;
-  statsTitle: string;
-  attemptsLabel: string;
-  gradedWordsLabel: string;
-  dominantMistakeLabel: string;
   selectAyahHint: string;
   svgFailedNote: string;
   loadingPage: string;
@@ -258,6 +296,40 @@ export interface HifzLabels {
   prevAyah: string;
   nextAyah: string;
   wallHint: string;
+  // --- Tarteel rebuild: live pills, error sheet, display modes, listen mode ---
+  /** Live pills (shown during a live session). */
+  pillErrors: string;
+  pillAccuracy: string;
+  pillTimer: string;
+  /** Error sheet (bottom sheet with wrong + extra words). */
+  errorsTitle: string;
+  errorsWrong: string;
+  errorsExtra: string;
+  errorsEmpty: string;
+  errorsExpected: string;
+  errorsHeard: string;
+  errorsOpen: string;
+  errorsClose: string;
+  /** Header: surah + page/juz/hizb + current surah:ayah. */
+  headerJuz: string;
+  headerHizb: string;
+  headerPage: string;
+  /** Display modes (bottom menu). */
+  displayMode: string;
+  displayPage: string;
+  displayScroll: string;
+  displayCard: string;
+  /** Listen/follow mode (reciter audio + word highlight). */
+  modePractice: string;
+  modeListen: string;
+  listenReciter: string;
+  listenPlay: string;
+  listenPause: string;
+  listenStop: string;
+  listenSegmentsNote: string;
+  listenInterpolatedNote: string;
+  listenAudioFailed: string;
+  listenReciters: { id: string; label: string }[];
 }
 
 interface HifzWordScore {
@@ -315,14 +387,6 @@ interface HifzGrade {
   extra_words: string[];
 }
 
-interface HifzStats {
-  attempts: number;
-  graded_words: number;
-  counts: HifzCounts;
-  dominant_mistake: string | null;
-  due_ayahs: number;
-}
-
 interface HifzStatus {
   engine: string;
   available: boolean;
@@ -352,6 +416,120 @@ interface WallWord {
   /** True while the word is only a live hearing (ink on the page);
       false once the server grade for it has arrived. */
   live: boolean;
+}
+
+/**
+ * Build the render lines for ONE printed page (pure — no hooks).
+ * Ayahs whose study words match the printed segment totals render
+ * in line slots (revealed when written, hidden otherwise); every
+ * other segment uses its printed tokens as hidden spacers, so marker
+ * positions stay true. For a surah with a Basmalah line on this
+ * page, ayah 1's printed segments exclude the four Basmalah words,
+ * so the study total is compared minus four.
+ * Used for the current page (page/card mode) and for every page of
+ * the surah (scroll mode).
+ */
+function buildPageRender(
+  pageLines: MushafExactLine[],
+  surah: number,
+  texts: Record<number, string> | undefined,
+  wallAyahs: { ayah: number; words: WallWord[] }[],
+): { placedAyahs: Set<number>; basmalaSplit: boolean; renderLines: RenderLine[] } {
+  const empty = {
+    placedAyahs: new Set<number>(),
+    basmalaSplit: false,
+    renderLines: [] as RenderLine[],
+  };
+  if (!texts) return empty;
+  const split = basmalaSurahsOnPage(pageLines).has(surah);
+  const totals = new Map<number, number>();
+  for (const line of pageLines) {
+    const parsed = parseTextLine(line);
+    if (!parsed || parsed.surah !== surah) continue;
+    for (const seg of parsed.segments) {
+      totals.set(seg.ayah, (totals.get(seg.ayah) ?? 0) + seg.words.length);
+    }
+  }
+  const placed = new Set<number>();
+  for (const [a, total] of totals) {
+    const words = (texts[a] ?? '').split(/\s+/).filter(Boolean);
+    const expected = a === 1 && split ? words.length - 4 : words.length;
+    if (words.length > 0 && total === expected) placed.add(a);
+  }
+  const writtenByKey = new Map<string, WallWord>();
+  for (const group of wallAyahs) {
+    for (const w of group.words) writtenByKey.set(`${group.ayah}:${w.index}`, w);
+  }
+  const consumed = new Map<number, number>();
+  const out: RenderLine[] = [];
+  pageLines.forEach((line, li) => {
+    if (line.t === 'surah-header') {
+      if (line.x) out.push({ kind: 'header', key: `h${li}`, text: line.x });
+      return;
+    }
+    if (line.t === 'basmala') {
+      const next = pageLines[li + 1];
+      const [s, a] = (next?.v ?? '').split(':').map(Number);
+      const slots: LineWordSlot[] = [];
+      if (next?.t === 'text' && a === 1 && s === surah && placed.has(1) && texts?.[1]) {
+        const words = texts[1].split(/\s+/).filter(Boolean).slice(0, 4);
+        words.forEach((text, i) => {
+          const written = writtenByKey.get(`1:${i}`) ?? null;
+          slots.push({
+            kind: 'word',
+            surah,
+            ayah: 1,
+            index: i,
+            text,
+            written,
+            hidden: written === null,
+          });
+        });
+      }
+      out.push({ kind: 'basmala', key: `b${li}`, slots });
+      return;
+    }
+    const parsed = parseTextLine(line);
+    if (!parsed) return;
+    const slots: LineSlot[] = [];
+    for (const seg of parsed.segments) {
+      if (parsed.surah === surah && placed.has(seg.ayah) && texts?.[seg.ayah]) {
+        const study = texts[seg.ayah].split(/\s+/).filter(Boolean);
+        const start = consumed.get(seg.ayah) ?? (seg.ayah === 1 && split ? 4 : 0);
+        seg.words.forEach((_, i) => {
+          const index = start + i;
+          const text = study[index];
+          if (text === undefined) return;
+          const written = writtenByKey.get(`${seg.ayah}:${index}`) ?? null;
+          slots.push({
+            kind: 'word',
+            surah,
+            ayah: seg.ayah,
+            index,
+            text,
+            written,
+            hidden: written === null,
+          });
+        });
+        consumed.set(seg.ayah, start + seg.words.length);
+      } else {
+        for (const tok of seg.words) {
+          slots.push({
+            kind: 'word',
+            surah: parsed.surah,
+            ayah: seg.ayah,
+            index: -1,
+            text: tok,
+            written: null,
+            hidden: true,
+          });
+        }
+      }
+      if (seg.marker !== null) slots.push({ kind: 'marker', text: seg.marker });
+    }
+    out.push({ kind: 'text', key: `t${li}`, slots });
+  });
+  return { placedAyahs: placed, basmalaSplit: split, renderLines: out };
 }
 
 /** Render one Uthmani word with its tajweed letters colored
@@ -474,12 +652,11 @@ export function QuranHifzStudy({
   const [liveState, setLiveState] = useState<'idle' | 'connecting' | 'listening' | 'ended'>('idle');
   const [liveWords, setLiveWords] = useState<LiveWordEvent[]>([]);
   const [liveExtraCount, setLiveExtraCount] = useState(0);
+  /** Extra words the user said (live path), for the error sheet. */
+  const [liveExtraWords, setLiveExtraWords] = useState<string[]>([]);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [lastGrade, setLastGrade] = useState<HifzGrade | null>(null);
   const [engineStatus, setEngineStatus] = useState<HifzStatus | null>(null);
-  const [stats, setStats] = useState<HifzStats | null>(null);
-  const [history, setHistory] = useState<HifzAttempt[]>([]);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const liveWsRef = useRef<WebSocket | null>(null);
@@ -533,6 +710,31 @@ export function QuranHifzStudy({
     undefined,
   );
 
+  // --- Tarteel rebuild state ---
+  // Session timer (seconds): starts when a live session starts,
+  // counts up, resets and hides when the session ends.
+  const [sessionSeconds, setSessionSeconds] = useState(0);
+  // Error sheet (bottom sheet with wrong + extra words).
+  const [errorSheetOpen, setErrorSheetOpen] = useState(false);
+  // Page display mode: page-flip (one page), scrolling (all pages
+  // of the surah), or card (framed mushaf card). Persisted.
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(() => readDisplayMode());
+  // Study mode: practice (recite, Tarteel hifz) or listen (follow
+  // the reciter's audio with word-by-word highlight).
+  const [studyMode, setStudyMode] = useState<'practice' | 'listen'>('practice');
+  const [listenReciter, setListenReciter] = useState('alafasy');
+  // The ayah/word the reciter is currently on (listen mode).
+  const [listenAyah, setListenAyah] = useState(1);
+  const [listenWord, setListenWord] = useState<number | null>(null);
+  // Per-ayah audio URLs (site's active reciter) for the interpolated
+  // listen fallback.
+  const [ayahAudioUrls, setAyahAudioUrls] = useState<Record<number, string | null>>({});
+  // Juz/hizb/page boundaries for the header (loaded once).
+  const [boundaries, setBoundaries] = useState<Awaited<
+    ReturnType<typeof loadBoundaries>
+  > | null>(null);
+  const listenAudioRef = useRef<HTMLAudioElement | null>(null);
+
   useEffect(() => {
     setAuthed(Boolean(getAccessToken()));
     fetch(`${apiBaseUrl()}${HIFZ_API}/status`)
@@ -560,6 +762,19 @@ export function QuranHifzStudy({
     if (surah === initialSurah && seeded && Object.keys(seeded).length > 0) {
       setAyahCount(Object.keys(seeded).length);
       setPracticeWord(null);
+      // The texts are seeded, but the per-ayah audio URLs (listen
+      // fallback) are not: fetch them in the background without
+      // blocking the page.
+      void (async () => {
+        try {
+          const view = await getSurah(surah);
+          const audioUrls: Record<number, string | null> = {};
+          for (const a of view.ayahs) audioUrls[a.number] = a.audioUrl ?? null;
+          setAyahAudioUrls(audioUrls);
+        } catch {
+          /* listen fallback just stays unavailable */
+        }
+      })();
       return;
     }
     let cancelled = false;
@@ -571,8 +786,13 @@ export function QuranHifzStudy({
           const view = await getSurah(surah);
           if (cancelled) return;
           const texts: Record<number, string> = {};
-          for (const a of view.ayahs) texts[a.number] = a.text;
+          const audioUrls: Record<number, string | null> = {};
+          for (const a of view.ayahs) {
+            texts[a.number] = a.text;
+            audioUrls[a.number] = a.audioUrl ?? null;
+          }
           setTextsBySurah((prev) => ({ ...prev, [surah]: texts }));
+          setAyahAudioUrls(audioUrls);
           setAyahCount(view.ayahs.length);
           return;
         } catch {
@@ -600,51 +820,11 @@ export function QuranHifzStudy({
     setMistakes(detail.mistakes);
   }, []);
 
-  const refreshPanels = useCallback(async () => {
-    try {
-      const [s, h] = await Promise.all([
-        authJson<HifzStats>(`${HIFZ_API}/stats`),
-        authJson<HifzAttempt[]>(`${HIFZ_API}/attempts?limit=20`),
-      ]);
-      setStats(s);
-      setHistory(h);
-    } catch {
-      /* panels stay empty; grading still works */
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!authed) return;
-    void refreshPanels();
-    // Resume the user's in-progress attempt for this surah (if any):
-    // without this, a returning student would see an empty wall and
-    // their earlier scores would only appear via the history list.
-    // An attempt belongs to ONE surah: when no attempt matches the
-    // new surah, drop the previous surah's attempt, or its scores
-    // would keep piling into the wrong surah's counts (e.g. a
-    // Fatiha attempt showing skipped=1149 from long surahs).
-    let cancelled = false;
-    void (async () => {
-      try {
-        const list = await authJson<HifzAttempt[]>(`${HIFZ_API}/attempts?limit=5`);
-        if (cancelled) return;
-        const current =
-          list.find((a) => a.surah === surah && a.status === 'in_progress') ??
-          list.find((a) => a.surah === surah);
-        if (current) await refreshDetail(current.id);
-        else {
-          setAttempt(null);
-          setAttemptWords([]);
-          setMistakes([]);
-        }
-      } catch {
-        /* grading still works; the wall just starts fresh */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [authed, refreshPanels, refreshDetail, surah]);
+  // The blank page: a returning student does NOT see a previous
+  // attempt's words on mount (Tarteel: the page is blank until the
+  // student recites). Grades from a finished session still arrive
+  // through refreshDetail after grading, but nothing is resumed
+  // into the wall on load.
 
   // Stop the live stream when leaving the screen.
   useEffect(
@@ -673,6 +853,47 @@ export function QuranHifzStudy({
       cancelled = true;
     };
   }, []);
+
+  // Juz/hizb/page boundaries load once, for the header.
+  useEffect(() => {
+    let cancelled = false;
+    loadBoundaries().then((b) => {
+      if (!cancelled) setBoundaries(b);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Session timer: counts up once a second while a live session is
+  // listening; resets when the session ends (the pill disappears).
+  useEffect(() => {
+    if (liveState !== 'listening') {
+      if (liveState === 'idle') setSessionSeconds(0);
+      return;
+    }
+    const id = window.setInterval(() => setSessionSeconds((s) => s + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [liveState]);
+
+  // Listen/follow mode: the reciter's audio + word-by-word highlight.
+  // The callbacks move the page to the reciter's ayah and mark the
+  // current word; the hook owns the audio clock and the timing fetch.
+  const listen = useQuranListen({
+    reciter: listenReciter,
+    surah,
+    ayahTexts: textsBySurah[surah] ?? {},
+    ayahAudioUrls,
+    ayahCount,
+    audioRef: listenAudioRef,
+    onAyahChange: useCallback((a: number) => {
+      setListenAyah(a);
+      if (a !== ayahRef.current) setAyah(a);
+    }, []),
+    onWordChange: useCallback((_a: number, w: number | null) => {
+      setListenWord(w);
+    }, []),
+  });
 
   // ---- The wall: every written word, grouped by ayah, in order. ----
   // Server scores first; live words overlay them (they are the newest
@@ -790,118 +1011,21 @@ export function QuranHifzStudy({
   const textsReady = textsBySurah[surah] !== undefined;
   const textsSettled = textsReady || textsFailed;
 
-  // Ayahs of the current surah whose study words match the printed
-  // segment totals on this page: only those render in line slots.
-  // Every other written ayah (mismatch, or not on this page) stays
-  // in the wall below. For a surah with a Basmalah line on this
-  // page, ayah 1's printed segments exclude the four Basmalah words,
-  // so the study total is compared minus four.
-  const { placedAyahs, basmalaSplit } = useMemo(() => {
-    const empty = { placedAyahs: new Set<number>(), basmalaSplit: false };
-    if (!pageLines) return empty;
-    const texts = textsBySurah[surah];
-    if (!texts) return empty;
-    const split = basmalaSurahsOnPage(pageLines).has(surah);
-    const totals = new Map<number, number>();
-    for (const line of pageLines) {
-      const parsed = parseTextLine(line);
-      if (!parsed || parsed.surah !== surah) continue;
-      for (const seg of parsed.segments) {
-        totals.set(seg.ayah, (totals.get(seg.ayah) ?? 0) + seg.words.length);
-      }
-    }
-    const placed = new Set<number>();
-    for (const [a, total] of totals) {
-      const words = (texts[a] ?? '').split(/\s+/).filter(Boolean);
-      const expected = a === 1 && split ? words.length - 4 : words.length;
-      if (words.length > 0 && total === expected) placed.add(a);
-    }
-    return { placedAyahs: placed, basmalaSplit: split };
-  }, [pageLines, textsBySurah, surah]);
-
-  // The page's render lines, in order. Placed ayahs use study words
-  // (revealed when written, hidden otherwise); every other segment
-  // uses its printed tokens as hidden spacers, so marker positions
-  // stay true and the page keeps its shape. Markers are always
-  // visible, faint, at their printed positions.
-  const renderLines = useMemo<RenderLine[]>(() => {
-    if (!pageLines) return [];
-    const texts = textsBySurah[surah];
-    const writtenByKey = new Map<string, WallWord>();
-    for (const group of wallAyahs) {
-      for (const w of group.words) writtenByKey.set(`${group.ayah}:${w.index}`, w);
-    }
-    const consumed = new Map<number, number>();
-    const out: RenderLine[] = [];
-    pageLines.forEach((line, li) => {
-      if (line.t === 'surah-header') {
-        if (line.x) out.push({ kind: 'header', key: `h${li}`, text: line.x });
-        return;
-      }
-      if (line.t === 'basmala') {
-        const next = pageLines[li + 1];
-        const [s, a] = (next?.v ?? '').split(':').map(Number);
-        const slots: LineWordSlot[] = [];
-        if (next?.t === 'text' && a === 1 && s === surah && placedAyahs.has(1) && texts?.[1]) {
-          const words = texts[1].split(/\s+/).filter(Boolean).slice(0, 4);
-          words.forEach((text, i) => {
-            const written = writtenByKey.get(`1:${i}`) ?? null;
-            slots.push({
-              kind: 'word',
-              surah,
-              ayah: 1,
-              index: i,
-              text,
-              written,
-              hidden: written === null,
-            });
-          });
-        }
-        out.push({ kind: 'basmala', key: `b${li}`, slots });
-        return;
-      }
-      const parsed = parseTextLine(line);
-      if (!parsed) return;
-      const slots: LineSlot[] = [];
-      for (const seg of parsed.segments) {
-        if (parsed.surah === surah && placedAyahs.has(seg.ayah) && texts?.[seg.ayah]) {
-          const study = texts[seg.ayah].split(/\s+/).filter(Boolean);
-          const start = consumed.get(seg.ayah) ?? (seg.ayah === 1 && basmalaSplit ? 4 : 0);
-          seg.words.forEach((_, i) => {
-            const index = start + i;
-            const text = study[index];
-            if (text === undefined) return;
-            const written = writtenByKey.get(`${seg.ayah}:${index}`) ?? null;
-            slots.push({
-              kind: 'word',
-              surah,
-              ayah: seg.ayah,
-              index,
-              text,
-              written,
-              hidden: written === null,
-            });
-          });
-          consumed.set(seg.ayah, start + seg.words.length);
-        } else {
-          for (const tok of seg.words) {
-            slots.push({
-              kind: 'word',
-              surah: parsed.surah,
-              ayah: seg.ayah,
-              index: -1,
-              text: tok,
-              written: null,
-              hidden: true,
-            });
-          }
-        }
-        if (seg.marker !== null) slots.push({ kind: 'marker', text: seg.marker });
-      }
-      out.push({ kind: 'text', key: `t${li}`, slots });
-    });
-    return out;
-  }, [pageLines, textsBySurah, surah, wallAyahs, placedAyahs, basmalaSplit]);
+  // The current page's render lines (placed ayahs + line slots),
+  // built by the pure buildPageRender helper. Scroll mode calls the
+  // same helper for every page of the surah.
+  const pageRender = useMemo(
+    () =>
+      pageLines
+        ? buildPageRender(pageLines, surah, textsBySurah[surah], wallAyahs)
+        : {
+            placedAyahs: new Set<number>(),
+            basmalaSplit: false,
+            renderLines: [] as RenderLine[],
+          },
+    [pageLines, textsBySurah, surah, wallAyahs],
+  );
+  const { placedAyahs, renderLines } = pageRender;
 
   // Written ayahs not placed on this page render in the wall below.
   const unplacedGroups = useMemo(
@@ -1007,9 +1131,10 @@ export function QuranHifzStudy({
               return;
             }
             const grade = (await res.json()) as HifzGrade;
-            setLastGrade(grade);
+            if (grade.extra_words.length > 0) {
+              setLiveExtraWords((prev) => [...prev, ...grade.extra_words]);
+            }
             await refreshDetail(attemptId);
-            await refreshPanels();
             setPracticeWord(null);
             setRecState('idle');
           } catch {
@@ -1030,7 +1155,6 @@ export function QuranHifzStudy({
     ensureAttempt,
     practiceWord,
     refreshDetail,
-    refreshPanels,
     ayah,
     surah,
   ]);
@@ -1098,6 +1222,13 @@ export function QuranHifzStudy({
       return;
     }
     setLiveError(null);
+    // A new session starts blank: the previous session's words,
+    // errors and timer are cleared (Tarteel resets the stats to 0
+    // when the mic is tapped).
+    setLiveWords([]);
+    setLiveExtraCount(0);
+    setLiveExtraWords([]);
+    setSessionSeconds(0);
     setLiveState('connecting');
     liveCloseExpectedRef.current = false;
     liveFramesRef.current = 0;
@@ -1125,7 +1256,12 @@ export function QuranHifzStudy({
         setLiveState('listening');
       };
       ws.onmessage = (ev: MessageEvent) => {
-        let msg: { type?: string; message?: string } & Partial<LiveWordEvent>;
+        let msg: {
+          type?: string;
+          message?: string;
+          /** Extra word text (word-level path 'extra' events). */
+          text?: string;
+        } & Partial<LiveWordEvent>;
         try {
           msg = JSON.parse(ev.data as string) as typeof msg;
         } catch {
@@ -1151,6 +1287,9 @@ export function QuranHifzStudy({
           }
         } else if (msg.type === 'extra') {
           setLiveExtraCount((c) => c + 1);
+          if (typeof msg.text === 'string' && msg.text) {
+            setLiveExtraWords((prev) => [...prev, msg.text as string]);
+          }
         } else if (msg.type === 'final') {
           if (!isCurrent()) return;
           liveCloseExpectedRef.current = true;
@@ -1175,7 +1314,6 @@ export function QuranHifzStudy({
             }
             if (isCurrent()) setLiveWords([]);
           })();
-          void refreshPanels();
         } else if (msg.type === 'error') {
           if (!isCurrent()) return;
           liveCloseExpectedRef.current = true;
@@ -1274,7 +1412,6 @@ export function QuranHifzStudy({
     surah,
     ayah,
     refreshDetail,
-    refreshPanels,
     cleanupLiveMic,
     cancelLive,
     clearLiveConnectTimeout,
@@ -1330,11 +1467,10 @@ export function QuranHifzStudy({
         }),
       });
       await refreshDetail(attemptId);
-      await refreshPanels();
     } catch {
       setError(labels.errorGeneric);
     }
-  }, [peekTarget, authed, ensureAttempt, refreshDetail, refreshPanels, surah, labels.errorGeneric]);
+  }, [peekTarget, authed, ensureAttempt, refreshDetail, surah, labels.errorGeneric]);
 
   const disputeWord = useCallback(
     async (scoreId: string) => {
@@ -1353,30 +1489,88 @@ export function QuranHifzStudy({
     [attempt, labels.errorGeneric, refreshDetail],
   );
 
-  const completeSession = useCallback(async () => {
-    if (!attempt) return;
-    try {
-      await authJson(`${HIFZ_API}/attempts/${attempt.id}/complete`, {
-        method: 'POST',
-      });
-      await refreshDetail(attempt.id);
-      await refreshPanels();
-    } catch {
-      setError(labels.errorGeneric);
-    }
-  }, [attempt, labels.errorGeneric, refreshDetail, refreshPanels]);
-
   const surahName =
     surahList.find((s) => s.number === surah)?.nameAr ?? String(surah);
 
-  // Mistake codes are API values; show the Persian word for them.
-  const dominantMistakeText =
-    stats?.dominant_mistake === 'skipped'
-      ? labels.skippedLabel
-      : stats?.dominant_mistake === 'wrong_word' ||
-          stats?.dominant_mistake === 'wrong_tashkeel'
-        ? labels.wrongLabel
-        : (stats?.dominant_mistake ?? '—');
+  // Header range: juz / hizb / printed page of the selected ayah.
+  const headerRange = useMemo(() => {
+    if (!boundaries) return null;
+    try {
+      return rangeContaining(boundaries, surah, ayah);
+    } catch {
+      return null;
+    }
+  }, [boundaries, surah, ayah]);
+
+  // Live pills (Tarteel): error count and accuracy, from the words
+  // written so far in this session (live + graded). A close word is
+  // a tashkeel error and counts as an error, like Tarteel.
+  const pillStats = useMemo(() => {
+    let correct = 0;
+    let close = 0;
+    let wrong = 0;
+    for (const w of liveWords) {
+      if (w.status === 'correct') correct += 1;
+      else if (w.status === 'close') close += 1;
+      else if (w.status === 'wrong') wrong += 1;
+    }
+    for (const w of attemptWords) {
+      if (w.surah !== surah) continue;
+      if (w.status === 'correct') correct += 1;
+      else if (w.status === 'close') close += 1;
+      else if (w.status === 'wrong') wrong += 1;
+    }
+    const extra = liveExtraCount;
+    const errors = close + wrong + extra;
+    const total = correct + close + wrong + extra;
+    const accuracy = total > 0 ? Math.round((correct / total) * 1000) / 10 : 100;
+    return { errors, accuracy, total };
+  }, [liveWords, attemptWords, liveExtraCount, surah]);
+
+  // Session timer as MM:SS (Eastern Arabic digits, like Tarteel).
+  const timerText = useMemo(() => {
+    const m = Math.floor(sessionSeconds / 60);
+    const s = sessionSeconds % 60;
+    return `${toArabicIndic(m)}:${toArabicIndic(s).padStart(2, '٠')}`;
+  }, [sessionSeconds]);
+
+  // Wrong + close words for the error sheet (expected vs heard).
+  const errorWords = useMemo(() => {
+    const byKey = new Map<string, { ayah: number; index: number; expected: string; heard: string | null; status: string }>();
+    for (const w of liveWords) {
+      if (w.status !== 'wrong' && w.status !== 'close') continue;
+      byKey.set(`${w.ayah}:${w.word_index}`, {
+        ayah: w.ayah,
+        index: w.word_index,
+        expected: w.expected,
+        heard: w.heard,
+        status: w.status,
+      });
+    }
+    for (const w of attemptWords) {
+      if (w.surah !== surah) continue;
+      if (w.status !== 'wrong' && w.status !== 'close') continue;
+      byKey.set(`${w.ayah}:${w.word_index}`, {
+        ayah: w.ayah,
+        index: w.word_index,
+        expected: w.expected_text,
+        heard: w.heard,
+        status: w.status,
+      });
+    }
+    return [...byKey.values()].sort((a, b) => a.ayah - b.ayah || a.index - b.index);
+  }, [liveWords, attemptWords, surah]);
+
+  // Pages of the current surah, for scroll mode (all pages stacked).
+  const surahPageIndices = useMemo(() => {
+    if (!mushafPages) return [];
+    const first = pageIndexFor(mushafPages, surah, 1);
+    if (first === null) return [];
+    const last = pageIndexFor(mushafPages, surah, ayahCount || 1) ?? first;
+    const out: number[] = [];
+    for (let p = first; p <= last; p += 1) out.push(p);
+    return out;
+  }, [mushafPages, surah, ayahCount]);
 
   const isZipformer = engineStatus?.engine === 'zipformer';
   const isWhisper = engineStatus?.engine === 'whisper_quran';
@@ -1386,8 +1580,37 @@ export function QuranHifzStudy({
   // is written in plain mushaf ink as recited (no live color, no
   // heard label: hearing stays in the background); a graded slot
   // renders its status color, practice selection, and dispute.
+  // One line-page word slot. A hidden slot (unwritten, or a printed
+  // spacer) renders invisible but keeps its place — EXCEPT in listen
+  // mode, where the page's words are all visible for following along
+  // (Segment builder: words visible, current word highlighted).
+  // A live-heard slot is written in plain mushaf ink as recited; a
+  // graded slot renders its status color, practice selection, and
+  // dispute. In listen mode the current word gets the green
+  // highlight (solid #188653 + white text, like the Segment builder).
   const renderLineWord = (slot: LineWordSlot, key: string) => {
+    // Listen mode: the word the reciter is currently on.
+    const isListenNow =
+      studyMode === 'listen' &&
+      listen.isPlaying &&
+      slot.ayah === listenAyah &&
+      listenWord !== null &&
+      slot.index === listenWord - 1;
     if (slot.hidden || slot.written === null) {
+      if (studyMode === 'listen') {
+        return (
+          <span
+            key={key}
+            className={[
+              'hifz-line-word',
+              'hifz-word-listen',
+              isListenNow ? 'hifz-word-listen-now' : '',
+            ].join(' ')}
+          >
+            {renderTajweedText(slot.text)}
+          </span>
+        );
+      }
       return (
         <span key={key} className="hifz-line-word-hidden" aria-hidden="true">
           {slot.text}
@@ -1396,27 +1619,37 @@ export function QuranHifzStudy({
     }
     const w = slot.written;
     const isPractice = practiceWord?.ayah === slot.ayah && practiceWord?.index === slot.index;
-    // The newest word just heard stays blue (the clip's live word)
-    // until the next word arrives; older live words settle to black
-    // ink with their tajweed colors. Grades never color live words.
+    // The newest word just heard is GREEN when correct and RED when
+    // wrong (a tashkeel error counts as wrong here) until the next
+    // word arrives; older live words settle to black ink with their
+    // tajweed colors. Grades never color live words.
     const newestLive = liveWords.length > 0 ? liveWords[liveWords.length - 1] : null;
     const isNewestLive =
       w.live &&
       newestLive !== null &&
       newestLive.ayah === slot.ayah &&
       newestLive.word_index === slot.index;
+    const newestTone =
+      isNewestLive && (w.status === 'wrong' || w.status === 'close')
+        ? 'hifz-word-live-new-wrong'
+        : 'hifz-word-live-new';
     const tone =
       w.status === 'peeked'
         ? 'hifz-word-peeked'
         : w.live
           ? isNewestLive
-            ? 'hifz-word-live hifz-word-live-new'
+            ? `hifz-word-live ${newestTone}`
             : 'hifz-word-live'
           : `hifz-word-${w.status}`;
     return (
       <span
         key={key}
-        className={['hifz-line-word', tone, isPractice ? 'hifz-word-practice' : ''].join(' ')}
+        className={[
+          'hifz-line-word',
+          tone,
+          isPractice ? 'hifz-word-practice' : '',
+          isListenNow ? 'hifz-word-listen-now' : '',
+        ].join(' ')}
       >
         <button
           type="button"
@@ -1481,9 +1714,141 @@ export function QuranHifzStudy({
     }
   };
 
+  // Scroll mode: keep the page of the current ayah in view. The
+  // page sections are registered by ref; when the ayah moves to
+  // another page, that page scrolls into view (smooth, nearest).
+  const scrollPageRefs = useRef<Map<number, HTMLElement>>(new Map());
+  useEffect(() => {
+    if (displayMode !== 'scroll') return;
+    if (pageIndex === null) return;
+    const el = scrollPageRefs.current.get(pageIndex);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [displayMode, pageIndex, ayah]);
+
+  // One printed page as a section: header/basmala/text lines + the
+  // printed page number at the bottom (Eastern Arabic digits).
+  const renderPageSection = (pIdx: number, lines: RenderLine[], key: string) => (
+    <section
+      key={key}
+      ref={(el) => {
+        if (el) scrollPageRefs.current.set(pIdx, el);
+        else scrollPageRefs.current.delete(pIdx);
+      }}
+      className="hifz-line-page"
+      aria-label={labels.title}
+    >
+      <p className="hifz-line-caption">
+        {surahName} · {labels.pageLabel} {toArabicIndic(pIdx + 1)}
+      </p>
+      {lines.map((line) => {
+        if (line.kind === 'header') {
+          return (
+            <p key={line.key} className="hifz-line hifz-line-header">
+              {line.text}
+            </p>
+          );
+        }
+        if (line.kind === 'basmala') {
+          if (line.slots.length === 0) {
+            return (
+              <p key={line.key} className="hifz-line hifz-line-basmala" aria-hidden="true">
+                {'\u00a0'}
+              </p>
+            );
+          }
+          return (
+            <p key={line.key} className="hifz-line hifz-line-basmala" dir="rtl">
+              {line.slots.map((slot) => renderLineWord(slot, `${line.key}-${slot.index}`))}
+            </p>
+          );
+        }
+        return (
+          <p key={line.key} className="hifz-line" dir="rtl">
+            {line.slots.map((slot, si) =>
+              slot.kind === 'marker' ? (
+                <HifzRosette key={`m${si}`} digit={slot.text} />
+              ) : (
+                renderLineWord(slot, `${line.key}-${si}`)
+              ),
+            )}
+          </p>
+        );
+      })}
+      <p className="hifz-page-footer" aria-label={`${labels.pageLabel} ${pIdx + 1}`}>
+        {toArabicIndic(pIdx + 1)}
+      </p>
+    </section>
+  );
+
+  // Display-mode change: persist the choice.
+  const setDisplayModePersist = useCallback((m: DisplayMode) => {
+    setDisplayMode(m);
+    try {
+      window.localStorage.setItem(DISPLAY_MODE_KEY, m);
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
+
+  // Accuracy pill color: green >=95, amber 80-95, red <80.
+  const accuracyTone =
+    pillStats.accuracy >= 95 ? 'hifz-pill-green' : pillStats.accuracy >= 80 ? 'hifz-pill-amber' : 'hifz-pill-red';
+
+  const liveActive = liveState === 'listening' || liveState === 'connecting';
+  const showPills = liveState === 'listening' || liveState === 'ended';
+
   return (
     <div className="quran-hifz-study" dir={locale === 'fa' || locale === 'ar' ? 'rtl' : 'ltr'}>
-      <h2 className="hifz-title">{labels.title}</h2>
+      {/* Header (Tarteel): surah name + page/juz/hizb + the current
+          surah:ayah while a live session runs. */}
+      <header className="hifz-header">
+        <h2 className="hifz-title">{labels.title}</h2>
+        <p className="hifz-header-sub">
+          {surahName}
+          {headerRange &&
+            headerRange.page !== null &&
+            headerRange.juz !== null &&
+            headerRange.hizb !== null && (
+              <>
+                {' · '}
+                {labels.headerPage} {toArabicIndic(headerRange.page)} {' · '}
+                {labels.headerJuz} {toArabicIndic(headerRange.juz)} {' · '}
+                {labels.headerHizb} {toArabicIndic(headerRange.hizb)}
+              </>
+            )}
+          {liveActive && (
+            <>
+              {' · '}
+              <span className="hifz-header-pos">
+                {toArabicIndic(surah)}:{toArabicIndic(ayah)}
+              </span>
+            </>
+          )}
+        </p>
+      </header>
+
+      {/* Mode toggle: practice (recite) or listen (follow the reciter). */}
+      <div className="hifz-mode-toggle" role="group" aria-label={labels.displayMode}>
+        <button
+          type="button"
+          aria-pressed={studyMode === 'practice'}
+          className={studyMode === 'practice' ? 'is-active' : ''}
+          onClick={() => {
+            listen.stop();
+            setStudyMode('practice');
+          }}
+        >
+          {labels.modePractice}
+        </button>
+        <button
+          type="button"
+          aria-pressed={studyMode === 'listen'}
+          className={studyMode === 'listen' ? 'is-active' : ''}
+          onClick={() => setStudyMode('listen')}
+        >
+          {labels.modeListen}
+        </button>
+      </div>
 
       <div className="hifz-picker" role="group" aria-label={labels.surahLabel}>
         <label>
@@ -1532,6 +1897,71 @@ export function QuranHifzStudy({
         </label>
       </div>
 
+      {/* Listen controls: reciter picker + play/pause/stop + the
+          timing-source note (real segments vs estimated). */}
+      {studyMode === 'listen' && (
+        <div className="hifz-listen-controls">
+          <label>
+            {labels.listenReciter}
+            <select
+              value={listenReciter}
+              onChange={(e) => setListenReciter(e.target.value)}
+              aria-label={labels.listenReciter}
+            >
+              {labels.listenReciters.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {listen.isPlaying ? (
+            <button type="button" onClick={() => listen.pause()}>
+              {labels.listenPause}
+            </button>
+          ) : (
+            <button type="button" onClick={() => listen.play()}>
+              {labels.listenPlay}
+            </button>
+          )}
+          <button type="button" onClick={() => listen.stop()}>
+            {labels.listenStop}
+          </button>
+          {listen.timingSource === 'segments' && (
+            <p className="hifz-hint">{labels.listenSegmentsNote}</p>
+          )}
+          {listen.timingSource === 'interpolated' && (
+            <p className="hifz-hint">{labels.listenInterpolatedNote}</p>
+          )}
+          {listen.listenError && (
+            <p className="hifz-error" role="alert">
+              {labels.listenAudioFailed}
+            </p>
+          )}
+          {/* The listen audio element (hidden). */}
+          <audio ref={listenAudioRef} preload="metadata" />
+        </div>
+      )}
+
+      {/* Live pills (Tarteel): error count (red), accuracy % (color
+          by range), session timer (gray, counts up). Shown while a
+          live session runs; the timer disappears after stop. */}
+      {showPills && studyMode === 'practice' && (
+        <div className="hifz-pills" aria-live="polite">
+          <span className="hifz-pill hifz-pill-red">
+            {labels.pillErrors}: {toArabicIndic(pillStats.errors)}
+          </span>
+          <span className={`hifz-pill ${accuracyTone}`}>
+            {labels.pillAccuracy}: {pillStats.accuracy}٪
+          </span>
+          {liveState === 'listening' && (
+            <span className="hifz-pill hifz-pill-gray">
+              {labels.pillTimer}: {timerText}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* The blank line page: faint markers from the start, words
           written in Uthmanic font as recited. While the line data
           loads, a loading note; on page failure, the wall below
@@ -1539,46 +1969,19 @@ export function QuranHifzStudy({
       {mushafPages === undefined && (
         <p className="hifz-line-loading">{labels.loadingPage}</p>
       )}
-      {pageReady && textsReady && (
-        <section className="hifz-line-page" aria-label={labels.title}>
-          <p className="hifz-line-caption">
-            {surahName} · {labels.pageLabel} {(pageIndex ?? 0) + 1}
-          </p>
-          {renderLines.map((line) => {
-            if (line.kind === 'header') {
-              return (
-                <p key={line.key} className="hifz-line hifz-line-header">
-                  {line.text}
-                </p>
-              );
-            }
-            if (line.kind === 'basmala') {
-              if (line.slots.length === 0) {
-                return (
-                  <p key={line.key} className="hifz-line hifz-line-basmala" aria-hidden="true">
-                    {' '}
-                  </p>
-                );
-              }
-              return (
-                <p key={line.key} className="hifz-line hifz-line-basmala" dir="rtl">
-                  {line.slots.map((slot) => renderLineWord(slot, `${line.key}-${slot.index}`))}
-                </p>
-              );
-            }
-            return (
-              <p key={line.key} className="hifz-line" dir="rtl">
-                {line.slots.map((slot, si) =>
-                  slot.kind === 'marker' ? (
-                    <HifzRosette key={`m${si}`} digit={slot.text} />
-                  ) : (
-                    renderLineWord(slot, `${line.key}-${si}`)
-                  ),
-                )}
-              </p>
-            );
+      {pageReady && textsReady && displayMode === 'page' && renderPageSection(pageIndex ?? 0, renderLines, 'page')}
+      {pageReady && textsReady && displayMode === 'card' && (
+        <div className="hifz-card-frame">{renderPageSection(pageIndex ?? 0, renderLines, 'card')}</div>
+      )}
+      {pageReady && textsReady && displayMode === 'scroll' && (
+        <div className="hifz-scroll-pages">
+          {surahPageIndices.map((pIdx) => {
+            const lines = mushafPages?.[pIdx];
+            if (!lines) return null;
+            const pr = buildPageRender(lines, surah, textsBySurah[surah], wallAyahs);
+            return renderPageSection(pIdx, pr.renderLines, `scroll-${pIdx}`);
           })}
-        </section>
+        </div>
       )}
       {pageReady && !textsReady && (
         <div className="hifz-line-loading">
@@ -1630,12 +2033,16 @@ export function QuranHifzStudy({
                     newestLive !== null &&
                     newestLive.ayah === group.ayah &&
                     newestLive.word_index === word.index;
+                  const newestTone =
+                    isNewestLive && (word.status === 'wrong' || word.status === 'close')
+                      ? 'hifz-word-live-new-wrong'
+                      : 'hifz-word-live-new';
                   const tone =
                     word.status === 'peeked'
                       ? 'hifz-word-peeked'
                       : word.live
                         ? isNewestLive
-                          ? 'hifz-word-live hifz-word-live-new'
+                          ? `hifz-word-live ${newestTone}`
                           : 'hifz-word-live'
                         : `hifz-word-${word.status}`;
                   return (
@@ -1693,10 +2100,108 @@ export function QuranHifzStudy({
         </p>
       )}
 
-      <div className="hifz-controls">
+      {/* Bottom bar (Tarteel): peek, error sheet, previous/next ayah,
+          previous/next page. The error sheet opens by hand during
+          the session (never as an end-of-session results page). */}
+      <div className="hifz-bottom-bar">
+        <button
+          type="button"
+          onClick={() => setErrorSheetOpen(true)}
+          aria-label={labels.errorsOpen}
+        >
+          {labels.errorsTitle}
+        </button>
         <button type="button" disabled={!peekTarget} onClick={() => void peekNext()}>
           {labels.peek}
         </button>
+        <button
+          type="button"
+          disabled={ayah <= 1}
+          onClick={() => setAyah((a) => Math.max(1, a - 1))}
+        >
+          {labels.prevAyah}
+        </button>
+        <button
+          type="button"
+          disabled={ayahCount > 0 && ayah >= ayahCount}
+          onClick={() => setAyah((a) => (ayahCount > 0 ? Math.min(ayahCount, a + 1) : a + 1))}
+        >
+          {labels.nextAyah}
+        </button>
+        <button
+          type="button"
+          disabled={pageIndex === null || pageIndex <= 0}
+          onClick={() => {
+            if (pageIndex === null || !mushafPages) return;
+            const prev = pageIndex - 1;
+            const lines = mushafPages[prev];
+            if (!lines) return;
+            for (const line of lines) {
+              if (line.t === 'text' && line.v) {
+                const [s, a] = line.v.split(':').map(Number);
+                if (s === surah) {
+                  setAyah(a);
+                  return;
+                }
+              }
+            }
+          }}
+        >
+          {labels.prevPage}
+        </button>
+        <button
+          type="button"
+          disabled={pageIndex === null || !mushafPages || pageIndex >= mushafPages.length - 1}
+          onClick={() => {
+            if (pageIndex === null || !mushafPages) return;
+            const next = pageIndex + 1;
+            const lines = mushafPages[next];
+            if (!lines) return;
+            for (const line of lines) {
+              if (line.t === 'text' && line.v) {
+                const [s, a] = line.v.split(':').map(Number);
+                if (s === surah) {
+                  setAyah(a);
+                  return;
+                }
+              }
+            }
+          }}
+        >
+          {labels.nextPage}
+        </button>
+      </div>
+
+      {/* Display-mode menu (bottom): page-flip / scrolling / card. */}
+      <div className="hifz-display-menu" role="group" aria-label={labels.displayMode}>
+        <span className="hifz-display-label">{labels.displayMode}</span>
+        <button
+          type="button"
+          aria-pressed={displayMode === 'page'}
+          className={displayMode === 'page' ? 'is-active' : ''}
+          onClick={() => setDisplayModePersist('page')}
+        >
+          {labels.displayPage}
+        </button>
+        <button
+          type="button"
+          aria-pressed={displayMode === 'scroll'}
+          className={displayMode === 'scroll' ? 'is-active' : ''}
+          onClick={() => setDisplayModePersist('scroll')}
+        >
+          {labels.displayScroll}
+        </button>
+        <button
+          type="button"
+          aria-pressed={displayMode === 'card'}
+          className={displayMode === 'card' ? 'is-active' : ''}
+          onClick={() => setDisplayModePersist('card')}
+        >
+          {labels.displayCard}
+        </button>
+      </div>
+
+      <div className="hifz-controls">
         {isZipformer && liveState === 'connecting' && (
           <button type="button" onClick={() => cancelLive(false)}>
             {labels.liveCancel}
@@ -1721,9 +2226,10 @@ export function QuranHifzStudy({
         {isWhisper && recState === 'recording' && <p className="hifz-hint">{labels.recording}</p>}
         {!authed && <p className="hifz-hint">{labels.signInHint}</p>}
       </div>
-      {/* Floating 3D mic: a separate layer, like the music player. It
-          is the only record control; its action follows the engine. */}
-      {(isZipformer || isWhisper) && (
+      {/* Floating mic (bottom-right, Tarteel): the only record
+          control; its action follows the engine. Shown only in
+          practice mode — listen mode has its own play control. */}
+      {studyMode === 'practice' && (isZipformer || isWhisper) && (
         <div className="hifz-mic-layer">
           <button
             type="button"
@@ -1750,87 +2256,54 @@ export function QuranHifzStudy({
           {error}
         </p>
       )}
-      {lastGrade && lastGrade.extra_words.length > 0 && (
-        <p className="hifz-extra">
-          {labels.extraLabel}: {lastGrade.extra_words.join(' ')}
-        </p>
-      )}
-      {liveExtraCount > 0 && (
-        <p className="hifz-extra">
-          {labels.extraLabel}: {liveExtraCount}
-        </p>
-      )}
 
-      <section className="hifz-session">
-        <h3>{labels.countsTitle}</h3>
-        {attempt ? (
-          <>
-            <p>
-              {labels.sessionActive} — {labels.correctLabel} {attempt.counts.correct} ·{' '}
-              {labels.closeLabel} {attempt.counts.close} · {labels.wrongLabel}{' '}
-              {attempt.counts.wrong} · {labels.skippedLabel} {attempt.counts.skipped}
-            </p>
-            {attempt.status !== 'completed' ? (
-              <button type="button" onClick={() => void completeSession()}>
-                {labels.completeSession}
-              </button>
-            ) : (
-              <p>{labels.sessionCompleted}</p>
-            )}
-          </>
-        ) : (
-          <p>{labels.noAttemptHint}</p>
-        )}
-        {authed && (
-          <button type="button" onClick={() => void ensureAttempt()}>
-            {labels.startSession}
-          </button>
-        )}
-        {engineStatus && (
-          <p className="hifz-engine">
-            {labels.engineLabel}: {engineStatus.engine}{' '}
-            {!engineStatus.available && `(${labels.engineUnavailable})`}
-          </p>
-        )}
-      </section>
-
-      <p className="hifz-disclaimer">{labels.disclaimer}</p>
-
-      {authed && (
-        <section className="hifz-panels">
-          <h3>{labels.statsTitle}</h3>
-          {stats ? (
-            <p>
-              {labels.attemptsLabel} {stats.attempts} · {labels.gradedWordsLabel}{' '}
-              {stats.graded_words} · {labels.dominantMistakeLabel}{' '}
-              {dominantMistakeText}
-            </p>
-          ) : (
-            <p>—</p>
-          )}
-          <h3>{labels.historyTitle}</h3>
-          {history.length === 0 ? (
-            <p>{labels.historyEmpty}</p>
+      {/* Error sheet (bottom sheet, opened by hand during the
+          session): wrong words (expected vs recited) and extra words.
+          No end-of-session results page exists. */}
+      {errorSheetOpen && (
+        <div className="hifz-error-sheet" role="dialog" aria-label={labels.errorsTitle}>
+          <div className="hifz-error-sheet-head">
+            <h3>{labels.errorsTitle}</h3>
+            <button type="button" onClick={() => setErrorSheetOpen(false)}>
+              {labels.errorsClose}
+            </button>
+          </div>
+          <h4>{labels.errorsWrong}</h4>
+          {errorWords.length === 0 ? (
+            <p>{labels.errorsEmpty}</p>
           ) : (
             <ul>
-              {history.map((h) => (
-                <li key={h.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSurah(h.surah);
-                      void refreshDetail(h.id);
-                    }}
-                  >
-                    {h.surah} · {h.status} · {h.counts.correct}/{h.counts.wrong}/
-                    {h.counts.skipped}
-                  </button>
+              {errorWords.map((w) => (
+                <li key={`${w.ayah}:${w.index}`}>
+                  <span className="hifz-error-expected">{w.expected}</span>{' '}
+                  <span className="hifz-error-meta">
+                    {labels.errorsExpected}: {w.expected}
+                    {w.heard ? ` · ${labels.errorsHeard}: ${w.heard}` : ''}
+                  </span>
                 </li>
               ))}
             </ul>
           )}
-        </section>
+          <h4>{labels.errorsExtra}</h4>
+          {liveExtraWords.length === 0 && liveExtraCount === 0 ? (
+            <p>{labels.errorsEmpty}</p>
+          ) : liveExtraWords.length > 0 ? (
+            <ul>
+              {liveExtraWords.map((t, i) => (
+                <li key={i} className="hifz-error-extra">
+                  {t}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>
+              {labels.errorsExtra}: {toArabicIndic(liveExtraCount)}
+            </p>
+          )}
+        </div>
       )}
+
+      <p className="hifz-disclaimer">{labels.disclaimer}</p>
     </div>
   );
 }

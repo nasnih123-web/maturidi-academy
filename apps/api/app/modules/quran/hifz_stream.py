@@ -368,6 +368,12 @@ class LiveSession:
     _last_heard_ayah: int = 0
     _relocate_pending: bool = False
     _located_count: int = 0
+    # یافتنِ آیه ناموفق بود (بافر با هیچ آیه‌ای درونِ سوره نمی‌خواند):
+    # کاربر چیزی می‌خواند که با سوره نمی‌خواند. تا وقتی این پرچم
+    # بالاست، واحدِ بی‌تطابق «غلط» علامت می‌خورد (نه «جاافتاده») تا
+    # اشاره‌گر بی‌مهار جلو نرود و آیه‌های نخوانده نوشته نشوند. با
+    # نخستین تطابقِ درست/نزدیک، یا یافتنِ موفق، پایین می‌آید.
+    _locate_failed: bool = False
     _assigned: dict = field(default_factory=dict)  # (ayah, idx) -> (heard, prob)
     _touched_ayahs: list = field(default_factory=list)
     _extras: list = field(default_factory=list)
@@ -488,6 +494,10 @@ class LiveSession:
             # آخرین آیهٔ شنیده‌شده: پنجرهٔ ۵آیه‌ایِ خاکستری از این‌جا
             # شمرده می‌شود.
             self._last_heard_ayah = ayah
+            if status in ("correct", "close"):
+                # تطابقِ موفق: نشست دوباره سرِ جایش است؛ پرچمِ
+                # یافتنِ ناموفق پایین می‌آید.
+                self._locate_failed = False
         self._touch(ayah)
         self._assigned[(ayah, index)] = (heard, prob)
         self._emit(LiveWord(self.surah, ayah, index, expected, status, prob, heard).event())
@@ -571,13 +581,22 @@ class LiveSession:
         return None
 
     def _emit_unit(
-        self, word_indices: tuple[int, ...], status: str, prob: float
+        self, word_indices: tuple[int, ...], status: str, prob: float,
+        heard: str | None = None,
     ) -> None:
-        """همهٔ کلمه‌های یک قطعه را با یک وضعیت ثبت کن و اشاره‌گر را جلو ببر."""
+        """همهٔ کلمه‌های یک قطعه را با یک وضعیت ثبت کن و اشاره‌گر را جلو ببر.
+
+        `heard` فقط برای وضعیتِ «غلط» داده می‌شود (تکهٔ واجیِ
+        شنیده‌شده)؛ برای درست/نزدیک، شنیده‌شده همان متنِ موردانتظار
+        است و برای جاافتاده/ردِ خودکار، None.
+        """
         for wi in word_indices:
             expected = self._words[wi] if wi < len(self._words) else ""
-            heard = expected if status in ("correct", "close") else None
-            self._emit_word(self._ayah, wi, expected, status, prob, heard)
+            if heard is not None:
+                h: str | None = heard
+            else:
+                h = expected if status in ("correct", "close") else None
+            self._emit_word(self._ayah, wi, expected, status, prob, h)
         if word_indices:
             self._index = max(word_indices) + 1
         self._unit_pos += 1
@@ -747,10 +766,14 @@ class LiveSession:
                 await self._jump_to(ayah, unit_pos)
             self._locating = False
             self._relocate_pending = False
+            self._locate_failed = False
             return True
-        # پیدا نشد: روی همان آیه بمان و دیگر منتظر نمان.
+        # پیدا نشد: روی همان آیه بمان و دیگر منتظر نمان. یافتن
+        # ناموفق بود، پس واحدِ بی‌تطابق از این پس «غلط» می‌خورد،
+        # نه «جاافتاده» — تا اشاره‌گر بی‌مهار جلو نرود.
         self._locating = False
         self._relocate_pending = False
+        self._locate_failed = True
         return True
 
     async def feed_phonemes(self, phonemes: list[str]) -> None:
@@ -765,6 +788,17 @@ class LiveSession:
         حرکتِ پایانیِ وصل) به کلمه‌های بعد سرایت نکند. وقتی بافر با واحدی جلوتر بخواند،
         واحدهای بین‌شان «جاافتاده» می‌شوند (gray) و خواندن ادامه
         می‌یابد. واحدِ رد خودکار (نشانهٔ وقف) واج مصرف نمی‌کند.
+        وقتی بافر دست‌کم دو برابرِ طولِ موردانتظار شده و با هیچ
+        واحدی (جاری، نزدیک، جلوتر) نمی‌خواند و هم‌ترازیِ دوباره هم
+        نشد: اگر یافتنِ آیه ناموفق نبوده، واحد جاری «جاافتاده»
+        (خاکستری، بی‌مصرفِ بافر) است تا اشاره‌گر به آیهٔ جلوتر برسد
+        (پرشِ مشروع؛ قانونِ خاکستریِ ≤۵ آیه + یافتنِ دوباره از این
+        جلوتر نگهبانی می‌کنند). اگر یافتن ناموفق بوده، واحد جاری
+        «غلط» (قرمز، ۰٫۳۰) علامت می‌خورد و یک طولِ کلمهٔ موردانتظار
+        از بافر مصرف می‌شود — رفتارِ پرمیوم (علامتِ خطا + ادامه، نه
+        یخ‌زدن) و همان منطقِ مسیرِ ضبطی. اشاره‌گر هرگز بدونِ مصرفِ
+        واجِ شنیده‌شده جلو نمی‌رود، پس آیه‌های نخوانده هرگز نوشته
+        نمی‌شوند.
         شنیده‌شدهٔ درست/نزدیک، همان متن موردانتظار است — نه حدسِ
         بازشناس. هم‌ترازی دوباره: اگر سرِ بافر با هیچ واحدی
         نمی‌خواند، واج‌های اول یکی‌یکی کنار گذاشته می‌شوند تا ادامهٔ
@@ -883,10 +917,27 @@ class LiveSession:
                     continue
             if len(buf) >= 2 * max(len(phon), 1):
                 # بافر حداقل دو برابرِ طولِ موردانتظار شده و هنوز با
-                # واحد جاری نمی‌خواند: این واحد جاافتاده است و خواندن
-                # ادامه می‌یابد — ولی بافر مصرف نمی‌شود (شاید واج‌های
-                # واحد بعد در آن باشد).
-                self._emit_unit(word_indices, "skipped", 0.0)
+                # واحد جاری نمی‌خواند و هم‌ترازیِ دوباره هم نشد.
+                # اگر یافتنِ آیه ناموفق نبوده، کاربر ممکن است آیه‌ای
+                # جلوتر را بخواند: این واحد «جاافتاده» (خاکستری،
+                # بی‌مصرفِ بافر) است تا اشاره‌گر به آن آیه برسد
+                # (پرشِ مشروع؛ قانونِ خاکستریِ ≤۵ آیه + یافتنِ دوباره
+                # از این جلوتر نگهبانی می‌کنند). اگر یافتن ناموفق
+                # بوده، کاربر چیزی می‌خواند که با سوره نمی‌خواند:
+                # این واحد «غلط» (قرمز) علامت می‌خورد و یک طولِ
+                # کلمهٔ موردانتظار از بافر مصرف می‌شود تا جریان ادامه
+                # پیدا کند (رفتارِ پرمیوم: علامتِ خطا + ادامه، نه
+                # یخ‌زدن) — همان منطقِ مسیرِ ضبطی (align_phonemes).
+                # اشاره‌گر هرگز بدونِ مصرفِ واجِ شنیده‌شده جلو
+                # نمی‌رود، پس آیه‌های نخوانده هرگز نوشته نمی‌شوند —
+                # عیبِ «خواندنِ سورهٔ دیگر و نوشتنِ آیاتِ سورهٔ
+                # انتخاب‌شده» همین‌جا بود.
+                if not self._locate_failed:
+                    self._emit_unit(word_indices, "skipped", 0.0)
+                    continue
+                chunk = buf[: len(phon)]
+                self._emit_unit(word_indices, "wrong", 0.30, heard=chunk)
+                self._phoneme_buffer = buf[len(phon):]
                 continue
             # بافر کوتاه‌تر از طول واج‌های موردانتظار است و با آن
             # نمی‌خواند: واج‌های بیشتری لازم است؛ منتظر بمان.

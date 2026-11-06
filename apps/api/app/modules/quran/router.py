@@ -95,6 +95,47 @@ async def get_ayah(
     return AyahOut(**bundle)
 
 
+@quran_router.get("/recitation/reciters")
+async def list_recitation_reciters():
+    """قاری‌های حالت گوش‌دادن/دنبال‌کردن — زمان‌بندی کلمه‌ای دارند."""
+    from .recitation_timing import RECITER_LABELS
+
+    return {
+        "reciters": [
+            {"id": rid, "label": RECITER_LABELS[rid]}
+            for rid in RECITER_LABELS
+        ]
+    }
+
+
+@quran_router.get("/recitation/timing")
+async def get_recitation_timing_endpoint(
+    reciter: str = Query(description="شناسهٔ قاری: alafasy | abdul_basit | husary"),
+    surah: int = Query(ge=1, le=114, description="شمارهٔ سوره"),
+):
+    """زمان‌بندی کلمه‌به‌کلمهٔ تلاوت یک سوره برای حالت گوش‌دادن.
+
+    خروجی: audio_url فایل سوره + برای هر آیه from/to (میلی‌ثانیه در
+    فایل سوره) و سگمنت‌های کلمه نسبت به ابتدای همان آیه. خرابی →
+    ۵۰۳ صادقانه با کد recitation_timing_unavailable (بدون fallback
+    بی‌صدا؛ فرانت‌اند به درون‌یابیِ متناسب برمی‌گردد و همان را هم
+    به کاربر می‌گوید).
+    """
+    from app.core.errors import APIError
+
+    from .recitation_timing import RecitationTimingError, get_recitation_timing
+
+    try:
+        return await get_recitation_timing(reciter, surah)
+    except RecitationTimingError as exc:
+        raise APIError(
+            503,
+            "recitation_timing_unavailable",
+            "زمان‌بندی تلاوت در دسترس نیست؛ لطفاً کمی بعد تلاش کنید",
+            {"reciter": reciter, "surah": surah, "detail": str(exc)},
+        )
+
+
 @quran_router.get("/providers", response_model=QuranProvidersOut)
 async def get_providers(db: AsyncSession = Depends(get_db)):
     """providerهای ثبت‌شده و editions فعال — driven by settings (CRM)."""
