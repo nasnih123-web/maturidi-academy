@@ -1,0 +1,61 @@
+### QPC V2 Font.ttf.bz2.zip | zip 136208148 B | md5_match=True | zip_bad=None | members=604
+    member: p1.ttf (618744 B)
+    member: p10.ttf (336340 B)
+    member: p100.ttf (438088 B)
+    member: p101.ttf (421364 B)
+    member: p102.ttf (338392 B)
+    member: p103.ttf (362748 B)
+    member: p104.ttf (337524 B)
+    member: p105.ttf (331152 B)
+    ... +596 more members
+  FONTS: count=604 total_bytes=208121760 glyphs min=102 max=488 sum=111473 families_sample=['QCF2001', 'QCF2002', 'QCF2003'] families_last=['QCF2602', 'QCF2603', 'QCF2604']
+    fonttools errors: 1 e.g. [('p245.ttf', 'unpack requires a buffer of 4 bytes')]
+### QPC V2 Font.woff2.bz2.zip | zip 97828880 B | md5_match=True | zip_bad=None | members=604
+    member: p1.woff2 (40956 B)
+    member: p10.woff2 (127068 B)
+    member: p100.woff2 (172240 B)
+    member: p101.woff2 (163288 B)
+    member: p102.woff2 (129328 B)
+    member: p103.woff2 (138204 B)
+    member: p104.woff2 (127916 B)
+    member: p105.woff2 (125920 B)
+    ... +596 more members
+  FONTS: count=604 total_bytes=97748500 glyphs min=37 max=192 sum=89173 families_sample=['QCF2001', 'QCF2002', 'QCF2003'] families_last=['QCF2602', 'QCF2603', 'QCF2604']
+### ar-tafsir-al-wasit.db.zip | zip 5006128 B | md5_match=True | zip_bad=None | members=1
+    member: ar-tafsir-al-wasit.db (21061632 B)
+  DB ar-tafsir-al-wasit.db:
+    table tafsir: rows=6236 cols=['ayah_key', 'group_ayah_key', 'from_ayah', 'to_ayah', 'ayah_keys', 'text']
+    sample tafsir: ["('1:1', '1:1', '1:1', '1:1', '1:1', '{ بسم ٱلله الرَّحْمٰنِ الرَّحِيـمِ }الاسم: اللفظ الذى يدل على ذات أو معنى. وقد اختلف النحويون فى اشتقاقه على وجهين، فقال البصريون: هو مشتق من السمو، وهو العلو والرفعة، فقيل: اسم، لأن صاحبه بمنزلة المرتفع به.وقال الكوفيون: إنه مشتق من السمة وهى العلامة، لأن الاسم ", '(\'1:2\', \'1:2\', \'1:2\', \'1:2\', \'1:2\', \'{ الحمد } هو الثناء باللسان على الجميل الصادر عن اختيار من نعمة أو غيرها.{ رب العالمين } أى: مالكهم، إذ الرب مصدر " ربه يربه " إذا تعاهده بالتربية حتى يبلغ به شيئاً فشيئا درجة الكمال. وهو اسم من أسماء الله - تعالى - ولا يطلق على غيره إلا مقيداً فيقال: رب الدار، و']
+### digital-khatt-v2.db.zip | zip 1593339 B | md5_match=True | zip_bad=None | members=1
+    member: digital-khatt-v2.db (3518464 B)
+  DB digital-khatt-v2.db:
+    table words: rows=83668 cols=['id', 'location', 'surah', 'ayah', 'word', 'text']
+    sample words: ["(1, '1:1:1', 1, 1, 1, 'بِسْمِ')", "(2, '1:1:2', 1, 1, 2, 'ٱللَّهِ')"]
+### font.ttf.zip | zip 109595 B | md5_match=True | zip_bad=None | members=1
+    member: font.ttf (310912 B)
+  FONTS: count=1 total_bytes=310912 glyphs min=992 max=992 sum=992 families_sample=['AlQuran IndoPak by QuranWBW'] families_last=['AlQuran IndoPak by QuranWBW']
+### font.woff.zip | zip 104502 B | md5_match=True | zip_bad=None | members=1
+    member: font.woff (104412 B)
+  FONTS: count=1 total_bytes=104412 glyphs min=992 max=992 sum=992 families_sample=['AlQuran IndoPak by QuranWBW'] families_last=['AlQuran IndoPak by QuranWBW']
+### font.woff2.zip | zip 78789 B | md5_match=True | zip_bad=None | members=1
+    member: font.woff2 (78672 B)
+  FONTS: count=1 total_bytes=78672 glyphs min=992 max=992 sum=992 families_sample=['AlQuran IndoPak by QuranWBW'] families_last=['AlQuran IndoPak by QuranWBW']
+### header-surah-svg.zip | zip 368527 B | md5_match=True | zip_bad=None | members=113
+    member: surah-002.svg (7584 B)
+    member: surah-003.svg (8146 B)
+    member: surah-004.svg (7443 B)
+    member: surah-005.svg (7593 B)
+    member: surah-006.svg (8347 B)
+    member: surah-007.svg (8437 B)
+    member: surah-008.svg (8069 B)
+    member: surah-009.svg (8482 B)
+    ... +105 more members
+  SVG: count=113 first=['surah-002.svg', 'surah-003.svg', 'surah-004.svg', 'surah-005.svg', 'surah-006.svg'] last=['surah-110.svg', 'surah-111.svg', 'surah-112.svg', 'surah-113.svg', 'surah-114.svg']
+### indopak-13-lines-layout-qudratullah.db.zip | zip 120475 B | md5_match=True | zip_bad=None | members=1
+    member: indopak-13-lines-layout-qudratullah.db (290816 B)
+  DB indopak-13-lines-layout-qudratullah.db:
+    table info: rows=1 cols=['name', 'number_of_pages', 'lines_per_page', 'font_name']
+    table pages: rows=11022 cols=['page_number', 'line_number', 'line_type', 'is_centered', 'first_word_id', 'last_word_id', 'surah_number']
+    sample info: ["('Indopak 13 lines - Qudratullah', 849, 13, 'mushaf-indopak-nastaleeq-hanafi-compressed')"]
+    sample pages: ["(1, 1, 'surah_name', 1, '', '', 1)", "(1, 2, 'ayah', 1, 1, 5, '')"]
+... total lines: 178

@@ -387,11 +387,19 @@ class FrameRateLimiter:
 # جریان) در حافظه نگه می‌دارد؛ بدون سقف، چند اتصالِ هم‌زمانِ یک
 # کاربر (یا چند کاربر) حافظهٔ فرایند API را اشباع می‌کند. سقف‌ها
 # درونِ فرایندند (هر worker سهم خودش را دارد)؛ در استقرارِ
-# چندworker، سقفِ سراسری نیازمند limiter مشترک (Redis) است.
+# چندworker، سقفِ سراسری نیازمند limiter مشترک (Redis) است —
+# `app/core/hifz_live_limiter.py` (P1-3): همان ZSET با lease، و
+# دروازهٔ `live_stream_gateway` که وقتی Redis هست (فقط در
+# production + پس از provisioning) توزیع‌شده کار می‌کند وگرنه به
+# همین limiter درون‌فرایندی برمی‌گردد.
+# قیدِ سفتِ بدون Redis: دقیقاً ۱ replica و ۱ worker (start.sh بدون
+# --workers) — هر scale (replica دوم یا --workers) بدون Redis، سقف
+# را بی‌اعتبار می‌کند (docs/ops/railway-deployment.md).
 # کاربر در لحظه فقط یک تلاوت می‌خواند، پس سقفِ هر کاربر ۱ است؛
 # سقفِ کل ۴ است تا روی جعبهٔ ۱ گیگابایتی، حافظهٔ مدل‌ها (~۴×۸۰MB)
 # + مدلِ کش‌شدهٔ مسیر ضبطی + نگاشت واجی جا بشود. ردشدن با کد
-# `hifz_too_many_streams` و بستن ۴۴۰۹ است، نه خطای مبهم.
+# `hifz_too_many_streams` و بستن ۴۴۰۹ است، نه خطای مبهم؛ قطعیِ
+# Redis در production با `hifz_live_unavailable` رد می‌شود.
 MAX_LIVE_STREAMS_PER_USER = 1
 MAX_LIVE_STREAMS_TOTAL = 4
 
@@ -437,6 +445,16 @@ class LiveStreamLimiter:
                 self._per_user[user_id] = current - 1
             self._total -= 1
 
+    async def release_all(self, user_id: UUID) -> int:
+        """آزادسازی همهٔ اسلات‌های یک کاربر (برای purge داده — P1-5).
+
+        برمی‌گرداند: تعداد اسلات‌های آزادشده.
+        """
+        async with self._lock:
+            n = self._per_user.pop(user_id, 0)
+            self._total -= n
+            return n
+
     def active_total(self) -> int:
         return self._total
 
@@ -446,3 +464,12 @@ class LiveStreamLimiter:
 
 # نمونهٔ مشترکِ فرایند برای `stream_attempt` در `hifz_router.py`.
 live_stream_limiter = LiveStreamLimiter()
+
+# دروازهٔ سقف زنده (P1-3): وقتی Redis هست (فقط production +
+# provisioning)، همین نمونهٔ محلی به‌عنوان fallback زیرِ limiter
+# توزیع‌شده می‌نشیند؛ وگرنه دروازه عینِ همین limiter رفتار می‌کند.
+# ساختِ کلاینت Redis lazy است (aioredis.from_url اتصالی باز نمی‌کند)
+# و فقط در production انجام می‌شود.
+from app.core.hifz_live_limiter import get_live_stream_limiter
+
+live_stream_gateway = get_live_stream_limiter(local=live_stream_limiter)

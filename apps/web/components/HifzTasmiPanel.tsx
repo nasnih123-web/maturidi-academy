@@ -10,6 +10,8 @@
  */
 import { useState } from 'react';
 import { authJson } from '@/lib/auth-client';
+import { surahAyahCount } from '@/lib/hifz-phase4';
+import { HifzNumericInput } from './HifzNumericInput';
 
 const HIFZ_API = '/api/v1/quran/hifz';
 
@@ -164,11 +166,12 @@ export function HifzTasmiPanel({ labels }: { labels: HifzTasmiLabels }) {
           </label>
           <label>
             {labels.ayahStart}
-            <input
-              type="number"
-              min={1}
+            <HifzNumericInput
               value={startAyah}
-              onChange={(e) => setStartAyah(Math.max(1, Number(e.target.value) || 1))}
+              onChange={(v) => setStartAyah(v ?? 1)}
+              ariaLabel={labels.ayahStart}
+              min={1}
+              max={surahAyahCount(startSurah) ?? undefined}
             />
           </label>
           <label>
@@ -183,11 +186,12 @@ export function HifzTasmiPanel({ labels }: { labels: HifzTasmiLabels }) {
           </label>
           <label>
             {labels.ayahEnd}
-            <input
-              type="number"
-              min={1}
+            <HifzNumericInput
               value={endAyah}
-              onChange={(e) => setEndAyah(Math.max(1, Number(e.target.value) || 1))}
+              onChange={(v) => setEndAyah(v ?? 1)}
+              ariaLabel={labels.ayahEnd}
+              min={1}
+              max={surahAyahCount(endSurah) ?? undefined}
             />
           </label>
           <button type="button" onClick={create} disabled={busy}>

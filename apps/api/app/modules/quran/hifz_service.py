@@ -28,6 +28,7 @@ from app.core.platform_settings import get_typed_setting
 from app.models.models import (
     HifzAttempt,
     HifzMistake,
+    HifzUserSettings,
     HifzWordScore,
     User,
 )
@@ -135,23 +136,173 @@ def _attempt_out(attempt: HifzAttempt, counts: dict[str, int]) -> dict:
         "created_at": attempt.created_at,
         "updated_at": attempt.updated_at,
         "completed_at": attempt.completed_at,
+        "start_ayah": attempt.start_ayah,
+        "end_ayah": attempt.end_ayah,
+        "current_surah": attempt.current_surah,
+        "current_ayah": attempt.current_ayah,
+        "current_word_index": attempt.current_word_index,
+        "repeat_ayah": attempt.repeat_ayah,
+        "repeat_range": attempt.repeat_range,
     }
 
 
+# ---------------------------------------------------------------------------
+# فاز ۴ — تنظیم‌های حفظِ هر کاربر (یخ‌زدن، کشف خطا، ازسرگیری، نشان‌ها).
+# پیش‌فرض‌ها رفتار پرمیومِ ویدیوها را می‌دهند: بدون یخ‌زدن، کشف خطا
+# روشن، جلسهٔ تازه در هر شروع، نشان‌های آیه نمایان.
+# ---------------------------------------------------------------------------
+
+_SETTINGS_DEFAULTS = {
+    "freeze_on_error": False,
+    "mistake_detection": True,
+    "tashkeel_detection": True,
+    "resumable_sessions": False,
+    "hide_ayah_markers": False,
+}
+
+
+def _settings_out(row: HifzUserSettings | None) -> dict:
+    if row is None:
+        return dict(_SETTINGS_DEFAULTS, updated_at=None)
+    return {
+        "freeze_on_error": row.freeze_on_error,
+        "mistake_detection": row.mistake_detection,
+        "tashkeel_detection": row.tashkeel_detection,
+        "resumable_sessions": row.resumable_sessions,
+        "hide_ayah_markers": row.hide_ayah_markers,
+        "updated_at": row.updated_at,
+    }
+
+
+async def get_user_settings(db: AsyncSession, user: User) -> dict:
+    row = await db.get(HifzUserSettings, user.id)
+    return _settings_out(row)
+
+
+async def update_user_settings(
+    db: AsyncSession, user: User, patch: dict[str, bool | None]
+) -> dict:
+    row = await db.get(HifzUserSettings, user.id)
+    if row is None:
+        row = HifzUserSettings(user_id=user.id, **_SETTINGS_DEFAULTS)
+        db.add(row)
+    for key, value in patch.items():
+        if value is not None and key in _SETTINGS_DEFAULTS:
+            setattr(row, key, bool(value))
+    row.updated_at = _utcnow()
+    await db.commit()
+    await db.refresh(row)
+    return _settings_out(row)
+
+
 async def create_attempt(
-    db: AsyncSession, user: User, surah: int, page: int | None
+    db: AsyncSession,
+    user: User,
+    surah: int,
+    page: int | None,
+    start_ayah: int | None = None,
+    end_ayah: int | None = None,
+    repeat_ayah: int = 1,
+    repeat_range: int = 1,
 ) -> dict:
     """ساخت نشست. engine نمایشی لحظهٔ ساخت است؛ نمره‌دهی هر بار موتور
-    را از تنظیم می‌خواند."""
+    را از تنظیم می‌خواند. بازهٔ تمرین (start/end_ayah) و شمار تکرار
+    روی نشست ذخیره می‌شوند؛ start>end → ۴۲۲."""
+    if start_ayah is not None and end_ayah is not None and start_ayah > end_ayah:
+        raise APIError(
+            422, "hifz_range_invalid", "آیهٔ شروع بازه نمی‌تواند پس از آیهٔ پایان باشد"
+        )
     raw = await get_typed_setting(db, "quran.asr_engine", "zipformer")
     engine_snapshot = raw if raw in hifz_engines.ENGINE_IDS else "zipformer"
     attempt = HifzAttempt(
-        user_id=user.id, surah=surah, page=page, engine=engine_snapshot
+        user_id=user.id,
+        surah=surah,
+        page=page,
+        engine=engine_snapshot,
+        start_ayah=start_ayah,
+        end_ayah=end_ayah,
+        current_surah=surah,
+        current_ayah=start_ayah or 1,
+        current_word_index=0,
+        repeat_ayah=repeat_ayah,
+        repeat_range=repeat_range,
     )
     db.add(attempt)
     await db.commit()
     await db.refresh(attempt)
     return _attempt_out(attempt, {"correct": 0, "close": 0, "wrong": 0, "skipped": 0})
+
+
+async def update_position(
+    db: AsyncSession,
+    user: User,
+    attempt_id: UUID,
+    current_surah: int,
+    current_ayah: int,
+    current_word_index: int | None,
+) -> dict:
+    """ثبت آخرین موقعیتِ دنبال‌شدهٔ نشست — سرور-side، برای ازسرگیری
+    پس از خروج از برنامه. فقط نشست‌های باز (in_progress/paused)
+    موقعیت می‌گیرند؛ نشستِ تکمیل‌شده ۴۰۹ می‌گیرد."""
+    attempt = await _attempt_or_404(db, user, attempt_id)
+    if attempt.status == "completed":
+        raise APIError(
+            409, "hifz_attempt_completed", "نشست تکمیل شده است؛ موقعیت آن ثبت نمی‌شود"
+        )
+    attempt.current_surah = current_surah
+    attempt.current_ayah = current_ayah
+    attempt.current_word_index = current_word_index
+    attempt.updated_at = _utcnow()
+    await db.commit()
+    return _attempt_out(attempt, await _attempt_counts(db, attempt_id))
+
+
+async def pause_attempt(db: AsyncSession, user: User, attempt_id: UUID) -> dict:
+    """مکثِ سرور-side نشست (رفع G-05 ممیزی فاز ۱: مکث دیگر فقط
+    سمت کلاینت نیست). فقط in_progress → paused."""
+    attempt = await _attempt_or_404(db, user, attempt_id)
+    if attempt.status == "completed":
+        raise APIError(409, "hifz_attempt_completed", "نشست تکمیل شده است")
+    if attempt.status == "paused":
+        return _attempt_out(attempt, await _attempt_counts(db, attempt_id))
+    attempt.status = "paused"
+    attempt.updated_at = _utcnow()
+    await db.commit()
+    return _attempt_out(attempt, await _attempt_counts(db, attempt_id))
+
+
+async def resume_attempt(db: AsyncSession, user: User, attempt_id: UUID) -> dict:
+    """ازسرگیری نشستِ مکث‌کرده (یا در جریان): paused → in_progress.
+    موقعیتِ ذخیره‌شده (current_*) دست نمی‌خورد؛ کلاینت از همان‌جا
+    ادامه می‌دهد."""
+    attempt = await _attempt_or_404(db, user, attempt_id)
+    if attempt.status == "completed":
+        raise APIError(409, "hifz_attempt_completed", "نشست تکمیل شده است")
+    if attempt.status == "paused":
+        attempt.status = "in_progress"
+        attempt.updated_at = _utcnow()
+        await db.commit()
+    return _attempt_out(attempt, await _attempt_counts(db, attempt_id))
+
+
+async def resumable_attempt(db: AsyncSession, user: User) -> dict | None:
+    """تازه‌ترین نشستِ باز (in_progress یا paused) برای ازسرگیری.
+    None یعنی جلسهٔ بازی نیست — کلاینت جلسهٔ تازه می‌سازد. فقط
+    وقتی تنظیم resumable_sessions روشن باشد فراخوانده می‌شود؛
+    تصمیمِ روشن/خاموش با کلاینت است (سرور این‌جا فیلتر نمی‌کند)."""
+    rows = await db.execute(
+        select(HifzAttempt)
+        .where(
+            HifzAttempt.user_id == user.id,
+            HifzAttempt.status.in_(("in_progress", "paused")),
+        )
+        .order_by(HifzAttempt.updated_at.desc().nullslast(), HifzAttempt.created_at.desc())
+        .limit(1)
+    )
+    attempt = rows.scalars().first()
+    if attempt is None:
+        return None
+    return _attempt_out(attempt, await _attempt_counts(db, attempt.id))
 
 
 async def list_attempts(
@@ -324,7 +475,7 @@ async def _store_grade(
         # A "close" word keeps its mistake_type on the score (visible
         # in the strip, usable for practice) but creates no history row.
         if word.status in ("wrong", "skipped") and word.mistake_type in (
-            "wrong_word", "wrong_tashkeel", "skipped",
+            "wrong_word", "wrong_tashkeel", "skipped", "transposed",
         ):
             db.add(
                 HifzMistake(
@@ -336,6 +487,34 @@ async def _store_grade(
                     mistake_type=word.mistake_type,
                     expected_text=word.expected,
                     heard=word.heard,
+                )
+            )
+    # Extra words (فاز ۴): کلمه‌های اضافه هرگز روی صفحه نوشته
+    # نمی‌شوند، ولی در برگهٔ خطاها می‌مانند — یک ردیف خطا با نوع
+    # "extra" برای هر کلمهٔ اضافه، با heard=کلمهٔ اضافه و
+    # expected_text خالی (مقابلِ موردانتظاری ندارد؛ کارت «كلمات
+    # زائدة» فقط یک ردیف دارد). نمره‌دهیِ دوبارهٔ همان آیه، ردیف‌های
+    # extra قدیمیِ همان آیه را جایگزین می‌کند تا برگه کهنه نشود.
+    if extra:
+        await db.execute(
+            delete(HifzMistake).where(
+                HifzMistake.attempt_id == attempt.id,
+                HifzMistake.surah == surah,
+                HifzMistake.ayah == ayah,
+                HifzMistake.mistake_type == "extra",
+            )
+        )
+        for extra_word in extra:
+            db.add(
+                HifzMistake(
+                    attempt_id=attempt.id,
+                    user_id=attempt.user_id,
+                    surah=surah,
+                    ayah=ayah,
+                    word_index=None,
+                    mistake_type="extra",
+                    expected_text="",
+                    heard=extra_word,
                 )
             )
     attempt.extra_words = extra
@@ -479,11 +658,24 @@ async def peek_word(
     ayah: int,
     word_index: int | None = None,
     word_indices: list[int] | None = None,
+    kind: str = "word",
 ) -> dict:
     """Peek: نمایش کلمه(ها) = ثبت خطا. ردیف نمره نمی‌سازد. One call
     reveals one word or a whole list (the rest of the ayah): every
     word gets its own peek mistake in a single transaction, each
-    with status `peeked` on the page."""
+    with status `peeked` on the page.
+
+    فاز ۴ — `kind` معنای دکمه را از روی شواهد ویدیو می‌گوید: "word"
+    = دکمهٔ `<` (پیش‌نمایش کلمهٔ بعد، یک کلمه)، "ayah" = دکمهٔ `<<`
+    (پیش‌نمایش بقیهٔ آیه). جریمهٔ Peek در نمرهٔ SRS همان ۰٫۰۵
+    به‌ازای هر Peek است (hifz_plan.py) و این‌جا عوض نشده؛ مقدارش
+    نیازمند تأیید کاربر است (یادداشت فاز ۴)."""
+    if kind not in ("word", "ayah"):
+        raise APIError(422, "hifz_peek_kind", "kind باید word یا ayah باشد")
+    if kind == "ayah" and word_indices is None:
+        raise APIError(
+            422, "hifz_peek_target", "peek آیه به word_indices نیاز دارد"
+        )
     attempt = await _attempt_or_404(db, user, attempt_id)
     words = await _ayah_words(db, surah, ayah)
     if (word_index is None) == (word_indices is None):
@@ -695,4 +887,85 @@ async def delete_attempt(db: AsyncSession, user: User, attempt_id: UUID) -> None
         delete(HifzMistake).where(HifzMistake.attempt_id == attempt_id)
     )
     await db.delete(attempt)
+    await db.commit()
+
+
+async def delete_attempt_admin(db: AsyncSession, attempt_id: UUID) -> None:
+    """حذفِ نشستِ هر کاربر توسط ادمین (CRM) — بدون بررسیِ مالکیت.
+
+    مکانیکِ حذف یک‌جاست با حذفِ مالک (delete_attempt)؛ تفاوت فقط
+    نگهبانِ مسیر است (_admin_perm به‌جای مالکیت). حذفِ یک‌جای
+    همهٔ دادهٔ یک کاربر (P1-5) همچنان نیازمندِ تصمیمِ کاربر است.
+    """
+    attempt = await db.get(HifzAttempt, attempt_id)
+    if attempt is None:
+        raise APIError(404, "hifz_attempt_not_found", "نشست حفظ پیدا نشد")
+    await db.execute(
+        delete(HifzWordScore).where(HifzWordScore.attempt_id == attempt_id)
+    )
+    await db.execute(
+        delete(HifzMistake).where(HifzMistake.attempt_id == attempt_id)
+    )
+    await db.delete(attempt)
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# فاز ۴ — برگهٔ خطاها (گروهی، مثل ترتیل) + حذفِ تکیِ یک خطا.
+# ---------------------------------------------------------------------------
+
+_WRONG_MISTAKE_TYPES = ("wrong_word", "wrong_tashkeel", "skipped", "transposed")
+
+
+async def mistakes_grouped(db: AsyncSession, user: User, attempt_id: UUID) -> list[dict]:
+    """برگهٔ خطاها، گروه‌شده به‌ازای هر آیه — همان شکل ترتیل (§۸
+    مشخصات فاز ۲): هر کارت یک دسته («كلمات خاطئة» / «كلمات زائدة»)
+    + برچسب «سوره:آیه» دارد؛ کارت «خاطئة» دو ردیف دارد (موردانتظار
+    سبز / خوانده‌شده قرمز) و کارت «زائدة» فقط یک ردیف (کلمهٔ اضافهٔ
+    قرمز). Peek در برگه نمی‌آید (نمایش است، نه خطا)؛ «نزدیک» هم
+    ردیف تاریخچه ندارد (مثل قبل). ترتیب: آیهٔ صعودی، بعد زمان."""
+    attempt = await _attempt_or_404(db, user, attempt_id)
+    rows = await db.execute(
+        select(HifzMistake)
+        .where(HifzMistake.attempt_id == attempt.id)
+        .order_by(
+            HifzMistake.surah, HifzMistake.ayah, HifzMistake.created_at
+        )
+    )
+    groups: dict[tuple[int, int, str], dict] = {}
+    for m in rows.scalars().all():
+        if m.mistake_type == "extra":
+            category = "extra_words"
+        elif m.mistake_type in _WRONG_MISTAKE_TYPES:
+            category = "wrong_words"
+        else:
+            continue  # peek و جز آن در برگه نمی‌آیند
+        key = (m.surah, m.ayah, category)
+        group = groups.setdefault(
+            key,
+            {"surah": m.surah, "ayah": m.ayah, "category": category, "items": []},
+        )
+        group["items"].append(
+            {
+                "id": m.id,
+                "mistake_type": m.mistake_type,
+                "word_index": m.word_index,
+                "expected_text": m.expected_text,
+                "heard": m.heard,
+                "created_at": m.created_at,
+            }
+        )
+    return sorted(
+        groups.values(), key=lambda g: (g["surah"], g["ayah"], g["category"])
+    )
+
+
+async def delete_mistake(db: AsyncSession, user: User, mistake_id: UUID) -> None:
+    """حذفِ تکیِ یک ردیف خطا (مکانیک P1-5: حذفِ دانه‌ای موجود است؛
+    حذفِ یک‌جای همهٔ دادهٔ حفظ هنوز تصمیم کاربر را می‌خواهد و این‌جا
+    ساخته نشده است). فقط خطای خودِ کاربر حذف می‌شود."""
+    row = await db.get(HifzMistake, mistake_id)
+    if row is None or row.user_id != user.id:
+        raise APIError(404, "hifz_mistake_not_found", "خطا پیدا نشد")
+    await db.delete(row)
     await db.commit()

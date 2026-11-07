@@ -10,10 +10,12 @@
  * surah's ayahs, filtered by the ayah's own position inside the range.
  * This supersedes the old "current surah only" grouping limit.
  *
- * Boundaries come ONLY from lib/quran-boundaries.json, which is
- * generated from the provider's per-ayah metadata (juz, hizbQuarter,
- * page) by scripts/generate-quran-data.mjs — never hand-typed. A hizb
- * is Bayan's حزب: the half-hizb division, 120 items (hizb n =
+ * Boundaries come from lib/quran-boundaries-loader.ts, which returns
+ * the V2 boundaries (page starts derived from the QPC V2 layout,
+ * juz / hizb starts reused from lib/quran-boundaries.json — they are
+ * layout-independent; see lib/quran-mushaf-v2-boundaries.ts) and falls
+ * back to the QPC1 boundaries only when the V2 data fails to load.
+ * A hizb is Bayan's حزب: the half-hizb division, 120 items (hizb n =
  * hizbQuarter 2n-1: the odd quarters are exactly the hizb starts and
  * the hizb middles). PROOF from the user's own reference: Bayan's page
  * 106 header reads جزء ۶ حزب ۲۲ — standard 60-hizb numbering cannot

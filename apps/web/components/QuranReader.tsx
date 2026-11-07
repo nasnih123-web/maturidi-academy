@@ -474,6 +474,9 @@ export function QuranReader({
           initialMushaf={initialMushaf ?? 'hafs/kfqc'}
           initialTexts={initialTexts}
           labels={labels.hifz}
+          reciterPhotos={Object.fromEntries(
+            reciters.map((r) => [r.id, r.photoUrl ?? null]),
+          )}
         />
       </div>
     );
@@ -2733,6 +2736,13 @@ function QuranUmumReader({
                 // one SVG at a time, exactly like page view).
                 svgPage
                 mushafKey={mushafKey}
+                // Phase 3 (hifz redesign): the V2 text page's own
+                // prev/next/jump row navigates by page number, so it
+                // is only wired in page view — in juz/hizb views the
+                // reader's own range navigation owns paging.
+                onNavigatePage={
+                  viewMode === 'page' ? (p: number) => setRangeTarget(p) : undefined
+                }
                 resolveSurahName={surahNameAr}
                 highlightKey={
                   mushafKey !== DEFAULT_SVG_MUSHAF ? svgSelectedKey : (svgSelectedKey ?? playingKey)

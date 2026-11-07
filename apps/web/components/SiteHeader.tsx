@@ -165,7 +165,10 @@ export function SiteHeader({
         <div className="header-inner">
           <Link href={`/${locale}`} className="brand" aria-label={labels.brandName}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.jpg" alt="" className="brand-mark" />
+            {/* Performance (§8): the 34px brand mark used to download
+                the 1024px / 204KB logo.jpg; the 96px webp (4KB) is
+                the same image at 3x the display size. */}
+            <img src="/logo-96.webp" alt="" width={34} height={34} className="brand-mark" />
             <span>
               {labels.brandName}
               <span className="brand-sub">{labels.brandSub}</span>

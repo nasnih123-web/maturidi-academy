@@ -2507,12 +2507,93 @@ class StaffMember(Base):
 # می‌مانند. جدول‌ها فقط دادهٔ کاربر را نگه می‌دارند، نه فایل صوت را.
 
 
+class HifzUserSettings(Base):
+    """تنظیم‌های حفظِ هر کاربر (فاز ۴ بازطراحی حفاظ).
+
+    همهٔ کلیدها رفتارِ جلسهٔ زنده/تمرین را کنترل می‌کنند و از
+    صفحهٔ مطالعه (و موبایل) قابل‌تغییرند؛ هیچ‌کدام رفتار را
+    به‌صورت hardcode قفل نمی‌کنند:
+    - freeze_on_error: «لا تكمل حتى يتم تصحيح الخطأ» — با روشن‌بودن،
+      پس از کلمهٔ غلط، ضبط مکث می‌کند تا خطا اصلاح شود؛ پیش‌فرض
+      خاموش = رفتار پرمیوم (صفحه هرگز روی خطا یخ نمی‌زند).
+    - mistake_detection / tashkeel_detection: کلیدهای «كشف الأخطاء»
+      و «كشف أخطاء التشكيل» در تنظیمات تلاوت ترتیل (هر دو در ویدیوی
+      ۲۰:۳۹ روشن بودند).
+    - resumable_sessions: «جلسات قابلة للتكملة» — با روشن‌بودن،
+      جلسهٔ نیمه‌کاره از همان‌جا از سر گرفته می‌شود؛ پیش‌فرض خاموش
+      = هر بار جلسهٔ تازه (مطابق کلید خاموش در ویدیو).
+    - hide_ayah_markers: «Hide Ayah Markers» — پنهان‌کردن نشان‌های
+      پایان آیه (روزت) روی صفحهٔ مطالعه.
+    """
+
+    __tablename__ = "hifz_user_settings"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), primary_key=True
+    )
+    freeze_on_error: Mapped[bool] = mapped_column(Boolean, default=False)
+    mistake_detection: Mapped[bool] = mapped_column(Boolean, default=True)
+    tashkeel_detection: Mapped[bool] = mapped_column(Boolean, default=True)
+    resumable_sessions: Mapped[bool] = mapped_column(Boolean, default=False)
+    hide_ayah_markers: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=True
+    )
+
+
+class HifzListenPosition(Base):
+    """موقعیت شنیدنِ هر کاربر — همگام‌سازی پلیر شنیداری موبایل/وب.
+
+    یک ردیف برای هر کاربر (کلید اصلی user_id): آخرین قاری، سوره+آیه،
+    موقعیت پخش (میلی‌ثانیه)، سرعت و وضعیت تکرار. صوت هرگز ذخیره یا
+    فرستاده نمی‌شود — فقط عددها و شناسهٔ قاری.
+
+    قانون ادغام (last-write-wins بر حسب updated_at — در
+    hifz_listen_sync.py مستند است): نوشتن فقط وقتی اعمال می‌شود که
+    updated_atِ حالتِ محلیِ فرستنده، از updated_atِ ذخیره‌شده قدیمی‌تر
+    نباشد؛ وگرنه نوشته کهنه است و حالت سرور برگردانده می‌شود تا
+    کلاینت آن را بپذیرد. updated_atِ ذخیره‌شده همان ساعت نسخه است:
+    min(updated_at فرستنده، زمان سرور) — ساعت جلوافتادهٔ کلاینت به
+    زمان سرور بریده می‌شود تا نوشتارهای بعدی را مسدود نکند.
+    """
+
+    __tablename__ = "hifz_listen_positions"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), primary_key=True
+    )
+    reciter: Mapped[str] = mapped_column(String(40), default="alafasy")
+    surah: Mapped[int] = mapped_column(Integer, default=1)
+    ayah: Mapped[int] = mapped_column(Integer, default=1)
+    progress_ms: Mapped[int] = mapped_column(Integer, default=0)
+    speed: Mapped[float] = mapped_column(Float, default=1.0)
+    repeat_mode: Mapped[str] = mapped_column(String(10), default="off")
+    repeat_ayah: Mapped[int] = mapped_column(Integer, default=1)
+    repeat_range_start: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    repeat_range_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    repeat_range_count: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=True
+    )
+
+
 class HifzAttempt(Base):
     """یک نشست حفظ: سوره + صفحهٔ مصحف، با وضعیت پیشرفت.
 
     engine: موتور ASR در لحظهٔ ساخت نشست (نمایش)؛ نمره‌دهی هر بار موتور
     را از تنظیم ذخیره‌شده می‌خواند و موتور استفاده‌شده در پاسخ نمره می‌آید.
     extra_words: کلمه‌های اضافهٔ شنیده‌شده در آخرین نمره (JSON).
+
+    فاز ۴ — بازه و موقعیتِ قابل‌ازسرگیری:
+    start_ayah/end_ayah: بازهٔ تمرینِ این نشست (None یعنی کل سوره)؛
+    current_surah/current_ayah/current_word_index: آخرین موقعیتِ
+    دنبال‌شده (برای ازسرگیری پس از خروج از برنامه)؛
+    repeat_ayah/repeat_range: شمار تکرارِ هر آیه / کل بازه (پیش‌فرض ۱)؛
+    status: in_progress | paused | completed.
     """
 
     __tablename__ = "hifz_attempts"
@@ -2526,6 +2607,13 @@ class HifzAttempt(Base):
     status: Mapped[str] = mapped_column(String(20), default="in_progress", index=True)
     engine: Mapped[str] = mapped_column(String(40), default="zipformer")
     extra_words: Mapped[list] = mapped_column(JSONB, default=list)
+    start_ayah: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    end_ayah: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    current_surah: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    current_ayah: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    current_word_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    repeat_ayah: Mapped[int] = mapped_column(Integer, default=1)
+    repeat_range: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=True

@@ -10,6 +10,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { authFetch, authJson } from '@/lib/auth-client';
+import { HifzNumericInput } from './HifzNumericInput';
 import { HifzMicDeniedError, startWavRecording } from '@/lib/hifz-record-wav';
 
 const HIFZ_API = '/api/v1/quran/hifz';
@@ -244,12 +245,12 @@ export function HifzTestingMode({ labels }: { labels: HifzTestingLabels }) {
           </label>
           <label>
             {labels.questionCount}
-            <input
-              type="number"
+            <HifzNumericInput
+              value={count}
+              onChange={(v) => setCount(v ?? 1)}
+              ariaLabel={labels.questionCount}
               min={1}
               max={99}
-              value={count}
-              onChange={(e) => setCount(Math.min(99, Math.max(1, Number(e.target.value) || 1)))}
             />
           </label>
           <label>

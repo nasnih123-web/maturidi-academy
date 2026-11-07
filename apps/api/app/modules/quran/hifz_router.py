@@ -30,6 +30,7 @@ from starlette.types import Message
 
 from app.core.database import get_db
 from app.core.errors import APIError
+from app.core.hifz_live_limiter import LiveAcquire, live_lease_heartbeat
 from app.core.rate_limit import rate_limit
 from app.core.realtime import (
     _HandshakeRejected,
@@ -41,8 +42,10 @@ from app.models.models import User
 from app.modules.auth.dependencies import get_current_user, require_permission
 
 from . import (
+    hifz_listen_sync,
     hifz_mutashabihat,
     hifz_plan_service,
+    hifz_purge,
     hifz_service,
     hifz_stream,
     hifz_testing,
@@ -57,22 +60,31 @@ from .hifz_ws_contract import (
     LiveEventSequencer,
     LiveSessionState,
     LiveSessionStateMachine,
-    live_stream_limiter,
+    live_stream_gateway,
     parse_start_message,
     validate_frame,
 )
 
 logger = logging.getLogger(__name__)
+from .hifz_listen_sync import (
+    HifzListenPositionIn,
+    HifzListenPositionOut,
+    HifzListenPositionSaveOut,
+)
 from .hifz_schemas import (
     HifzAdminAttemptOut,
     HifzAttemptDetailOut,
     HifzAttemptIn,
     HifzAttemptOut,
     HifzDashboardOut,
+    HifzDataPreviewOut,
+    HifzDataPurgeIn,
+    HifzDataPurgeOut,
     HifzDisputeIn,
     HifzDisputeOut,
     HifzDueReviewOut,
     HifzGradeOut,
+    HifzMistakeGroupOut,
     HifzMutashabihatGroupOut,
     HifzPeekIn,
     HifzPeekOut,
@@ -80,6 +92,7 @@ from .hifz_schemas import (
     HifzPlanItemStatusIn,
     HifzPlanOut,
     HifzPlanStatusIn,
+    HifzPositionIn,
     HifzReviewIn,
     HifzReviewItemOut,
     HifzReviewOut,
@@ -96,6 +109,8 @@ from .hifz_schemas import (
     HifzTestPeekOut,
     HifzTestRemoveEventIn,
     HifzTestRemoveEventOut,
+    HifzUserSettingsIn,
+    HifzUserSettingsOut,
     HifzVoiceSearchOut,
 )
 
@@ -125,6 +140,19 @@ _hifz_audio_rate_limit = rate_limit(
 )
 
 
+# حذف یک‌جای دادهٔ حفظ (P1-5) عملی برگشت‌ناپذیر است؛ ۳ بار در ساعت
+# به‌ازای هر نشست، کلیکِ تکراری یا اسکریپت را می‌گیرد — نه کاربرِ
+# واقعی را (purge دوم روی دادهٔ خالی صفر برمی‌گرداند).
+def _hifz_purge_rl_key(request: Request) -> str:
+    sid = getattr(request.state, "session_id", None)
+    return f"hifz-purge:{sid or 'unknown'}"
+
+
+_hifz_purge_rate_limit = rate_limit(
+    _hifz_purge_rl_key, limit=3, window_s=3600
+)
+
+
 @hifz_router.get("/status", response_model=HifzStatusOut)
 async def get_status(db: AsyncSession = Depends(get_db)):
     """موتور انتخاب‌شده + در دسترس بودن آن — عمومی، بدون بارگذاری مدل."""
@@ -138,8 +166,30 @@ async def create_attempt(
     db: AsyncSession = Depends(get_db),
 ):
     return HifzAttemptOut(
-        **await hifz_service.create_attempt(db, user, body.surah, body.page)
+        **await hifz_service.create_attempt(
+            db,
+            user,
+            body.surah,
+            body.page,
+            body.start_ayah,
+            body.end_ayah,
+            body.repeat_ayah,
+            body.repeat_range,
+        )
     )
+
+
+@hifz_router.get("/attempts/resume", response_model=HifzAttemptOut | None)
+async def resume_lookup(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """تازه‌ترین نشستِ باز برای ازسرگیری (فاز ۴)؛ نبودنش null است،
+    نه ۴۰۴ — کلاینت در آن صورت جلسهٔ تازه می‌سازد. این مسیر باید
+    پیش از /attempts/{attempt_id} تعریف شود تا «resume» به‌عنوان
+    UUID خوانده نشود."""
+    found = await hifz_service.resumable_attempt(db, user)
+    return HifzAttemptOut(**found) if found else None
 
 
 @hifz_router.get("/attempts", response_model=list[HifzAttemptOut])
@@ -176,6 +226,57 @@ async def complete_attempt(
     return HifzAttemptOut(
         **await hifz_service.complete_attempt(db, user, attempt_id)
     )
+
+
+@hifz_router.patch("/attempts/{attempt_id}/position", response_model=HifzAttemptOut)
+async def update_attempt_position(
+    attempt_id: UUID,
+    body: HifzPositionIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """ثبت آخرین موقعیتِ دنبال‌شده (فاز ۴ — ازسرگیری سرور-side)."""
+    return HifzAttemptOut(
+        **await hifz_service.update_position(
+            db, user, attempt_id,
+            body.current_surah, body.current_ayah, body.current_word_index,
+        )
+    )
+
+
+@hifz_router.post("/attempts/{attempt_id}/pause", response_model=HifzAttemptOut)
+async def pause_attempt(
+    attempt_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """مکثِ سرور-side نشست (فاز ۴ — رفع G-05: مکث فقط کلاینتی نیست)."""
+    return HifzAttemptOut(**await hifz_service.pause_attempt(db, user, attempt_id))
+
+
+@hifz_router.post("/attempts/{attempt_id}/resume", response_model=HifzAttemptOut)
+async def resume_attempt(
+    attempt_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """ازسرگیری نشستِ مکث‌کرده از موقعیتِ ذخیره‌شده (فاز ۴)."""
+    return HifzAttemptOut(**await hifz_service.resume_attempt(db, user, attempt_id))
+
+
+@hifz_router.get(
+    "/attempts/{attempt_id}/mistakes", response_model=list[HifzMistakeGroupOut]
+)
+async def attempt_mistakes_grouped(
+    attempt_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """برگهٔ خطاها، گروه‌شده به‌ازای هر آیه (فاز ۴): کارت «كلمات
+    خاطئة» (موردانتظار/خوانده‌شده) و کارت «كلمات زائدة» (فقط
+    خوانده‌شده)، هر کارت با برچسب «سوره:آیه»."""
+    rows = await hifz_service.mistakes_grouped(db, user, attempt_id)
+    return [HifzMistakeGroupOut(**r) for r in rows]
 
 
 @hifz_router.delete("/attempts/{attempt_id}", status_code=204)
@@ -245,9 +346,72 @@ async def peek_word(
     """Peek: نمایش کلمه = ثبت خطا."""
     return HifzPeekOut(
         **await hifz_service.peek_word(
-            db, user, attempt_id, body.surah, body.ayah, body.word_index, body.word_indices
+            db, user, attempt_id, body.surah, body.ayah, body.word_index, body.word_indices,
+            body.kind,
         )
     )
+
+
+@hifz_router.delete("/mistakes/{mistake_id}", status_code=204)
+async def delete_mistake(
+    mistake_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """حذفِ تکیِ یک ردیف خطا (فاز ۴ — مکانیک P1-5؛ حذفِ یک‌جا هنوز
+    تصمیم کاربر را می‌خواهد)."""
+    await hifz_service.delete_mistake(db, user, mistake_id)
+
+
+@hifz_router.get("/settings", response_model=HifzUserSettingsOut)
+async def get_hifz_settings(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """تنظیم‌های حفظِ کاربر (فاز ۴)؛ نبودِ ردیف = پیش‌فرض‌ها."""
+    return HifzUserSettingsOut(**await hifz_service.get_user_settings(db, user))
+
+
+@hifz_router.put("/settings", response_model=HifzUserSettingsOut)
+async def put_hifz_settings(
+    body: HifzUserSettingsIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """به‌روزرسانی تنظیم‌های حفظِ کاربر (فاز ۴)؛ فقط فیلدهای
+    فرستاده‌شده عوض می‌شوند."""
+    return HifzUserSettingsOut(
+        **await hifz_service.update_user_settings(db, user, body.model_dump())
+    )
+
+
+# ---------------------------------------------------------------------------
+# مأموریت تکمیلی — بخش ۵: موقعیت شنیدنِ سرور-side (پلیر موبایل + وب).
+# جدا از موقعیت نشست تمرین است (سند hifz_listen_sync.py). قانون ادغام:
+# last-write-wins بر حسب updated_at؛ نوشتهٔ کهنه applied=false
+# برمی‌گرداند و کلاینت حالت سرور را می‌پذیرد.
+# ---------------------------------------------------------------------------
+
+
+@hifz_router.get("/listen-position", response_model=HifzListenPositionOut | None)
+async def get_listen_position(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """موقعیت شنیدنِ کاربر؛ نبودن null است، نه ۴۰۴ (مثل resume)."""
+    found = await hifz_listen_sync.get_listen_position(db, user)
+    return HifzListenPositionOut(**found) if found else None
+
+
+@hifz_router.put("/listen-position", response_model=HifzListenPositionSaveOut)
+async def put_listen_position(
+    body: HifzListenPositionIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """ذخیرهٔ موقعیت شنیدن (قاری، سوره+آیه، میلی‌ثانیه، سرعت، تکرار)."""
+    result = await hifz_listen_sync.save_listen_position(db, user, body)
+    return HifzListenPositionSaveOut(**result)
 
 
 @hifz_router.post("/attempts/{attempt_id}/dispute", response_model=HifzDisputeOut)
@@ -288,6 +452,16 @@ async def admin_attempts(
 ):
     rows = await hifz_service.admin_attempts(db, limit)
     return [HifzAdminAttemptOut(**r) for r in rows]
+
+
+@hifz_router.delete("/admin/attempts/{attempt_id}", status_code=204)
+async def admin_delete_attempt(
+    attempt_id: UUID,
+    user: User = Depends(_admin_perm),
+    db: AsyncSession = Depends(get_db),
+):
+    """حذفِ نشست از جدولِ تلاش‌های CRM (فاز ۴)."""
+    await hifz_service.delete_attempt_admin(db, attempt_id)
 
 
 # ---------------------------------------------------------------------------
@@ -684,6 +858,57 @@ async def delete_tasmi_session(
 
 
 # ---------------------------------------------------------------------------
+# حذف یک‌جای همهٔ دادهٔ حفظ (P1-5) — فقط دامنهٔ hifz_only (۹ جدول).
+# ---------------------------------------------------------------------------
+# - بدون پارامتر user_id در ورودی: endpoint فقط روی کاربرِ احراز
+#   هویت‌شده (از توکن) عمل می‌کند — IDOR از اساس ناممکن است.
+# - دو مرحله‌ای: پیش‌نمایش (فقط تعداد) بعد تأیید صریح با confirm=true.
+# - دامنهٔ quran_all (یادداشت/ذکر) ساخته نشده است — تصمیم کاربر را
+#   می‌خواهد؛ فرستادن scope در body با extra="forbid" ۴۲۲ می‌گیرد.
+# - purge در یک تراکنش است؛ audit فقط تعداد به‌تفکیک جدول دارد،
+#   هرگز محتوای کاربر (heard/reflection/title) — hifz_purge.py.
+
+
+@hifz_router.get("/data/preview", response_model=HifzDataPreviewOut)
+async def preview_hifz_data(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """پیش‌نمایش حذف یک‌جا: تعداد ردیف به‌تفکیک جدول — بدون هیچ محتوا."""
+    counts = await hifz_purge.preview_hifz_data_counts(db, user.id)
+    return HifzDataPreviewOut(
+        scope=hifz_purge.PURGE_SCOPE, counts=counts, total=sum(counts.values())
+    )
+
+
+@hifz_router.post("/data/purge", response_model=HifzDataPurgeOut)
+@_hifz_purge_rate_limit
+async def purge_hifz_data_endpoint(
+    request: Request,
+    body: HifzDataPurgeIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """حذف یک‌جای همهٔ دادهٔ حفظ کاربرِ جاری — برگشت‌ناپذیر.
+
+    `confirm: true` + `idempotency_key` (UUID) الزامی‌اند؛ فراخوانیِ
+    دوباره با همان کلید، روی دادهٔ خالی صفر برمی‌گرداند (idempotent).
+    """
+    if not body.confirm:
+        raise APIError(
+            422,
+            "hifz_purge_not_confirmed",
+            "حذف یک‌جا نیازمند تأیید صریح است (confirm: true)",
+        )
+    deleted = await hifz_purge.purge_hifz_data(
+        db, user, idempotency_key=str(body.idempotency_key)
+    )
+    return HifzDataPurgeOut(
+        scope=hifz_purge.PURGE_SCOPE, deleted=deleted, total=sum(deleted.values())
+    )
+
+
+# ---------------------------------------------------------------------------
 # خواندن زنده (WebSocket) — بازبینی فاز ۳، بخش ۱۵ سند طراحی؛ قرارداد
 # نسخه‌دار در `hifz_ws_contract.py` (فاز ۵).
 #
@@ -746,14 +971,30 @@ async def stream_attempt(
     except _HandshakeRejected:
         return
     await websocket.accept()
-    # سقف اتصال زنده (فاز ۱۱): هر اتصال یک بازشناسِ ۷۳ مگابایتی
+    # سقف اتصال زنده (فاز ۱۱ + P1-3): هر اتصال یک بازشناسِ ۷۳ مگابایتی
     # نگه می‌دارد؛ جا نبود → ۴۴۰۹ با کد روشن، نه پذیرشِ بی‌سروصدا.
-    if not await live_stream_limiter.try_acquire(user.id):
+    # دروازه وقتی Redis هست (فقط production + provisioning) سقفِ
+    # مشترک را می‌گیرد وگرنه همان limiter درون‌فرایندیِ فعلی؛ قطعیِ
+    # Redis در production اتصالِ تازه را با `hifz_live_unavailable`
+    # رد می‌کند (fail-closed) و اتصال‌های موجود را قطع نمی‌کند.
+    _acquire = await live_stream_gateway.try_acquire(user.id, attempt_id)
+    if _acquire is LiveAcquire.TOO_MANY:
         try:
             await websocket.close(code=4409, reason="hifz_too_many_streams")
         except (WebSocketDisconnect, RuntimeError):
             pass
         return
+    if _acquire is LiveAcquire.UNAVAILABLE:
+        try:
+            await websocket.close(code=4409, reason="hifz_live_unavailable")
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+        return
+    # تازه‌کردن lease در Redis (فقط برای نشستِ توزیع‌شده اثر دارد؛
+    # نشستِ محلی heartbeat را نادیده می‌گیرد). لغوش در finally است.
+    _heartbeat_task = asyncio.create_task(
+        live_lease_heartbeat(live_stream_gateway, user.id, attempt_id)
+    )
     try:
         state_machine.transition(LiveSessionState.CONNECTING)
         _t_accepted = time.perf_counter()
@@ -915,7 +1156,8 @@ async def stream_attempt(
         )
 
     finally:
-        await live_stream_limiter.release(user.id)
+        _heartbeat_task.cancel()
+        await live_stream_gateway.release(user.id, attempt_id)
 
 
 _SLOW_START_STEP_MS = 5000.0

@@ -8,12 +8,17 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class HifzAttemptIn(BaseModel):
     surah: int = Field(ge=1, le=114)
     page: int | None = Field(default=None, ge=1, le=604)
+    # فاز ۴ — بازهٔ تمرین و تکرار (None = کل سوره، ۱ = بدون تکرار).
+    start_ayah: int | None = Field(default=None, ge=1, le=286)
+    end_ayah: int | None = Field(default=None, ge=1, le=286)
+    repeat_ayah: int = Field(default=1, ge=1, le=20)
+    repeat_range: int = Field(default=1, ge=1, le=20)
 
 
 class HifzAttemptCounts(BaseModel):
@@ -33,6 +38,14 @@ class HifzAttemptOut(BaseModel):
     created_at: datetime
     updated_at: datetime | None = None
     completed_at: datetime | None = None
+    # فاز ۴ — بازه، موقعیتِ جاری و تکرار.
+    start_ayah: int | None = None
+    end_ayah: int | None = None
+    current_surah: int | None = None
+    current_ayah: int | None = None
+    current_word_index: int | None = None
+    repeat_ayah: int = 1
+    repeat_range: int = 1
 
 
 class HifzWordScoreOut(BaseModel):
@@ -92,12 +105,20 @@ class HifzPeekIn(BaseModel):
     """Peek: exactly ONE of word_index (one word) or word_indices
     (the rest of the ayah, in order). The combination is validated
     in the service (APIError 422) — a model_validator ValueError
-    would surface as an unhandled RequestValidationError here."""
+    would surface as an unhandled RequestValidationError here.
+
+    فاز ۴ — `kind`: معنای دکمه از روی شواهد ویدیو (§۹ مشخصات فاز ۲):
+    "word" = دکمهٔ `<`، پیش‌نمایش کلمهٔ بعد؛ "ayah" = دکمهٔ `<<`،
+    پیش‌نمایش بقیهٔ آیه. خودِ دکمه‌ها در هیچ ویدیو زده نشدند، پس
+    این معناها استنباطِ آیکنیِ قوی‌اند، نه مشاهدهٔ قطعی؛ در یادداشت
+    فاز ۴ پرچم شده‌اند.
+    """
 
     surah: int = Field(ge=1, le=114)
     ayah: int = Field(ge=1, le=286)
     word_index: int | None = Field(default=None, ge=0)
     word_indices: list[int] | None = Field(default=None)
+    kind: str = "word"
 
 
 class HifzPeekWordOut(BaseModel):
@@ -419,3 +440,90 @@ class HifzTasmiOut(BaseModel):
     created_at: datetime
     updated_at: datetime | None = None
     completed_at: datetime | None = None
+
+
+# ---------------------------------------------------------------------------
+# فاز ۴ — تنظیم‌های حفظِ هر کاربر، موقعیت نشست، برگهٔ خطاها (گروهی)
+# ---------------------------------------------------------------------------
+
+
+class HifzUserSettingsIn(BaseModel):
+    """همهٔ فیلدها اختیاری‌اند؛ فقط فیلدهای فرستاده‌شده به‌روز می‌شوند."""
+
+    freeze_on_error: bool | None = None
+    mistake_detection: bool | None = None
+    tashkeel_detection: bool | None = None
+    resumable_sessions: bool | None = None
+    hide_ayah_markers: bool | None = None
+
+
+class HifzUserSettingsOut(BaseModel):
+    freeze_on_error: bool = False
+    mistake_detection: bool = True
+    tashkeel_detection: bool = True
+    resumable_sessions: bool = False
+    hide_ayah_markers: bool = False
+    updated_at: datetime | None = None
+
+
+class HifzPositionIn(BaseModel):
+    """آخرین موقعیتِ دنبال‌شدهٔ نشست (برای ازسرگیری پس از خروج)."""
+
+    current_surah: int = Field(ge=1, le=114)
+    current_ayah: int = Field(ge=1, le=286)
+    current_word_index: int | None = Field(default=None, ge=0)
+
+
+class HifzMistakeGroupItemOut(BaseModel):
+    """یک خطا در کارت برگهٔ خطاها: موردانتظار (سبز) در برابر خوانده‌شده (قرمز)."""
+
+    id: UUID
+    mistake_type: str
+    word_index: int | None = None
+    expected_text: str
+    heard: str | None = None
+    created_at: datetime
+
+
+class HifzMistakeGroupOut(BaseModel):
+    """یک کارت برگهٔ خطاها برای یک آیه: برچسب «سوره:آیه» + دسته."""
+
+    surah: int
+    ayah: int
+    category: str  # wrong_words | extra_words
+    items: list[HifzMistakeGroupItemOut] = []
+
+
+# ---------------------------------------------------------------------------
+# حذف یک‌جای دادهٔ حفظ (P1-5) — فقط دامن��ٔ hifz_only.
+# ---------------------------------------------------------------------------
+
+
+class HifzDataPurgeIn(BaseModel):
+    """ورودی purge: فقط تأیید صریح + کلید یکتایی.
+
+    `extra="forbid"`: هیچ فیلد دیگری پذیرفته نمی‌شود — نه `user_id`
+    (IDOR از اساس ناممکن است) و نه `scope` (دامنهٔ quran_all ساخته
+    نشده است؛ فرستادنش ۴۲۲ می‌گیرد).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    confirm: bool = False
+    idempotency_key: UUID
+
+
+class HifzDataPreviewOut(BaseModel):
+    """پیش‌نمایش حذف: تعداد ردیف به‌تفکیک جدول — بدون هیچ محتوا."""
+
+    scope: str = "hifz_only"
+    counts: dict[str, int]
+    total: int = 0
+
+
+class HifzDataPurgeOut(BaseModel):
+    """نتیجهٔ purge: تعداد حذف‌شده به‌تفکیک جدول."""
+
+    scope: str = "hifz_only"
+    deleted: dict[str, int]
+    total: int = 0

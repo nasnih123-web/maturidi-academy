@@ -44,6 +44,20 @@ class Settings(BaseSettings):
     # IPهای پروکسی مورداعتماد (کاما-جدا) که X-Forwarded-Forشان پذیرفته می‌شود
     trusted_proxies: str = ""
 
+    # سقف اتصال زندهٔ حفاظ — P1-3 (مأموریت تکمیلی بازطراحی حفاظ).
+    # limiter توزیع‌شده (ZSET + lease در Redis، app/core/hifz_live_limiter.py)
+    # فقط وقتی فعال می‌شود که APP_ENV=production باشد و Redis provision شده
+    # باشد؛ در dev/test سقفِ درون‌فرایندیِ فعلی می‌ماند (رفتار امروز).
+    # hifz_live_fail_closed: در production هنگام قطع Redis، اتصالِ تازه رد
+    # می‌شود (hifz_live_unavailable)؛ اتصال‌های موجود قطع نمی‌شوند.
+    # بدون Redis، سقف فقط با «دقیقاً ۱ replica و ۱ worker» درست است
+    # (start.sh بدون --workers؛ docs/ops/railway-deployment.md).
+    hifz_live_max_per_user: int = 1
+    hifz_live_max_total: int = 4
+    hifz_live_lease_s: int = 60
+    hifz_live_heartbeat_s: int = 20
+    hifz_live_fail_closed: bool = True
+
     # ذخیرهٔ فایل — فاز ۰ §۶
     s3_endpoint: str = "http://localhost:9000"
     # Track 1 (final remediation) / §۱۲: endpoint عمومی برای presigned URLهایی

@@ -1,0 +1,18 @@
+words mapped to pages: 83668
+pages with glyph cps: 604; total distinct cps overall: 188
+page 1: distinct glyph codepoints=36
+page 2: distinct glyph codepoints=44
+page 100: distinct glyph codepoints=151
+page 245: distinct glyph codepoints=148
+page 604: distinct glyph codepoints=73
+pages with glyphs missing from TTF cmap: 0; total missing codepoints: 0
+pages with glyphs missing from WOFF2 cmap: 0; total missing codepoints: 0
+cmap read errors: 1
+  ERR p245.ttf: error: unpack requires a buffer of 4 bytes
+p1 TTF: cmap formats=[(4, 373), (6, 0), (4, 373)]; code range U+F777..U+FD79; n_codes=373; sample=['0xf777', '0xf778', '0xf779', '0xf77a', '0xf77b', '0xf77c']
+p1 WOFF2: cmap formats=[(4, 36), (4, 36)]; code range U+FC41..U+FC64; n_codes=36; sample=['0xfc41', '0xfc42', '0xfc43', '0xfc44', '0xfc45', '0xfc46']
+p100 TTF: cmap formats=[(4, 184), (6, 0), (4, 184)]; code range U+FB50..U+FD79; n_codes=184; sample=['0xfb50', '0xfc41', '0xfc42', '0xfc43', '0xfc44', '0xfc45']
+p100 WOFF2: cmap formats=[(4, 184), (0, 5), (4, 184)]; code range U+0000..U+FD79; n_codes=189; sample=['0x0', '0x8', '0x9', '0xd', '0x1d', '0xfb50']
+p245.woff2 raw inspect ERROR: AttributeError: 'WOFF2DirectoryEntry' object has no attribute 'data'
+p245.ttf: size=395164 magic=b'\x00\x01\x00\x00'
+p245.woff2: size=155232 magic=b'wOF2'

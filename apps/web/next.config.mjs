@@ -23,6 +23,28 @@ if (
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // hifz-completion performance (§8): the V2 mushaf layout
+  // (public/quran-mushaf-v2.json, ~1.1MB raw / ~193KB gzip) is a
+  // static, effectively immutable dataset fetched on every mushaf /
+  // hifz visit. The default public-file header (max-age=0) forced a
+  // revalidation round-trip per visit; a 1-day fresh window +
+  // stale-while-revalidate keeps repeat visits off the network while
+  // still propagating a data change within a day. If the data ever
+  // changes incompatibly, bump QURAN_MUSHAF_V2_URL in
+  // lib/quran-mushaf-v2.ts instead of relying on this header.
+  async headers() {
+    return [
+      {
+        source: '/quran-mushaf-v2.json',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=604800',
+          },
+        ],
+      },
+    ];
+  },
   // M-06 (Next 16/Turbopack): پکیج لینک‌شدهٔ monorepo باید resolve شود؛
   // بدون این، بیلد Turbopack ساب‌پث‌های CSS پکیج را پیدا نمی‌کند.
   transpilePackages: ['@maturidi/design-tokens'],

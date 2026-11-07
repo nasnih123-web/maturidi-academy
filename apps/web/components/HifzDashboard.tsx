@@ -8,6 +8,8 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { authJson } from '@/lib/auth-client';
+import { surahAyahCount } from '@/lib/hifz-phase4';
+import { HifzNumericInput } from './HifzNumericInput';
 
 const HIFZ_API = '/api/v1/quran/hifz';
 
@@ -42,6 +44,9 @@ export interface HifzDashboardLabels {
   title: string;
   loading: string;
   error: string;
+  resumeTitle: string;
+  resumeContinue: string;
+  resumeDismiss: string;
   attempts: string;
   gradedWords: string;
   correct: string;
@@ -82,6 +87,14 @@ export interface HifzDashboardLabels {
 
 const SURAHS = Array.from({ length: 114 }, (_, i) => i + 1);
 
+export interface HifzResumeAttempt {
+  id: string;
+  surah: number;
+  start_ayah: number | null;
+  current_surah: number | null;
+  current_ayah: number | null;
+}
+
 export function HifzDashboard({
   labels,
   onNavigate,
@@ -91,6 +104,8 @@ export function HifzDashboard({
 }) {
   const [data, setData] = useState<HifzDashboardData | null>(null);
   const [suggested, setSuggested] = useState<HifzSuggestedData | null>(null);
+  // Phase 4 — the latest open session, for the «continue» card.
+  const [resume, setResume] = useState<HifzResumeAttempt | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [kind, setKind] = useState('memorize');
@@ -105,12 +120,18 @@ export function HifzDashboard({
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [d, s] = await Promise.all([
+      const [d, s, r] = await Promise.all([
         authJson<HifzDashboardData>(`${HIFZ_API}/dashboard`),
         authJson<HifzSuggestedData>(`${HIFZ_API}/suggested`),
+        // Phase 4 — a missing resumable session is null, never an
+        // error; a failed fetch must not break the dashboard.
+        authJson<HifzResumeAttempt | null>(`${HIFZ_API}/attempts/resume`).catch(
+          () => null,
+        ),
       ]);
       setData(d);
       setSuggested(s);
+      setResume(r);
     } catch {
       setError(labels.error);
     }
@@ -175,6 +196,30 @@ export function HifzDashboard({
       <button type="button" onClick={load}>
         {labels.refresh}
       </button>
+      {/* Phase 4 — continue the latest open session from its stored
+          position (the study page shows the same banner). */}
+      {resume !== null && (
+        <div className="hifz-resume-banner" role="status">
+          <span>
+            {labels.resumeTitle}: {resume.current_surah ?? resume.surah}:
+            {resume.current_ayah ?? resume.start_ayah ?? 1}
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              onNavigate(
+                resume.current_surah ?? resume.surah,
+                resume.current_ayah ?? resume.start_ayah ?? 1,
+              )
+            }
+          >
+            {labels.resumeContinue}
+          </button>
+          <button type="button" onClick={() => setResume(null)}>
+            {labels.resumeDismiss}
+          </button>
+        </div>
+      )}
       <dl>
         <div>
           <dt>{labels.attempts}</dt>
@@ -348,11 +393,12 @@ export function HifzDashboard({
         </label>
         <label>
           {labels.planStartAyah}
-          <input
-            type="number"
-            min={1}
+          <HifzNumericInput
             value={startAyah}
-            onChange={(e) => setStartAyah(Math.max(1, Number(e.target.value) || 1))}
+            onChange={(v) => setStartAyah(v ?? 1)}
+            ariaLabel={labels.planStartAyah}
+            min={1}
+            max={surahAyahCount(startSurah) ?? undefined}
           />
         </label>
         <label>
@@ -367,29 +413,30 @@ export function HifzDashboard({
         </label>
         <label>
           {labels.planEndAyah}
-          <input
-            type="number"
-            min={1}
+          <HifzNumericInput
             value={endAyah}
-            onChange={(e) => setEndAyah(Math.max(1, Number(e.target.value) || 1))}
+            onChange={(v) => setEndAyah(v ?? 1)}
+            ariaLabel={labels.planEndAyah}
+            min={1}
+            max={surahAyahCount(endSurah) ?? undefined}
           />
         </label>
         <label>
           {labels.planDailyNew}
-          <input
-            type="number"
-            min={0}
+          <HifzNumericInput
             value={dailyNew}
-            onChange={(e) => setDailyNew(Math.max(0, Number(e.target.value) || 0))}
+            onChange={(v) => setDailyNew(v ?? 0)}
+            ariaLabel={labels.planDailyNew}
+            min={0}
           />
         </label>
         <label>
           {labels.planDailyReview}
-          <input
-            type="number"
-            min={0}
+          <HifzNumericInput
             value={dailyReview}
-            onChange={(e) => setDailyReview(Math.max(0, Number(e.target.value) || 0))}
+            onChange={(v) => setDailyReview(v ?? 0)}
+            ariaLabel={labels.planDailyReview}
+            min={0}
           />
         </label>
         <button type="button" onClick={createPlan} disabled={title.trim() === ''}>

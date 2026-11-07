@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getQuranProviders, getSurah, getSurahs } from '@/lib/quran';
+import { QURAN_MUSHAF_V2_URL } from '@/lib/quran-mushaf-v2';
 import { parseSvgMushafKey } from '@/lib/quran-svg-page';
 import { RANGE_COUNTS, type QuranViewMode } from '@/lib/quran-view-modes';
 import { getSiteConfig, type QuranSettings } from '@/lib/settings';
@@ -149,6 +150,24 @@ export default async function SurahPage({
 
   return (
     <div className="page-wrap">
+      {/* hifz-completion performance (§8): the study page's mushaf
+          renders from the V2 layout data, which used to start
+          downloading only after hydration (~14.5s in on slow 3G) and
+          gated the mushaf (~27s). Preloading it from the
+          server-rendered head (same URL the loader fetches, so the
+          browser reuses this one download) starts it with the first
+          wave instead. crossOrigin="anonymous" is required: without
+          it the preload does not match the fetch() and the data
+          downloads twice. Only the hifz tab needs it — the umum
+          reader loads V2 lazily on its own, only in page/range modes. */}
+      {initialTab === 'hifz' && (
+        <link
+          rel="preload"
+          href={QURAN_MUSHAF_V2_URL}
+          as="fetch"
+          crossOrigin="anonymous"
+        />
+      )}
       <QuranReader
         locale={locale}
         surah={view.surah}
@@ -256,6 +275,33 @@ export default async function SurahPage({
             errorsHeard: t('hifzErrorsHeard'),
             errorsOpen: t('hifzErrorsOpen'),
             errorsClose: t('hifzErrorsClose'),
+            errorsDelete: t('hifzErrorsDelete'),
+            errorsTransposed: t('hifzErrorsTransposed'),
+            errorsLearn: t('hifzErrorsLearn'),
+            settingsTitle: t('hifzSettingsTitle'),
+            settingsOpen: t('hifzSettingsOpen'),
+            freezeSetting: t('hifzFreezeSetting'),
+            freezeHint: t('hifzFreezeHint'),
+            mistakeDetection: t('hifzMistakeDetection'),
+            tashkeelDetection: t('hifzTashkeelDetection'),
+            resumableSessions: t('hifzResumableSessions'),
+            hideMarkers: t('hifzHideMarkers'),
+            freezeHold: t('hifzFreezeHold'),
+            freezeResume: t('hifzFreezeResume'),
+            hideScript: t('hifzHideScript'),
+            showScript: t('hifzShowScript'),
+            rangeStart: t('hifzRangeStart'),
+            rangeEnd: t('hifzRangeEnd'),
+            repeatAyah: t('hifzRepeatAyah'),
+            repeatRange: t('hifzRepeatRange'),
+            rangeErrorStart: t('hifzRangeErrorStart'),
+            rangeErrorEnd: t('hifzRangeErrorEnd'),
+            rangeErrorOrder: t('hifzRangeErrorOrder'),
+            resumeTitle: t('hifzResumeTitle'),
+            resumeContinue: t('hifzResumeContinue'),
+            resumeDismiss: t('hifzResumeDismiss'),
+            peekWordHint: t('hifzPeekWordHint'),
+            peekAyahHint: t('hifzPeekAyahHint'),
             headerJuz: t('hifzHeaderJuz'),
             headerHizb: t('hifzHeaderHizb'),
             headerPage: t('hifzHeaderPage'),
@@ -275,6 +321,7 @@ export default async function SurahPage({
             listenRepeat: t('hifzListenRepeat'),
             listenRepeatOff: t('hifzListenRepeatOff'),
             listenRepeatAyah: t('hifzListenRepeatAyah'),
+            listenRepeatRange: t('hifzListenRepeatRange'),
             listenRepeatSurah: t('hifzListenRepeatSurah'),
             listenSpeed: t('hifzListenSpeed'),
             listenCurrentAyah: t('hifzListenCurrentAyah'),
@@ -282,6 +329,12 @@ export default async function SurahPage({
             listenSegmentsNote: t('hifzListenSegmentsNote'),
             listenInterpolatedNote: t('hifzListenInterpolatedNote'),
             listenAudioFailed: t('hifzListenAudioFailed'),
+            listenLoading: t('hifzListenLoading'),
+            listenBuffering: t('hifzListenBuffering'),
+            listenOffline: t('hifzListenOffline'),
+            listenRetry: t('hifzListenRetry'),
+            listenResumeFrom: t('hifzListenResumeFrom'),
+            listenLongPressSwitch: t('hifzListenLongPressSwitch'),
             listenReciters: [
               { id: 'abdul_basit_mujawwad', label: t('hifzListenReciterAbdulBasitMujawwad') },
               { id: 'abdul_basit', label: t('hifzListenReciterAbdulBasit') },

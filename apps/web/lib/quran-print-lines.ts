@@ -31,6 +31,37 @@ export function toArabicIndic(n: number): string {
   return String(n).replace(/[0-9]/g, (d) => ARABIC_INDIC[Number(d)]);
 }
 
+/**
+ * Phase 6 — one digit convention for the hifz surfaces (Tarteel
+ * frames use Eastern Arabic digits everywhere, spec §2): a decimal
+ * number in Eastern Arabic digits with the Arabic decimal separator
+ * ٫ (U+066B), e.g. 96.5 -> «٩٦٫٥», 1.25 -> «١٫٢٥». Whole numbers get
+ * no separator. `fractionDigits` caps the decimal places (default 1,
+ * the accuracy pill's precision).
+ */
+export function formatArabicIndicDecimal(value: number, fractionDigits = 1): string {
+  const fixed = value.toFixed(fractionDigits);
+  const trimmed = fixed.includes('.') ? fixed.replace(/0+$/, '').replace(/\.$/, '') : fixed;
+  return trimmed
+    .replace('.', '٫')
+    .replace(/[0-9]/g, (d) => ARABIC_INDIC[Number(d)]);
+}
+
+/**
+ * Phase 7 — one duration convention for the hifz surfaces: total
+ * seconds as MM:SS in Eastern Arabic digits (٠-٩), minutes unpadded,
+ * seconds zero-padded to two digits, e.g. 65 -> «١:٠٥», 3661 ->
+ * «٦١:٠١». Negative / non-finite input clamps to zero. Replaces the
+ * two copies that lived in QuranHifzStudy (session timer) and
+ * HifzListenPlayer (progress text).
+ */
+export function formatArabicIndicDuration(totalSeconds: number): string {
+  const total = Number.isFinite(totalSeconds) ? Math.max(0, Math.floor(totalSeconds)) : 0;
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${toArabicIndic(m)}:${toArabicIndic(s).padStart(2, '٠')}`;
+}
+
 /** True for a pure Arabic-Indic digit token: an ayah-end marker. */
 export function isMarkerToken(tok: string): boolean {
   return tok.length > 0 && [...tok].every((c) => ARABIC_INDIC.includes(c));

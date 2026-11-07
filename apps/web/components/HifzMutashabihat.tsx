@@ -9,6 +9,10 @@
  */
 import { useEffect, useState } from 'react';
 import { authJson } from '@/lib/auth-client';
+// Labels type lives in lib/hifz-study-types.ts (re-exported here so
+// existing importers keep importing it from this component).
+import type { HifzMutashabihatLabels } from '@/lib/hifz-study-types';
+export type { HifzMutashabihatLabels } from '@/lib/hifz-study-types';
 
 const HIFZ_API = '/api/v1/quran/hifz';
 
@@ -17,13 +21,6 @@ export interface MutashabihatGroup {
   occurrences: { surah: number; ayah: number; text: string }[];
 }
 
-export interface HifzMutashabihatLabels {
-  title: string;
-  hide: string;
-  show: string;
-  empty: string;
-  goToAyah: string;
-}
 
 const GROUP_COLORS = ['#7a4a00', '#1d4ed8', '#15803d', '#b3261e', '#6d28d9', '#0e7490'];
 

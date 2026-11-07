@@ -15,9 +15,10 @@ Contract (design doc §4, user amendment 2026-11-04):
   wrong 0.30). An exactly-matching word whose ASR probability is below
   amber is "close" (uncertain, needs improvement), never "wrong": the
   letters match, only the engine is unsure.
-- mistake_type: wrong_word | wrong_tashkeel | skipped | None.
+- mistake_type: wrong_word | wrong_tashkeel | skipped | transposed | None.
   "close" words carry no mistake row (they need improvement, they are
-  not recorded as mistakes); "wrong" and "skipped" do.
+  not recorded as mistakes); "wrong" and "skipped" do. "transposed"
+  (فاز ۴) یعنی دو کلمهٔ پیاپی برعکسِ هم خوانده شده‌اند.
 - Tashkeel check: words equal after full normalization but different
   in raw form are compared again with diacritics stripped only: if
   they match then, the mistake is wrong_tashkeel; if they still
@@ -230,7 +231,83 @@ def align_words(
     matcher = difflib.SequenceMatcher(
         a=norm_expected, b=norm_heard, autojunk=False
     )
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+    # difflib یک جابه‌جاییِ مجاور را به‌صورت «replace» صادر نمی‌کند،
+    # بلکه به‌صورت insert + equal + delete (یا برعکس) می‌دهد؛ پس
+    # تشخیصِ جابه‌جایی باید روی خودِ opcodeها باشد، نه در شاخهٔ
+    # replace (آن شاخه به‌عنوان کمربند دوم نگه داشته شده است).
+    opcodes = matcher.get_opcodes()
+    oi = 0
+    while oi < len(opcodes):
+        tag, i1, i2, j1, j2 = opcodes[oi]
+        # الگوی A: insert(۱) + equal + delete(۱) — کلمهٔ درج‌شده
+        # همان کلمهٔ حذف‌شدهٔ پس از equal است: کاربر دو کلمهٔ
+        # پیاپی را برعکس خوانده است. هر دو کلمهٔ جابه‌جا علامت
+        # می‌خورند: کلمهٔ equal (دیر شنیده‌شده) و کلمهٔ حذف‌شده
+        # (زود شنیده‌شده). equal باید دقیقاً یک کلمه باشد — وگرنه
+        # چرخش/تکرار است، نه جابه‌جاییِ مجاور.
+        if (
+            tag == "insert"
+            and j2 - j1 == 1
+            and oi + 2 < len(opcodes)
+            and opcodes[oi + 1][0] == "equal"
+            and opcodes[oi + 1][2] - opcodes[oi + 1][1] == 1
+            and opcodes[oi + 2][0] == "delete"
+            and opcodes[oi + 2][2] - opcodes[oi + 2][1] == 1
+            and opcodes[oi + 2][1] == opcodes[oi + 1][2]
+            and norm_heard[j1] == norm_expected[opcodes[oi + 2][1]]
+        ):
+            del_start = opcodes[oi + 2][1]
+            _, ei1, _ei2, ej1, _ej2 = opcodes[oi + 1]
+            # heard موقعیتی است (مثل emit_pair): کلمه‌ای که در آن
+            # جایگاهِ خواندن گفته شد — نه جایی که کلمهٔ موردانتظار
+            # شنیده شد. پس در برگهٔ خطاها، موردانتظار (سبز) و
+            # خوانده‌شده (قرمز) دو کلمهٔ متفاوت‌اند.
+            aligned.append(
+                AlignedWord(
+                    ei1, expected[ei1], "wrong", PROB_WRONG, heard[j1], "transposed"
+                )
+            )
+            aligned.append(
+                AlignedWord(
+                    del_start,
+                    expected[del_start],
+                    "wrong",
+                    PROB_WRONG,
+                    heard[ej1],
+                    "transposed",
+                )
+            )
+            oi += 3
+            continue
+        # الگوی B (متقارن): delete(۱) + equal + insert(۱).
+        if (
+            tag == "delete"
+            and i2 - i1 == 1
+            and oi + 2 < len(opcodes)
+            and opcodes[oi + 1][0] == "equal"
+            and opcodes[oi + 1][2] - opcodes[oi + 1][1] == 1
+            and opcodes[oi + 2][0] == "insert"
+            and opcodes[oi + 2][4] - opcodes[oi + 2][3] == 1
+            and opcodes[oi + 2][3] == opcodes[oi + 1][4]
+            and norm_expected[i1] == norm_heard[opcodes[oi + 2][3]]
+        ):
+            ins_start = opcodes[oi + 2][3]
+            _, ei1, _ei2, ej1, _ej2 = opcodes[oi + 1]
+            # heard موقعیتی است (مثل الگوی A): در جایگاهِ کلمهٔ
+            # حذف‌شده، کلمهٔ equal شنیده شد و در جایگاهِ کلمهٔ
+            # equal، کلمهٔ درج‌شده.
+            aligned.append(
+                AlignedWord(
+                    ei1, expected[ei1], "wrong", PROB_WRONG, heard[ins_start], "transposed"
+                )
+            )
+            aligned.append(
+                AlignedWord(
+                    i1, expected[i1], "wrong", PROB_WRONG, heard[ej1], "transposed"
+                )
+            )
+            oi += 3
+            continue
         if tag == "equal":
             for k in range(i2 - i1):
                 emit_pair(i1 + k, j1 + k)
@@ -244,7 +321,38 @@ def align_words(
                 extra.append(heard[h_idx])
         elif tag == "replace":
             n = min(i2 - i1, j2 - j1)
+            # فاز ۴ — جابه‌جاییِ مجاور (transposition): اگر دو کلمهٔ
+            # پیاپی دقیقاً برعکسِ هم شنیده شده‌اند (هر دو به‌صورت
+            # نرمال‌شده با هم‌تای جابه‌جاشده‌شان برابرند)، هر دو
+            # «غلط» با نوعِ «transposed» می‌خورند — نه «غلط»ِ ساده و
+            # نه «جاافتاده». حدِ موتور: فقط جابه‌جاییِ دو کلمهٔ مجاورِ
+            # سالم تشخیص داده می‌شود؛ جابه‌جاییِ دورتر یا همراه با
+            # تلفظِ غلط، «غلط»ِ ساده می‌ماند (محدودیت مستند در
+            # یادداشت فاز ۴).
+            swapped: set[int] = set()
+            for k in range(n - 1):
+                if (
+                    norm_expected[i1 + k] == norm_heard[j1 + k + 1]
+                    and norm_expected[i1 + k + 1] == norm_heard[j1 + k]
+                    and norm_expected[i1 + k] != norm_heard[j1 + k]
+                ):
+                    for off in (0, 1):
+                        e_idx = i1 + k + off
+                        h_idx = j1 + k + (1 - off)
+                        aligned.append(
+                            AlignedWord(
+                                e_idx,
+                                expected[e_idx],
+                                "wrong",
+                                PROB_WRONG,
+                                heard[h_idx],
+                                "transposed",
+                            )
+                        )
+                        swapped.add(k + off)
             for k in range(n):
+                if k in swapped:
+                    continue
                 emit_pair(i1 + k, j1 + k)
             for e_idx in range(i1 + n, i2):
                 aligned.append(
@@ -252,6 +360,7 @@ def align_words(
                 )
             for h_idx in range(j1 + n, j2):
                 extra.append(heard[h_idx])
+        oi += 1
 
     aligned.sort(key=lambda w: w.word_index)
     return aligned, extra

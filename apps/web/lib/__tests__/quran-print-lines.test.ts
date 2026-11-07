@@ -14,7 +14,10 @@ import { resolve } from 'node:path';
 
 import {
   auditPrintedAyatCounts,
+  formatArabicIndicDecimal,
+  formatArabicIndicDuration,
   parseTextLine,
+  toArabicIndic,
 } from '../quran-print-lines';
 import type { MushafExactLine } from '../quran-mushaf-lines';
 
@@ -111,6 +114,38 @@ describe('parseTextLine: rub el hizb (۞)', () => {
     assert.equal(parsed.segments[1].ayah, 44);
     assert.deepEqual(parsed.segments[1].ornaments, [0]);
     assert.equal(parsed.segments[1].words.length, 3);
+  });
+});
+
+describe('formatArabicIndicDecimal: قرارداد یکدست ارقام فاز ۶ (شرقی ٠-٩ + ٫)', () => {
+  it('درصد دقت مثل فریم‌ها: 96.5 -> ٩٦٫٥', () => {
+    assert.equal(formatArabicIndicDecimal(96.5), '٩٦٫٥');
+    assert.equal(formatArabicIndicDecimal(100), '١٠٠');
+    assert.equal(formatArabicIndicDecimal(99.2), '٩٩٫٢');
+  });
+  it('سرعت پخش با دو رقم اعشار: 1.25 -> ١٫٢٥', () => {
+    assert.equal(formatArabicIndicDecimal(1.25, 2), '١٫٢٥');
+    assert.equal(formatArabicIndicDecimal(1, 2), '١');
+    assert.equal(formatArabicIndicDecimal(0.5, 2), '٠٫٥');
+  });
+  it('toArabicIndic بدون تغییر می‌ماند', () => {
+    assert.equal(toArabicIndic(182), '١٨٢');
+    assert.equal(toArabicIndic(0), '٠');
+  });
+});
+
+describe('formatArabicIndicDuration: قرارداد یکدست مدت‌زمان فاز ۷ (MM:SS شرقی)', () => {
+  it('ثانیه‌ها را به دقیقه:ثانیه با ارقام شرقی تبدیل می‌کند', () => {
+    assert.equal(formatArabicIndicDuration(0), '٠:٠٠');
+    assert.equal(formatArabicIndicDuration(6), '٠:٠٦');
+    assert.equal(formatArabicIndicDuration(65), '١:٠٥');
+    assert.equal(formatArabicIndicDuration(600), '١٠:٠٠');
+    assert.equal(formatArabicIndicDuration(3661), '٦١:٠١');
+  });
+  it('ورودی منفی یا نامعتبر به صفر می‌رسد', () => {
+    assert.equal(formatArabicIndicDuration(-5), '٠:٠٠');
+    assert.equal(formatArabicIndicDuration(Number.NaN), '٠:٠٠');
+    assert.equal(formatArabicIndicDuration(90.9), '١:٣٠');
   });
 });
 

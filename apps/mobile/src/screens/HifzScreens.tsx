@@ -29,14 +29,17 @@
  * - v2 corrections overwrite a written word (never a duplicate);
  *   `partial` marks the word currently being read.
  */
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useFonts } from "expo-font";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Badge, Button, Card, EmptyState, Screen, TextField, common, fontFamily, fontSize, fontWeight, spacing } from "@maturidi/ui-native";
 import { useHifz, type HifzLiveWord } from "../hooks/useHifz";
-import { useSurahDetail } from "../hooks/useQuran";
+import { useSurahDetail, useSurahs } from "../hooks/useQuran";
 import { useEffectiveLocale } from "../hooks/useAuth";
+import { getHifzDashboard, getResumableAttempt, type HifzAttempt, type HifzDashboardCounts } from "../services/hifz";
+import { loadLocalPosition } from "../services/listenSync";
+import type { ListenPosition } from "../lib/listenPlayer";
 import { t } from "../i18n/strings";
 import { wordKey } from "../lib/hifzProtocol";
 import { colorizeTajweedWord, type TajweedColor } from "../lib/quranTajweed";
@@ -163,6 +166,143 @@ function HifzWord({
       </Text>
       {word?.peeked ? <Text style={styles.peekMark}>{t("hifz.peekMark", locale)}</Text> : null}
     </View>
+  );
+}
+
+type HifzHubProps = NativeStackScreenProps<QuranStackParamList, "HifzHub">;
+
+/**
+ * Phase 4 — Hifz hub (mobile had only the study screen). Minimal and
+ * in the existing shape: a resume card for the latest open session,
+ * real progress counts from /dashboard, and a link back to the surah
+ * list to start a new session. Progress lives here, never on the
+ * study page (user order, 2026-11-06).
+ */
+export function HifzHubScreen({ navigation }: HifzHubProps): React.JSX.Element {
+  const locale = useEffectiveLocale();
+  const { surahs } = useSurahs();
+  const [resume, setResume] = useState<HifzAttempt | null>(null);
+  const [dashboard, setDashboard] = useState<HifzDashboardCounts | null>(null);
+  const [listenPosition, setListenPosition] = useState<ListenPosition | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [dismissed, setDismissed] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [r, d, lp] = await Promise.all([
+        getResumableAttempt().catch(() => null),
+        getHifzDashboard().catch(() => null),
+        loadLocalPosition().catch(() => null),
+      ]);
+      setResume(r);
+      setDashboard(d);
+      setListenPosition(lp);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const resumeSurah = useMemo(
+    () => surahs.find((s) => s.number === (resume?.current_surah ?? resume?.surah)),
+    [surahs, resume],
+  );
+  const resumeAyah = resume?.current_ayah ?? resume?.start_ayah ?? 1;
+  const listenSurah = useMemo(
+    () => surahs.find((s) => s.number === listenPosition?.surah),
+    [surahs, listenPosition],
+  );
+
+  return (
+    <Screen>
+      <Text style={styles.hubTitle}>{t("hifz.title", locale)}</Text>
+      {loading ? (
+        <ActivityIndicator />
+      ) : (
+        <>
+          {listenPosition !== null ? (
+            <Card style={styles.sessionCard}>
+              <Text style={styles.modeLabel}>
+                {t("listen.hubResume", locale)}: {listenSurah?.name_ar ?? listenPosition.surah} —{" "}
+                {listenPosition.surah}:{listenPosition.ayah}
+              </Text>
+              <View style={styles.sessionBtns}>
+                <Button
+                  title={t("listen.hubContinue", locale)}
+                  onPress={() =>
+                    navigation.navigate("HifzListen", {
+                      number: listenPosition.surah,
+                      nameAr: listenSurah?.name_ar ?? "",
+                      ayah: listenPosition.ayah,
+                    })
+                  }
+                />
+              </View>
+            </Card>
+          ) : null}
+          <Button
+            title={t("listen.hubChooseSurah", locale)}
+            onPress={() => navigation.navigate("QuranHome")}
+          />
+          {resume !== null && !dismissed ? (
+            <Card style={styles.sessionCard}>
+              <Text style={styles.modeLabel}>
+                {t("hifz.hubResume", locale)}: {resumeSurah?.name_ar ?? resume.surah} —{" "}
+                {resume.current_surah ?? resume.surah}:{resumeAyah}
+              </Text>
+              <View style={styles.sessionBtns}>
+                <Button
+                  title={t("hifz.hubContinue", locale)}
+                  onPress={() =>
+                    navigation.navigate("HifzStudy", {
+                      number: resume.surah,
+                      nameAr: resumeSurah?.name_ar ?? "",
+                      ayah: resumeAyah,
+                    })
+                  }
+                />
+                <Button
+                  title={t("hifz.hubDismiss", locale)}
+                  onPress={() => setDismissed(true)}
+                />
+              </View>
+            </Card>
+          ) : null}
+          {dashboard !== null ? (
+            <Card style={styles.sessionCard}>
+              <View style={styles.countsRow}>
+                <Text style={styles.muted}>
+                  {t("hifz.hubAttempts", locale)}: {dashboard.attempts}
+                </Text>
+                <Text style={styles.muted}>
+                  {t("hifz.hubGradedWords", locale)}: {dashboard.graded_words}
+                </Text>
+                <Text style={styles.muted}>
+                  {t("hifz.correct", locale)}: {dashboard.counts.correct ?? 0}
+                </Text>
+                <Text style={styles.muted}>
+                  {t("hifz.close", locale)}: {dashboard.counts.close ?? 0}
+                </Text>
+                <Text style={styles.muted}>
+                  {t("hifz.wrong", locale)}: {dashboard.counts.wrong ?? 0}
+                </Text>
+                <Text style={styles.muted}>
+                  {t("hifz.skipped", locale)}: {dashboard.counts.skipped ?? 0}
+                </Text>
+              </View>
+            </Card>
+          ) : null}
+          <Button
+            title={t("hifz.hubChooseSurah", locale)}
+            onPress={() => navigation.navigate("QuranHome")}
+          />
+        </>
+      )}
+    </Screen>
   );
 }
 
@@ -389,6 +529,7 @@ export function HifzStudyScreen({ route, navigation }: HifzProps): React.JSX.Ele
 }
 
 const styles = StyleSheet.create({
+  hubTitle: { fontFamily: fontFamily.bodyFa, fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: common.textPrimary },
   controls: { gap: spacing[2] },
   ayahNav: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
   muted: { fontFamily: fontFamily.bodyFa, fontSize: fontSize.sm, color: common.textMuted },

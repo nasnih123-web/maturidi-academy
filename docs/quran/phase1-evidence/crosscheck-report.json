@@ -1,0 +1,131 @@
+{
+  "identical": {
+    "v2db_eq_v4db": true,
+    "v2json_eq_qul_v4": true,
+    "ext_hafs_eq_qul_hafs": true
+  },
+  "v2_v4_word_diff_rows": 0,
+  "v2_v4_sample_diff": [],
+  "v2_layout": {
+    "rows": 9046,
+    "pages": 604,
+    "missing_first": 0,
+    "missing_last": 0,
+    "covered_words": 83668,
+    "total_words": 83668,
+    "uncovered_word_ids": [],
+    "line_types": {
+      "surah_name": 114,
+      "ayah": 8820,
+      "basmallah": 112
+    }
+  },
+  "aba_page_mismatch": 0,
+  "aba_multi_page_ayahs": 0,
+  "indopak-13-lines-layout-qudratullah.db": {
+    "info": [
+      [
+        "Indopak 13 lines - Qudratullah",
+        849,
+        13,
+        "mushaf-indopak-nastaleeq-hanafi-compressed"
+      ]
+    ],
+    "max_page": 849,
+    "rows": 11022,
+    "line_types": {
+      "surah_name": 114,
+      "ayah": 10796,
+      "basmallah": 112
+    }
+  },
+  "indopak-13-lines-taj-company.db": {
+    "info": [
+      [
+        "Indopak 13 lines - Taj company",
+        847,
+        13,
+        "indopak-nastaleeq"
+      ]
+    ],
+    "max_page": 847,
+    "rows": 10995,
+    "line_types": {
+      "surah_name": 114,
+      "ayah": 10769,
+      "basmallah": 112
+    }
+  },
+  "qudratullah-indopak-15-lines.db": {
+    "info": [
+      [
+        "Indopak 15 lines - Qudratullah",
+        610,
+        15,
+        "indopak-nastaleeq"
+      ]
+    ],
+    "max_page": 610,
+    "rows": 9131,
+    "line_types": {
+      "surah_name": 114,
+      "ayah": 8905,
+      "basmallah": 112
+    }
+  },
+  "qpc-nastaleeq-15-lines.db": {
+    "info": [
+      [
+        "QPC Hafs Nastaleeq 15 lines",
+        610,
+        15,
+        "qpc-nastaleeq"
+      ]
+    ],
+    "max_page": 610,
+    "rows": 8903,
+    "line_types": {
+      "surah_name": 1,
+      "ayah": 8902
+    }
+  },
+  "metadata": {
+    "records": 114,
+    "verses_sum": 6236
+  },
+  "header_svg": {
+    "count": 113,
+    "missing_surahs": [
+      1
+    ],
+    "bad_xml": []
+  },
+  "tajweed_classes": {
+    "ham_wasl": 12950,
+    "laam_shamsiyah": 2371,
+    "madda_normal": 7471,
+    "madda_permissible": 4484,
+    "madda_necessary": 143,
+    "idgham_wo_ghunnah": 2064,
+    "slnt": 4153,
+    "ghunnah": 4907,
+    "qalaqah": 3733,
+    "ikhafa": 8425,
+    "madda_obligatory_monfasel": 2484,
+    "madda_obligatory_mottasel": 2622,
+    "idgham_ghunnah": 7697,
+    "ikhafa_shafawi": 968,
+    "idgham_shafawi": 1657,
+    "iqlab": 1043,
+    "idgham_mutajanisayn": 55,
+    "idgham_mutaqaribayn": 13
+  },
+  "tafsir": {
+    "rows": 6236,
+    "distinct_ayah": 6236,
+    "empty_text": 128,
+    "grouped_rows": 128
+  },
+  "indopak_verse_diff": 6236,
+  "ttf_families_distinct": 604
+}

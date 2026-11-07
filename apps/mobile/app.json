@@ -36,6 +36,9 @@
           "fa",
           "ar",
           "en"
+        ],
+        "UIBackgroundModes": [
+          "audio"
         ]
       },
       "supportsTablet": true
