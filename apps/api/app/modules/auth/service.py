@@ -1075,11 +1075,17 @@ async def issue_ws_ticket(
     return ticket, WS_TICKET_EXPIRE_SECONDS
 
 
-async def redeem_ws_ticket(db: AsyncSession, ticket: str) -> User | None:
-    """مصرف اتمیک بلیط — یک‌بارمصرف بودن با UPDATE مشروط تضمین می‌شود.
+async def redeem_ws_ticket_with_session(
+    db: AsyncSession, ticket: str
+) -> tuple[User, uuid.UUID | None] | None:
+    """مصرف اتمیک بلیط + نشستِ گره‌خورده‌اش (فاز ۱۲، P1-1).
 
     None یعنی بلیط نامعتبر، منقضی، قبلاً مصرف‌شده، نشستِ گره‌خورده باطل،
     یا کاربر غیرفعال — در همهٔ این حالت‌ها handshake رد می‌شود.
+    نشستِ برگشتی، همان نشستِ صادرکنندهٔ بلیط است تا جریانِ زنده
+    بتواند دوره‌ای بررسی کند که نشست هنوز باطل نشده است؛ بلیط‌های
+    قدیمیِ بدون گره (session_id خالی) None برمی‌گردانند و آن بررسی
+    برایشان انجام نمی‌شود.
     """
     row = (
         await db.execute(
@@ -1114,4 +1120,68 @@ async def redeem_ws_ticket(db: AsyncSession, ticket: str) -> User | None:
     user = await db.get(User, row.user_id)
     if not user or not user.is_active:
         return None
-    return user
+    return user, row.session_id
+
+
+async def redeem_ws_ticket(db: AsyncSession, ticket: str) -> User | None:
+    """مصرف اتمیک بلیط — یک‌بارمصرف بودن با UPDATE مشروط تضمین می‌شود.
+
+    None یعنی بلیط نامعتبر، منقضی، قبلاً مصرف‌شده، نشستِ گره‌خورده باطل،
+    یا کاربر غیرفعال — در همهٔ این حالت‌ها handshake رد می‌شود.
+    """
+    redeemed = await redeem_ws_ticket_with_session(db, ticket)
+    return redeemed[0] if redeemed is not None else None
+
+
+async def purge_expired_ws_tickets(
+    db: AsyncSession, *, used_grace_seconds: int = 3600
+) -> int:
+    """بلیط‌های مردهٔ WS را پاک کن (فاز ۱۲، P1-6).
+
+    حذف می‌شوند: همهٔ بلیط‌های منقضی (مصرف‌شده یا نه) + بلیط‌های
+    مصرف‌شده‌ای که مهلتِ نگهداری‌شان (پیش‌فرض ۱ ساعت) گذشته است.
+    بلیطِ مصرف‌شده پس از مصرف هرگز خوانده نمی‌شود، پس حذفش نشستِ
+    باز را نمی‌شکند؛ مهلت فقط برای عیب‌یابیِ handshake نگه داشته
+    می‌شود. برمی‌گرداند: تعداد ردیف‌های حذف‌شده.
+    """
+    now = _utcnow()
+    res = await db.execute(
+        delete(WsTicket).where(
+            or_(
+                WsTicket.expires_at <= now,
+                WsTicket.used_at.is_not(None)
+                & (WsTicket.used_at <= now - timedelta(seconds=used_grace_seconds)),
+            )
+        )
+    )
+    await db.commit()
+    return res.rowcount or 0
+
+
+async def run_ws_ticket_cleanup_loop() -> None:
+    """حلقهٔ پاک‌سازی دوره‌ای بلیط‌های WS — از lifespan اپ API اجرا
+    می‌شود (فاز ۱۲، P1-6؛ همان الگوی run_usage_flush_loop در C-06).
+
+    هر ساعت یک بار بلیط‌های مرده را پاک می‌کند؛ خطا فقط لاگ می‌شود و
+    حلقه را نمی‌کشد؛ لغو (CancelledError) دوباره بالا می‌رود تا
+    خاموشیِ اپ، تسک را تمام کند.
+    """
+    import asyncio
+    import logging
+
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.core.database import SessionLocal
+
+    logger = logging.getLogger(__name__)
+    while True:
+        try:
+            await asyncio.sleep(3600)
+            async with SessionLocal() as db:
+                n = await purge_expired_ws_tickets(db)
+                if n:
+                    logger.info("ws ticket cleanup: %s tickets purged", n)
+        except asyncio.CancelledError:
+            raise
+        except (SQLAlchemyError, OSError, RuntimeError):
+            logger.warning("ws ticket cleanup failed", exc_info=True)

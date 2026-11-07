@@ -99,37 +99,37 @@ sources.
   `5c47602425fb4190327ae1a2e8ed2f53dceaf595d8ccc29ac32b8b209ad398`),
   zip `UthmanicHafs-v-3.0.zip` (SHA-256
   `cdec7341b7c684e7b8dd469c4b68988914d2784e924c7e6cbb9cb4b57c24f013`),
-  WOFF2 conversion (no subsetting, 1,572 glyphs; 107,772 bytes,
+  WOFF2 conversion (no subsetting, 1,572 glyphs; 107,636 bytes,
   SHA-256
-  `eb3e02e66a7f9a0fe561d9a341c1317a7fe564f8fe6deb59710f7fe3c5523846`).
+  `111b4332b5d54438bb4ea303fec56e254f8c71b5dc338fbf72d9fe6a3ccd2bbd`).
   Warsh: `KFGQPC Warsh Uthmanic Script`,
   `UthmanicWarsh-v-3.0.ttf` (251,428 bytes, SHA-256
   `b644f1c6665baa95c9c0ab40b01a7f3e89edc42a0f50d3b244318a843bec81a9`),
   zip (1,105,919 bytes, SHA-256
   `68e2f1c7a504a8dde797346fd63054c744e073917380f9c56360306b28907e37`),
-  WOFF2 (88,880 bytes, SHA-256
-  `6c4f517fd4986329256bc95ef65aa8baf247eb06e4d12eed8188c01b71bccb7a`,
+  WOFF2 (88,688 bytes, SHA-256
+  `6d7a702c7d534f885b43b213b5d8d54dd4bf0518832bb9f4cdb3275c8e861343`,
   1,351 glyphs). Qalun: `KFGQPC Qaloun Uthmanic Script`,
   `UthmanicQaloun-v-3.0.ttf` (261,520 bytes, SHA-256
   `3bf3432429f3bbde673982af2aab9b7a1a7329e295dce250bd96842c2a368ba9`),
   zip (1,046,495 bytes, SHA-256
   `d55082f903ec3975469da187c20f21f09bc9921530c17041a2638ab2ee23850a`),
-  WOFF2 (91,684 bytes, SHA-256
-  `687c252bed54e6b63a92e29177a2287fb729624f588871ea068602c746f5ce7a`,
+  WOFF2 (91,524 bytes, SHA-256
+  `ecd95520df20c7cf804505a6b50f9572448f07c415c6870212a59afc200ace6a`,
   1,351 glyphs). Duri: `KFGQPC Douri Uthmanic Script`,
   `UthmanicDouri-V20.ttf` (262,344 bytes, SHA-256
   `3a862f8e4ba9b7fd024e2b74981026eb5a901cb292e2b43766795112a35a6b45`),
   zip `UthmanicDouri_V20.zip` (850,666 bytes, SHA-256
   `89fe6773ada1a8c153d24005453fa8c183bc33919887664c102e5a9c9c2c5e67`),
-  WOFF2 (99,564 bytes, SHA-256
-  `2d3c309dba040850b93b1ff172b9138e828b6d4b4affce210a515fa14c2ef900`,
+  WOFF2 (99,256 bytes, SHA-256
+  `460f31db680114ebc614d3e42c9742d0293143ced5db6d724b13d5a1b5e63c89`,
   1,448 glyphs). Shubah: `KFGQPC Shuba Uthmanic Script`,
   `UthmanicShubah-v-3.0.ttf` (247,280 bytes, SHA-256
   `634a7252b619b934f2e507480d517b8f339503bbf08dded35315a9c1f2be495d`),
   zip (826,593 bytes, SHA-256
   `28be7e6ac5b3af9b5064c1cb6fc733e7c0d120d453a8894db0ddb01a7f110396`),
-  WOFF2 (94,552 bytes, SHA-256
-  `3c051ed2a2b79dd5ba48e3075d54290af348dfb4b0ed4660c6eb393098361d2a`,
+  WOFF2 (94,752 bytes, SHA-256
+  `7b907c41d1cd976008826984756ec7a0d13c4575024da436bcd64b39d1eaf13c`,
   1,409 glyphs). Alternate Hafs publisher provenance (not the CSS
   file): official package `kfgqpc_hafs_v30.zip` from
   `download.qurancomplex.gov.sa/resources_dev/kfgqpc_hafs_v30.zip`,
@@ -142,9 +142,74 @@ sources.
   upload (the app cannot push binaries); until an upload lands, that
   edition's font stack falls back and SVG pages still show the exact
   printed shapes (vector outlines need no font).
+- **Correction (verified 2026-11-07, phase 11):** the WOFF2
+  SHA-256 hashes and byte sizes recorded here before this date did
+  NOT match the files in `apps/web/public/fonts/` (the TTF hashes
+  above were all correct). The hashes and sizes now recorded are
+  the real ones, recomputed from the files on disk on 2026-11-07
+  (glyph counts re-verified with fontTools and unchanged: Hafs
+  1,572; Warsh 1,351; Qalun 1,351; Duri 1,448; Shubah 1,409 — the
+  files were evidently re-converted with different encoder settings
+  after the first record, same glyph sets). Any future WOFF2
+  re-conversion must update this record in the same commit.
 - **Attribution in product:** a credit line under every rendered SVG
   page ("Printed page: Mushaf al-Madinah — King Fahd Glorious Quran
   Printing Complex; ayah layer: Quran.ws", localized in fa/ar/en).
+
+## Hifz ASR models — Quran-Lab Zipformer (NPL-1.2) + Whisper-quran
+
+- **Works:** the two speech models that power the Hifz module
+  (`apps/api/app/modules/quran/hifz_engines.py`):
+  - `Quran-Lab/zipformer_p-arabic-v3` (deployed build v3.1,
+    `zipformer_p_arabic_v3.1.int8.onnx`), the DEFAULT live + grading
+    engine — a streaming CTC phoneme model (65.5M params).
+  - `tarteel-ai/whisper-base-ar-quran` (via the third-party
+    CTranslate2 conversion
+    `hkhan0327/faster-whisper-base-ar-quran`), the CRM-selectable
+    second engine for record-then-grade only (never live).
+- **License status (reviewed 2026-11-07, full record:
+  `docs/quran/hifz-model-license-review.md` — this notice is not
+  legal advice):**
+  - Zipformer v3 is under the **Quran-Lab No-Profit License v1.2
+    (NPL-1.2)**; the LICENSE file's SHA-256 is
+    `77526bdbfac94132e5114c3a34492c33f915e4b7f310f00b9995500d3610cab5`
+    (7,041 bytes, revision
+    `5a115aa91cf7401213a62c22f3458445687d1701`). Its clause 3 binds
+    the **Work and any feature it powers**: **the Hifz capability —
+    and any other capability this model powers — must never be
+    placed behind a payment, a subscription, a paywall, or
+    advertising, and must never be charged for.** A hosted service
+    may only recover its direct running costs (clause 5, no margin,
+    no salaries/support). Derivatives stay under NPL-1.2 or a newer
+    Quran-Lab version (clause 7, share-alike); the LICENSE file must
+    be kept when distributing (clause 6). **There is no commercial
+    licence for this Work and none will be granted (clause 9)** — if
+    Hifz is ever to be charged for, this engine must be replaced
+    first. This constraint is a product rule, not a setting: no
+    paywall/subscription/ads may ever be attached to Hifz while
+    this engine ships.
+  - Whisper-quran's commercial status is **unconfirmed**: its card
+    carries only an auto-generated `apache-2.0` frontmatter tag with
+    no LICENSE file and no disclosed training data, so commercial use
+    must NOT be assumed. It stays as the record-then-grade second
+    engine under the same no-charge rule while Zipformer is the
+    default; the conversion's own licence was not separately
+    reviewed and must be checked before any commercial decision.
+- **How they are used:** model files live outside the repository
+  (local directories configured by `HIFZ_ZIPFORMER_MODEL_DIR` /
+  `HIFZ_WHISPER_MODEL_DIR`); no model is downloaded at runtime and
+  no model file is bundled in the repo. User audio is processed
+  in memory (live) or via a transient temp file deleted in a
+  `finally` (grading) and is never stored; it is never used to
+  train any model.
+- **Explicitly NOT in the product:** `Abdou/quran-asr-small` (MIT)
+  was evaluated and rejected on benchmark (see
+  `docs/quran/hifz-asr-benchmark.md`); **no Abdou artifact — model,
+  weights, code, or data — has been introduced into this repository
+  or into production** (verified 2026-11-07: no Abdou reference in
+  the tracked tree, no `.onnx`/`.pt`/`tokens.txt` model file under
+  `apps/`). If it is ever adopted, its MIT attribution (Copyright
+  (c) 2026 Abdou) must be recorded here first.
 
 ## Quran Arabic text (Tanzil Project) — Phase 2 self-hosted text
 

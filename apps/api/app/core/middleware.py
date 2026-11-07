@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from typing import ClassVar
@@ -95,7 +96,22 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
     body، 413 با پاکت خطای یکپارچه (§۱) برمی‌گرداند. برای bodyهای chunked
     بدون Content-Length، سقف‌های دقیق‌ترِ per-module (read_capped_upload در
     app/core/storage.py) اعمال می‌شود.
+
+    استثنا (فاز ۱۲، P1-2): مسیرهای آپلود صوت حفاظ (`grade`،
+    `grade-word`، پاسخ آزمون، `voice-search`) از این گیتِ سراسری
+    معاف‌اند — آن‌ها سقفِ خودشان (۳۲MB، کد `hifz_audio_too_large` در
+    `read_capped_upload`) را دارند و سقفِ ۱۰MB سراسری، عملاً فایلِ
+    بزرگ‌تر از ~۵ دقیقه را پیش از رسیدن به کد حفاظ با ۴۱۳ عمومی رد
+    می‌کرد. معافیت فقط همین چهار مسیرِ POST است؛ بقیهٔ مسیرها (از
+    جمله بقیهٔ حفاظ) همان سقف سراسری را دارند.
     """
+
+    # مسیرهای آپلود صوت حفاظ (پیشوند روتر /api/v1/quran/hifz).
+    HIFZ_AUDIO_UPLOAD_PATHS = (
+        re.compile(r"^/api/v1/quran/hifz/attempts/[^/]+/grade(-word)?$"),
+        re.compile(r"^/api/v1/quran/hifz/tests/[^/]+/questions/[^/]+/answer$"),
+        re.compile(r"^/api/v1/quran/hifz/voice-search$"),
+    )
 
     def __init__(self, app, max_bytes: int) -> None:
         super().__init__(app)
@@ -104,6 +120,12 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
+        if request.method == "POST" and any(
+            pattern.match(request.url.path)
+            for pattern in self.HIFZ_AUDIO_UPLOAD_PATHS
+        ):
+            # سقف را خودِ endpoint با read_capped_upload اعمال می‌کند.
+            return await call_next(request)
         declared = request.headers.get("content-length")
         if declared is not None:
             try:
