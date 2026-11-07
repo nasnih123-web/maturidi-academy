@@ -390,6 +390,7 @@ async def grade_ayah(
                 "prob": w.prob,
                 "heard": w.heard,
                 "mistake_type": w.mistake_type,
+                "needs_review": w.needs_review,
             }
             for w in aligned
         ],
@@ -462,6 +463,7 @@ async def grade_word(
                 "prob": aligned[0].prob if aligned else 0.0,
                 "heard": aligned[0].heard if aligned else None,
                 "mistake_type": aligned[0].mistake_type if aligned else "skipped",
+                "needs_review": aligned[0].needs_review if aligned else False,
             }
         ],
         "counts": counts,
@@ -470,33 +472,66 @@ async def grade_word(
 
 
 async def peek_word(
-    db: AsyncSession, user: User, attempt_id: UUID, surah: int, ayah: int, word_index: int
+    db: AsyncSession,
+    user: User,
+    attempt_id: UUID,
+    surah: int,
+    ayah: int,
+    word_index: int | None = None,
+    word_indices: list[int] | None = None,
 ) -> dict:
-    """Peek: نمایش کلمه = ثبت خطا. ردیف نمره نمی‌سازد."""
+    """Peek: نمایش کلمه(ها) = ثبت خطا. ردیف نمره نمی‌سازد. One call
+    reveals one word or a whole list (the rest of the ayah): every
+    word gets its own peek mistake in a single transaction, each
+    with status `peeked` on the page."""
     attempt = await _attempt_or_404(db, user, attempt_id)
     words = await _ayah_words(db, surah, ayah)
-    if not 0 <= word_index < len(words):
+    if (word_index is None) == (word_indices is None):
+        raise APIError(
+            422, "hifz_peek_target", "exactly one of word_index / word_indices is required"
+        )
+    if word_indices is not None and len(word_indices) == 0:
+        raise APIError(422, "hifz_peek_target", "word_indices must not be empty")
+    indices = [word_index] if word_index is not None else list(word_indices or [])
+    indices = list(dict.fromkeys(indices))
+    if not indices:
         raise APIError(422, "hifz_word_index", "شمارهٔ کلمه خارج از آیه است")
-    mistake = HifzMistake(
-        attempt_id=attempt.id,
-        user_id=user.id,
-        surah=surah,
-        ayah=ayah,
-        word_index=word_index,
-        mistake_type="peek",
-        expected_text=words[word_index],
-        heard=None,
-    )
-    db.add(mistake)
+    for i in indices:
+        if not 0 <= i < len(words):
+            raise APIError(422, "hifz_word_index", "شمارهٔ کلمه خارج از آیه است")
+    revealed: list[HifzMistake] = []
+    for i in indices:
+        mistake = HifzMistake(
+            attempt_id=attempt.id,
+            user_id=user.id,
+            surah=surah,
+            ayah=ayah,
+            word_index=i,
+            mistake_type="peek",
+            expected_text=words[i],
+            heard=None,
+        )
+        db.add(mistake)
+        revealed.append(mistake)
     attempt.updated_at = _utcnow()
     await db.commit()
-    await db.refresh(mistake)
+    for mistake in revealed:
+        await db.refresh(mistake)
+    first = revealed[0]
     return {
-        "mistake_id": mistake.id,
+        "mistake_id": first.id,
         "surah": surah,
         "ayah": ayah,
-        "word_index": word_index,
-        "word": words[word_index],
+        "word_index": first.word_index,
+        "word": words[first.word_index],
+        "revealed": [
+            {
+                "mistake_id": m.id,
+                "word_index": m.word_index,
+                "word": words[m.word_index],
+            }
+            for m in revealed
+        ],
     }
 
 
@@ -636,9 +671,11 @@ async def engine_status(db: AsyncSession) -> dict:
     """وضعیت موتور انتخاب‌شده — بدون بارگذاری مدل (فقط probe ارزان)."""
     raw = await get_typed_setting(db, "quran.asr_engine", "zipformer")
     if raw not in hifz_engines.ENGINE_IDS:
+        # مقدار خامِ تنظیم در پیام عمومی برنمی‌گردد (جزئیات داخلی)؛
+        # شناسهٔ موتور در فیلد `engine` هست و همان برای کلاینت کافی است.
         return {"engine": str(raw), "available": False,
-                "reason": f"stored asr engine is not valid: {raw!r}",
-                "map_available": False, "map_reason": "engine invalid"}
+                "reason": "موتور انتخاب‌شده معتبر نیست",
+                "map_available": False, "map_reason": "نگاشت واجی در دسترس نیست"}
     engine = hifz_engines.get_engine(raw)
     available, reason = engine.is_configured()
     from app.modules.quran.hifz_mapping import map_files_present

@@ -308,6 +308,15 @@ def test_real_mapping_coverage_and_sample_segments():
     assert total == 6236
     # آستانهٔ پذیرش بارگذار: کف ۱۰ یا ۱٫۵ برابر قطعه.
     assert accepted >= 6150, f"accepted {accepted}/6236, below 6150"
+    # عددِ واقعیِ اندازه‌گیری‌شده (فاز ۶، ۲۰۲۶-۱۱-۰۷): ۶٬۱۸۵ از
+    # ۶٬۲۳۶ پذیرفته شده‌اند و ۵۱ آیه رد شده‌اند (هزینهٔ تراز از
+    # آستانه گذشته یا نمادِ ناشناخته). این عدد ویژگیِ داده‌هاست؛ اگر
+    # داده عوض شد و عدد عوض شد، همین assertion را با عددِ تازه و
+    # فهرستِ ردشده‌ها به‌روز کن — نه اینکه آستانه را شل کنی.
+    assert accepted == 6185, (
+        f"accepted {accepted}/6236, expected 6185; "
+        f"rejected: {mapping.report.rejected}"
+    )
     # ۹:۱: ادغام «بَرَآءَةٌ + مِّنَ» در قطعهٔ اول.
     segs91 = mapping.segments_for(9, 1)
     assert segs91 is not None
