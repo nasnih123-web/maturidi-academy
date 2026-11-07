@@ -108,8 +108,23 @@ def test_normalize_accepts_float_segments():
 
 
 def test_reciters_cover_the_three_required():
-    assert set(RECITERS) == {"alafasy", "abdul_basit", "husary"}
-    assert RECITERS == {"alafasy": 7, "abdul_basit": 2, "husary": 6}
+    # The three required reciters (phase 3) plus the nine added in
+    # phase 10 from the live Quran.com API v4 recitations list.
+    assert {"alafasy", "abdul_basit", "husary"} <= set(RECITERS)
+    assert RECITERS == {
+        "abdul_basit_mujawwad": 1,
+        "abdul_basit": 2,
+        "sudais": 3,
+        "shatri": 4,
+        "hani_rifai": 5,
+        "husary": 6,
+        "alafasy": 7,
+        "minshawi_mujawwad": 8,
+        "minshawi": 9,
+        "shuraym": 10,
+        "tablawi": 11,
+        "husary_muallim": 12,
+    }
     assert set(RECITER_LABELS) == set(RECITERS)
 
 
