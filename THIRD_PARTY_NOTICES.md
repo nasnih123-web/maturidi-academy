@@ -96,7 +96,7 @@ sources.
   verified against the data file's `font.sha256`, zip hashes against
   its provenance SHA-256. Hafs: `KFGQPC HAFS Uthmanic Script`,
   `UthmanicHafs-v-3.0.ttf` (301,396 bytes, SHA-256
-  `5c47602425fb4190327ae1a2e8ed2f53dceaf595d8ccc29ac32b8b209ad398`),
+  `5c47602425fb4190327ab9e1a2e8ed2f53dceaf595d8ccc29ac32b8b209ad398`),
   zip `UthmanicHafs-v-3.0.zip` (SHA-256
   `cdec7341b7c684e7b8dd469c4b68988914d2784e924c7e6cbb9cb4b57c24f013`),
   WOFF2 conversion (no subsetting, 1,572 glyphs; 107,636 bytes,

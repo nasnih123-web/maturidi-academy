@@ -95,7 +95,7 @@
 
 | فایل | family (از name table) | نسخه | گلیف | بایت TTF | SHA-256 TTF | وضعیت |
 |---|---|---|---|---|---|---|
-| `UthmanicHafs-v-3.0.ttf` | KFGQPC HAFS Uthmanic Script | 3.0 | ۱٬۵۷۲ | ۳۰۱٬۳۹۶ | `5c47602425fb4190327ae1a2e8ed2f53dceaf595d8ccc29ac32b8b209ad398` | ✅ مطابق `THIRD_PARTY_NOTICES.md` |
+| `UthmanicHafs-v-3.0.ttf` | KFGQPC HAFS Uthmanic Script | 3.0 | ۱٬۵۷۲ | ۳۰۱٬۳۹۶ | `5c47602425fb4190327ab9e1a2e8ed2f53dceaf595d8ccc29ac32b8b209ad398` | ✅ مطابق `THIRD_PARTY_NOTICES.md` |
 | `UthmanicWarsh-v-3.0.ttf` | KFGQPC Warsh Uthmanic Script | 3.0 | ۱٬۳۵۱ | ۲۵۱٬۴۲۸ | `b644f1c6665baa95c9c0ab40b01a7f3e89edc42a0f50d3b244318a843bec81a9` | ✅ |
 | `UthmanicQaloun-v-3.0.ttf` | KFGQPC Qaloun Uthmanic Script | 3.0 | ۱٬۳۵۱ | ۲۶۱٬۵۲۰ | `3bf3432429f3bbde673982af2aab9b7a1a7329e295dce250bd96842c2a368ba9` | ✅ |
 | `UthmanicDouri-V20.ttf` | KFGQPC Douri Uthmanic Script | 2.0 | ۱٬۴۴۸ | ۲۶۲٬۳۴۴ | `3a862f8e4ba9b7fd024e2b74981026eb5a901cb292e2b43766795112a35a6b45` | ✅ |
