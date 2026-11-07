@@ -120,18 +120,19 @@ async def _authenticate_with_session(
             # توکن عامل-اول (2fa_setup) حق اتصال بلادرنگ ندارد
             await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="limited token")
             raise _HandshakeRejected()
-        user = await db.get(User, uuid.UUID(payload["sub"]))
+        jwt_user = await db.get(User, uuid.UUID(payload["sub"]))
     except (APIError, KeyError, ValueError, AttributeError):
         await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="invalid token")
         raise _HandshakeRejected()
-    if not user or not user.is_active:
+    if not jwt_user or not jwt_user.is_active:
         await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="inactive user")
         raise _HandshakeRejected()
+    user = jwt_user
     # گره‌خوردن به نشست (parity با get_current_user در HTTP): نشستِ باطل‌شده
     # یعنی access token هم — حتی پیش از انقضای ۱۵ دقیقه‌ای — مرده است.
     # پیش‌تر این مسیر sid را نادیده می‌گرفت و توکنِ نشستِ باطل‌شده را می‌پذیرفت.
     sid = payload.get("sid")
-    session_id: uuid.UUID | None = None
+    session_id = None
     if sid:
         try:
             session_id = uuid.UUID(sid)

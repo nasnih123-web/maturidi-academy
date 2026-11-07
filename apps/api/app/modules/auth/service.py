@@ -1145,14 +1145,17 @@ async def purge_expired_ws_tickets(
     می‌شود. برمی‌گرداند: تعداد ردیف‌های حذف‌شده.
     """
     now = _utcnow()
-    res = await db.execute(
-        delete(WsTicket).where(
-            or_(
-                WsTicket.expires_at <= now,
-                WsTicket.used_at.is_not(None)
-                & (WsTicket.used_at <= now - timedelta(seconds=used_grace_seconds)),
+    res = cast(
+        CursorResult[Any],
+        await db.execute(
+            delete(WsTicket).where(
+                or_(
+                    WsTicket.expires_at <= now,
+                    WsTicket.used_at.is_not(None)
+                    & (WsTicket.used_at <= now - timedelta(seconds=used_grace_seconds)),
+                )
             )
-        )
+        ),
     )
     await db.commit()
     return res.rowcount or 0

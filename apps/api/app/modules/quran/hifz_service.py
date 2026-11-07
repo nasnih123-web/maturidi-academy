@@ -518,19 +518,22 @@ async def peek_word(
     for mistake in revealed:
         await db.refresh(mistake)
     first = revealed[0]
+    # revealed دقیقاً به‌ترتیب indices ساخته شده (یک ردیف به‌ازای هر
+    # اندیس)؛ پس کلمه را با همان اندیسِ اعتبارسنجی‌شده می‌خوانیم، نه با
+    # word_index مدل که nullable است.
     return {
         "mistake_id": first.id,
         "surah": surah,
         "ayah": ayah,
         "word_index": first.word_index,
-        "word": words[first.word_index],
+        "word": words[indices[0]],
         "revealed": [
             {
                 "mistake_id": m.id,
                 "word_index": m.word_index,
-                "word": words[m.word_index],
+                "word": words[i],
             }
-            for m in revealed
+            for m, i in zip(revealed, indices)
         ],
     }
 
