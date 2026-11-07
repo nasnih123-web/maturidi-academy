@@ -60,11 +60,11 @@ pages), so the production desktop bundle ships a small **local shell**
    "not configured" page (it never guesses or hardcodes a URL); while
    offline it shows an offline page with a retry button.
 
-> **وضعیت واقعی (2026-10-21):** پوسته پیاده و `frontendDist: ../shell`
-> تنظیم شد (ADR-0023). تا وقتی وب production مستقر نشود و نشانی واقعی در
-> `config.js` قرار نگیرد، باینری فقط صفحهٔ وضعیت داخلی را نشان می‌دهد.
-> بیلد native در این sandbox اجرا نشده (نبود Rust toolchain) — مسیر CI
-> روی runnerهای هر OS آماده است: **NOT TESTED**.
+> **وضعیت واقعی (2026-11-07، فاز ۹):** بیلد debug و release لینوکس در
+> sandbox اجرا و موفق شدند (بخش «فاز ۹» پایین)؛ smoke test لینوکس ۱۴/۱۴
+> سبز است. macOS/Windows هنوز اجرا نشده‌اند — NOT TESTED. تا وقتی وب
+> production مستقر نشود و نشانی واقعی در `config.js` قرار نگیرد، باینری
+> فقط صفحهٔ وضعیت داخلی را نشان می‌دهد.
 
 ## Signed builds — CI path (`.github/workflows/desktop.yml`)
 
@@ -115,8 +115,52 @@ pages), so the production desktop bundle ships a small **local shell**
   Per the post-197efa0 audit (C-05, ADR-0031) it is **deleted**; the only
   Tauri config is `src-tauri/tauri.conf.json`. Nothing may reference the
   root path.
-- `cargo check`/`cargo build` need a Rust toolchain — not run in this
-  sandbox; CI compiles on the per-OS runners.
+- `cargo check`/`cargo build` need a Rust toolchain — run in this
+  sandbox in Phase 9 (2026-11-07): `cargo test` 11/11, debug + release
+  builds green on Linux (see the Phase 9 section). CI still compiles on
+  the per-OS runners; macOS/Windows remain NOT TESTED here.
+
+## فاز ۹ — دسکتاپ برای حفاظ (2026-11-07)
+
+جزئیات کامل در `docs/quran/hifz-phase9-notes.md`. خلاصه:
+
+- **ممیزی:** دسکتاپ فقط پوستهٔ وب است (R-15) — هیچ asset وب/فونت/متن قرآنی
+  در باندل نیست؛ production فقط `shell/` محلی را باز می‌کند که به
+  `MATURIDI_WEB_URL` می‌رود.
+- **یافتهٔ بحرانی F-01:** وبِ remote هیچ دسترسی IPC ندارد
+  (`capabilities/default.json` فقط `windows: ["main"]` دارد و هیچ
+  `remote`ای ندارد) — حتی ایونت قدیمی `sync-now` در production بی‌صدا
+  کار نمی‌کند. رفع آن packaging-time است: قالب
+  `src-tauri/capabilities/remote-web.json.template` را در packaging به
+  `remote-web.json` کپی کنید و `https://WEB-ORIGIN-HERE` را با origin
+  واقعی جایگزین کنید (هرگز `*` نه). برای dev فایل
+  `src-tauri/capabilities/local-dev.json` فقط `http://localhost:*` را
+  مجاز می‌کند.
+- **میکروفون:** handler ‏`on_permission_request` اضافه شد؛ میکروفون فقط
+  برای origin پیکربندی‌شده Allow می‌شود و بقیهٔ permissionها همیشه Deny.
+  **محدودیت صادقانه (لینوکس/WebKitGTK 2.52):** WebKitGTK برای
+  `getUserMedia` اصلاً سیگنال permission نمی‌فرستد، پس این handler در
+  لینوکس میکروفون را گیت نمی‌کند (با پچ تشخیصی روی wry تأیید شد: handler
+  وصل و برای geolocation فعال است، ولی برای media هیچ سیگنالی نمی‌آید).
+  گیتِ واقعیِ میکروفون در لینوکس ناوبری است — پوسته فقط origin
+  پیکربندی‌شده را باز می‌کند.
+- **محافظ بستن حین ضبط:** وب‌اپ باید دور جلسهٔ زنده کامند
+  `hifz_set_recording_active(true/false)` را صدا بزند؛ حین ضبط بستن
+  پنجره و خروج از tray رد می‌شود (+ ایونت `hifz-close-blocked` + اعلان).
+  پرچم تست `--hifz-smoke-recording`.
+- **Hifz Studio (تصمیم طراحی آکادمی، نه قابلیت Tarteel):** مصحف در مرکز،
+  dock تمرین راست، dock تاریخچه/متشابهات چپ؛ کامندهای
+  `hifz_studio_open/close/is_open/layout` + آیتم‌های tray. وب‌اپ هنوز
+  پارامتر `?studio=practice|history` را نمی‌خواند، پس dock فعلاً همان
+  صفحهٔ کامل مطالعه را نشان می‌دهد.
+- **بیلد/تست لینوکس (sandbox، ‏۲۰۲۶-۱۱-۰۷):** تست واحد Rust ‏**۱۱/۱۱**؛
+  بیلد debug ‏exit 0؛ بیلد release ‏`npm run tauri build` ‏exit 0
+  (AppImage ‏~۸۱٫۷MB، ‏.deb ‏~۶٫۹MB، ‏.rpm ‏~۶٫۹MB، بدون امضا)؛
+  smoke test زیر Xvfb ‏**PASS=14 FAIL=0**
+  (`tests/smoke/smoke-test-linux.sh`). ‏macOS/Windows: ‏BLOCKED.
+- **تغییر جانبی:** کلید `plugins: { "notification": {} }` از
+  `tauri.conf.json` حذف شد — با `tauri-plugin-notification 2.8.0` در
+  startup panic می‌داد (باگِ پیشینی).
 
 ## پیش‌نیاز (فاز ۲)
 

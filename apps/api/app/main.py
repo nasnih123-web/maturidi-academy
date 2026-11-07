@@ -175,6 +175,11 @@ async def lifespan(app: FastAPI):
     from app.modules.api_keys.counter import run_usage_flush_loop
 
     flush_task = _asyncio.create_task(run_usage_flush_loop())
+    # فاز ۱۲، P1-6: پاک‌سازی دوره‌ای بلیط‌های مردهٔ WS (هر ساعت)؛
+    # بدون آن جدول ws_tickets با هر شروعِ نشستِ زنده رشد می‌کند.
+    from app.modules.auth.service import run_ws_ticket_cleanup_loop
+
+    ws_ticket_cleanup_task = _asyncio.create_task(run_ws_ticket_cleanup_loop())
     # حفاظ: وارم‌آپ پس‌زمینهٔ نقشهٔ واج — بار اولش حدود ۴ دقیقه است و
     # اگر موقع اولین نمره انجام شود، درخواست همان‌قدر معطل می‌ماند.
     # فقط وقتی فایل‌ها حاضرند و زیر pytest نیستیم اجرا می‌شود؛ هرگز
@@ -202,6 +207,7 @@ async def lifespan(app: FastAPI):
     warmup_task = _asyncio.create_task(_warmup_hifz())
     yield
     flush_task.cancel()
+    ws_ticket_cleanup_task.cancel()
     warmup_task.cancel()
     await stop_realtime(app)
 

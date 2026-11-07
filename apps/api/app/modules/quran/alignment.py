@@ -44,6 +44,16 @@ __all__ = [
     "strip_diacritics",
 ]
 
+# احتمال‌های مشتق‌شده از نوعِ تطابق (فاز ۶): مقدارهای ثابتِ
+# قراردادی‌اند، نه confidence کالیبره‌شده — هرگز نباید به‌صورت
+# درصدِ قابل‌فهم نمایش داده شوند. فاصلهٔ بیشینهٔ «نزدیک» هم نقطهٔ
+# شروعِ آزمایش است، نه عددِ کالیبره‌شده؛ «نزدیک» در مرزِ آن، پرچمِ
+# needs_review می‌خورد.
+PROB_CORRECT = 0.95
+PROB_CLOSE = 0.65
+PROB_WRONG = 0.30
+NEAR_MISS_MAX_DISTANCE = 2
+
 # Arabic diacritics + Quranic annotation marks stripped for matching.
 _STRIP_RANGES = (
     (0x064B, 0x0652),  # fathatan .. sukun
@@ -126,6 +136,10 @@ class AlignedWord:
     prob: float
     heard: str | None
     mistake_type: str | None  # wrong_word | wrong_tashkeel | skipped | None
+    # «نزدیک» در مرزِ بیشینهٔ فاصله (یا کلمهٔ ناتمامِ انتهای ضبط):
+    # تصمیم قطعی نیست و بازبینی می‌خواهد. فقط سیگنالِ خروجی است؛
+    # ذخیره نمی‌شود (ستونی ندارد) و در شمارندهٔ وضعیت‌ها اثری ندارد.
+    needs_review: bool = False
 
 
 def _status_for_prob(prob: float, green: float, amber: float) -> str:
@@ -171,39 +185,45 @@ def align_words(
             # Same letters. Raw difference decides the mistake kind.
             if strip_diacritics(exp) == strip_diacritics(hrd) and exp != hrd:
                 # Only diacritics differ.
-                p = 0.65
+                p = PROB_CLOSE
                 aligned.append(
                     AlignedWord(e_idx, exp, "close", p, hrd, "wrong_tashkeel")
                 )
                 return
             if exp == hrd:
                 raw_p = prob_at(h_idx)
-                p = 0.95 if raw_p is None else raw_p
+                p = PROB_CORRECT if raw_p is None else raw_p
                 status = "correct" if p >= green else "close"
-                aligned.append(AlignedWord(e_idx, exp, status, p, hrd, None))
+                aligned.append(
+                    AlignedWord(
+                        e_idx, exp, status, p, hrd, None,
+                        needs_review=(status == "close"),
+                    )
+                )
                 return
             # Letter-form variant only (hamza/yeh folding).
             aligned.append(
-                AlignedWord(e_idx, exp, "close", 0.65, hrd, "wrong_word")
+                AlignedWord(e_idx, exp, "close", PROB_CLOSE, hrd, "wrong_word")
             )
             return
         # Different letters: near miss or wrong, by edit distance.
         # Status follows the CRM thresholds on the derived probability.
         dist = levenshtein(norm_expected[e_idx], norm_heard[h_idx])
-        if dist <= 2 and max(len(norm_expected[e_idx]), 1) > 3:
+        if dist <= NEAR_MISS_MAX_DISTANCE and max(len(norm_expected[e_idx]), 1) > 3:
             aligned.append(
                 AlignedWord(
                     e_idx, exp,
-                    _status_for_prob(0.65, green, amber),
-                    0.65, hrd, "wrong_word",
+                    _status_for_prob(PROB_CLOSE, green, amber),
+                    PROB_CLOSE, hrd, "wrong_word",
+                    needs_review=(dist == NEAR_MISS_MAX_DISTANCE),
                 )
             )
         else:
             aligned.append(
                 AlignedWord(
                     e_idx, exp,
-                    _status_for_prob(0.30, green, amber),
-                    0.30, hrd, "wrong_word",
+                    _status_for_prob(PROB_WRONG, green, amber),
+                    PROB_WRONG, hrd, "wrong_word",
                 )
             )
 
@@ -253,8 +273,12 @@ def align_phonemes(
     lookahead-skip), except a true misread is "wrong" here (the recorded
     path has the full string, so it can mark it and resync by consuming
     the unit's length — a documented heuristic, not a claim of exactness).
-    Leftover phoneme material is returned as a single extra entry: it is
-    unparsed phoneme material, never presented as words.
+    A near-miss at the maximum distance carries `needs_review`. A
+    trailing strict prefix (the recording ended mid-word) is "skipped"
+    with `needs_review`, not "wrong": the word is incomplete, and the
+    rest of the ayah is simply unheard. Leftover phoneme material is
+    returned as a single extra entry: it is unparsed phoneme material,
+    never presented as words.
 
     Returns (aligned, extra) in the same shape as `align_words`.
     """
@@ -278,25 +302,27 @@ def align_phonemes(
                 aligned.append(
                     AlignedWord(
                         wi, exp,
-                        _status_for_prob(0.95, green, amber),
-                        0.95, exp, None,
+                        _status_for_prob(PROB_CORRECT, green, amber),
+                        PROB_CORRECT, exp, None,
                     )
                 )
             buf = buf[len(phon):]
             i += 1
             continue
-        if (
-            len(buf) >= len(phon)
-            and len(phon) > 3
-            and levenshtein(buf[: len(phon)], phon) <= 2
-        ):
+        near_dist: int | None = None
+        if len(buf) >= len(phon) and len(phon) > 3:
+            near_dist = levenshtein(buf[: len(phon)], phon)
+        if near_dist is not None and near_dist <= NEAR_MISS_MAX_DISTANCE:
             for wi in widxs:
                 exp = expected[wi] if wi < len(expected) else ""
                 aligned.append(
                     AlignedWord(
                         wi, exp,
-                        _status_for_prob(0.65, green, amber),
-                        0.65, exp, "wrong_word",
+                        _status_for_prob(PROB_CLOSE, green, amber),
+                        PROB_CLOSE, exp, "wrong_word",
+                        needs_review=(
+                            near_dist == NEAR_MISS_MAX_DISTANCE
+                        ),
                     )
                 )
             buf = buf[len(phon):]
@@ -327,14 +353,37 @@ def align_phonemes(
                 )
             i += 1
             continue
+        if phon.startswith(buf):
+            # ضبط وسطِ کلمه تمام شده: بافرِ مانده پیشوندِ این واحد
+            # است — کلمه ناتمام است، نه غلط. این واحد «جاافتاده» با
+            # پرچمِ بازبینی می‌خورد و بقیهٔ واحدها هم جاافتاده‌اند
+            # (دیگر چیزی نشنیده‌ایم)؛ بافرِ مانده مادهٔ واجیِ
+            # تجزیه‌نشده است و پایین به extra می‌رود.
+            for wi in widxs:
+                exp = expected[wi] if wi < len(expected) else ""
+                aligned.append(
+                    AlignedWord(
+                        wi, exp, "skipped", 0.0, None, "skipped",
+                        needs_review=True,
+                    )
+                )
+            i += 1
+            while i < len(units):
+                for wi in units[i][0]:
+                    exp = expected[wi] if wi < len(expected) else ""
+                    aligned.append(
+                        AlignedWord(wi, exp, "skipped", 0.0, None, "skipped")
+                    )
+                i += 1
+            break
         chunk = buf[: len(phon)]
         for wi in widxs:
             exp = expected[wi] if wi < len(expected) else ""
             aligned.append(
                 AlignedWord(
                     wi, exp,
-                    _status_for_prob(0.30, green, amber),
-                    0.30, chunk or None, "wrong_word",
+                    _status_for_prob(PROB_WRONG, green, amber),
+                    PROB_WRONG, chunk or None, "wrong_word",
                 )
             )
         buf = buf[len(phon):]

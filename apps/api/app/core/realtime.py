@@ -51,7 +51,120 @@ from app.models.models import (
     User,
     UserRole,
 )
-from app.modules.auth.service import redeem_ws_ticket
+from app.modules.auth.service import redeem_ws_ticket_with_session
+
+
+async def session_still_valid(db: AsyncSession, session_id: uuid.UUID) -> bool:
+    """نشست هنوز معتبر است؟ (فاز ۱۲، P1-1 — اعتبارسنجی دوره‌ای وسط
+    جریان زنده.)
+
+    خواندنِ تازه با SELECT مستقیم (نه `db.get` روی شیءِ کش‌شده در
+    identity map) تا ابطالِ پس از handshake دیده شود. نشستِ
+    ناپیدا/باطل → False. خطای DB به‌عمد fail-open است (True برمی‌گردد
+    و فقط لاگ می‌خورد): قطعیِ گذرای دیتابیس نباید جلسهٔ زنده را
+    بکشد؛ ابطالِ صریح، تنها چیزی است که اتصال را می‌بندد.
+    """
+    try:
+        revoked = (
+            await db.execute(
+                select(Session.revoked).where(Session.id == session_id)
+            )
+        ).scalar_one_or_none()
+    except Exception:  # noqa: BLE001 — قطعی گذرا، نه ابطال
+        logger.warning("hifz live session revalidation db error", exc_info=True)
+        return True
+    return revoked is False
+
+
+async def _authenticate_with_session(
+    websocket: WebSocket, db: AsyncSession
+) -> tuple[User, uuid.UUID | None]:
+    """احراز هویت handshake + نشستِ گره‌خورده (فاز ۱۲، P1-1).
+
+    همان منطق `_authenticate` است، با این تفاوت که نشست را هم
+    برمی‌گرداند: برای بلیط، نشستِ صادرکننده؛ برای JWT، `sid` توکن؛
+    برای بلیطِ قدیمیِ بدون گره یا JWT بدون `sid`، None (آن اتصال،
+    اعتبارسنجی دوره‌ای ندارد — بلیط ۶۰ ثانیه‌ای است و JWT بدون sid
+    از توکن‌های پیش از گره‌خوردن است).
+    """
+    # دفاع در عمق در برابر اتصالِ cross-site: مبدأ خارجیِ صریح،
+    # پیش از هر بررسیِ بلیط/توکن رد می‌شود.
+    if not check_ws_origin(websocket):
+        logger.warning("websocket rejected foreign origin")
+        await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="foreign origin")
+        raise _HandshakeRejected()
+    # مسیر ترجیحی: بلیط یک‌بارمصرف کوتاه‌مدت (?ticket=) — جایگزین امن
+    # JWT در query string که در لاگ‌ها/تاریخچهٔ مرورگر لو می‌رود.
+    ticket = websocket.query_params.get("ticket")
+    if ticket:
+        redeemed = await redeem_ws_ticket_with_session(db, ticket)
+        if redeemed is None:
+            await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="invalid ticket")
+            raise _HandshakeRejected()
+        user, session_id = redeemed
+        return user, session_id
+    # سازگاری عقب‌رو: JWT فقط در هدر Authorization.
+    # remediation-pass-2 Track 1: `?token=<JWT>` دیگر پذیرفته نیست —
+    # query string هرگز نباید secret حمل کند (لاگ‌ها/تاریخچهٔ مرورگر).
+    auth = websocket.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        token = auth.split(" ", 1)[1].strip()
+    else:
+        token = ""
+    if not token:
+        await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="missing token")
+        raise _HandshakeRejected()
+    try:
+        payload = decode_access_token(token)
+        if payload.get("scope", SCOPE_FULL) != SCOPE_FULL:
+            # توکن عامل-اول (2fa_setup) حق اتصال بلادرنگ ندارد
+            await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="limited token")
+            raise _HandshakeRejected()
+        jwt_user = await db.get(User, uuid.UUID(payload["sub"]))
+    except (APIError, KeyError, ValueError, AttributeError):
+        await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="invalid token")
+        raise _HandshakeRejected()
+    if not jwt_user or not jwt_user.is_active:
+        await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="inactive user")
+        raise _HandshakeRejected()
+    user = jwt_user
+    # گره‌خوردن به نشست (parity با get_current_user در HTTP): نشستِ باطل‌شده
+    # یعنی access token هم — حتی پیش از انقضای ۱۵ دقیقه‌ای — مرده است.
+    # پیش‌تر این مسیر sid را نادیده می‌گرفت و توکنِ نشستِ باطل‌شده را می‌پذیرفت.
+    sid = payload.get("sid")
+    session_id = None
+    if sid:
+        try:
+            session_id = uuid.UUID(sid)
+            session = await db.get(Session, session_id)
+        except (ValueError, AttributeError):
+            session = None
+            session_id = None
+        if session is None or session.revoked or session.user_id != user.id:
+            await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="session revoked")
+            raise _HandshakeRejected()
+    return user, session_id
+
+
+async def authenticate_ws_with_session(
+    websocket: WebSocket, db: AsyncSession
+) -> tuple[User, uuid.UUID | None]:
+    """احراز هویت handshake وب‌سوکت + نشستِ گره‌خورده (فاز ۱۲).
+
+    برای جریان زندهٔ حفاظ: نشستِ برگشتی دوره‌ای اعتبارسنجی می‌شود
+    (P1-1) تا ابطالِ وسطِ نشست، اتصال را ببندد.
+    """
+    return await _authenticate_with_session(websocket, db)
+
+
+async def _authenticate(websocket: WebSocket, db: AsyncSession) -> User:
+    """احراز هویت handshake وب‌سوکت (`/ws/events` — فقط کاربر).
+
+    نشستِ گره‌خورده این‌جا لازم نیست؛ برای جریان زنده از
+    `authenticate_ws_with_session` استفاده می‌شود.
+    """
+    user, _session_id = await _authenticate_with_session(websocket, db)
+    return user
 
 ADMIN_CHANNEL_PREFIX = "admin."
 ADMIN_CHANNEL_PERMISSION = "realtime.admin"
@@ -179,52 +292,34 @@ async def broadcast_event(event: dict) -> None:
     await manager.broadcast_event(event)
 
 
-async def _authenticate(websocket: WebSocket, db: AsyncSession) -> User:
-    # مسیر ترجیحی: بلیط یک‌بارمصرف کوتاه‌مدت (?ticket=) — جایگزین امن
-    # JWT در query string که در لاگ‌ها/تاریخچه لو می‌رود.
-    ticket = websocket.query_params.get("ticket")
-    if ticket:
-        user = await redeem_ws_ticket(db, ticket)
-        if user is None:
-            await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="invalid ticket")
-            raise _HandshakeRejected()
-        return user
-    # سازگاری عقب‌رو: JWT فقط در هدر Authorization.
-    # remediation-pass-2 Track 1: `?token=<JWT>` دیگر پذیرفته نیست —
-    # query string هرگز نباید secret حمل کند (لاگ‌ها/تاریخچهٔ مرورگر).
-    token = None
-    auth = websocket.headers.get("authorization", "")
-    if auth.lower().startswith("bearer "):
-        token = auth[7:].strip()
-    if not token:
-        await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="missing token")
-        raise _HandshakeRejected()
-    try:
-        payload = decode_access_token(token)
-        if payload.get("scope", SCOPE_FULL) != SCOPE_FULL:
-            # توکن عامل-اول (2fa_setup) حق اتصال بلادرنگ ندارد
-            await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="limited token")
-            raise _HandshakeRejected()
-        user = await db.get(User, uuid.UUID(payload["sub"]))
-    except (APIError, KeyError, ValueError, AttributeError):
-        await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="invalid token")
-        raise _HandshakeRejected()
-    if not user or not user.is_active:
-        await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="inactive user")
-        raise _HandshakeRejected()
-    # گره‌خوردن به نشست (parity با get_current_user در HTTP): نشستِ باطل‌شده
-    # یعنی access token هم — حتی پیش از انقضای ۱۵ دقیقه‌ای — مرده است.
-    # پیش‌تر این مسیر sid را نادیده می‌گرفت و توکنِ نشستِ باطل‌شده را می‌پذیرفت.
-    sid = payload.get("sid")
-    if sid:
-        try:
-            session = await db.get(Session, uuid.UUID(sid))
-        except (ValueError, AttributeError):
-            session = None
-        if session is None or session.revoked or session.user_id != user.id:
-            await websocket.close(code=_CLOSE_UNAUTHORIZED, reason="session revoked")
-            raise _HandshakeRejected()
-    return user
+def check_ws_origin(websocket: WebSocket) -> bool:
+    """Origin اتصال WebSocket را با فهرست CORS مجاز بسنج (فاز ۱۱).
+
+    - بدون هدر Origin (کلاینت غیرمرورگر: موبایل، تست) → مجاز؛
+      احراز هویت با بلیط/JWT همان‌جا برقرار است.
+    - Origin برابر `null` (opaque origin) → مجاز؛ قابل‌اعتبارسنجی
+      نیست و احراز هویت، دروازهٔ اصلی می‌ماند.
+    - فهرست CORS خالی (پیکربندی‌نشده) → مجاز؛ همان رفتار پیشین.
+    - در غیر این صورت، فقط Originهای درون فهرست مجازند؛ بقیه رد
+      می‌شوند (جلوگیری از اتصالِ cross-site از سایتی دیگر با
+      بلیطِ دزدیده‌شده از مرورگرِ کاربر — دفاع در عمق، کنار
+      احراز هویت).
+
+    توجه: مبدأ وب باید در `CORS_ALLOW_ORIGINS` باشد تا fetchهای
+    دارای Authorization (preflight) کار کنند؛ پس این بررسی، وبِ
+    سالم را نمی‌گیرد.
+    """
+    origin = websocket.headers.get("origin")
+    if not origin or origin == "null":
+        return True
+    allowed = [
+        o.strip()
+        for o in get_settings().cors_allow_origins.split(",")
+        if o.strip()
+    ]
+    if not allowed:
+        return True
+    return origin in allowed
 
 
 async def _load_permissions(db: AsyncSession, user_id: uuid.UUID) -> set[str]:

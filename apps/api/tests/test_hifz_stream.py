@@ -196,9 +196,13 @@ async def test_live_words_extra_and_tashkeel_close(monkeypatch):
         ("قُلْ", "correct"),
         ("هُوَ", "close"),
     ]
-    assert [e for e in events if e["type"] == "extra"] == [
-        {"type": "extra", "text": "سلام"}
-    ]
+    # رویداد extra با پاکت نسخهٔ ۲ می‌آید (نه دیکشنریِ برهنهٔ قدیمی).
+    extras = [e for e in events if e["type"] == "extra"]
+    assert len(extras) == 1
+    assert extras[0]["text"] == "سلام"
+    assert extras[0]["event_type"] == "extra"
+    assert extras[0]["session_id"] == str(session.attempt.id)
+    assert extras[0]["sequence_no"] >= 1
 
 
 @pytest.mark.asyncio
@@ -597,9 +601,11 @@ async def test_feed_phonemes_locates_start_ayah_when_hint_is_wrong(monkeypatch):
     assert all(w["status"] == "correct" for w in words_out)
     assert session.live_counts()["skipped"] == 0
     assert session.live_counts()["located"] == 1
-    assert [e for e in events if e["type"] == "located"] == [
-        {"type": "located", "surah": 112, "ayah": 3}
-    ]
+    located = [e for e in events if e["type"] == "located"]
+    assert len(located) == 1
+    assert located[0]["surah"] == 112 and located[0]["ayah"] == 3
+    assert located[0]["event_type"] == "located"
+    assert located[0]["sequence_no"] >= 1
 
 
 @pytest.mark.asyncio
@@ -651,9 +657,10 @@ async def test_feed_phonemes_relocates_after_more_than_five_skipped_ayahs(
     assert skipped_ayahs == [2, 3, 4, 5, 6]
     assert 7 not in {w["ayah"] for w in words_out}
     assert session.live_counts()["located"] == 1
-    assert [e for e in events if e["type"] == "located"] == [
-        {"type": "located", "surah": 112, "ayah": 8}
-    ]
+    located = [e for e in events if e["type"] == "located"]
+    assert len(located) == 1
+    assert located[0]["surah"] == 112 and located[0]["ayah"] == 8
+    assert located[0]["event_type"] == "located"
 
 
 def test_collapse_phoneme_runs_keeps_shadda():
@@ -684,6 +691,8 @@ async def test_live_counts_only_counts_words_and_skips(monkeypatch):
         "buffer_chars": 0,
         "resync_dropped": 0,
         "located": 0,
+        "repeats": 0,
+        "revisits": 0,
     }
 
 
@@ -767,13 +776,22 @@ async def test_serve_stream_words_final_and_close(monkeypatch):
         ("اللَّهُ", "correct"),
         ("أَحَدٌ", "correct"),
     ]
-    assert [e for e in ws.sent if e.get("type") == "error"] == [
-        {"type": "error", "code": "unknown_message", "message": "پیام ناشناخته"}
-    ]
+    # خطای پیام ناشناخته با پاکت نسخهٔ ۲ می‌آید؛ غیرکشنده است.
+    errors = [e for e in ws.sent if e.get("type") == "error"]
+    assert len(errors) == 1
+    assert errors[0]["code"] == "unknown_message"
+    assert errors[0]["message"] == "پیام ناشناخته"
+    assert errors[0]["event_type"] == "error"
+    assert errors[0]["fatal"] is False
+    assert errors[0]["sequence_no"] >= 1
     finals = [e for e in ws.sent if e.get("type") == "final"]
     assert len(finals) == 1 and finals[0]["ayahs"] == [1]
     assert ws.close_code == 1000
     assert stored and stored[0][0] == 1
+    # حلقه با `listening` شروع و با `session_ended` تمام می‌شود.
+    assert ws.sent[0].get("event_type") == "listening"
+    ended = [e for e in ws.sent if e.get("event_type") == "session_ended"]
+    assert len(ended) == 1 and ended[0]["reason"] == "end"
 
 
 @pytest.mark.asyncio
@@ -832,13 +850,11 @@ async def test_serve_stream_feed_error_sends_error_json_not_silent_close(
     with caplog.at_level(logging.ERROR, logger="app.modules.quran.hifz_router"):
         await serve_stream(ws, session, recognizer, queue)
     errors = [e for e in ws.sent if e.get("type") == "error"]
-    assert errors == [
-        {
-            "type": "error",
-            "code": "hifz_stream_error",
-            "message": "خطای داخلی در جریان زنده؛ دوباره تلاش کنید.",
-        }
-    ]
+    assert len(errors) == 1
+    assert errors[0]["code"] == "hifz_stream_error"
+    assert errors[0]["message"] == "خطای داخلی در جریان زنده؛ دوباره تلاش کنید."
+    assert errors[0]["event_type"] == "error"
+    assert errors[0]["fatal"] is True
     # بستن ۱۰۱۱ برای خطا فرستاده می‌شود (بستن پایانی ۱۰۰۰ در finally
     # پس از آن می‌آید؛ کلاینت نخستین بستن را می‌بیند).
     assert 1011 in ws.close_codes
@@ -896,8 +912,9 @@ async def test_serve_stream_phonemes_without_words_warns(monkeypatch, caplog):
 
 
 @pytest.mark.asyncio
-async def test_serve_stream_drops_stale_frames(monkeypatch, caplog):
-    """قاب‌های مانده از پیش از شروع نشست دور ریخته می‌شوند؛ قاب زنده می‌رسد."""
+async def test_serve_stream_rejects_pre_ready_frames_with_warning(monkeypatch, caplog):
+    """قاب‌های رسیده پیش از readiness رد می‌شوند و با warning گزارش
+    می‌شوند (نه بی‌صدا دور ریخته)؛ قاب زنده می‌رسد."""
     from app.modules.quran.hifz_router import serve_stream
 
     events = []
@@ -907,8 +924,8 @@ async def test_serve_stream_drops_stale_frames(monkeypatch, caplog):
     session.mapping = _fake_mapping()
     ws = _FakeWebSocket(
         [
-            {"bytes": b"\x00\x00" * 100},  # مانده
-            {"bytes": b"\x00\x00" * 100},  # مانده
+            {"bytes": b"\x00\x00" * 100},  # پیش از readiness
+            {"bytes": b"\x00\x00" * 100},  # پیش از readiness
             {"bytes": b"\x00\x00" * 100},  # زنده
             {"text": json.dumps({"type": "end"})},
         ],
@@ -920,7 +937,7 @@ async def test_serve_stream_drops_stale_frames(monkeypatch, caplog):
     with caplog.at_level(logging.INFO, logger="app.modules.quran.hifz_router"):
         await serve_stream(ws, session, recognizer, queue)
     # فقط قاب زنده خورانده شد (یک بار feed) و همان یک واج‌چین، کل
-    # آیهٔ اول را ساخت؛ قاب‌های مانده، واجی تولید نکردند.
+    # آیهٔ اول را ساخت؛ قاب‌های پیش از readiness، واجی تولید نکردند.
     assert recognizer.calls == 1
     words = [e for e in ws.sent if e.get("type") == "word"]
     assert [(w["expected"], w["status"]) for w in words] == [
@@ -930,9 +947,15 @@ async def test_serve_stream_drops_stale_frames(monkeypatch, caplog):
         ("أَحَدٌ", "correct"),
     ]
     assert any(
-        "dropped stale frames" in r.message and "dropped=2" in r.message
+        "rejected pre-ready frames" in r.message and "dropped=2" in r.message
         for r in caplog.records
     )
+    warnings = [
+        e for e in ws.sent if e.get("event_type") == "warning"
+    ]
+    assert len(warnings) == 1
+    assert warnings[0]["code"] == "hifz_frames_before_ready"
+    assert warnings[0]["dropped"] == 2
     assert ws.close_code == 1000
     assert stored and stored[0][0] == 1
 

@@ -45,6 +45,8 @@ export interface ListenConfig {
   onWordChange: (ayah: number, word: number | null) => void;
 }
 
+export type ListenRepeatMode = 'off' | 'ayah' | 'surah';
+
 export interface ListenControls {
   isPlaying: boolean;
   currentAyah: number;
@@ -54,8 +56,21 @@ export interface ListenControls {
   listenError: string | null;
   play: () => void;
   pause: () => void;
+  /** Resume after pause (same as play once audio is loaded). */
+  resume: () => void;
   stop: () => void;
   playAyah: (ayah: number) => void;
+  prevAyah: () => void;
+  nextAyah: () => void;
+  repeatMode: ListenRepeatMode;
+  setRepeatMode: (mode: ListenRepeatMode) => void;
+  speed: number;
+  setSpeed: (rate: number) => void;
+  /** Playback position / total length in ms (surah total in segments
+      mode, current ayah in interpolated mode). */
+  progressMs: number;
+  durationMs: number;
+  seek: (ms: number) => void;
 }
 
 function splitWords(text: string): string[] {
@@ -74,6 +89,16 @@ export function useQuranListen(config: ListenConfig): ListenControls {
   const [currentWord, setCurrentWord] = useState<number | null>(null);
   const [timingSource, setTimingSource] = useState<TimingSource | null>(null);
   const [listenError, setListenError] = useState<string | null>(null);
+  const [repeatMode, setRepeatMode] = useState<ListenRepeatMode>('off');
+  const [speed, setSpeedState] = useState(1);
+  const [progressMs, setProgressMs] = useState(0);
+  const [durationMs, setDurationMs] = useState(0);
+  const repeatModeRef = useRef<ListenRepeatMode>('off');
+  const speedRef = useRef(1);
+  // Latest playAyah for the ended handler (avoids a stale closure).
+  const playAyahRef = useRef<(ayah: number) => void>(() => {});
+  // Last reported progress (throttle: state updates at most ~4x/s).
+  const lastProgressRef = useRef(-1);
 
   // The fetched real timings (segments mode) or null.
   const timingRef = useRef<RecitationTiming | null>(null);
@@ -107,6 +132,43 @@ export function useQuranListen(config: ListenConfig): ListenControls {
       rafRef.current = 0;
     }
   }, []);
+
+  /** Apply the stored playback speed to the audio element. */
+  const applySpeed = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio) audio.playbackRate = speedRef.current;
+  }, [audioRef]);
+
+  const setSpeed = useCallback(
+    (rate: number) => {
+      const clamped = [0.5, 0.75, 1, 1.25, 1.5, 2].includes(rate) ? rate : 1;
+      speedRef.current = clamped;
+      setSpeedState(clamped);
+      applySpeed();
+    },
+    [applySpeed],
+  );
+
+  const setRepeat = useCallback((mode: ListenRepeatMode) => {
+    repeatModeRef.current = mode;
+    setRepeatMode(mode);
+  }, []);
+
+  /** Seek within the surah (segments mode) or the ayah (interpolated). */
+  const seek = useCallback(
+    (ms: number) => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      if (modeRef.current === 'segments' && timingRef.current) {
+        const total = timingRef.current.ayahs[timingRef.current.ayahs.length - 1]?.toMs ?? 0;
+        audio.currentTime = Math.min(Math.max(ms, 0), total) / 1000;
+      } else {
+        audio.currentTime = Math.max(ms, 0) / 1000;
+      }
+      lastProgressRef.current = -1;
+    },
+    [audioRef],
+  );
 
   /** Advance to the next ayah in segments mode (seek) or stop at the
       end of the surah. Returns false when the surah is finished. */
@@ -157,6 +219,10 @@ export function useQuranListen(config: ListenConfig): ListenControls {
           const timing = timingRef.current;
           const entry = timing.ayahs.find((a) => tMs >= a.fromMs && tMs < a.toMs);
           if (entry) {
+            // Repeat-ayah: loop the current ayah instead of moving on.
+            if (repeatModeRef.current === 'ayah' && tMs >= entry.toMs - 120) {
+              audio.currentTime = entry.fromMs / 1000;
+            }
             const word = wordIndexAtTimeMs(entry.words, tMs - entry.fromMs);
             setAyahAndWord(entry.ayah, word);
           } else if (tMs >= (timing.ayahs[timing.ayahs.length - 1]?.toMs ?? 0)) {
@@ -167,6 +233,11 @@ export function useQuranListen(config: ListenConfig): ListenControls {
           const words = interpRef.current.get(currentAyahRef.current) ?? [];
           setAyahAndWord(currentAyahRef.current, wordIndexAtTimeMs(words, tMs));
         }
+        // Progress (throttled to ~4 updates/s to avoid re-render storms).
+        if (Math.abs(tMs - lastProgressRef.current) >= 250) {
+          lastProgressRef.current = tMs;
+          setProgressMs(Math.round(tMs));
+        }
       }
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -175,21 +246,46 @@ export function useQuranListen(config: ListenConfig): ListenControls {
   }, [isPlaying, audioRef, setAyahAndWord, stopRaf]);
 
   // Audio ended: advance to the next ayah, or stop at the surah end.
+  // Repeat modes: 'ayah' replays the same ayah (interpolated mode;
+  // segments mode loops in the rAF tick), 'surah' restarts the surah.
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
     const onEnded = () => {
       if (modeRef.current === 'segments') {
+        if (repeatModeRef.current === 'surah') {
+          playAyahRef.current(1);
+          return;
+        }
         if (!advanceSegments()) {
           setIsPlaying(false);
           setAyahAndWord(currentAyahRef.current, null);
         }
-      } else if (!advanceInterpolated()) {
-        setIsPlaying(false);
-        setAyahAndWord(currentAyahRef.current, null);
+      } else {
+        if (repeatModeRef.current === 'ayah') {
+          playAyahRef.current(currentAyahRef.current);
+          return;
+        }
+        if (repeatModeRef.current === 'surah' && currentAyahRef.current >= ayahCount) {
+          playAyahRef.current(1);
+          return;
+        }
+        if (!advanceInterpolated()) {
+          setIsPlaying(false);
+          setAyahAndWord(currentAyahRef.current, null);
+        }
       }
     };
     const onLoadedMetadata = () => {
+      // Duration is known now (both modes): the progress bar's total.
+      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        if (modeRef.current === 'segments' && timingRef.current) {
+          const last = timingRef.current.ayahs[timingRef.current.ayahs.length - 1];
+          setDurationMs(last ? last.toMs : Math.round(audio.duration * 1000));
+        } else {
+          setDurationMs(Math.round(audio.duration * 1000));
+        }
+      }
       // Interpolated mode: the ayah duration is known now; spread it
       // across the ayah's words by length.
       if (modeRef.current !== 'interpolated') return;
@@ -213,7 +309,7 @@ export function useQuranListen(config: ListenConfig): ListenControls {
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
       audio.removeEventListener('error', onError);
     };
-  }, [audioRef, advanceSegments, advanceInterpolated, ayahTexts, setAyahAndWord]);
+  }, [audioRef, advanceSegments, advanceInterpolated, ayahCount, ayahTexts, setAyahAndWord]);
 
   const play = useCallback(() => {
     const audio = audioRef.current;
@@ -258,6 +354,7 @@ export function useQuranListen(config: ListenConfig): ListenControls {
         }
       }
       setIsPlaying(true);
+      applySpeed();
       try {
         await audio.play();
       } catch {
@@ -265,7 +362,7 @@ export function useQuranListen(config: ListenConfig): ListenControls {
         setIsPlaying(false);
       }
     })();
-  }, [audioRef, reciter, surah, ayahAudioUrls, setAyahAndWord]);
+  }, [audioRef, reciter, surah, ayahAudioUrls, setAyahAndWord, applySpeed]);
 
   const pause = useCallback(() => {
     audioRef.current?.pause();
@@ -280,6 +377,7 @@ export function useQuranListen(config: ListenConfig): ListenControls {
       audio.load();
     }
     setIsPlaying(false);
+    setProgressMs(0);
     setAyahAndWord(currentAyahRef.current, null);
   }, [audioRef, setAyahAndWord]);
 
@@ -297,6 +395,7 @@ export function useQuranListen(config: ListenConfig): ListenControls {
         loadingRef.current = false;
         setAyahAndWord(ayah, null);
         setIsPlaying(true);
+        applySpeed();
         void audio.play().catch(() => {
           setListenError('listenAudioFailed');
           setIsPlaying(false);
@@ -309,6 +408,7 @@ export function useQuranListen(config: ListenConfig): ListenControls {
         audio.load();
         setAyahAndWord(ayah, null);
         setIsPlaying(true);
+        applySpeed();
         void audio.play().catch(() => {
           setListenError('listenAudioFailed');
           setIsPlaying(false);
@@ -319,8 +419,23 @@ export function useQuranListen(config: ListenConfig): ListenControls {
         play();
       }
     },
-    [audioRef, ayahAudioUrls, ayahCount, play, setAyahAndWord],
+    [audioRef, ayahAudioUrls, ayahCount, play, setAyahAndWord, applySpeed],
   );
+
+  // Keep the ended handler's ref in sync.
+  playAyahRef.current = playAyah;
+
+  const prevAyah = useCallback(() => {
+    playAyah(Math.max(1, currentAyahRef.current - 1));
+  }, [playAyah]);
+
+  const nextAyah = useCallback(() => {
+    playAyah(Math.min(ayahCount, currentAyahRef.current + 1));
+  }, [playAyah, ayahCount]);
+
+  // Resume after pause: the audio element keeps its source, so play()
+  // just continues from the same position.
+  const resume = play;
 
   // Reciter or surah change: reset the timing cache so the next play
   // fetches the right timings; stop any playing audio.
@@ -337,6 +452,8 @@ export function useQuranListen(config: ListenConfig): ListenControls {
       audio.load();
     }
     setIsPlaying(false);
+    setProgressMs(0);
+    setDurationMs(0);
     setAyahAndWord(1, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reciter, surah]);
@@ -349,7 +466,17 @@ export function useQuranListen(config: ListenConfig): ListenControls {
     listenError,
     play,
     pause,
+    resume,
     stop,
     playAyah,
+    prevAyah,
+    nextAyah,
+    repeatMode,
+    setRepeatMode: setRepeat,
+    speed,
+    setSpeed,
+    progressMs,
+    durationMs,
+    seek,
   };
 }

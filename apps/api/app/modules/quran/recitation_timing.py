@@ -43,17 +43,45 @@ _TIMEOUT = 15.0
 _RETRY_ATTEMPTS = 2
 _RETRY_BACKOFF = 0.5
 
-# شناسهٔ قاری در Quran.com API v4 — مرتل (Murattal) برای هر سه.
+# شناسهٔ قاری در Quran.com API v4 — مرتل (Murattal) برای هر سهٔ
+# پیشین؛ بقیه در فاز ۱۰ از فهرست زندهٔ همان API اضافه شدند
+# (GET /api/v4/resources/recitations، خوانده‌شده ۲۰۲۶-۱۱-۰۷):
+# 1 عبدالباسط (مجود)، 3 سدیس، 4 شاطری، 5 هانی رفاعی، 8 منشاوی
+# (مجود)، 9 منشاوی (مرتل)، 10 شریم، 11 طبلاوی، 12 حصری (معلم).
+# منبع صوت: همان API، فایل کامل سوره (MP3، استریم از audio_url؛
+# باندل/میرور نمی‌شود). Attribution: Quran.com / QuranicAudio.
+# کیفیت: فایل سوره‌ای با سگمنت‌های کلمه (segments=true)؛ برای قاریِ
+# مجود/معلم هم همان قرارداد سگمنت برقرار است ولی زمان‌بندیِ کلمه‌ای
+# ممکن است در بعضی سوره‌ها ناقص باشد — نبودِ سگمنت یعنی ۵۰۳
+# صادقانه، نه fallback بی‌صدا.
 RECITERS: dict[str, int] = {
     "alafasy": 7,
     "abdul_basit": 2,
     "husary": 6,
+    "abdul_basit_mujawwad": 1,
+    "sudais": 3,
+    "shatri": 4,
+    "hani_rifai": 5,
+    "minshawi_mujawwad": 8,
+    "minshawi": 9,
+    "shuraym": 10,
+    "tablawi": 11,
+    "husary_muallim": 12,
 }
 
 RECITER_LABELS: dict[str, str] = {
     "alafasy": "مشاری راشد العفاسی",
     "abdul_basit": "عبدالباسط عبدالصمد",
     "husary": "محمود خلیل الحصری",
+    "abdul_basit_mujawwad": "عبدالباسط عبدالصمد (مجود)",
+    "sudais": "عبدالرحمن السدیس",
+    "shatri": "ابوبکر الشاطری",
+    "hani_rifai": "هانی الرفاعی",
+    "minshawi_mujawwad": "محمد صدیق المنشاوی (مجود)",
+    "minshawi": "محمد صدیق المنشاوی",
+    "shuraym": "سعود الشریم",
+    "tablawi": "محمد الطبلاوی",
+    "husary_muallim": "محمود خلیل الحصری (معلم)",
 }
 
 # کشِ حافظه‌ای: (reciter, surah) → خروجیِ نرمال‌شده. داده ثابت است.

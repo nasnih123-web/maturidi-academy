@@ -44,6 +44,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import threading
@@ -53,6 +54,8 @@ from pathlib import Path
 from app.core.errors import APIError
 
 from .alignment import strip_diacritics
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "MappingPendingError",
@@ -169,7 +172,10 @@ def _load_tokens(path: Path) -> set[str]:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
-        raise MappingPendingError(f"tokens.txt خوانده نشد: {exc}") from exc
+        # مسیر فایل و جزئیات OSError فقط در لاگ سرور؛ پیام عمومی،
+        # عمومی می‌ماند (فاز ۱۱).
+        logger.warning("hifz tokens.txt unreadable: %s", exc)
+        raise MappingPendingError("خواندن جدول نمادهای واجی ناموفق بود") from exc
     symbols: set[str] = set()
     for line in lines:
         if not line.strip():
@@ -353,7 +359,8 @@ def _load_tanzil(path: Path) -> dict[int, dict[int, str]]:
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise MappingPendingError(f"متن Tanzil خوانده نشد: {exc}") from exc
+        logger.warning("hifz tanzil text unreadable: %s", exc)
+        raise MappingPendingError("خواندن متن تنزیل ناموفق بود") from exc
     data: dict[int, dict[int, str]] = {}
     for line in raw.splitlines():
         m = _TANZIL_LINE_RE.match(line)
@@ -434,7 +441,10 @@ def map_files_present(data_dir: str | Path | None = None) -> tuple[bool, str]:
     for filename in (_ORDERED_FILE, _TOKENS_FILE):
         path = resolved / filename
         if not path.is_file() or path.stat().st_size == 0:
-            return False, f"map file missing or empty: {path}"
+            # مسیر مطلق در پیام عمومی نمی‌آید (فاز ۱۱: نشت مسیر از
+            # /hifz/status)؛ جزئیات در لاگ سرور می‌ماند.
+            logger.warning("hifz phoneme map file missing or empty: %s", path)
+            return False, "map file missing or empty"
     return True, ""
 
 
@@ -459,7 +469,10 @@ def load_phoneme_mapping(data_dir: str | Path | None = None) -> PhonemeMapping:
     try:
         ordered = json.loads(ordered_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        raise MappingPendingError(f"{_ORDERED_FILE} خوانده نشد: {exc}") from exc
+        logger.warning("hifz ordered phoneme map unreadable: %s", exc)
+        raise MappingPendingError(
+            "خواندن نگاشت واجی ناموفق بود"
+        ) from exc
     # شمار دقیق مدخل‌ها معیار نیست: فایل ناقص، آیه‌های غایب را با
     # خطای صادقانه (نه تراز اشتباه) نشان می‌دهد؛ آیه‌های دارای مدخل،
     # هر یک جداگانه اعتبارسنجی می‌شوند. پوشش کلی، در آزمون دادهٔ

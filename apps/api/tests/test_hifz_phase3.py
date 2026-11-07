@@ -289,6 +289,72 @@ async def test_peek_records_mistake_not_score(tc, monkeypatch):
     assert detail["mistakes"][0]["mistake_type"] == "peek"
 
 
+async def test_peek_batch_reveals_list(tc, monkeypatch):
+    from app.modules.quran import hifz_service
+
+    monkeypatch.setattr(
+        hifz_service.quran_service, "get_ayah_bundle", _fake_ayah_bundle
+    )
+    token = await _user_token(tc["client"], "hifz-peek-batch@example.com")
+    r = await tc["client"].post(
+        f"{HIFZ}/attempts", json={"surah": 112, "page": 604}, headers=_auth(token)
+    )
+    attempt_id = r.json()["id"]
+    words = _tanzil_ayah(112, 1).split()
+    r = await tc["client"].post(
+        f"{HIFZ}/attempts/{attempt_id}/peek",
+        json={"surah": 112, "ayah": 1, "word_indices": [0, 1, 2]},
+        headers=_auth(token),
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # فیلدهای تکی = نخستین کلمه (سازگاری با کلاینت قدیمی).
+    assert body["word_index"] == 0
+    assert body["word"] == words[0]
+    assert [w["word_index"] for w in body["revealed"]] == [0, 1, 2]
+    assert [w["word"] for w in body["revealed"]] == words[:3]
+    r = await tc["client"].get(
+        f"{HIFZ}/attempts/{attempt_id}", headers=_auth(token)
+    )
+    detail = r.json()
+    assert detail["words"] == []  # Peek ردیف نمره نمی‌سازد
+    assert len(detail["mistakes"]) == 3
+    assert all(m["mistake_type"] == "peek" for m in detail["mistakes"])
+
+
+async def test_peek_batch_validation(tc, monkeypatch):
+    from app.modules.quran import hifz_service
+
+    monkeypatch.setattr(
+        hifz_service.quran_service, "get_ayah_bundle", _fake_ayah_bundle
+    )
+    token = await _user_token(tc["client"], "hifz-peek-batch-422@example.com")
+    r = await tc["client"].post(
+        f"{HIFZ}/attempts", json={"surah": 112, "page": 604}, headers=_auth(token)
+    )
+    attempt_id = r.json()["id"]
+
+    async def peek(body: dict):
+        return await tc["client"].post(
+            f"{HIFZ}/attempts/{attempt_id}/peek",
+            json=body,
+            headers=_auth(token),
+        )
+
+    # اندیس نامعتبر در فهرست → 422
+    r = await peek({"surah": 112, "ayah": 1, "word_indices": [0, 99]})
+    assert r.status_code == 422, r.text
+    # فهرست خالی → 422
+    r = await peek({"surah": 112, "ayah": 1, "word_indices": []})
+    assert r.status_code == 422, r.text
+    # هر دو فیلد با هم → 422
+    r = await peek({"surah": 112, "ayah": 1, "word_index": 0, "word_indices": [1]})
+    assert r.status_code == 422, r.text
+    # هیچ‌کدام → 422
+    r = await peek({"surah": 112, "ayah": 1})
+    assert r.status_code == 422, r.text
+
+
 async def test_dispute_marks_word(tc, monkeypatch):
     from app.modules.quran import hifz_service
 

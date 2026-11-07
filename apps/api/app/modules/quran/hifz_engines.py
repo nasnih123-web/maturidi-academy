@@ -53,10 +53,13 @@ from __future__ import annotations
 
 import glob
 import importlib.util
+import logging
 import os
 import tempfile
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ENGINE_IDS",
@@ -109,7 +112,11 @@ def _model_dir(env_name: str) -> tuple[str | None, str]:
     if not d:
         return None, f"{env_name} is not set"
     if not os.path.isdir(d):
-        return None, f"{env_name} does not point to a directory: {d}"
+        # مسیر مطلقِ دیسک در پیام عمومی نمی‌آید (فاز ۱۱: نشت مسیر
+        # از /hifz/status)؛ نام متغیر برای عیب‌یابی کافی است و
+        # جزئیات در لاگ سرور می‌ماند.
+        logger.warning("hifz model dir for %s is not a directory", env_name)
+        return None, f"{env_name} does not point to an existing directory"
     return d, ""
 
 
@@ -220,8 +227,11 @@ class ZipformerEngine(BaseEngine):
                 model=self._onnx_path(d),
             )
         except Exception as exc:
+            # جزئیات خطای بومی (مسیر مدل/نام فایل) فقط در لاگ سرور؛
+            # پیام عمومی، عمومی می‌ماند.
+            logger.exception("hifz zipformer model failed to load")
             raise EngineError(
-                "engine_load_failed", f"zipformer model failed to load: {exc}"
+                "engine_load_failed", "بارگذاری مدل Zipformer ناموفق بود"
             ) from exc
         self._recognizer = recognizer
         return recognizer
@@ -255,8 +265,9 @@ class ZipformerEngine(BaseEngine):
         except EngineError:
             raise
         except Exception as exc:
+            logger.exception("hifz zipformer transcription failed")
             raise EngineError(
-                "engine_transcription_failed", f"zipformer transcription failed: {exc}"
+                "engine_transcription_failed", "رونویسی Zipformer ناموفق بود"
             ) from exc
         # Phoneme tokens, deliberately NOT words: per-phoneme confidence
         # is not in the sherpa result (it lives in the repo's separate
@@ -301,8 +312,9 @@ class WhisperQuranEngine(BaseEngine):
         try:
             model = WhisperModel(d, device="cpu", compute_type="int8")
         except Exception as exc:
+            logger.exception("hifz whisper model failed to load")
             raise EngineError(
-                "engine_load_failed", f"whisper model failed to load: {exc}"
+                "engine_load_failed", "بارگذاری مدل Whisper ناموفق بود"
             ) from exc
         self._model = model
         return model
@@ -334,8 +346,9 @@ class WhisperQuranEngine(BaseEngine):
         except EngineError:
             raise
         except Exception as exc:
+            logger.exception("hifz whisper transcription failed")
             raise EngineError(
-                "engine_transcription_failed", f"whisper transcription failed: {exc}"
+                "engine_transcription_failed", "رونویسی Whisper ناموفق بود"
             ) from exc
         text = " ".join(t.strip() for t in texts if t.strip())
         if not words and text:

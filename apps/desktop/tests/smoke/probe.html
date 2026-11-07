@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<title>probe</title>
+</head>
+<body>
+<p>probe page</p>
+<pre id="out">running…</pre>
+<script>
+(function () {
+  "use strict";
+  var results = { origin: location.origin, href: location.href, checks: {} };
+  function done() {
+    results.finished_at = new Date().toISOString();
+    document.getElementById("out").textContent = JSON.stringify(results, null, 2);
+    document.title = "PROBE-DONE";
+    fetch("/__probe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(results),
+      keepalive: true
+    }).catch(function () {});
+    // Deny-path hop: ?hop=host:port navigates to a DIFFERENT origin after
+    // reporting, so the same page re-runs its checks there (used to prove
+    // the microphone handler denies a non-academy origin).
+    var hop = null;
+    try { hop = new URLSearchParams(location.search).get("hop"); } catch (e) {}
+    if (hop) {
+      setTimeout(function () { location.replace("http://" + hop + "/?hopped=1"); }, 500);
+    }
+  }
+  function step(name, fn) {
+    return Promise.resolve()
+      .then(fn)
+      .then(function (v) { results.checks[name] = v; })
+      .catch(function (e) {
+        results.checks[name] = { ok: false, error: String(e && e.message || e), name: e && e.name };
+      });
+  }
+  function invokeTauri(cmd, args) {
+    // Tauri 2 injects __TAURI_INTERNALS__ in every webview; the public
+    // __TAURI__ namespace is the documented API surface (TauriBridge
+    // relies on it). Try both, report which one answered.
+    if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
+      return window.__TAURI_INTERNALS__.invoke(cmd, args || {}).then(function (v) {
+        return { ok: true, via: "__TAURI_INTERNALS__", value: v };
+      });
+    }
+    if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
+      return window.__TAURI__.core.invoke(cmd, args || {}).then(function (v) {
+        return { ok: true, via: "__TAURI__.core", value: v };
+      });
+    }
+    return Promise.resolve({ ok: false, error: "no tauri invoke bridge present", hasInternals: !!window.__TAURI_INTERNALS__, hasTauri: !!window.__TAURI__ });
+  }
+
+  var chain = Promise.resolve();
+  // 1. Tauri IPC reachability (the phase-9 audit question).
+  chain = chain.then(function () {
+    return step("tauri_ipc", function () { return invokeTauri("hifz_is_recording_active"); });
+  });
+  // 2. Microphone: success OR the error name. On Linux WebKitGTK 2.52
+  // getUserMedia does NOT go through the permission-request signal at all
+  // (verified 2026-11-07: handler wired, zero signal firings for media) —
+  // the request proceeds straight to device enumeration, so
+  // OverconstrainedError/NotFoundError here means "WebKit granted at its
+  // level, no capture device in this sandbox", NOT "handler allowed it".
+  // NotAllowedError would mean a real denial (not observed on Linux).
+  chain = chain.then(function () {
+    return step("getUserMedia", function () {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        return Promise.resolve({ ok: false, error: "mediaDevices.getUserMedia missing" });
+      }
+      return navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        return { ok: true, granted: true };
+      }).catch(function (e) {
+        return { ok: false, granted: false, error: e && e.name, message: e && e.message };
+      });
+    });
+  });
+  // 2b. Geolocation permission: control experiment — does the WebKitGTK
+  // permission-request signal fire for ANY permission kind in this build?
+  chain = chain.then(function () {
+    return step("geolocation", function () {
+      return new Promise(function (resolve) {
+        if (!navigator.geolocation) { resolve({ ok: false, error: "geolocation missing" }); return; }
+        var timer = setTimeout(function () { resolve({ ok: false, error: "timeout (no callback)" }); }, 6000);
+        navigator.geolocation.getCurrentPosition(
+          function (p) { clearTimeout(timer); resolve({ ok: true, granted: true, lat: p.coords.latitude }); },
+          function (e) { clearTimeout(timer); resolve({ ok: false, granted: false, error: e && e.message, code: e && e.code }); },
+          { timeout: 5000 }
+        );
+      });
+    });
+  });
+  // 3. Plain fetch (same origin).
+  chain = chain.then(function () {
+    return step("fetch", function () {
+      return fetch("/__ping").then(function (r) { return { ok: r.ok, status: r.status }; });
+    });
+  });
+  // 4. WebSocket echo (the hifz live channel transport).
+  chain = chain.then(function () {
+    return step("websocket", function () {
+      return new Promise(function (resolve) {
+        var ws;
+        try {
+          ws = new WebSocket("ws://" + location.host + "/__ws");
+        } catch (e) {
+          resolve({ ok: false, error: String(e) });
+          return;
+        }
+        var timer = setTimeout(function () {
+          try { ws.close(); } catch (e) {}
+          resolve({ ok: false, error: "timeout" });
+        }, 8000);
+        ws.onopen = function () { ws.send("ping"); };
+        ws.onmessage = function (ev) {
+          clearTimeout(timer);
+          try { ws.close(); } catch (e) {}
+          resolve({ ok: ev.data === "ping", echoed: ev.data });
+        };
+        ws.onerror = function () {
+          clearTimeout(timer);
+          resolve({ ok: false, error: "onerror" });
+        };
+      });
+    });
+  });
+  // 5. Recording flag round-trip (only meaningful when IPC works).
+  chain = chain.then(function () {
+    return step("recording_flag", function () {
+      return invokeTauri("hifz_set_recording_active", { active: true })
+        .then(function () { return invokeTauri("hifz_is_recording_active"); })
+        .then(function (r) {
+          if (!r.ok) return r;
+          return { ok: r.value === true, value: r.value, via: r.via };
+        });
+    });
+  });
+  chain.then(function () { setTimeout(done, 300); });
+  // Hard fallback: report whatever we have after 25s.
+  setTimeout(function () {
+    if (document.title !== "PROBE-DONE") done();
+  }, 25000);
+})();
+</script>
+</body>
+</html>
