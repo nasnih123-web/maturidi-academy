@@ -77,7 +77,14 @@
  * - LIVE (zipformer only): browser streams 16 kHz mono PCM frames over
  *   a WebSocket (one-time ticket from POST /api/v1/auth/ws-ticket, never
  *   a JWT in the query string); the server streams back word events and
- *   the page fills LIVE. Audio is transient, never stored.
+ *   the page fills LIVE. Audio is transient, never stored. Capture is
+ *   AudioWorklet (lib/quran-audio.ts Resampler resamples the real
+ *   hardware rate to 16 kHz mono with an anti-alias filter); the legacy
+ *   ScriptProcessor path is used only when the browser has no
+ *   AudioWorklet, and the UI says so explicitly. The server sends
+ *   engine_ready/audio_ready/listening before any frame is sent, and
+ *   every event carries the v2 envelope (session_id/event_id/
+ *   sequence_no/event_type) — see lib/quran-audio.ts LiveEventStore.
  * - RECORD-THEN-GRADE (whisper_quran only): the browser records
  *   (MediaRecorder), resamples to 16 kHz mono, encodes a small WAV and
  *   POSTs it. Grading is server-side; NO Web Speech API is used.
@@ -95,19 +102,28 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiBaseUrl } from '@/lib/api-base';
 import { authFetch, authJson, getAccessToken } from '@/lib/auth-client';
 import { getSurah, type SurahSummary } from '@/lib/quran';
+import {
+  AudioFrameAssembler,
+  LiveEventStore,
+  Resampler,
+  buildStartMessage,
+  isFatalLiveError,
+  type HifzLiveEvent,
+  type LiveClientState,
+  type LiveWordEvent,
+} from '@/lib/quran-audio';
 import { useQuranListen } from '@/lib/quran-listen';
+import { HifzMutashabihat, type HifzMutashabihatLabels } from './HifzMutashabihat';
 import { loadBoundaries } from '@/lib/quran-boundaries-loader';
 import { loadMushafLines, type MushafExactLine } from '@/lib/quran-mushaf-lines';
+import {
+  ARABIC_INDIC,
+  RUB_EL_HIZB,
+  parseTextLine,
+  toArabicIndic,
+} from '@/lib/quran-print-lines';
 import { colorizeTajweedWord } from '@/lib/quran-tajweed';
 import { rangeContaining } from '@/lib/quran-view-modes';
-
-/** Arabic-Indic digits, as printed at ayah ends. */
-const ARABIC_INDIC = '٠١٢٣٤٥٦٧٨٩';
-
-/** A number in Eastern Arabic digits (page numbers, surah:ayah). */
-function toArabicIndic(n: number): string {
-  return String(n).replace(/[0-9]/g, (d) => ARABIC_INDIC[Number(d)]);
-}
 
 /** The three page display modes (bottom menu): page-flip, scrolling, card. */
 type DisplayMode = 'page' | 'scroll' | 'card';
@@ -120,52 +136,6 @@ function readDisplayMode(): DisplayMode {
     /* storage unavailable */
   }
   return 'page';
-}
-
-/** True for a pure Arabic-Indic digit token: an ayah-end marker. */
-function isMarkerToken(tok: string): boolean {
-  return tok.length > 0 && [...tok].every((c) => ARABIC_INDIC.includes(c));
-}
-
-interface LineSegment {
-  ayah: number;
-  /** Printed words of this ayah on this line, in order. */
-  words: string[];
-  /** Ayah-end marker printed after these words, if any. */
-  marker: string | null;
-}
-
-interface ParsedTextLine {
-  surah: number;
-  segments: LineSegment[];
-}
-
-/**
- * Parse one printed text line into per-ayah segments. A marker token
- * ends its ayah: the words before it belong to that ayah, the next
- * ayah starts after it. Returns null for non-text lines, lines
- * without a verse range, or lines whose range spans two surahs
- * (never happens in the data; defensive).
- */
-function parseTextLine(line: MushafExactLine): ParsedTextLine | null {
-  if (line.t !== 'text' || !line.x || !line.v || !line.w) return null;
-  const [vs, va] = line.v.split(':').map(Number);
-  const [ws] = line.w.split(':').map(Number);
-  if (!Number.isFinite(vs) || !Number.isFinite(va) || ws !== vs) return null;
-  const segments: LineSegment[] = [];
-  let ayah = va;
-  let words: string[] = [];
-  for (const tok of line.x.split(/\s+/).filter(Boolean)) {
-    if (isMarkerToken(tok)) {
-      segments.push({ ayah, words, marker: tok });
-      words = [];
-      ayah += 1;
-    } else {
-      words.push(tok);
-    }
-  }
-  if (words.length > 0) segments.push({ ayah, words, marker: null });
-  return { surah: vs, segments };
 }
 
 /** First page (0-based) whose lines cover the given ayah, else null. */
@@ -221,7 +191,14 @@ interface LineMarkerSlot {
   text: string;
 }
 
-type LineSlot = LineWordSlot | LineMarkerSlot;
+/** A rub el hizb ornament (۞) printed between words: visible, but
+    never a word — it carries no provider index and no score. */
+interface LineOrnamentSlot {
+  kind: 'ornament';
+  text: string;
+}
+
+type LineSlot = LineWordSlot | LineMarkerSlot | LineOrnamentSlot;
 
 type RenderLine =
   | { kind: 'header'; key: string; text: string }
@@ -267,7 +244,16 @@ export interface HifzLabels {
   practiceWordHint: string;
   practiceWord: string;
   clearPractice: string;
-  peek: string;
+  peekWord: string;
+  peekAyah: string;
+  micDenied: string;
+  offline: string;
+  offlineDisconnected: string;
+  modelUnavailable: string;
+  pauseLive: string;
+  resumeLive: string;
+  pausedHint: string;
+  startAyahHint: string;
   dispute: string;
   disputed: string;
   disclaimer: string;
@@ -291,6 +277,16 @@ export interface HifzLabels {
   liveDiagSampleRate: string;
   liveDiagFrames: string;
   liveDiagSocket: string;
+  liveRequestingPermission: string;
+  liveEngineLoading: string;
+  liveInterrupted: string;
+  liveStopping: string;
+  liveLegacyCapture: string;
+  liveDeviceChanged: string;
+  liveFramesBeforeReady: string;
+  liveReadingNow: string;
+  liveDiagCapture: string;
+  liveDiagDropped: string;
   liveOnlyZipformer: string;
   ayahLabel: string;
   prevAyah: string;
@@ -325,11 +321,25 @@ export interface HifzLabels {
   listenReciter: string;
   listenPlay: string;
   listenPause: string;
+  listenResume: string;
   listenStop: string;
+  listenPrevAyah: string;
+  listenNextAyah: string;
+  listenRepeat: string;
+  listenRepeatOff: string;
+  listenRepeatAyah: string;
+  listenRepeatSurah: string;
+  listenSpeed: string;
+  listenCurrentAyah: string;
+  listenProgress: string;
   listenSegmentsNote: string;
   listenInterpolatedNote: string;
   listenAudioFailed: string;
   listenReciters: { id: string; label: string }[];
+  /** Mutashabihat panel (phrases computed from our Tanzil text). */
+  mutashabihat: HifzMutashabihatLabels;
+  /** Link to the separate hifz hub (dashboard/testing/Tasmi). */
+  hubLink: string;
 }
 
 interface HifzWordScore {
@@ -393,16 +403,7 @@ interface HifzStatus {
   reason: string;
 }
 
-interface LiveWordEvent {
-  type: 'word';
-  surah: number;
-  ayah: number;
-  word_index: number;
-  expected: string;
-  status: 'correct' | 'close' | 'wrong' | 'skipped';
-  prob: number;
-  heard: string | null;
-}
+/** Live word events (v2 envelope) live in lib/quran-audio.ts. */
 
 interface WallWord {
   ayah: number;
@@ -497,6 +498,9 @@ function buildPageRender(
         const study = texts[seg.ayah].split(/\s+/).filter(Boolean);
         const start = consumed.get(seg.ayah) ?? (seg.ayah === 1 && split ? 4 : 0);
         seg.words.forEach((_, i) => {
+          for (const off of seg.ornaments) {
+            if (off === i) slots.push({ kind: 'ornament', text: RUB_EL_HIZB });
+          }
           const index = start + i;
           const text = study[index];
           if (text === undefined) return;
@@ -511,9 +515,15 @@ function buildPageRender(
             hidden: written === null,
           });
         });
+        for (const off of seg.ornaments) {
+          if (off === seg.words.length) slots.push({ kind: 'ornament', text: RUB_EL_HIZB });
+        }
         consumed.set(seg.ayah, start + seg.words.length);
       } else {
-        for (const tok of seg.words) {
+        seg.words.forEach((tok, i) => {
+          for (const off of seg.ornaments) {
+            if (off === i) slots.push({ kind: 'ornament', text: RUB_EL_HIZB });
+          }
           slots.push({
             kind: 'word',
             surah: parsed.surah,
@@ -523,6 +533,9 @@ function buildPageRender(
             written: null,
             hidden: true,
           });
+        });
+        for (const off of seg.ornaments) {
+          if (off === seg.words.length) slots.push({ kind: 'ornament', text: RUB_EL_HIZB });
         }
       }
       if (seg.marker !== null) slots.push({ kind: 'marker', text: seg.marker });
@@ -553,7 +566,7 @@ function HifzRosette({ digit }: { digit: string }) {
   return (
     <span className="hifz-line-marker" aria-hidden="true">
       <svg viewBox="0 0 48 48" role="presentation" focusable="false">
-        <g fill="none" stroke="#a89f8d" strokeWidth="1.6">
+        <g fill="none" stroke="#8a8378" strokeWidth="1.6">
           <circle cx="24" cy="24" r="14" />
           {[0, 45, 90, 135, 180, 225, 270, 315].map((a) => (
             <path
@@ -564,7 +577,7 @@ function HifzRosette({ digit }: { digit: string }) {
           ))}
           <circle cx="24" cy="2.5" r="1.4" />
         </g>
-        <text x="24" y="29.5" textAnchor="middle" fontSize="15" fill="#8a8378">
+        <text x="24" y="29.5" textAnchor="middle" fontSize="15" fill="#57534e">
           {digit}
         </text>
       </svg>
@@ -649,35 +662,95 @@ export function QuranHifzStudy({
   } | null>(null);
   const [revealedLocal, setRevealedLocal] = useState<Set<string>>(new Set());
   const [recState, setRecState] = useState<'idle' | 'recording' | 'processing'>('idle');
-  const [liveState, setLiveState] = useState<'idle' | 'connecting' | 'listening' | 'ended'>('idle');
+  const [liveState, setLiveState] = useState<LiveClientState>('idle');
+  /** Mirror of liveState for audio callbacks registered once. */
+  const liveStateRef = useRef<LiveClientState>('idle');
+  useEffect(() => {
+    liveStateRef.current = liveState;
+  }, [liveState]);
   const [liveWords, setLiveWords] = useState<LiveWordEvent[]>([]);
   const [liveExtraCount, setLiveExtraCount] = useState(0);
   /** Extra words the user said (live path), for the error sheet. */
   const [liveExtraWords, setLiveExtraWords] = useState<string[]>([]);
   const [liveError, setLiveError] = useState<string | null>(null);
+  /** Non-fatal server warning shown in the diagnostics line. */
+  const [liveWarning, setLiveWarning] = useState<string | null>(null);
+  /** The word the user is mid-way through (server `partial` event). */
+  const [livePartial, setLivePartial] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [engineStatus, setEngineStatus] = useState<HifzStatus | null>(null);
+  /** Offline: the browser's online state (navigator.onLine + events).
+      A live session cannot start or survive without a connection, so
+      the page says so plainly instead of failing with a generic
+      error. The ref mirrors it for the socket callbacks, which close
+      over the state at start time. */
+  const [isOffline, setIsOffline] = useState(
+    () => typeof navigator !== 'undefined' && !navigator.onLine,
+  );
+  const offlineRef = useRef(isOffline);
+  useEffect(() => {
+    const onOnline = () => {
+      offlineRef.current = false;
+      setIsOffline(false);
+    };
+    const onOffline = () => {
+      offlineRef.current = true;
+      setIsOffline(true);
+    };
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const liveWsRef = useRef<WebSocket | null>(null);
+  /** The v2 event store: dedup + ordering + correction for live events. */
+  const liveEventStoreRef = useRef<LiveEventStore | null>(null);
+  const getLiveEventStore = (): LiveEventStore => {
+    if (!liveEventStoreRef.current) {
+      liveEventStoreRef.current = new LiveEventStore();
+    }
+    return liveEventStoreRef.current;
+  };
   const liveMicRef = useRef<{
     stream: MediaStream;
     ctx: AudioContext;
-    proc: ScriptProcessorNode;
+    node: AudioWorkletNode | ScriptProcessorNode;
+    capture: 'worklet' | 'legacy';
+    resampler: Resampler;
+    assembler: AudioFrameAssembler;
+    onDeviceChange: () => void;
+    onVisibilityChange: () => void;
+    backgroundPaused: boolean;
   } | null>(null);
+  /** True while stopLive waits for the expected close after 'end'. */
+  const liveStoppingRef = useRef(false);
   // A close is "expected" when the user pressed stop or the server ended
   // the session normally (final/error). Any other close means the
   // connection died mid-recitation and must surface, not hang in
   // "listening" forever (the 02:58 Railway restart did exactly that).
   const liveCloseExpectedRef = useRef(false);
   // Live diagnostics, shown while a live session runs: the ACTUAL audio
-  // rate (browsers may ignore the requested 16 kHz) and how many frames
-  // really left the phone. The visible count updates ~once a second,
-  // not per frame; the counter itself is exact.
+  // rate (browsers may ignore the requested 16 kHz — the Resampler
+  // corrects it to 16 kHz), how many frames really left the phone, the
+  // capture path (worklet/legacy), and frames dropped before readiness.
+  // The visible count updates ~once a second, not per frame; the
+  // counter itself is exact.
   const liveFramesRef = useRef(0);
-  const [liveDiag, setLiveDiag] = useState<{ sampleRate: number | null; frames: number }>({
+  const liveDroppedRef = useRef(0);
+  const [liveDiag, setLiveDiag] = useState<{
+    sampleRate: number | null;
+    frames: number;
+    capture: 'worklet' | 'legacy' | null;
+    dropped: number;
+  }>({
     sampleRate: null,
     frames: 0,
+    capture: null,
+    dropped: 0,
   });
   // Generation counter for live runs: bumped at the start of every
   // startLive and on cancel. Async continuations check it after each
@@ -835,6 +908,19 @@ export function QuranHifzStudy({
       liveWsRef.current?.close();
       const mic = liveMicRef.current;
       if (mic) {
+        try {
+          mic.node.disconnect();
+        } catch {
+          /* already disconnected */
+        }
+        navigator.mediaDevices.removeEventListener(
+          'devicechange',
+          mic.onDeviceChange,
+        );
+        document.removeEventListener(
+          'visibilitychange',
+          mic.onVisibilityChange,
+        );
         mic.stream.getTracks().forEach((t) => t.stop());
         void mic.ctx.close();
       }
@@ -867,6 +953,8 @@ export function QuranHifzStudy({
 
   // Session timer: counts up once a second while a live session is
   // listening; resets when the session ends (the pill disappears).
+  // A paused session holds its time: the interval only runs while
+  // listening, so a pause neither counts nor resets the timer.
   useEffect(() => {
     if (liveState !== 'listening') {
       if (liveState === 'idle') setSessionSeconds(0);
@@ -875,6 +963,19 @@ export function QuranHifzStudy({
     const id = window.setInterval(() => setSessionSeconds((s) => s + 1), 1000);
     return () => window.clearInterval(id);
   }, [liveState]);
+
+  // Start ayah (academy feature): the selected ayah is where a
+  // session starts, and the address bar follows it (?ayah=), so a
+  // shared link opens the same start ayah. replaceState keeps the
+  // back button clean — moving the ayah is not navigation.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    params.set('ayah', String(ayah));
+    const next = `${window.location.pathname}?${params.toString()}`;
+    if (next !== `${window.location.pathname}${window.location.search}`) {
+      window.history.replaceState(null, '', next);
+    }
+  }, [ayah, surah]);
 
   // Listen/follow mode: the reciter's audio + word-by-word highlight.
   // The callbacks move the page to the reciter's ayah and mark the
@@ -1071,8 +1172,18 @@ export function QuranHifzStudy({
       return;
     }
     setError(null);
+    let stream: MediaStream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      setError(
+        err instanceof DOMException && err.name === 'NotAllowedError'
+          ? labels.micDenied
+          : labels.errorGeneric,
+      );
+      return;
+    }
+    try {
       const rec = new MediaRecorder(stream);
       chunksRef.current = [];
       rec.ondataavailable = (e: BlobEvent) => {
@@ -1167,15 +1278,53 @@ export function QuranHifzStudy({
     const mic = liveMicRef.current;
     if (mic) {
       try {
-        mic.proc.disconnect();
+        mic.node.disconnect();
       } catch {
         /* already disconnected */
       }
+      navigator.mediaDevices.removeEventListener(
+        'devicechange',
+        mic.onDeviceChange,
+      );
+      document.removeEventListener('visibilitychange', mic.onVisibilityChange);
       mic.stream.getTracks().forEach((t) => t.stop());
-      void mic.ctx.close();
+      void mic.ctx.close().catch(() => {
+        /* already closed */
+      });
       liveMicRef.current = null;
     }
   }, []);
+
+  /**
+   * One captured mono chunk (any hardware rate) → resampled 16 kHz
+   * frames → socket. Frames are sent ONLY while listening: the
+   * AudioContext stays suspended until the server's `listening`
+   * event, so no frame can arrive before readiness. Anything that
+   * arrives early is counted (not silently sent).
+   */
+  const handleLiveAudioChunk = useCallback(
+    (samples: Float32Array, ws: WebSocket) => {
+      const mic = liveMicRef.current;
+      if (!mic) return;
+      if (ws.readyState !== WebSocket.OPEN || liveStateRef.current !== 'listening') {
+        liveDroppedRef.current += 1;
+        return;
+      }
+      const resampled = mic.resampler.push(samples, 1);
+      const frames = mic.assembler.push(resampled);
+      for (const frame of frames) {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        ws.send(frame);
+        liveFramesRef.current += 1;
+        // Throttle the visible counter to ~once a second (4096-sample
+        // frames arrive ~4x/s at 16 kHz); the counter itself is exact.
+        if (liveFramesRef.current % 4 === 0) {
+          setLiveDiag((prev) => ({ ...prev, frames: liveFramesRef.current }));
+        }
+      }
+    },
+    [],
+  );
 
   const cancelLive = useCallback(
     (showMessage: boolean) => {
@@ -1187,6 +1336,7 @@ export function QuranHifzStudy({
       // abort silently instead of reviving the dead run.
       liveRunIdRef.current += 1;
       liveRunActiveRef.current = false;
+      liveStoppingRef.current = false;
       clearLiveConnectTimeout();
       liveCloseExpectedRef.current = true;
       const ws = liveWsRef.current;
@@ -1197,6 +1347,8 @@ export function QuranHifzStudy({
         /* already closed */
       }
       cleanupLiveMic();
+      setLiveWarning(null);
+      setLivePartial(null);
       if (showMessage) setLiveError(labels.liveDisconnected);
       setLiveState('idle');
     },
@@ -1222,6 +1374,8 @@ export function QuranHifzStudy({
       return;
     }
     setLiveError(null);
+    setLiveWarning(null);
+    setLivePartial(null);
     // A new session starts blank: the previous session's words,
     // errors and timer are cleared (Tarteel resets the stats to 0
     // when the mic is tapped).
@@ -1229,14 +1383,172 @@ export function QuranHifzStudy({
     setLiveExtraCount(0);
     setLiveExtraWords([]);
     setSessionSeconds(0);
-    setLiveState('connecting');
+    getLiveEventStore().reset(null);
     liveCloseExpectedRef.current = false;
     liveFramesRef.current = 0;
-    setLiveDiag({ sampleRate: null, frames: 0 });
-    // 15s from 'connecting': on expiry, abort exactly like a manual
-    // cancel and say the connection was lost.
+    liveDroppedRef.current = 0;
+    setLiveDiag({ sampleRate: null, frames: 0, capture: null, dropped: 0 });
+    // 15s from the start: on expiry, abort exactly like a manual
+    // cancel and say the connection was lost. The timer is cleared
+    // only on the server's `listening` event — not on socket open —
+    // because the engine (73 MB model) may still be loading then.
     liveConnectTimeoutRef.current = window.setTimeout(() => cancelLive(true), 15000);
     try {
+      // 1. Microphone first: the permission prompt belongs to
+      // `requesting_permission`, and a denied mic must not waste a
+      // ticket or a socket. A denied mic gets its own message —
+      // the generic error hides the fix (allow the mic in the
+      // browser settings).
+      setLiveState('requesting_permission');
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { sampleRate: 16000, channelCount: 1 },
+        });
+      } catch (err) {
+        if (!isCurrent()) return;
+        liveCloseExpectedRef.current = true;
+        liveRunActiveRef.current = false;
+        clearLiveConnectTimeout();
+        setError(
+          err instanceof DOMException && err.name === 'NotAllowedError'
+            ? labels.micDenied
+            : labels.errorGeneric,
+        );
+        setLiveState('idle');
+        return;
+      }
+      if (!isCurrent()) {
+        // Cancelled while the mic prompt was open: stop the tracks we
+        // just acquired, then leave quietly — the mic must not stay on.
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      // The model's native rate is 16 kHz mono. The requested rate
+      // is only a hint — the ACTUAL rate is read from the context and
+      // the Resampler really resamples to 16 kHz (windowed-sinc +
+      // anti-alias), so a 48 kHz phone no longer feeds 3x-speed audio
+      // to the model. Frames go out as Int16LE over the socket and
+      // are never stored anywhere.
+      const ctx = new AudioContext({ sampleRate: 16000 });
+      // Record the ACTUAL rate: browsers may ignore the requested
+      // 16 kHz (phones often run 48 kHz). The Resampler corrects it;
+      // the diagnostic line shows the real hardware rate.
+      const resampler = new Resampler(ctx.sampleRate);
+      const assembler = new AudioFrameAssembler();
+      setLiveDiag((prev) => ({
+        ...prev,
+        sampleRate: ctx.sampleRate,
+        frames: 0,
+      }));
+      // The context starts SUSPENDED: no frame is captured before
+      // the server's `listening` event resumes it (R-02).
+      await ctx.suspend();
+      const src = ctx.createMediaStreamSource(stream);
+      // Device change / permission revoke / unplug: the run stops
+      // cleanly with a clear message — it never keeps a dead mic.
+      const onDeviceChange = () => {
+        if (!isCurrent()) return;
+        liveCloseExpectedRef.current = true;
+        liveRunActiveRef.current = false;
+        clearLiveConnectTimeout();
+        try {
+          liveWsRef.current?.close();
+        } catch {
+          /* already closed */
+        }
+        liveWsRef.current = null;
+        cleanupLiveMic();
+        setLiveError(labels.liveDeviceChanged);
+        setLiveState('idle');
+      };
+      // Background transition: pause capture while hidden (the
+      // browser would throttle it anyway); resume on return.
+      const micState: { backgroundPaused: boolean } = { backgroundPaused: false };
+      const onVisibilityChange = () => {
+        const mic = liveMicRef.current;
+        if (!mic) return;
+        if (document.hidden) {
+          if (liveStateRef.current === 'listening') {
+            micState.backgroundPaused = true;
+            void mic.ctx.suspend();
+          }
+        } else if (micState.backgroundPaused) {
+          micState.backgroundPaused = false;
+          if (liveStateRef.current === 'listening') {
+            void mic.ctx.resume();
+          }
+        }
+      };
+      for (const track of stream.getAudioTracks()) {
+        track.onended = onDeviceChange;
+      }
+      navigator.mediaDevices.addEventListener('devicechange', onDeviceChange);
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      // The socket is looked up live (not closed over): a newer run
+      // owns liveWsRef by the time any frame arrives.
+      const sendChunk = (samples: Float32Array) => {
+        const sock = liveWsRef.current;
+        if (sock) handleLiveAudioChunk(samples, sock);
+      };
+      let node: AudioWorkletNode | ScriptProcessorNode;
+      let capture: 'worklet' | 'legacy';
+      try {
+        await ctx.audioWorklet.addModule(
+          '/worklets/quran-capture-processor.js',
+        );
+        const worklet = new AudioWorkletNode(ctx, 'quran-capture-processor');
+        worklet.port.onmessage = (e: MessageEvent) => {
+          const data = e.data as { type?: string; samples?: Float32Array };
+          if (data?.type === 'chunk' && data.samples) {
+            sendChunk(data.samples);
+          }
+        };
+        node = worklet;
+        capture = 'worklet';
+      } catch {
+        // EXPLICIT legacy fallback (not hidden): old browsers without
+        // AudioWorklet still capture — through the SAME Resampler, so
+        // the rate is still corrected — and the UI says so.
+        const proc = ctx.createScriptProcessor(4096, 1, 1);
+        proc.onaudioprocess = (e: AudioProcessingEvent) => {
+          const input = e.inputBuffer;
+          const channels = input.numberOfChannels;
+          const frames = input.length;
+          const mono = new Float32Array(frames);
+          for (let i = 0; i < frames; i += 1) {
+            let s = 0;
+            for (let c = 0; c < channels; c += 1) {
+              s += input.getChannelData(c)[i];
+            }
+            mono[i] = s / channels;
+          }
+          sendChunk(mono);
+        };
+        node = proc;
+        capture = 'legacy';
+      }
+      src.connect(node);
+      if (capture === 'legacy') {
+        // ScriptProcessor needs the destination connection to run.
+        node.connect(ctx.destination);
+      }
+      setLiveDiag((prev) => ({ ...prev, capture }));
+      liveMicRef.current = {
+        stream,
+        ctx,
+        node,
+        capture,
+        resampler,
+        assembler,
+        onDeviceChange,
+        onVisibilityChange,
+        backgroundPaused: false,
+      };
+      // 2. Socket + start. Readiness is NOT socket open: the server
+      // still has to build the recognizer. Listening starts only on
+      // the server's `listening` event.
+      setLiveState('connecting');
       const ticketRes = await authFetch('/api/v1/auth/ws-ticket', { method: 'POST' });
       if (!isCurrent()) return;
       if (!ticketRes.ok) throw new Error('ticket');
@@ -1251,24 +1563,63 @@ export function QuranHifzStudy({
       liveWsRef.current = ws;
       ws.onopen = () => {
         if (!isCurrent()) return;
-        clearLiveConnectTimeout();
-        ws.send(JSON.stringify({ type: 'start', surah, ayah }));
-        setLiveState('listening');
+        ws.send(JSON.stringify(buildStartMessage(surah, ayah)));
       };
       ws.onmessage = (ev: MessageEvent) => {
-        let msg: {
-          type?: string;
-          message?: string;
-          /** Extra word text (word-level path 'extra' events). */
-          text?: string;
-        } & Partial<LiveWordEvent>;
+        let msg: HifzLiveEvent;
         try {
-          msg = JSON.parse(ev.data as string) as typeof msg;
+          msg = JSON.parse(ev.data as string) as HifzLiveEvent;
         } catch {
           return;
         }
-        if (msg.type === 'word') {
-          setLiveWords((prev) => [...prev, msg as LiveWordEvent]);
+        if (!isCurrent()) return;
+        const store = getLiveEventStore();
+        const eventType = msg.event_type ?? msg.type ?? '';
+        if (eventType === 'session_started') {
+          store.reset(
+            typeof msg.session_id === 'string' ? msg.session_id : null,
+          );
+          setLiveState('engine_loading');
+          return;
+        }
+        if (eventType === 'engine_ready' || eventType === 'audio_ready') {
+          // The engine is built and warmed up; the audio path is
+          // ready. Listening still waits for `listening`.
+          setLiveState('engine_loading');
+          return;
+        }
+        if (eventType === 'listening') {
+          clearLiveConnectTimeout();
+          // Set the ref synchronously: the resumed context starts
+          // posting chunks immediately, before the re-render syncs it.
+          liveStateRef.current = 'listening';
+          setLiveState('listening');
+          // Capture starts now — not before: the context was
+          // suspended since it was built, so no frame could arrive
+          // before readiness.
+          const mic = liveMicRef.current;
+          if (mic) {
+            void mic.ctx.resume().catch(() => {
+              /* resume needs a gesture; startLive came from a tap */
+            });
+          }
+          return;
+        }
+        if (eventType === 'partial') {
+          store.apply(msg);
+          setLivePartial(store.latestPartial?.expected ?? null);
+          return;
+        }
+        if (
+          eventType === 'stable_word' ||
+          eventType === 'final_word' ||
+          eventType === 'wrong' ||
+          eventType === 'skipped' ||
+          eventType === 'word'
+        ) {
+          store.apply(msg);
+          setLiveWords(store.snapshot());
+          setLivePartial(null);
           // The page follows the heard ayah: a word from another ayah
           // moves the selection (and its line page) there, so the
           // heard words land on the page, not in the wall below.
@@ -1278,20 +1629,48 @@ export function QuranHifzStudy({
           ) {
             setAyah(msg.ayah);
           }
-        } else if (msg.type === 'located') {
+          return;
+        }
+        if (eventType === 'correction') {
+          // The same slot, re-decided: the store replaces it in
+          // place — no duplicate word, no double count.
+          store.apply(msg);
+          setLiveWords(store.snapshot());
+          return;
+        }
+        if (eventType === 'located') {
+          store.apply(msg);
           // The server located the recited ayah (session start from
           // another ayah, or a re-locate after a >5-ayah jump): move
           // the page there before the first word of it arrives.
           if (typeof msg.ayah === 'number' && msg.ayah !== ayahRef.current) {
             setAyah(msg.ayah);
           }
-        } else if (msg.type === 'extra') {
-          setLiveExtraCount((c) => c + 1);
-          if (typeof msg.text === 'string' && msg.text) {
-            setLiveExtraWords((prev) => [...prev, msg.text as string]);
+          return;
+        }
+        if (eventType === 'extra') {
+          store.apply(msg);
+          setLiveExtraCount(store.extras.length);
+          setLiveExtraWords([...store.extras]);
+          return;
+        }
+        if (eventType === 'progress' || eventType === 'warning') {
+          store.apply(msg);
+          if (eventType === 'warning') {
+            if (msg.code === 'hifz_frames_before_ready') {
+              const n =
+                typeof msg.dropped === 'number' ? msg.dropped : 0;
+              setLiveWarning(
+                labels.liveFramesBeforeReady.replace('{n}', String(n)),
+              );
+              setLiveDiag((prev) => ({ ...prev, dropped: n }));
+            } else if (typeof msg.message === 'string') {
+              setLiveWarning(msg.message);
+            }
           }
-        } else if (msg.type === 'final') {
-          if (!isCurrent()) return;
+          return;
+        }
+        if (eventType === 'final') {
           liveCloseExpectedRef.current = true;
           liveRunActiveRef.current = false;
           clearLiveConnectTimeout();
@@ -1314,14 +1693,37 @@ export function QuranHifzStudy({
             }
             if (isCurrent()) setLiveWords([]);
           })();
-        } else if (msg.type === 'error') {
-          if (!isCurrent()) return;
+          return;
+        }
+        if (eventType === 'session_ended') {
+          // The server closed the session (end / max duration /
+          // error / disconnect). If `final` already ended the run,
+          // this is a no-op; otherwise the run ends here.
+          if (liveStateRef.current === 'ended') return;
+          liveCloseExpectedRef.current = true;
+          liveRunActiveRef.current = false;
+          clearLiveConnectTimeout();
+          cleanupLiveMic();
+          setLiveState(msg.reason === 'end' || msg.reason === 'max_duration' ? 'ended' : 'idle');
+          if (msg.reason !== 'end' && msg.reason !== 'max_duration') {
+            setLiveError(labels.liveDisconnected);
+          }
+          return;
+        }
+        if (eventType === 'error') {
+          if (!isFatalLiveError(msg)) {
+            // Non-fatal server error (e.g. a rejected frame): the
+            // session continues; the message is shown, not fatal.
+            if (typeof msg.message === 'string') setLiveWarning(msg.message);
+            return;
+          }
           liveCloseExpectedRef.current = true;
           liveRunActiveRef.current = false;
           clearLiveConnectTimeout();
           cleanupLiveMic();
           setLiveError(msg.message ?? labels.errorGeneric);
           setLiveState('idle');
+          return;
         }
       };
       ws.onerror = () => {
@@ -1330,7 +1732,7 @@ export function QuranHifzStudy({
         liveRunActiveRef.current = false;
         clearLiveConnectTimeout();
         cleanupLiveMic();
-        setLiveError(labels.errorGeneric);
+        setLiveError(offlineRef.current ? labels.offlineDisconnected : labels.errorGeneric);
         setLiveState('idle');
       };
       ws.onclose = () => {
@@ -1338,54 +1740,22 @@ export function QuranHifzStudy({
         liveRunActiveRef.current = false;
         clearLiveConnectTimeout();
         cleanupLiveMic();
-        // An unexpected close (server restart, network drop) must end
-        // the session visibly. Expected closes (stop, final, error)
-        // already set the flag and the state.
-        if (!liveCloseExpectedRef.current) {
-          setLiveError(labels.liveDisconnected);
+        if (liveStoppingRef.current) {
+          // stopLive sent 'end' and closed: the run is done.
+          liveStoppingRef.current = false;
           setLiveState('idle');
+          return;
+        }
+        // An unexpected close (server restart, network drop) ends
+        // the session visibly as 'interrupted' — the user taps the
+        // mic to start a NEW session (the server never resumes one;
+        // unsaved words of the old session are lost). When the
+        // browser is offline the message says so instead.
+        if (!liveCloseExpectedRef.current) {
+          setLiveError(offlineRef.current ? labels.offlineDisconnected : labels.liveDisconnected);
+          setLiveState('interrupted');
         }
       };
-      // Microphone at the model's native rate: 16 kHz mono. Frames go
-      // out as Int16LE over the socket and are never stored anywhere.
-      // ScriptProcessorNode is deprecated but needs no extra worklet
-      // file; the frame size (4096) is small enough for live colors.
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { sampleRate: 16000, channelCount: 1 },
-      });
-      if (!isCurrent()) {
-        // Cancelled while the mic prompt was open: stop the tracks we
-        // just acquired, then leave quietly — the mic must not stay on.
-        stream.getTracks().forEach((t) => t.stop());
-        return;
-      }
-      const ctx = new AudioContext({ sampleRate: 16000 });
-      // Record the ACTUAL rate: browsers may ignore the requested
-      // 16 kHz (phones often run 48 kHz), and the model receives
-      // whatever this rate is. The diagnostic line shows it live.
-      setLiveDiag({ sampleRate: ctx.sampleRate, frames: 0 });
-      const src = ctx.createMediaStreamSource(stream);
-      const proc = ctx.createScriptProcessor(4096, 1, 1);
-      proc.onaudioprocess = (e: AudioProcessingEvent) => {
-        if (ws.readyState !== WebSocket.OPEN) return;
-        const input = e.inputBuffer.getChannelData(0);
-        const buf = new ArrayBuffer(input.length * 2);
-        const view = new DataView(buf);
-        for (let i = 0; i < input.length; i += 1) {
-          const s = Math.max(-1, Math.min(1, input[i]));
-          view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-        }
-        ws.send(buf);
-        liveFramesRef.current += 1;
-        // Throttle the visible counter to ~once a second (4096-sample
-        // frames arrive ~4x/s at 16 kHz); the counter itself is exact.
-        if (liveFramesRef.current % 4 === 0) {
-          setLiveDiag((prev) => ({ ...prev, frames: liveFramesRef.current }));
-        }
-      };
-      src.connect(proc);
-      proc.connect(ctx.destination);
-      liveMicRef.current = { stream, ctx, proc };
     } catch {
       // A failed start must not leave a dangling socket that could flip
       // the page to "listening" later: close it as expected, then clean.
@@ -1415,6 +1785,7 @@ export function QuranHifzStudy({
     cleanupLiveMic,
     cancelLive,
     clearLiveConnectTimeout,
+    handleLiveAudioChunk,
   ]);
 
   const stopLive = useCallback(() => {
@@ -1422,9 +1793,11 @@ export function QuranHifzStudy({
     // message or a 10s timer, and every re-press restarted that timer,
     // so repeated pressing never stopped anything. Frames are ordered
     // on one connection, so 'end' reaches the server before the close
-    // frame and the session is still saved server-side.
+    // frame and the session is still saved server-side. The state
+    // goes to 'stopping' until the expected close lands, then idle.
     liveCloseExpectedRef.current = true;
     liveRunActiveRef.current = false;
+    liveStoppingRef.current = true;
     clearLiveConnectTimeout();
     const ws = liveWsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -1441,15 +1814,45 @@ export function QuranHifzStudy({
       /* already closed */
     }
     cleanupLiveMic();
-    setLiveState('idle');
+    setLiveState('stopping');
   }, [cleanupLiveMic, clearLiveConnectTimeout]);
 
-  const peekNext = useCallback(async () => {
-    if (!peekTarget) return;
+  const pauseLive = useCallback(() => {
+    // Pause is a CLIENT-side hold: the server has no pause state.
+    // The capture context is suspended, so no frames leave the
+    // page and the timer stops; the socket stays open and the
+    // session resumes exactly where it left off. A long pause may
+    // still be cut by the server (then it surfaces as interrupted).
+    if (liveState !== 'listening') return;
+    const mic = liveMicRef.current;
+    if (mic) void mic.ctx.suspend().catch(() => { /* already suspended */ });
+    setLiveState('paused');
+  }, [liveState]);
+
+  const resumeLive = useCallback(() => {
+    if (liveState !== 'paused') return;
+    const mic = liveMicRef.current;
+    if (mic) {
+      void mic.ctx.resume().catch(() => {
+        /* resume needs a gesture; the tap that called this is one */
+      });
+    }
+    setLiveState('listening');
+  }, [liveState]);
+
+  // Reveal words by Peek: one shared path for the next word and
+  // for the rest of the ayah. The words are always the NEXT
+  // unwritten words of the CURRENT ayah (peekTarget's ayah) —
+  // never random and never past the ayah. Authenticated: one POST
+  // with the index list (the server inserts one peek mistake per
+  // word, each with status `peeked`); guest: the same words go to
+  // revealedLocal with the same status.
+  const revealWords = useCallback(async (ayahNum: number, indices: number[]) => {
+    if (indices.length === 0) return;
     if (!authed) {
       setRevealedLocal((prev) => {
         const next = new Set(prev);
-        next.add(`${surah}:${peekTarget.ayah}:${peekTarget.index}`);
+        for (const i of indices) next.add(`${surah}:${ayahNum}:${i}`);
         return next;
       });
       return;
@@ -1462,15 +1865,32 @@ export function QuranHifzStudy({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           surah,
-          ayah: peekTarget.ayah,
-          word_index: peekTarget.index,
+          ayah: ayahNum,
+          word_indices: indices,
         }),
       });
       await refreshDetail(attemptId);
     } catch {
       setError(labels.errorGeneric);
     }
-  }, [peekTarget, authed, ensureAttempt, refreshDetail, surah, labels.errorGeneric]);
+  }, [authed, ensureAttempt, refreshDetail, surah, labels.errorGeneric]);
+
+  const peekNext = useCallback(async () => {
+    if (!peekTarget) return;
+    await revealWords(peekTarget.ayah, [peekTarget.index]);
+  }, [peekTarget, revealWords]);
+
+  // Reveal the rest of the CURRENT ayah: from the next unwritten
+  // word to the end of that same ayah — never into the next ayah.
+  const peekAyah = useCallback(async () => {
+    if (!peekTarget) return;
+    const words = (textsBySurah[surah]?.[peekTarget.ayah] ?? '').split(/\s+/).filter(Boolean);
+    const indices: number[] = [];
+    for (let i = peekTarget.index; i < words.length; i += 1) {
+      if (!wallKeys.has(`${peekTarget.ayah}:${i}`)) indices.push(i);
+    }
+    await revealWords(peekTarget.ayah, indices);
+  }, [peekTarget, textsBySurah, surah, wallKeys, revealWords]);
 
   const disputeWord = useCallback(
     async (scoreId: string) => {
@@ -1509,6 +1929,7 @@ export function QuranHifzStudy({
     let correct = 0;
     let close = 0;
     let wrong = 0;
+    let peeked = 0;
     for (const w of liveWords) {
       if (w.status === 'correct') correct += 1;
       else if (w.status === 'close') close += 1;
@@ -1520,12 +1941,19 @@ export function QuranHifzStudy({
       else if (w.status === 'close') close += 1;
       else if (w.status === 'wrong') wrong += 1;
     }
+    // Peeked words (status `peeked` in the wall) count as errors
+    // until they are graded: they were shown, not recited. Once a
+    // peeked word is graded, the wall carries its grade instead of
+    // `peeked`, so it is never counted twice.
+    for (const g of wallAyahs) {
+      for (const w of g.words) if (w.status === 'peeked') peeked += 1;
+    }
     const extra = liveExtraCount;
-    const errors = close + wrong + extra;
-    const total = correct + close + wrong + extra;
+    const errors = close + wrong + extra + peeked;
+    const total = correct + close + wrong + extra + peeked;
     const accuracy = total > 0 ? Math.round((correct / total) * 1000) / 10 : 100;
-    return { errors, accuracy, total };
-  }, [liveWords, attemptWords, liveExtraCount, surah]);
+    return { errors, accuracy, total, correct, peeked };
+  }, [liveWords, attemptWords, liveExtraCount, surah, wallAyahs]);
 
   // Session timer as MM:SS (Eastern Arabic digits, like Tarteel).
   const timerText = useMemo(() => {
@@ -1533,6 +1961,14 @@ export function QuranHifzStudy({
     const s = sessionSeconds % 60;
     return `${toArabicIndic(m)}:${toArabicIndic(s).padStart(2, '٠')}`;
   }, [sessionSeconds]);
+
+  // Listen progress as M:SS (same digits as the session timer).
+  const formatListenMs = useCallback((ms: number) => {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${toArabicIndic(m)}:${toArabicIndic(s).padStart(2, '٠')}`;
+  }, []);
 
   // Wrong + close words for the error sheet (expected vs heard).
   const errorWords = useMemo(() => {
@@ -1619,20 +2055,26 @@ export function QuranHifzStudy({
     }
     const w = slot.written;
     const isPractice = practiceWord?.ayah === slot.ayah && practiceWord?.index === slot.index;
-    // The newest word just heard is GREEN when correct and RED when
-    // wrong (a tashkeel error counts as wrong here) until the next
-    // word arrives; older live words settle to black ink with their
-    // tajweed colors. Grades never color live words.
+    // The newest word just heard is GREEN when correct, RED when
+    // wrong and YELLOW-highlighted when it is a tashkeel error
+    // (close) until the next word arrives; older live words settle
+    // to black ink with their tajweed colors. Grades never color
+    // live words.
     const newestLive = liveWords.length > 0 ? liveWords[liveWords.length - 1] : null;
     const isNewestLive =
       w.live &&
       newestLive !== null &&
       newestLive.ayah === slot.ayah &&
       newestLive.word_index === slot.index;
+    // Newest word, by its own status: correct is green, a recitation
+    // error is red (dashed underline), a tashkeel error is the yellow
+    // highlight (dotted underline) — three distinct tones, not two.
     const newestTone =
-      isNewestLive && (w.status === 'wrong' || w.status === 'close')
+      isNewestLive && w.status === 'wrong'
         ? 'hifz-word-live-new-wrong'
-        : 'hifz-word-live-new';
+        : isNewestLive && w.status === 'close'
+          ? 'hifz-word-live-new-close'
+          : 'hifz-word-live-new';
     const tone =
       w.status === 'peeked'
         ? 'hifz-word-peeked'
@@ -1684,29 +2126,35 @@ export function QuranHifzStudy({
   // record-then-grade for whisper). It replaces the old record
   // buttons below; it never duplicates them.
   // The mic shows the stop square (and pulses) while live OR while a
-  // run is still connecting — in both states tapping it stops the run.
+  // run is still starting — in both states tapping it stops the run.
+  const liveStarting =
+    liveState === 'requesting_permission' ||
+    liveState === 'connecting' ||
+    liveState === 'engine_loading' ||
+    liveState === 'stopping';
   const micActive =
-    (isZipformer && (liveState === 'listening' || liveState === 'connecting')) ||
+    (isZipformer &&
+      (liveState === 'listening' || liveState === 'paused' || liveStarting)) ||
     (isWhisper && recState === 'recording');
-  // While a live run is connecting, the mic is NOT busy: tapping it
+  // While a live run is starting, the mic is NOT busy: tapping it
   // cancels the run. Before this fix it was disabled with no timeout
   // and no cancel, so a stuck handshake left the page usable only
   // after a reload. Only the Whisper record path still disables the
   // mic while its recording is being graded.
   const micBusy = !isZipformer && recState === 'processing';
   const micLabel = isZipformer
-    ? liveState === 'connecting'
-      ? labels.liveCancel
-      : micActive
-        ? labels.liveStop
+    ? liveState === 'listening' || liveState === 'paused'
+      ? labels.liveStop
+      : liveStarting
+        ? labels.liveCancel
         : labels.liveStart
     : micActive
       ? labels.stopRecording
       : labels.recordGrade;
   const micOnClick = (): void => {
     if (isZipformer) {
-      if (liveState === 'listening') stopLive();
-      else if (liveState === 'connecting') cancelLive(false);
+      if (liveState === 'listening' || liveState === 'paused') stopLive();
+      else if (liveStarting) cancelLive(false);
       else void startLive();
     } else if (isWhisper) {
       if (recState === 'recording') stopRecording();
@@ -1722,7 +2170,10 @@ export function QuranHifzStudy({
     if (displayMode !== 'scroll') return;
     if (pageIndex === null) return;
     const el = scrollPageRefs.current.get(pageIndex);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (el) {
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+    }
   }, [displayMode, pageIndex, ayah]);
 
   // One printed page as a section: header/basmala/text lines + the
@@ -1767,6 +2218,10 @@ export function QuranHifzStudy({
             {line.slots.map((slot, si) =>
               slot.kind === 'marker' ? (
                 <HifzRosette key={`m${si}`} digit={slot.text} />
+              ) : slot.kind === 'ornament' ? (
+                <span key={`o${si}`} className="hifz-line-ornament" aria-hidden="true">
+                  {slot.text}
+                </span>
               ) : (
                 renderLineWord(slot, `${line.key}-${si}`)
               ),
@@ -1794,8 +2249,19 @@ export function QuranHifzStudy({
   const accuracyTone =
     pillStats.accuracy >= 95 ? 'hifz-pill-green' : pillStats.accuracy >= 80 ? 'hifz-pill-amber' : 'hifz-pill-red';
 
-  const liveActive = liveState === 'listening' || liveState === 'connecting';
-  const showPills = liveState === 'listening' || liveState === 'ended';
+  const liveActive =
+    liveState === 'listening' ||
+    liveState === 'paused' ||
+    liveState === 'connecting' ||
+    liveState === 'engine_loading' ||
+    liveState === 'requesting_permission';
+  const showPills = liveState === 'listening' || liveState === 'paused' || liveState === 'ended';
+
+  /** The speech engine is known-unavailable (the status endpoint
+      said so): the mic must not start a run that cannot be graded.
+      While the status is still loading (null) the page stays
+      fail-open — the server answers honestly with 503 instead. */
+  const modelUnavailable = isZipformer && engineStatus !== null && !engineStatus.available;
 
   return (
     <div className="quran-hifz-study" dir={locale === 'fa' || locale === 'ar' ? 'rtl' : 'ltr'}>
@@ -1897,8 +2363,13 @@ export function QuranHifzStudy({
         </label>
       </div>
 
-      {/* Listen controls: reciter picker + play/pause/stop + the
-          timing-source note (real segments vs estimated). */}
+      {/* The picker IS the start-ayah selector: a session starts
+          from the ayah chosen here (and ?ayah= follows it). */}
+      <p className="hifz-hint">{labels.startAyahHint}</p>
+
+      {/* Listen controls: reciter picker + play/pause/resume/stop +
+          prev/next ayah + repeat + speed + progress bar + current
+          ayah, and the timing-source note (real vs estimated). */}
       {studyMode === 'listen' && (
         <div className="hifz-listen-controls">
           <label>
@@ -1915,18 +2386,85 @@ export function QuranHifzStudy({
               ))}
             </select>
           </label>
+          <p className="hifz-hint" aria-live="polite">
+            {labels.listenCurrentAyah}: {toArabicIndic(listen.currentAyah)}
+            {ayahCount > 0 ? ` / ${toArabicIndic(ayahCount)}` : ''}
+          </p>
           {listen.isPlaying ? (
             <button type="button" onClick={() => listen.pause()}>
               {labels.listenPause}
             </button>
           ) : (
-            <button type="button" onClick={() => listen.play()}>
-              {labels.listenPlay}
+            <button type="button" onClick={() => listen.resume()}>
+              {labels.listenResume}
             </button>
           )}
           <button type="button" onClick={() => listen.stop()}>
             {labels.listenStop}
           </button>
+          <button
+            type="button"
+            onClick={() => listen.prevAyah()}
+            disabled={listen.currentAyah <= 1}
+            aria-label={labels.listenPrevAyah}
+          >
+            {labels.listenPrevAyah}
+          </button>
+          <button
+            type="button"
+            onClick={() => listen.nextAyah()}
+            disabled={ayahCount > 0 && listen.currentAyah >= ayahCount}
+            aria-label={labels.listenNextAyah}
+          >
+            {labels.listenNextAyah}
+          </button>
+          <label>
+            {labels.listenRepeat}
+            <select
+              value={listen.repeatMode}
+              onChange={(e) =>
+                listen.setRepeatMode(
+                  e.target.value as 'off' | 'ayah' | 'surah',
+                )
+              }
+              aria-label={labels.listenRepeat}
+            >
+              <option value="off">{labels.listenRepeatOff}</option>
+              <option value="ayah">{labels.listenRepeatAyah}</option>
+              <option value="surah">{labels.listenRepeatSurah}</option>
+            </select>
+          </label>
+          <label>
+            {labels.listenSpeed}
+            <select
+              value={String(listen.speed)}
+              onChange={(e) => listen.setSpeed(Number(e.target.value))}
+              aria-label={labels.listenSpeed}
+            >
+              {[0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => (
+                <option key={rate} value={String(rate)}>
+                  {rate}×
+                </option>
+              ))}
+            </select>
+          </label>
+          {listen.durationMs > 0 && (
+            <div className="hifz-listen-progress">
+              <input
+                type="range"
+                min={0}
+                max={listen.durationMs}
+                step={250}
+                value={Math.min(listen.progressMs, listen.durationMs)}
+                onChange={(e) => listen.seek(Number(e.target.value))}
+                aria-label={labels.listenProgress}
+              />
+              <span>
+                {formatListenMs(listen.progressMs)} /{' '}
+                {formatListenMs(listen.durationMs)}
+              </span>
+            </div>
+          )}
           {listen.timingSource === 'segments' && (
             <p className="hifz-hint">{labels.listenSegmentsNote}</p>
           )}
@@ -1951,9 +2489,20 @@ export function QuranHifzStudy({
           <span className="hifz-pill hifz-pill-red">
             {labels.pillErrors}: {toArabicIndic(pillStats.errors)}
           </span>
-          <span className={`hifz-pill ${accuracyTone}`}>
-            {labels.pillAccuracy}: {pillStats.accuracy}٪
-          </span>
+          {/* Provisional (live words present, stored grade not yet
+              arrived): show a count, not a percent — the uncalibrated
+              live score is not a final percentage. When no live words
+              are present the stored grade's final percent stands. */}
+          {liveWords.length > 0 ? (
+            <span className="hifz-pill hifz-pill-gray">
+              {labels.pillAccuracy}: {toArabicIndic(pillStats.correct)} از{' '}
+              {toArabicIndic(pillStats.total)}
+            </span>
+          ) : (
+            <span className={`hifz-pill ${accuracyTone}`}>
+              {labels.pillAccuracy}: {pillStats.accuracy}٪
+            </span>
+          )}
           {liveState === 'listening' && (
             <span className="hifz-pill hifz-pill-gray">
               {labels.pillTimer}: {timerText}
@@ -2112,7 +2661,10 @@ export function QuranHifzStudy({
           {labels.errorsTitle}
         </button>
         <button type="button" disabled={!peekTarget} onClick={() => void peekNext()}>
-          {labels.peek}
+          {labels.peekWord}
+        </button>
+        <button type="button" disabled={!peekTarget} onClick={() => void peekAyah()}>
+          {labels.peekAyah}
         </button>
         <button
           type="button"
@@ -2202,30 +2754,111 @@ export function QuranHifzStudy({
       </div>
 
       <div className="hifz-controls">
-        {isZipformer && liveState === 'connecting' && (
+        {isZipformer && liveState === 'listening' && (
+          <button type="button" onClick={pauseLive}>
+            {labels.pauseLive}
+          </button>
+        )}
+        {isZipformer && liveState === 'paused' && (
+          <>
+            <button type="button" onClick={resumeLive}>
+              {labels.resumeLive}
+            </button>
+            <p className="hifz-hint">{labels.pausedHint}</p>
+          </>
+        )}
+        {isZipformer && modelUnavailable && (
+          <p className="hifz-hint">{labels.modelUnavailable}</p>
+        )}
+        {isOffline && (
+          <p className="hifz-error" role="alert">
+            {labels.offline}
+          </p>
+        )}
+        {isZipformer && liveStarting && (
           <button type="button" onClick={() => cancelLive(false)}>
             {labels.liveCancel}
           </button>
         )}
+        {isZipformer && liveState === 'requesting_permission' && (
+          <p className="hifz-hint">{labels.liveRequestingPermission}</p>
+        )}
+        {isZipformer && liveState === 'engine_loading' && (
+          <p className="hifz-hint">{labels.liveEngineLoading}</p>
+        )}
         {isZipformer && liveState === 'listening' && (
-          <p className="hifz-hint">{labels.liveListening}</p>
+          <p className="hifz-hint">
+            {labels.liveListening}
+            {livePartial !== null && (
+              <>
+                {' '}
+                {labels.liveReadingNow} {livePartial}
+              </>
+            )}
+          </p>
+        )}
+        {isZipformer && liveState === 'stopping' && (
+          <p className="hifz-hint">{labels.liveStopping}</p>
+        )}
+        {isZipformer && liveState === 'interrupted' && (
+          <p className="hifz-hint">{labels.liveInterrupted}</p>
         )}
         {isZipformer && liveState === 'ended' && <p className="hifz-hint">{labels.liveEnded}</p>}
+        {isZipformer && liveDiag.capture === 'legacy' && liveState !== 'idle' && (
+          <p className="hifz-hint">{labels.liveLegacyCapture}</p>
+        )}
+        {isZipformer && liveWarning !== null && (
+          <p className="hifz-hint">{liveWarning}</p>
+        )}
         {isZipformer && liveState !== 'idle' && (
           <p className="hifz-hint">
             {labels.liveDiagSampleRate}: {liveDiag.sampleRate ?? '—'} Hz · {labels.liveDiagFrames}:{' '}
-            {liveDiag.frames} · {labels.liveDiagSocket}:{' '}
+            {liveDiag.frames} · {labels.liveDiagCapture}:{' '}
+            {liveDiag.capture === 'worklet'
+              ? 'AudioWorklet'
+              : liveDiag.capture === 'legacy'
+                ? 'ScriptProcessor'
+                : '—'}
+            {liveDiag.dropped > 0 && (
+              <>
+                {' '}· {labels.liveDiagDropped}: {liveDiag.dropped}
+              </>
+            )}
+            {' '}· {labels.liveDiagSocket}:{' '}
             {liveState === 'listening'
               ? labels.liveListening
               : liveState === 'connecting'
                 ? labels.liveConnecting
-                : labels.liveEnded}
+                : liveState === 'requesting_permission'
+                  ? labels.liveRequestingPermission
+                  : liveState === 'engine_loading'
+                    ? labels.liveEngineLoading
+                    : liveState === 'interrupted'
+                      ? labels.liveInterrupted
+                      : liveState === 'stopping'
+                        ? labels.liveStopping
+                        : labels.liveEnded}
           </p>
         )}
         {isWhisper && <p className="hifz-hint">{labels.liveOnlyZipformer}</p>}
         {isWhisper && recState === 'recording' && <p className="hifz-hint">{labels.recording}</p>}
         {!authed && <p className="hifz-hint">{labels.signInHint}</p>}
       </div>
+      {/* Mutashabihat (shared phrases, computed from our Tanzil
+          text) + link to the separate hifz hub. No results, stats
+          or history are added to the study page itself. */}
+      <HifzMutashabihat
+        surah={surah}
+        ayah={ayah}
+        onNavigate={(s, a) => {
+          setSurah(s);
+          setAyah(a);
+        }}
+        labels={labels.mutashabihat}
+      />
+      <p className="hifz-hub-link">
+        <a href={`/${locale}/quran/hifz`}>{labels.hubLink}</a>
+      </p>
       {/* Floating mic (bottom-right, Tarteel): the only record
           control; its action follows the engine. Shown only in
           practice mode — listen mode has its own play control. */}
@@ -2235,7 +2868,7 @@ export function QuranHifzStudy({
             type="button"
             className={`hifz-mic-3d${micActive ? ' is-live' : ''}`}
             aria-label={micLabel}
-            disabled={!authed || micBusy}
+            disabled={!authed || micBusy || modelUnavailable}
             onClick={micOnClick}
           >
             {micActive ? (
