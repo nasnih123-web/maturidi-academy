@@ -298,6 +298,280 @@ async def test_feed_phonemes_exact_skip_continue_with_fake_mapping(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_feed_phonemes_repeat_previous_ayah_then_continue(monkeypatch):
+    """بازخوانیِ کاملِ آیهٔ پیش‌تر در میانهٔ خواندن، نشست را خراب نمی‌کند
+    (فاز ۹ — عیبِ فاز ۸: تکرارِ آیهٔ ۲ پس از عبور از آن، ۱۸ کلمهٔ غلط
+    می‌ساخت، WER ۰٫۶۲).
+
+    پس از آیهٔ ۲، کاربر آیهٔ ۲ را دوباره می‌خواند و بعد آیهٔ ۳ را ادامه
+    می‌دهد: بازخوانی باید یک رویدادِ `revisit` بخورد و مصرف شود،
+    بی‌آنکه کلمه‌ای غلط/جاافتاده شود و بی‌آنکه هم‌ترازیِ دوباره چیزی
+    دور بریزد. واج‌های مصنوعی عمداً بلند و متمایزند تا هم‌ترازیِ
+    دوباره (سقفِ ۲×طولِ واحد) نتواند بازخوانی را بی‌صدا ببلعد.
+    """
+    events = []
+
+    class _RepeatMapping:
+        def segments_for(self, surah, ayah):
+            if surah != 112:
+                return None
+            segs = {
+                1: [
+                    Segment((0,), "aaaaaaaa"),
+                    Segment((1,), "bbbbbbbb"),
+                    Segment((2,), "cccccccc"),
+                    Segment((3,), "dddddddd"),
+                ],
+                2: [Segment((0,), "eeeeeeeeee"), Segment((1,), "ffffffffff")],
+                3: [
+                    Segment((0,), "ggggg"),
+                    Segment((1,), "hhhhh"),
+                    Segment((2,), "iiiii"),
+                    Segment((3,), "jjjjj"),
+                ],
+            }
+            return list(segs.get(ayah, [])) or None
+
+    session, _ = _session(monkeypatch, events, mapping=_RepeatMapping())
+    await session.feed_phonemes(list("aaaaaaaa" "bbbbbbbb" "cccccccc" "dddddddd"))
+    await session.feed_phonemes(list("eeeeeeeeee" "ffffffffff"))
+    await session.feed_phonemes(
+        list("eeeeeeeeee" "ffffffffff" "ggggg" "hhhhh" "iiiii" "jjjjj")
+    )
+    words = _word_events(events)
+    assert [(w["ayah"], w["status"]) for w in words] == [
+        (1, "correct"),
+        (1, "correct"),
+        (1, "correct"),
+        (1, "correct"),
+        (2, "correct"),
+        (2, "correct"),
+        (3, "correct"),
+        (3, "correct"),
+        (3, "correct"),
+        (3, "correct"),
+    ]
+    revisits = [e for e in events if e["type"] == "revisit"]
+    assert len(revisits) == 1
+    assert revisits[0]["ayah"] == 2
+    assert session.live_counts()["revisits"] == 1
+    assert session.live_counts()["resync_dropped"] == 0
+    summary = await session.finish()
+    assert summary["counts"] == {
+        "correct": 10,
+        "close": 0,
+        "wrong": 0,
+        "skipped": 0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_feed_phonemes_repeat_previous_ayah_dropped_final_letter(monkeypatch):
+    """بازخوانیِ آیهٔ پیش‌تر که بازشناس حرفِ پایانی‌اش را ننوشته، باز
+    هم بازخوانی است (فاز ۹ — ریشهٔ عیبِ واقعیِ فاز ۸: نونِ پایانیِ
+    «الْعَـٰلَمِینَ» پس از مد در جریانِ توکن نمی‌آید و تطابقِ دقیقِ
+    پیشوندی در همان حرف می‌ایستد).
+
+    پس از «gg»ِ جزئیِ آیهٔ ۳، کاربر آیهٔ ۲ را با حرفِ آخرِ افتاده
+    («fffffffff» به‌جای «ffffffffff») دوباره می‌خواند و بعد آیهٔ ۳
+    را ادامه می‌دهد: بازخوانی باید با یک شکافِ یک‌حرفی پذیرفته و
+    مصرف شود، بی‌آنکه کلمه‌ای غلط/جاافتاده شود.
+    """
+    events = []
+
+    class _RepeatMapping:
+        def segments_for(self, surah, ayah):
+            if surah != 112:
+                return None
+            segs = {
+                1: [
+                    Segment((0,), "aaaaaaaa"),
+                    Segment((1,), "bbbbbbbb"),
+                    Segment((2,), "cccccccc"),
+                    Segment((3,), "dddddddd"),
+                ],
+                2: [Segment((0,), "eeeeeeeeee"), Segment((1,), "ffffffffff")],
+                3: [
+                    Segment((0,), "ggggg"),
+                    Segment((1,), "hhhhh"),
+                    Segment((2,), "iiiii"),
+                    Segment((3,), "jjjjj"),
+                ],
+            }
+            return list(segs.get(ayah, [])) or None
+
+    session, _ = _session(monkeypatch, events, mapping=_RepeatMapping())
+    await session.feed_phonemes(list("aaaaaaaa" "bbbbbbbb" "cccccccc" "dddddddd"))
+    await session.feed_phonemes(list("eeeeeeeeee" "ffffffffff"))
+    await session.feed_phonemes(list("gg"))
+    await session.feed_phonemes(
+        list("eeeeeeeeee" "fffffffff" "ggggg" "hhhhh" "iiiii" "jjjjj")
+    )
+    words = _word_events(events)
+    assert [(w["ayah"], w["status"]) for w in words] == [
+        (1, "correct"),
+        (1, "correct"),
+        (1, "correct"),
+        (1, "correct"),
+        (2, "correct"),
+        (2, "correct"),
+        (3, "correct"),
+        (3, "correct"),
+        (3, "correct"),
+        (3, "correct"),
+    ]
+    revisits = [e for e in events if e["type"] == "revisit"]
+    assert len(revisits) == 1
+    assert revisits[0]["ayah"] == 2
+    assert session.live_counts()["revisits"] == 1
+    assert session.live_counts()["resync_dropped"] == 0
+    summary = await session.finish()
+    assert summary["counts"] == {
+        "correct": 10,
+        "close": 0,
+        "wrong": 0,
+        "skipped": 0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_feed_phonemes_repeat_previous_ayah_waits_while_arriving(monkeypatch):
+    """بازخوانیِ در حالِ رسیدن، تصمیمِ غلط نمی‌گیرد: تا وقتی کلِ بافر
+    با بازخوانی می‌خواند، نشست صبر می‌کند و با رسیدنِ ادامهٔ واقعی،
+    بازخوانی را مصرف می‌کند (فاز ۹)."""
+    events = []
+
+    class _RepeatMapping:
+        def segments_for(self, surah, ayah):
+            if surah != 112:
+                return None
+            segs = {
+                1: [
+                    Segment((0,), "aaaaaaaa"),
+                    Segment((1,), "bbbbbbbb"),
+                    Segment((2,), "cccccccc"),
+                    Segment((3,), "dddddddd"),
+                ],
+                2: [Segment((0,), "eeeeeeeeee"), Segment((1,), "ffffffffff")],
+                3: [
+                    Segment((0,), "ggggg"),
+                    Segment((1,), "hhhhh"),
+                    Segment((2,), "iiiii"),
+                    Segment((3,), "jjjjj"),
+                ],
+            }
+            return list(segs.get(ayah, [])) or None
+
+    session, _ = _session(monkeypatch, events, mapping=_RepeatMapping())
+    await session.feed_phonemes(list("aaaaaaaa" "bbbbbbbb" "cccccccc" "dddddddd"))
+    await session.feed_phonemes(list("eeeeeeeeee" "ffffffffff"))
+    # نیمهٔ اولِ بازخوانی به‌تنهایی می‌رسد: هنوز تصمیمی گرفته نمی‌شود.
+    await session.feed_phonemes(list("eeeeeeeeee"))
+    assert _word_events(events) == [
+        w for w in _word_events(events) if w["ayah"] in (1, 2)
+    ]
+    assert session.live_counts()["revisits"] == 0
+    # نیمهٔ دوم + ادامهٔ واقعی: بازخوانی مصرف می‌شود و آیهٔ ۳ درست می‌خواند.
+    await session.feed_phonemes(list("ffffffffff" "ggggg" "hhhhh" "iiiii" "jjjjj"))
+    words = _word_events(events)
+    assert [(w["ayah"], w["status"]) for w in words] == [
+        (1, "correct"),
+        (1, "correct"),
+        (1, "correct"),
+        (1, "correct"),
+        (2, "correct"),
+        (2, "correct"),
+        (3, "correct"),
+        (3, "correct"),
+        (3, "correct"),
+        (3, "correct"),
+    ]
+    assert session.live_counts()["revisits"] == 1
+    assert session.live_counts()["resync_dropped"] == 0
+
+
+@pytest.mark.asyncio
+async def test_feed_phonemes_short_repeat_like_prefix_is_not_revisit(monkeypatch):
+    """پیشوندِ کوتاهِ شبیه‌به بازخوانی (کمتر از ۸ حرف)، revisit نیست:
+    تطابقِ زیرِ آستانه، نشست را به مسیرِ موجود (غلطِ واحدِ جاری)
+    می‌سپارد و رویدادِ revisit نمی‌آید (فاز ۹ — منفیِ اصلاح)."""
+    events = []
+
+    class _RepeatMapping:
+        def segments_for(self, surah, ayah):
+            if surah != 112:
+                return None
+            segs = {
+                1: [
+                    Segment((0,), "aaaaaaaa"),
+                    Segment((1,), "bbbbbbbb"),
+                    Segment((2,), "cccccccc"),
+                    Segment((3,), "dddddddd"),
+                ],
+                2: [Segment((0,), "eeeeeeeeee"), Segment((1,), "ffffffffff")],
+                3: [
+                    Segment((0,), "ggggg"),
+                    Segment((1,), "hhhhh"),
+                    Segment((2,), "iiiii"),
+                    Segment((3,), "jjjjj"),
+                ],
+                # آیهٔ ۴ فقط برای اینکه آبشارِ غلط پس از ۳٫۰ به
+                # خطای ۵۰۳ِ نگاشت نخورد؛ محتوایش در حکمِ تست نیست.
+                4: [
+                    Segment((0,), "kkkkk"),
+                    Segment((1,), "lllll"),
+                    Segment((2,), "mmmmm"),
+                    Segment((3,), "nnnnn"),
+                    Segment((4,), "ooooo"),
+                ],
+            }
+            return list(segs.get(ayah, [])) or None
+
+    session, _ = _session(monkeypatch, events, mapping=_RepeatMapping())
+    await session.feed_phonemes(list("aaaaaaaa" "bbbbbbbb" "cccccccc" "dddddddd"))
+    await session.feed_phonemes(list("eeeeeeeeee" "ffffffffff"))
+    await session.feed_phonemes(
+        list("eeee" "zzzzzzzzzz" "ggggg" "hhhhh" "iiiii" "jjjjj")
+    )
+    assert [e for e in events if e["type"] == "revisit"] == []
+    assert session.live_counts()["revisits"] == 0
+    words = _word_events(events)
+    assert words[6]["ayah"] == 3 and words[6]["status"] == "wrong"
+
+
+@pytest.mark.asyncio
+async def test_feed_phonemes_repeat_unit_waslah_form(monkeypatch):
+    """تکرارِ کلمهٔ همان آیه بدونِ همزهٔ وصلِ آغازین هم تکرار است
+    (فاز ۹): «ءqqqqq» که در خواندنِ پیوسته «qqqqq» شنیده می‌شود،
+    رویدادِ `repeat` می‌خورد و مصرف می‌شود، نه اینکه هم‌ترازیِ
+    دوباره آن را دور بریزد."""
+    events = []
+
+    class _WaslahRepeatMapping:
+        def segments_for(self, surah, ayah):
+            if surah != 112 or ayah != 1:
+                return None
+            return [
+                Segment((0,), "ءqqqqq"),
+                Segment((1,), "wwwww"),
+                Segment((2,), "eeeee"),
+            ]
+
+    session, _ = _session(monkeypatch, events, mapping=_WaslahRepeatMapping())
+    await session.feed_phonemes(list("ءqqqqq" "wwwww" "qqqqq" "eeeee"))
+    words = _word_events(events)
+    assert [(w["expected"], w["status"]) for w in words] == [
+        ("قُلْ", "correct"),
+        ("هُوَ", "correct"),
+        ("اللَّهُ", "correct"),
+    ]
+    repeats = [e for e in events if e["type"] == "repeat"]
+    assert len(repeats) == 1
+    assert session.live_counts()["repeats"] == 1
+    assert session.live_counts()["resync_dropped"] == 0
+
+
+@pytest.mark.asyncio
 async def test_feed_phonemes_resync_after_misread_word(monkeypatch):
     """یک کلمهٔ غلط‌خوانده‌شده در ابتدا، بقیه را مسموم نمی‌کند:
     واج‌های اضافی دور ریخته می‌شوند و کلمه‌های بعد هم‌تراز می‌شوند."""

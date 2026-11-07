@@ -118,6 +118,14 @@ _LOCATE_MIN_MATCH = 8
 # قانونِ کاربر: آیهٔ جاافتاده فقط تا ۵ آیه خاکستری می‌شود؛ بیشتر از
 # آن، نشست از نو می‌یابد (جست‌وجوی تازه)، نه اینکه سوره را خاکستری کند.
 _MAX_GRAY_AYAH_GAP = 5
+# بیشترین طولِ «اتصال» در تشخیصِ بازخوانی (فاز ۹): پیشوندِ مصرف‌نشدهٔ
+# واحدِ جاری که سرِ بافر مانده و بازخوانی پس از آن شروع می‌شود؛ بیشتر
+# از طولِ یک واحد نمی‌تواند باشد و سقفِ ۱۶ حرف هم برای ایمنی است.
+_REVISIT_MAX_JUNCTION = 16
+# بیشترین عقب‌نشینی در برشِ بازخوانی (فاز ۹): همخوانِ مرزیِ مشترکِ
+# میانِ دمِ بازخوانی و ادامهٔ واقعی، نقطهٔ دقیقِ برش را ۱–۲ حرف
+# مبهم می‌کند؛ برشِ کوتاه‌تر که ��م‌ترازی را برمی‌گرداند، برنده است.
+_REVISIT_TRIM_BACKOFF = 2
 
 # وضعیتِ نهایی‌شدنِ رویدادِ کلمه‌ای (فاز ۶، سه‌وضعیتی + correction):
 # provisional = موقتِ قابلِ تغییر (فقط partial)؛ stable = پایدارِ
@@ -134,38 +142,22 @@ _FINALITY_BY_EVENT_TYPE = {
 }
 
 
-def locate_ayah(
-    mapping, surah, buf, hint_ayah=None, allow_backward=True,
-    min_len: int | None = None, return_length: bool = False,
+def _locate_pass(
+    mapping, surah, buf, hint_ayah, allow_backward, required_len,
+    buf_offset,
 ):
-    """آیه‌ای از سوره را پیدا کن که واج‌های شنیده‌شده در آن باشد.
+    """یک گذرِ جست‌وجوی آیه با کاوش از `buf[buf_offset:]`.
 
-    `buf` رشتهٔ واجیِ فروپاشیدهٔ شنیده‌شده (چند ثانیهٔ اول) است؛
-    کاوش، چند ده کاراکترِ اولِ آن است. برای هر آیه، بلندترین پیشوندِ
-    کاوش که دقیقاً زیررشته‌ای از رشتهٔ واجیِ موردانتظارِ آن آیه باشد
-    امتیاز می‌گیرد؛ آیهٔ برنده باید دست‌کم `min_len` کاراکتر بخواند
-    (پیش‌فرض: `_LOCATE_MIN_CHARS`؛ برای آیهٔ کوتاه‌تر از آن، تمامِ
-    رشتهٔ واجی‌اش). تطابقِ جزئیِ کوتاه (مثلاً ۸ حرف از یک آیهٔ بلند)
-    مدرکِ یافتن نیست — باگِ سورهٔ ۲۴ از همین‌جا بود: تطابقِ تصادفیِ
-    کوتاه، نشست را به آیهٔ اشتباه می‌برد و بعد خاکستریِ بی‌مهار
-    شروع می‌شد. `min_len` کوچک‌تر فقط برای پرسشِ ضعیف‌ترِ «آیا این
-    بافر، بازخوانیِ آیه‌ای پیش‌تر است؟» مجاز است (یافتنِ دوباره،
-    نه پرش): آن‌جا تصمیمی که اشاره‌گر را جلو ببرد گرفته نمی‌شود،
-    پس مدرکِ ضعیف‌تر کافی است.
-    اگر آیهٔ راهنما (hint) در میانِ برندگانِ مساوی باشد، همان برمی‌گردد
-    (کاربر معمولاً همان‌جایی است که انتخاب کرده)؛ اگر چند آیه دقیقاً
-    مساوی باشند، مبهم است و None برمی‌گردد (نشست روی راهنما می‌ماند).
-    `allow_backward=False` یعنی فقط آیه‌های جلوتر از راهنما پذیرفته
-    می‌شوند (یافتنِ دوبارهٔ وسطِ نشست فقط به جلو می‌رود، مثل ترتیل —
-    خواندنِ دوبارهٔ آیهٔ قبلی، نشست را به عقب نمی‌برد).
+    برمی‌گرداند `(best_len, best)` که `best` فهرستِ
+    `(ayah, found_off, unit_pos, buf_offset)` برای آیه‌های هم‌امتیازِ
+    بلندترین تطابق است. منطقِ امتیازدهی دقیقاً همانِ پیشین است:
+    بلندترین پیشوندِ کاوش که زیررشتهٔ رشتهٔ موردانتظارِ آیه باشد،
+    با کفِ اثباتِ `required_len` (یا تمامِ رشتهٔ آیهٔ کوتاه).
     """
-    if mapping is None or len(buf) < (min_len if min_len is not None else _LOCATE_MIN_CHARS):
-        return None
-    required_len = min_len if min_len is not None else _LOCATE_MIN_CHARS
-    probe = buf[:_LOCATE_PROBE_CHARS]
+    probe = buf[buf_offset:buf_offset + _LOCATE_PROBE_CHARS]
     meta = quran_service.get_surah(surah)
     best_len = 0
-    best: list[tuple[int, int, int]] = []  # (ayah, offset, unit_pos)
+    best: list[tuple[int, int, int, int]] = []
     for ayah in range(1, meta.ayahs + 1):
         if not allow_backward and hint_ayah is not None and ayah <= hint_ayah:
             continue
@@ -212,22 +204,138 @@ def locate_ayah(
             acc += plen
         if found_len > best_len:
             best_len = found_len
-            best = [(ayah, found_off, unit_pos)]
+            best = [(ayah, found_off, unit_pos, buf_offset)]
         elif found_len == best_len:
-            best.append((ayah, found_off, unit_pos))
+            best.append((ayah, found_off, unit_pos, buf_offset))
+    return best_len, best
+
+
+def _locate_ayah_full(
+    mapping, surah, buf, hint_ayah=None, allow_backward=True,
+    min_len: int | None = None, tie_break_recency: bool = False,
+):
+    """یافتنِ آیه با جابه‌جاییِ سرِ بافر؛ برمی‌گرداند
+    `(ayah, unit_pos, best_len, buf_offset)` یا None.
+
+    گذرِ اول دقیقاً از سرِ بافر می‌کاود (رفتارِ پیشین، بی‌تغییر).
+    گذرِ دوم — فقط وقتی گذرِ اول هیچ نامزدی نیافت — تطابق را چند
+    حرف جلوتر هم می‌آزماید: سرِ بافر ممکن است خردهٔ باقی‌ماندهٔ
+    واحدِ پیشین باشد (اتصالِ واحدِ جاری، همزهٔ سرگردانِ آیهٔ
+    پرش‌شده)، و همان چند حرف پیش‌فیلترِ ۸حرفی را می‌شکست و هر
+    آیه‌ای را اثبات‌ناپذیر می‌کرد — ریشهٔ هر سه نقصِ بخش ۷
+    (تکرارِ چندباره، بازگشتِ دور، پرشِ آیهٔ بلند). در گذرِ دوم،
+    بلندترین تطابق در همهٔ جابه‌جایی‌ها برنده است (تساوی: کوچک‌ترین
+    جابه‌جایی) و قانونِ راهنما/ابهامِ گذرِ اول همان‌طور می‌ماند.
+
+    `tie_break_recency` فقط برای شاخهٔ بازگشت (back) است: اگر چند
+    آیه دقیقاً مساوی باشند، نزدیک‌ترین آیهٔ پیش از راهنما
+    (تازه‌ترینِ خوانده‌شده) برنده می‌شود. مصرفِ بازهٔ تطابق برای
+    همهٔ برندگانِ مساوی یکی است (همان زیررشتهٔ بافر) — پس فقط
+    برچسبِ آیهٔ رویدادِ `revisit` فرق می‌کند، نه نمره‌دهی و نه
+    مصرف. بدونِ این قید، تساویِ واج‌های مشترکِ دو آیه (مثلاً
+    «الرَّحْمَـٰنِ الرَّحِيمِ» که هم در آیهٔ ۱ فاتحه هست هم آیهٔ ۳)
+    یافتن را None می‌کرد و آبشارِ غلط می‌ساخت: در تکرارِ چندبارهٔ
+    صوتیِ آیهٔ ۲، پس از نخستین `revisit` بافر با همین خردهٔ
+    مشترک شروع می‌شد و آیه‌های ۴ تا ۷ همه غلط می‌خوردند (۱۹ غلط).
+    پیش‌فرض False است تا بقیهٔ فراخوان‌ها (یافتنِ جلو، لنگر) همان
+    قانونِ سخت‌گیرانهٔ ابهام را نگه دارند.
+    """
+    if mapping is None or len(buf) < (min_len if min_len is not None else _LOCATE_MIN_CHARS):
+        return None
+    required_len = min_len if min_len is not None else _LOCATE_MIN_CHARS
+    best_len, best = _locate_pass(
+        mapping, surah, buf, hint_ayah, allow_backward, required_len, 0
+    )
+    if not best:
+        by_ayah: dict[int, tuple[int, tuple[int, int, int, int]]] = {}
+        max_off = min(_REVISIT_MAX_JUNCTION, len(buf) - _LOCATE_MIN_MATCH)
+        for off in range(1, max_off + 1):
+            bl, bb = _locate_pass(
+                mapping, surah, buf, hint_ayah, allow_backward,
+                required_len, off,
+            )
+            for item in bb:
+                cur = by_ayah.get(item[0])
+                if cur is None or bl > cur[0] or (
+                    bl == cur[0] and off < cur[1][3]
+                ):
+                    by_ayah[item[0]] = (bl, item)
+        if by_ayah:
+            best_len = max(v[0] for v in by_ayah.values())
+            best = [v[1] for v in by_ayah.values() if v[0] == best_len]
     if not best:
         return None
     if hint_ayah is not None:
-        for ayah, _off, unit_pos in best:
+        for ayah, _off, unit_pos, buf_off in best:
             if ayah == hint_ayah:
-                if return_length:
-                    return (ayah, unit_pos, best_len)
-                return (ayah, unit_pos)
+                return (ayah, unit_pos, best_len, buf_off)
     if len(best) == 1:
-        if return_length:
-            return (best[0][0], best[0][2], best_len)
-        return (best[0][0], best[0][2])
+        ayah, _off, unit_pos, buf_off = best[0]
+        return (ayah, unit_pos, best_len, buf_off)
+    if tie_break_recency and hint_ayah is not None:
+        below = [b for b in best if b[0] < hint_ayah]
+        if below:
+            ayah, _off, unit_pos, buf_off = max(below, key=lambda b: b[0])
+            return (ayah, unit_pos, best_len, buf_off)
     return None
+
+
+def locate_ayah(
+    mapping, surah, buf, hint_ayah=None, allow_backward=True,
+    min_len: int | None = None, return_length: bool = False,
+):
+    """آیه‌ای از سوره را پیدا کن که واج‌های شنیده‌شده در آن باشد.
+
+    `buf` رشتهٔ واجیِ فروپاشیدهٔ شنیده‌شده (چند ثانیهٔ اول) است؛
+    کاوش، چند ده کاراکترِ اولِ آن است. برای هر آیه، بلندترین پیشوندِ
+    کاوش که دقیقاً زیررشته‌ای از رشتهٔ واجیِ موردانتظارِ آن آیه باشد
+    امتیاز می‌گیرد؛ آیهٔ برنده باید دست‌کم `min_len` کاراکتر بخواند
+    (پیش‌فرض: `_LOCATE_MIN_CHARS`؛ برای آیهٔ کوتاه‌تر از آن، تمامِ
+    رشتهٔ واجی‌اش). تطابقِ جزئیِ کوتاه (مثلاً ۸ حرف از یک آیهٔ بلند)
+    مدرکِ یافتن نیست — باگِ سورهٔ ۲۴ از همین‌جا بود: تطابقِ تصادفیِ
+    کوتاه، نشست را به آیهٔ اشتباه می‌برد و بعد خاکستریِ بی‌مهار
+    شروع می‌شد. `min_len` کوچک‌تر فقط برای پرسشِ ضعیف‌ترِ «آیا این
+    بافر، بازخوانیِ آیه‌ای پیش‌تر است؟» مجاز است (یافتنِ دوباره،
+    نه پرش): آن‌جا تصمیمی که اشاره‌گر را جلو ببرد گرفته نمی‌شود،
+    پس مدرکِ ضعیف‌تر کافی است.
+    اگر آیهٔ راهنما (hint) در میانِ برندگانِ مساوی باشد، همان برمی‌گردد
+    (کاربر معمولاً همان‌جایی است که انتخاب کرده)؛ اگر چند آیه دقیقاً
+    مساوی باشند، مبهم است و None برمی‌گردد (نشست روی راهنما می‌ماند).
+    `allow_backward=False` یعنی فقط آیه‌های جلوتر از راهنما پذیرفته
+    می‌شوند (یافتنِ دوبارهٔ وسطِ نشست فقط به جلو می‌رود، مثل ترتیل —
+    خواندنِ دوبارهٔ آیهٔ قبلی، نشست را به عقب نمی‌برد).
+    اگر سرِ بافر خردهٔ واحدِ پیشین باشد، تطابق چند حرف جلوتر هم
+    آزموده می‌شود (`_locate_ayah_full`): همان مدرکِ ۲۴حرفی/تمام‌آیه،
+    فقط با جابه‌جاییِ سرِ کاوش.
+    """
+    hit = _locate_ayah_full(
+        mapping, surah, buf, hint_ayah, allow_backward, min_len
+    )
+    if hit is None:
+        return None
+    ayah, unit_pos, best_len, _buf_off = hit
+    if return_length:
+        return (ayah, unit_pos, best_len)
+    return (ayah, unit_pos)
+
+
+def locate_ayah_span(
+    mapping, surah, buf, hint_ayah=None, allow_backward=True,
+    min_len: int | None = None, tie_break_recency: bool = False,
+):
+    """مثل `locate_ayah`، ولی طولِ تطابق و جابه‌جاییِ سرِ بافر را هم
+    برمی‌گرداند: `(ayah, unit_pos, best_len, buf_offset)` یا None.
+
+    فراخوانِ شاخهٔ ۲برابر با همین می‌فهمد دقیقاً چند حرف از بافر
+    (خردهٔ سر + بازخوانی/پرشِ اثبات‌شده) باید مصرف شود، به‌جای
+    حدسِ «یک طولِ کلمه» که هم‌ترازی را می‌شکست.
+    `tie_break_recency` را فقط شاخهٔ بازگشت می‌دهد (تازه‌ترینِ
+    خوانده‌شده میانِ برندگانِ مساوی) — شرح در `_locate_ayah_full`.
+    """
+    return _locate_ayah_full(
+        mapping, surah, buf, hint_ayah, allow_backward, min_len,
+        tie_break_recency,
+    )
 
 
 def _waslah_forms(phon: str) -> list[str]:
@@ -245,6 +353,36 @@ def _waslah_forms(phon: str) -> list[str]:
         if rest:
             forms.append(rest)
     return forms
+
+
+def _match_prefix_with_one_gap(rest: str, run: str) -> int:
+    """طولِ تطابقِ پیشوندیِ `rest` با `run`، با حداکثر یک حرفِ جاافتاده
+    در `run` (فاز ۹).
+
+    بازشناس گاهی یک واجِ نگاشت را نمی‌نویسد — نمونهٔ اندازه‌گیری‌شده:
+    نونِ پایانیِ «الْعَـٰلَمِینَ» پس از مد در جریانِ توکنِ Zipformer
+    اصلاً نمی‌آید، پس بازخوانیِ آیهٔ ۲ در همان حرف می‌ایستد و رشتهٔ
+    بازخوانی ناتمام می‌ماند. شکاف فقط وقتی پذیرفته می‌شود که پس از
+    پرشِ یک حرفِ `run`، تطابق یا تا تهِ `run` برسد یا دست‌کم ۴ حرفِ
+    پیاپی بخواند؛ وگرنه همان تطابقِ دقیقِ پیشوند برمی‌گردد. بیش از
+    یک شکاف هرگز مجاز نیست و طولِ برگشتی، شمارِ حرف‌های خوانده‌شده
+    است (حرفِ پرش‌شده شمرده نمی‌شود).
+    """
+    k = 0
+    while k < len(run) and k < len(rest) and rest[k] == run[k]:
+        k += 1
+    if k >= len(run) or k >= len(rest):
+        return k
+    m = 0
+    while (
+        k + 1 + m < len(run)
+        and k + m < len(rest)
+        and rest[k + m] == run[k + 1 + m]
+    ):
+        m += 1
+    if m >= 1 and (k + 1 + m >= len(run) or m >= 4):
+        return k + m
+    return k
 
 
 class LiveUnavailableError(APIError):
@@ -842,6 +980,39 @@ class LiveSession:
                 return (ayah, index)
         return None
 
+    def _emit_spanned_pauses_before(self, word_index: int) -> None:
+        """ردِ وقف‌هایِ درونِ بازهٔ قطعهٔ جاری را پیش از کلمهٔ بعد
+        صادر کن (ترتیبِ رویداد).
+
+        قطعهٔ ادغامی می‌تواند روی نشانهٔ وقف بیفتد (مثلاً
+        word_indices (10, 12) روی وقفِ 11): واحدِ ردِ وقف در
+        فهرستِ قطعه‌ها پس از آن می‌آید، پس حلقه اول کلمهٔ بعدِ وقف
+        را می‌فرستاد و بعد خودِ وقف را (…، 10، 12، 11-ردشده، 13، …).
+        نمره درست بود و هر رویداد `word_index` دارد، ولی ترتیبِ خامِ
+        رویدادها جابه‌جا می‌شد. پیش از صدورِ هر کلمه، وقف‌هایِ
+        ردِ‌نشده‌ای که شماره‌شان از آن کلمه کوچک‌تر است و واحدشان
+        جلوتر در فهرست است، خاکستری صادر می‌شوند؛ حلقه وقتی به آن
+        واحدها می‌رسد، چون کلمه‌شان صادر شده، دوباره نمی‌فرستد.
+        فقط واحدهای بدونِ واج (ردِ خودکارِ وقف) دربر گرفته
+        می‌شوند؛ ترتیبِ واحدهای واقعی دست نمی‌خورد.
+        """
+        if self._units is None:
+            return
+        for j in range(self._unit_pos + 1, len(self._units)):
+            unit = self._units[j]
+            if unit.phoneme is not None:
+                continue
+            for pwi in unit.word_indices:
+                if pwi < word_index and (
+                    self._ayah, pwi
+                ) not in self._emitted_event_ids:
+                    expected = (
+                        self._words[pwi] if pwi < len(self._words) else ""
+                    )
+                    self._emit_word(
+                        self._ayah, pwi, expected, "skipped", 0.0, None
+                    )
+
     def _emit_unit(
         self, word_indices: tuple[int, ...], status: str, prob: float,
         heard: str | None = None, distance: int | None = None,
@@ -852,12 +1023,14 @@ class LiveSession:
         شنیده‌شده)؛ برای درست/نزدیک، شنیده‌شده همان متنِ موردانتظار
         است و برای جاافتاده/ردِ خودکار، None. `distance` فاصلهٔ
         ویرایشِ تطابقِ نزدیک است؛ «نزدیک» در مرزِ بیشینهٔ فاصله،
-        پرچمِ needs_review می‌خورد.
+        پرچمِ needs_review می‌خورد. وقفِ درونِ بازهٔ قطعه پیش از
+        کلمهٔ بعدش صادر می‌شود (`_emit_spanned_pauses_before`).
         """
         needs_review = (
             status == "close" and distance == _NEAR_MISS_MAX_DISTANCE
         )
         for wi in word_indices:
+            self._emit_spanned_pauses_before(wi)
             expected = self._words[wi] if wi < len(self._words) else ""
             if heard is not None:
                 h: str | None = heard
@@ -1000,8 +1173,22 @@ class LiveSession:
         ادامه می‌دهد. آیهٔ مبدأ که هیچ کلمه‌ای برایش ثبت نشده،
         «لمس‌شده» نمی‌ماند: کاربر اصلاً از آن‌جا شروع نکرده، پس
         جاافتاده هم ثبت نمی‌شود.
+        پرشِ درون‌آیه‌ای به واحدِ جلوتر (مثلاً یافتنِ آغازِ خواندن
+        پس از بسمله) فرق می‌کند: واحدهای ردشدهٔ همان آیه هرگز
+        خوانده نشده‌اند و در `finish()` جاافتاده ذخیره می‌شوند، پس
+        زنده هم خاکستری می‌شوند تا دیوارِ زنده با نمرهٔ ذخیره
+        بخواند. پرش به آیهٔ دیگر، طبقِ قانونِ کاربر خاکستری نمی‌شود.
         """
         from_ayah = self._ayah
+        if (
+            ayah == from_ayah
+            and self._units is not None
+            and unit_pos > self._unit_pos
+        ):
+            while self._unit_pos < unit_pos:
+                self._emit_unit(
+                    self._units[self._unit_pos].word_indices, "skipped", 0.0
+                )
         self._ayah = ayah
         self._words = await self._load_ayah(ayah)
         self._units = None
@@ -1222,9 +1409,177 @@ class LiveSession:
                 (self._ayah, wi) in self._assigned for wi in unit.word_indices
             ):
                 continue
-            if buf.startswith(phon) and (best is None or len(phon) >= best[1]):
-                best = (j, len(phon))
+            # شکلِ وصل هم آزموده می‌شود (فاز ۹): کلمه‌ای که در خواندنِ
+            # پیوسته تکرار می‌شود، همزهٔ وصلِ آغازینش خوانده نمی‌شود
+            # (مثل «ءَررَحمَانِ» که «ررَحمَانِ» شنیده می‌شود)؛ بدونِ
+            # این شکل، تکرارِ همان کلمه از چشم می‌افتد.
+            for form in _waslah_forms(phon):
+                if len(form) < 3:
+                    continue
+                if buf.startswith(form) and (best is None or len(form) >= best[1]):
+                    best = (j, len(form))
         return best
+
+    def _ayah_phoneme_string(self, ayah: int, waslah: bool = False) -> str | None:
+        """رشتهٔ واجیِ کاملِ یک آیه از نگاشت (فروپاشیده).
+
+        `waslah=True` یعنی شکلِ پیوسته (بی‌همزهٔ وصلِ آغازین)؛
+        None یعنی آیه در نگاشت نیست (از ۵۱ آیهٔ بی‌نگاشت).
+        """
+        if self.mapping is None:
+            return None
+        segs = self.mapping.segments_for(self.surah, ayah)
+        if not segs:
+            return None
+        s = "".join(
+            collapse_phoneme_runs(x.phoneme) for x in segs if x.phoneme is not None
+        )
+        if not s:
+            return None
+        if waslah:
+            return _waslah_forms(s)[-1]
+        return s
+
+    def _revisit_run_string(
+        self, start_ayah: int, first_form: str, current_part: str
+    ) -> str | None:
+        """رشتهٔ بازخوانی از آیهٔ `start_ayah` تا آیهٔ جاری (فاز ۹).
+
+        آیهٔ آغازین با شکلِ داده‌شده (ساده یا وصل) می‌آید؛ آیه‌های
+        میانی فقط شکلِ وصل دارند (خواندنِ پیوسته)؛ بخشِ آیهٔ جاری
+        فقط تا جایی است که پیش‌تر خوانده شده (واحدهای صادرشده +
+        پیشوندِ واحدِ جاری) — بیشتر از آن، ادامهٔ واقعی است، نه
+        بازخوانی، و نباید در رشتهٔ بازخوانی باشد. آیهٔ میانیِ
+        بی‌نگاشت، رشته را ناممکن می‌کند (None).
+        """
+        parts = [first_form]
+        for ayah in range(start_ayah + 1, self._ayah):
+            s = self._ayah_phoneme_string(ayah, waslah=True)
+            if s is None:
+                return None
+            parts.append(s)
+        if current_part:
+            parts.append(_waslah_forms(current_part)[-1])
+        return "".join(parts)
+
+    def _find_revisit_span(self, buf: str, phon: str) -> tuple[int, int, int, int] | None:
+        """بازخوانیِ آیهٔ پیش‌تر در بافر (فاز ۹) — برمی‌گرداند
+        `(d, k, ayah, first_len)` یا None.
+
+        `d` طولِ «اتصال» است: پیشوندِ مصرف‌نشدهٔ واحدِ جاری که سرِ
+        بافر مانده (پس `buf[:d]` باید پیشوندِ `phon` باشد)؛ `k`
+        طولِ تطابقِ بافرِ پس از اتصال با رشتهٔ بازخوانی است (از
+        آیه‌ای خوانده‌شده شروع می‌شود، از آیه‌های میانی می‌گذرد و
+        تا بخشِ خوانده‌شدهٔ آیهٔ جاری می‌رسد)؛ `ayah` آیهٔ آغازِ
+        بازخوانی است؛ `first_len` طولِ رشتهٔ آیهٔ آغازینِ آن نامزد
+        است (برای تشخیصِ بازخوانیِ ناتمام از کامل: «wait» فقط وقتی
+        درست است که `k < first_len` باشد — یعنی بافر وسطِ همان
+        آیهٔ آغازین تمام شده؛ وقتی آیهٔ آغازین کامل خوانده شده،
+        بازخوانی مدرکِ کامل است و باید مصرف یا به شاخهٔ قدیمی
+        سپرده شود، نه اینکه تا پایانِ خوراک منتظر بماند — حتی اگر
+        رشتهٔ بازخوانی آیه‌های میانی را هم دربرگیرد).
+        بهترین یعنی بزرگ‌ترین `k` (تساوی: جدیدترین
+        آیه، کوچک‌ترین `d`). کمتر از `_LOCATE_MIN_MATCH` حرف،
+        مدرکِ بازخوانی نیست. تطابق با
+        `_match_prefix_with_one_gap` است: یک واجِ نگاشت که بازشناس
+        ننوشته (مثل نونِ پایانیِ آیه پس از مد) تطابق را نمی‌شکند،
+        اگر پس از پرش ازسرگیری شود. برخلافِ `locate_ayah`، کاوش از ابتدای
+        بافر نیست — اتصال، سرِ بافر را آلوده می‌کند و همان آلودگی
+        بود که شاخهٔ `revisit` پیشین را کور کرده بود (کاوشِ ۸حرفی‌اش
+        روی دو تکهٔ به‌هم‌چسبیده می‌افتاد و هیچ آیه‌ای را نمی‌یافت).
+        """
+        if self.mapping is None or not buf or self._units is None:
+            return None
+        emitted = "".join(
+            collapse_phoneme_runs(u.phoneme)
+            for u in self._units[: self._unit_pos]
+            if u.phoneme is not None
+        )
+        best: tuple[int, int, int, int] | None = None
+        for d in range(min(_REVISIT_MAX_JUNCTION, len(phon)) + 1):
+            if buf[:d] != phon[:d]:
+                continue
+            rest = buf[d:]
+            if len(rest) < _LOCATE_MIN_MATCH:
+                continue
+            for ayah in sorted(self._touched_ayahs, reverse=True):
+                if ayah >= self._ayah:
+                    continue
+                plain = self._ayah_phoneme_string(ayah, waslah=False)
+                if plain is None:
+                    continue
+                for first_form in _waslah_forms(plain):
+                    run = self._revisit_run_string(
+                        ayah, first_form, emitted + phon[:d]
+                    )
+                    if run is None:
+                        continue
+                    k = _match_prefix_with_one_gap(rest, run)
+                    if k < _LOCATE_MIN_MATCH:
+                        continue
+                    if (
+                        best is None
+                        or k > best[1]
+                        or (k == best[1] and d < best[0])
+                    ):
+                        best = (d, k, ayah, len(first_form))
+        return best
+
+    def _restores_alignment(self, rest: str, phon: str) -> bool:
+        """آیا بافرِ پس از حذفِ بازخوانی، با واحدِ جاری هم‌تراز است؟
+
+        همان دو آزمونِ حلقهٔ اصلی: تطابقِ دقیق، یا نزدیک (≤۲) با
+        لنگرِ روی واحدِ بعد. اگر هیچ‌کدام برقرار نباشد، حذفِ
+        بازخوانی هم‌ترازی را برنمی‌گرداند و نباید انجام شود.
+        """
+        if rest.startswith(phon):
+            return True
+        return (
+            len(rest) >= len(phon)
+            and len(phon) > 3
+            and alignment.levenshtein(rest[: len(phon)], phon)
+            <= _NEAR_MISS_MAX_DISTANCE
+            and self._anchor_close(rest, phon) is not None
+        )
+
+    def _try_consume_revisit(self, buf: str, phon: str) -> str | None:
+        """بازخوانیِ آیهٔ پیش‌تر را در بافر پیدا و مصرف کن (فاز ۹).
+
+        برمی‌گرداند: `"consumed"` اگر بازخوانی مصرف شد (حلقه باید
+        از نو بچرخد)، `"wait"` اگر بازخوانی هنوز در حال رسیدن است
+        (کلِ بافر تا اینجا با بازخوانی می‌خواند؛ حلقه باید بایستد و
+        منتظرِ واجِ بیشتر بماند)، None اگر بازخوانی نیست (منطقِ
+        موجود کار می‌کند). مصرف، فقط بخشِ بازخوانی را از وسطِ بافر
+        برمی‌دارد (اتصال + ادامهٔ واقعی سرِ جایشان می‌مانند) و یک
+        رویدادِ `revisit` می‌فرستد؛ اشاره‌گر جلو نمی‌رود و هیچ
+        کلمه‌ای علامت نمی‌خورد. اگر هم‌ترازی با هیچ برش‌ای (تا ۲
+        حرف عقب‌نشینی برای همخوانِ مرزیِ مشترک) برنگشت، چیزی مصرف
+        نمی‌شود — تصمیمِ اشتباهِ برگشت‌ناپذیر گرفته نمی‌شود.
+        """
+        span = self._find_revisit_span(buf, phon)
+        if span is None:
+            return None
+        d, k, r_ayah, first_len = span
+        # بازخوانی هنوز در حال رسیدن است (کلِ بافر تا اینجا با
+        # بازخوانی می‌خواند و آیهٔ آغازین کامل نشده): صبر کن.
+        # اگر بازخوانی کامل شده و ادامه‌ای نرسیده (`k == first_len`
+        # ولی `d + k == len(buf)`)، صبر نمی‌کنیم: کاربر ممکن است
+        # همان‌جا متوقف شده باشد و رویدادِ `revisit` باید بیاید —
+        # شاخهٔ بازگشتِ پایین (با مصرفِ دقیقِ تطابق) همان را
+        # انجام می‌دهد و ادامهٔ بعدی هم از راهِ هم‌ترازیِ دوباره /
+        # نزدیک‌یابیِ لنگردار جبران می‌شود.
+        if d + k == len(buf) and k < first_len:
+            return "wait"
+        for kk in range(k, max(_LOCATE_MIN_MATCH, k - _REVISIT_TRIM_BACKOFF) - 1, -1):
+            rest = buf[:d] + buf[d + kk:]
+            if self._restores_alignment(rest, phon):
+                self._phoneme_buffer = rest
+                self._revisit_events += 1
+                self._emit(
+                    {"type": "revisit", "surah": self.surah, "ayah": r_ayah}
+                )
+                return "consumed"
+        return None
 
     def _emit_partial_if_waiting(self) -> None:
         """رویداد `partial`: بافر، پیشوندِ واحدِ جاری است.
@@ -1299,6 +1654,16 @@ class LiveSession:
             word_indices, phon = unit.word_indices, unit.phoneme
             if phon is None:
                 # رد خودکار (نشانهٔ وقف): خاکستری، بی‌مصرف واج.
+                # اگر همین وقف پیش‌تر درونِ بازهٔ قطعهٔ ادغامیِ
+                # پیشین صادر شده باشد
+                # (`_emit_spanned_pauses_before`)، دوباره نفرست:
+                # فقط اشاره‌گر جلو می‌رود.
+                if all(
+                    (self._ayah, wi) in self._emitted_event_ids
+                    for wi in word_indices
+                ):
+                    self._unit_pos += 1
+                    continue
                 self._emit_unit(word_indices, "skipped", 0.0)
                 continue
             buf = self._phoneme_buffer
@@ -1452,6 +1817,16 @@ class LiveSession:
             if len(buf) >= 2 * max(len(phon), 1):
                 # بافر حداقل دو برابرِ طولِ موردانتظار شده و هنوز با
                 # واحد جاری نمی‌خواند و هم‌ترازیِ دوباره هم نشد.
+                # بازخوانیِ آیهٔ پیش‌تر (فاز ۹) پیش از هر تصمیمِ
+                # برگشت‌ناپذیر آزموده می‌شود: اگر بافر، بازخوانیِ
+                # آیه‌ای خوانده‌شده + ادامهٔ واقعی باشد، بازخوانی
+                # مصرف می‌شود و هیچ کلمه‌ای غلط نمی‌خورد؛ اگر
+                # بازخوانی هنوز در حال رسیدن است، صبر می‌کنیم.
+                revisit = self._try_consume_revisit(buf, phon)
+                if revisit == "consumed":
+                    continue
+                if revisit == "wait":
+                    break
                 # قانونِ فاز ۶ (اصلاحِ عیبِ سورهٔ ۲۴): «جاافتاده»
                 # فقط با مدرکِ مثبتِ جلو رفتن صادر می‌شود — پیش از
                 # این، همین شاخه بدونِ هیچ مدرکی واحد را خاکستری
@@ -1478,13 +1853,20 @@ class LiveSession:
                 # نمی‌رود؛ فقط گزارش و مصرف، بی‌آنکه واحدِ جاری
                 # علامت بخورد. مدرکِ ضعیف‌تر (۸ حرف) کافی است، چون
                 # این شاخه اشاره‌گر را جلو نمی‌برد و کلمه‌ای
-                # نمی‌نویسد.
-                back = locate_ayah(
+                # نمی‌نویسد. مصرف دقیقاً همان است که یافتن اثبات
+                # کرد (خردهٔ سر + تطابق)، نه یک طولِ کلمه: مصرفِ
+                # `len(phon)` از وسطِ بازخوانی می‌برید و هم‌ترازیِ
+                # بقیهٔ نشست را می‌شکست (تکرارِ چندباره).
+                # تساویِ واج‌های مشترکِ دو آیه با
+                # `tie_break_recency` حل می‌شود (تازه‌ترینِ
+                # خوانده‌شده) — مصرف برای برندگانِ مساوی یکی است.
+                back = locate_ayah_span(
                     self.mapping, self.surah, buf,
                     hint_ayah=self._ayah, allow_backward=True,
-                    min_len=_LOCATE_MIN_MATCH,
+                    min_len=_LOCATE_MIN_MATCH, tie_break_recency=True,
                 )
                 if back is not None and back[0] < self._ayah:
+                    _b_ayah, _b_pos, best_len, buf_off = back
                     self._revisit_events += 1
                     self._emit(
                         {
@@ -1493,7 +1875,7 @@ class LiveSession:
                             "ayah": back[0],
                         }
                     )
-                    self._phoneme_buffer = buf[len(phon):]
+                    self._phoneme_buffer = buf[buf_off + best_len:]
                     continue
                 # پرشِ مشروع فقط با مدرکِ مثبت: بافر باید آیه‌ای
                 # جلوتر در همین سوره را ثابت کند (۲۴ حرف، یا تمامِ
