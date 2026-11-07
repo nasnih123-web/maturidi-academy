@@ -40,6 +40,8 @@ export class ApiError extends Error {
 
 interface RequestOptions {
   body?: unknown;
+  /** Multipart body — when set, Content-Type is left to fetch (boundary). */
+  form?: FormData;
   /** Default true — set false for login/register/refresh/public endpoints. */
   auth?: boolean;
   idempotencyKey?: string;
@@ -122,9 +124,9 @@ async function request<T>(method: string, path: string, opts: RequestOptions = {
 
   const attempt = async (retried: boolean): Promise<T> => {
     const headers: Record<string, string> = {
-      "Content-Type": "application/json",
       Accept: "application/json",
     };
+    if (!opts.form) headers["Content-Type"] = "application/json";
     if (withAuth) {
       const at = await getAccessToken();
       if (at) headers.Authorization = `Bearer ${at}`;
@@ -136,7 +138,7 @@ async function request<T>(method: string, path: string, opts: RequestOptions = {
       res = await fetch(buildUrl(path, opts.query), {
         method,
         headers,
-        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+        body: opts.form ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
       });
     } catch (e) {
       throw new ApiError("network_error", e instanceof Error ? e.message : "network_error", 0);
@@ -167,6 +169,13 @@ export const api = {
   patch: <T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> =>
     request<T>("PATCH", path, { ...opts, body }),
   del: <T>(path: string, opts?: RequestOptions): Promise<T> => request<T>("DELETE", path, opts),
+  /**
+   * Multipart POST (e.g. Hifz grade: audio file + form fields). Same auth
+   * + single-refresh lifecycle as request(); the Content-Type header is
+   * left to fetch so the multipart boundary is set correctly.
+   */
+  postForm: <T>(path: string, form: FormData, opts?: RequestOptions): Promise<T> =>
+    request<T>("POST", path, { ...opts, form }),
 };
 
 /** True when the device currently holds any refresh token (signed-in). */

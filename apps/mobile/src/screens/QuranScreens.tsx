@@ -196,6 +196,11 @@ export function SurahScreen({ route, navigation }: SurahProps): React.JSX.Elemen
       subtitle={detail ? `${detail.ayahs.length} ${t("quran.ayahs", locale)}` : undefined}
     >
       <Button title={t("common.back", locale)} variant="ghost" size="sm" onPress={() => navigation.goBack()} />
+      <Button
+        title={t("quran.hifzPractice", locale)}
+        size="sm"
+        onPress={() => navigation.navigate("HifzStudy", { number, nameAr })}
+      />
       {loading ? (
         <ActivityIndicator size="large" color={common.primary} />
       ) : error || !detail ? (

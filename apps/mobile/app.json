@@ -45,6 +45,14 @@
     "orientation": "portrait",
     "plugins": [
       [
+        "@siteed/audio-studio",
+        {
+          "iosConfig": {
+            "microphoneUsageDescription": "دسترسی به میکروفون برای تمرین حفظ قرآن (تشخیص تلاوت) لازم است."
+          }
+        }
+      ],
+      [
         "expo-notifications",
         {
           "color": "#047857",

@@ -15,6 +15,7 @@ import { t, type I18nKey } from "../i18n/strings";
 
 import { AuthScreen } from "../screens/AuthScreen";
 import { HomeScreen } from "../screens/HomeScreen";
+import { HifzStudyScreen } from "../screens/HifzScreens";
 import { QuranListScreen, SurahScreen } from "../screens/QuranScreens";
 import { TasbihScreen } from "../screens/TasbihScreen";
 import { AdhanScreen } from "../screens/AdhanScreen";
@@ -32,6 +33,7 @@ export type RootStackParamList = {
 export type QuranStackParamList = {
   QuranHome: undefined;
   Surah: { number: number; nameAr: string };
+  HifzStudy: { number: number; nameAr: string; ayah?: number };
 };
 
 export type LibraryStackParamList = {
@@ -70,6 +72,7 @@ function QuranNavigator(): React.JSX.Element {
     <QuranStack.Navigator screenOptions={{ headerShown: false }}>
       <QuranStack.Screen name="QuranHome" component={QuranListScreen} />
       <QuranStack.Screen name="Surah" component={SurahScreen} />
+      <QuranStack.Screen name="HifzStudy" component={HifzStudyScreen} />
     </QuranStack.Navigator>
   );
 }
