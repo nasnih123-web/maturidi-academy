@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import delete, func, select
@@ -504,7 +505,7 @@ async def suggested_cards(db: AsyncSession, user: User) -> dict:
         .order_by(func.count().desc())
         .limit(20)
     )
-    cards = []
+    cards: list[dict[str, Any]] = []
     for s, a, n in worst.all():
         if (s, a) not in memorized:
             continue
