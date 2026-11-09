@@ -118,6 +118,7 @@ export function QuranPickerSheet({
   onSelectRange,
   onClose,
   labels,
+  surahHref,
 }: {
   locale: string;
   surahList: SurahSummary[];
@@ -131,6 +132,11 @@ export function QuranPickerSheet({
   onSelectRange: (kind: RangeKind, target: number, firstPage: number) => void;
   onClose: () => void;
   labels: PickerSheetLabels;
+  /** Surah-row link override (user 2026-11-10): the hifz page
+      passes (n) => `/${locale}/quran/${n}?tab=hifz` so picking a
+      surah stays in hifz. Default (undefined) keeps the plain
+      `/{locale}/quran/{n}` link the umum reader uses. */
+  surahHref?: (n: number) => string;
 }) {
   const [tab, setTab] = useState<PickerTab>('surah');
   const [query, setQuery] = useState('');
@@ -276,7 +282,7 @@ export function QuranPickerSheet({
               return (
                 <li key={s.number}>
                   <Link
-                    href={`/${locale}/quran/${s.number}`}
+                    href={surahHref ? surahHref(s.number) : `/${locale}/quran/${s.number}`}
                     className={
                       s.number === currentSurah
                         ? 'quran-picker-row quran-picker-row-current'

@@ -4,6 +4,8 @@
  * (hifz-completion refactor step 1) — no behavioral change, no values.
  */
 
+import type { PickerSheetLabels } from '@/components/QuranPickerSheet';
+
 
 /** One rendered word slot on a line page. */
 export interface LineWordSlot {
@@ -189,6 +191,13 @@ export interface HifzLabels {
   searchTitle: string;
   bookmarkAdd: string;
   bookmarkRemove: string;
+  /** Quran index sheet (user 2026-11-10): the surah card in the top
+      bar opens the picker; `pickerLabel` («فهرست قرآن») is the
+      card button's aria-label and `picker` is the sheet's own
+      labels — the same values the reader passes to its picker
+      (page.tsx), so both instances show identical text. */
+  pickerLabel: string;
+  picker: PickerSheetLabels;
   /** Display modes (bottom menu). Kept for the mode toggle's
       aria-label; the old page/scroll/card menu itself is gone —
       the Tarteel display sheet (mushaf/nass/translation) replaces

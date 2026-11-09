@@ -140,6 +140,7 @@ import { ErrorsHeadIcon } from './hifz-study/HifzErrorsIcon';
 import { HifzDisplaySheet, type HifzDisplayMode } from './hifz-study/HifzDisplaySheet';
 import { EyeIcon, EyeOffIcon, HifzStudyHeader } from './hifz-study/HifzStudyHeader';
 import { HifzSearchSheet } from './hifz-study/HifzSearchSheet';
+import { QuranPickerSheet } from './QuranPickerSheet';
 import type { QuranSearchLabels } from './QuranSearchBox';
 import { loadBookmarks, pageBookmarkId, saveBookmarks } from '@/lib/quran-bookmarks';
 import { DEFAULT_SVG_MUSHAF } from '@/lib/quran-svg-page';
@@ -174,7 +175,7 @@ import {
 } from '@/lib/quran-print-lines';
 import { colorizeTajweedWord } from '@/lib/quran-tajweed';
 import { editionDisplayName } from '@/lib/quran-editions';
-import { rangeContaining } from '@/lib/quran-view-modes';
+import { rangeContaining, type RangeKind } from '@/lib/quran-view-modes';
 import { buildPageRender, buildV2PageRender, pageIndexFor } from '@/lib/hifz-page-render';
 import { encodeWav } from '@/lib/hifz-wav';
 import type {
@@ -488,6 +489,10 @@ export function QuranHifzStudy({
   // bookmark id uses the default mushaf key. `null` = no page on
   // screen yet (the card renders without a bookmark icon).
   const [searchSheetOpen, setSearchSheetOpen] = useState(false);
+  /** Quran index sheet (user 2026-11-10): opened from the surah
+      card in the top bar. Owned here — not the reader's instance —
+      so picking stays in hifz. */
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [bookmarked, setBookmarked] = useState<boolean | null>(null);
   // Phase-1 hifz fix: the session-setup form (surah/ayah picker,
   // range + repetition, listen controls) is a collapsible panel,
@@ -2786,6 +2791,38 @@ export function QuranHifzStudy({
     [activePageIndex, useV2, v2Index, surah, mushafPages],
   );
 
+  // Quran index sheet (user 2026-11-10): a range row (juz / hizb /
+  // page) jumps the session to the FIRST AYAH BEGINNING on the
+  // range's first mushaf page — the same page → first-ayah
+  // resolution the ?view=page deep link uses (v2Index.pageFirstAyahs
+  // carries every one of the 604 pages; boundaries.page starts are
+  // the fallback). A range in another surah moves the surah too,
+  // via resumeAyahRef — the same pattern the resume button and the
+  // deep-link effect use. The kind/target are the sheet's own
+  // (firstPage already encodes them); if neither source is loaded
+  // yet the sheet stays open instead of a silent no-op jump — both
+  // load on mount, so this is a load race only.
+  const jumpToPickerRange = useCallback(
+    (_kind: RangeKind, _target: number, firstPage: number): void => {
+      let first: { surah: number; ayah: number } | null = null;
+      if (v2Index !== undefined && v2Index !== null) {
+        const entry = v2Index.pageFirstAyahs.find(([, , p]) => p === firstPage);
+        if (entry) first = { surah: entry[0], ayah: entry[1] };
+      } else if (v2Index === null && boundaries) {
+        const entry = boundaries.page[firstPage - 1];
+        if (entry) first = { surah: entry.surah, ayah: entry.ayah };
+      }
+      if (!first) return; // index still loading — sheet stays open
+      setPickerOpen(false);
+      if (first.surah !== surah) {
+        resumeAyahRef.current = first.ayah;
+        setSurah(first.surah);
+      }
+      setAyah(first.ayah);
+    },
+    [v2Index, boundaries, surah],
+  );
+
   // Swipe to turn the page (mushaf mode only): a horizontal swipe
   // of 50px+ that dominates the vertical movement turns the page —
   // left = next page, right = previous page (RTL mushaf order).
@@ -2823,17 +2860,18 @@ export function QuranHifzStudy({
   // match the backdrop tap + the close button; no focus trap yet —
   // see the phase 7 notes, deliberately not changed).
   useEffect(() => {
-    if (!settingsOpen && !errorSheetOpen && !displaySheetOpen) return;
+    if (!settingsOpen && !errorSheetOpen && !displaySheetOpen && !pickerOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setSettingsOpen(false);
         setErrorSheetOpen(false);
         setDisplaySheetOpen(false);
+        setPickerOpen(false);
       }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [settingsOpen, errorSheetOpen, displaySheetOpen]);
+  }, [settingsOpen, errorSheetOpen, displaySheetOpen, pickerOpen]);
 
   // One printed page as a section: header/basmala/text lines + the
   // printed page number at the bottom (Eastern Arabic digits).
@@ -3066,6 +3104,7 @@ export function QuranHifzStudy({
         onOpenSearch={() => setSearchSheetOpen(true)}
         bookmarked={bookmarked}
         onToggleBookmark={toggleBookmark}
+        onOpenPicker={() => setPickerOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
@@ -3868,6 +3907,25 @@ export function QuranHifzStudy({
         searchLabels={searchLabels}
         onClose={() => setSearchSheetOpen(false)}
       />
+
+      {/* Quran index sheet (user 2026-11-10): opened from the surah
+          card in the top bar. Owned here — not the reader's
+          instance — so picking stays in hifz: surah rows link to
+          ?tab=hifz and range rows jump the session to the range's
+          first ayah (jumpToPickerRange). */}
+      {pickerOpen ? (
+        <QuranPickerSheet
+          locale={locale}
+          surahList={surahList}
+          currentSurah={surah}
+          currentView="page"
+          currentTarget={headerMeta?.page ?? null}
+          onSelectRange={jumpToPickerRange}
+          onClose={() => setPickerOpen(false)}
+          labels={labels.picker}
+          surahHref={(n) => `/${locale}/quran/${n}?tab=hifz`}
+        />
+      ) : null}
 
       {/* Display sheet (Tarteel, 2026-11-08): mushaf / nass /
           translation picker; same sheet pattern as settings/errors. */}
