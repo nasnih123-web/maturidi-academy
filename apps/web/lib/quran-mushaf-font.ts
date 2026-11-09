@@ -54,6 +54,7 @@
  * `qcf-v2` provider above, which is open per the gate note.
  */
 import { useEffect, useState } from 'react';
+import { v4TarteelPaletteRule } from './quran-mushaf-v4';
 
 export interface MushafFontSource {
   /** CSS font-family name (must be unique per page font). */
@@ -61,6 +62,10 @@ export interface MushafFontSource {
   /** Full FontFace source list, e.g.
       `url("/fonts/x.woff2") format("woff2"), url("/fonts/x.ttf") format("truetype")`. */
   sources: string;
+  /** Optional `@font-palette-values` rule text for this family,
+      injected into the document next to the FontFace (see
+      injectFontPaletteRule). Only the V4 provider sets it. */
+  paletteRule?: string;
 }
 
 export interface MushafFontProvider {
@@ -96,6 +101,35 @@ export const qcfV2Provider: MushafFontProvider = {
     family: `QCF2${String(page).padStart(3, '0')}`,
     sources: `url("/fonts/qcf-v2/p${page}.woff2") format("woff2")`,
   }),
+};
+
+/** The per-page QPC V4 Tajweed fonts (COLR) — one family per mushaf
+    page. Family rule (verified 2026-11-08 by fontTools for p1/p120/
+    p293/p604): page N uses family `QCF4` + N zero-padded to 3 digits
+    + `_COLOR` (p293 → QCF4293_COLOR). WOFF2 only for web; each file
+    holds ONLY its page's glyphs (page-relative PUA codes), so a
+    page's glyph text must never render in another page's family.
+    Files: public/fonts/qcf-v4-tajweed/p{NNN}.woff2. The COLR palette
+    is the tajweed palette itself — base palette 0 with the Wave-1
+    Tarteel-approx `override-colors` (see v4TarteelPaletteRule in
+    quran-mushaf-v4.ts: the reference shot, not the printed palette,
+    governs the visual). The override rule is injected per family by
+    the loader (injectFontPaletteRule); glyph spans select it with
+    `font-palette: --quran-v4-tarteel` (globals.css).
+    This provider is NEVER registered globally (see below): the
+    reader depends on the V2 singleton, so V4 loads through
+    ensureMushafFontFor / useMushafFontReadyFor with its OWN loaded
+    map and its own 8-family cap instead. */
+export const qcfV4Provider: MushafFontProvider = {
+  id: 'qcf-v4',
+  familyForPage: (page) => {
+    const family = `QCF4${String(page).padStart(3, '0')}_COLOR`;
+    return {
+      family,
+      sources: `url("/fonts/qcf-v4-tajweed/p${page}.woff2") format("woff2")`,
+      paletteRule: v4TarteelPaletteRule(family),
+    };
+  },
 };
 
 let provider: MushafFontProvider = qcfV2Provider;
@@ -147,16 +181,72 @@ function isFontReady(family: string): boolean {
  * stack and the client upgrades on hydration.
  */
 export function ensureMushafFont(page: number, timeoutMs = 1500): Promise<boolean> {
+  return ensureMushafFontWith(provider, loaded, page, timeoutMs);
+}
+
+/**
+ * Provider-parameterized font load: same contract as
+ * ensureMushafFont, but for an explicitly passed provider with its
+ * OWN loaded map and its own 8-family cap — so the hifz page can
+ * load V4 fonts without touching the reader's V2 singleton. The
+ * `loaded` map above stays the V2/global one; V4 families live in
+ * `loadedV4` and never evict (or get evicted by) V2 families.
+ */
+export function ensureMushafFontFor(
+  providerArg: MushafFontProvider,
+  page: number,
+  timeoutMs = 1500,
+): Promise<boolean> {
+  return ensureMushafFontWith(providerArg, loadedV4, page, timeoutMs);
+}
+
+/** Families already loaded (or loading) by the V4 provider,
+    oldest-first for eviction — separate from the V2 `loaded` map. */
+const loadedV4 = new Map<string, { face: FontFace | null; promise: Promise<boolean> }>();
+
+/** Families whose `@font-palette-values` rule is already in the
+    document (once per family for the page lifetime — an evicted
+    family's rule stays and still applies if the font reloads). */
+const injectedPalettes = new Set<string>();
+
+/**
+ * Inject one `@font-palette-values` rule for a family (a <style>
+ * tag in document.head, tagged `data-font-palette`). No-op on the
+ * server, on a second call for the same family, or when the rule
+ * text is empty. Never throws. Pure except for the DOM write.
+ */
+export function injectFontPaletteRule(family: string, cssText: string): void {
+  if (typeof document === 'undefined' || !cssText || injectedPalettes.has(family)) return;
+  injectedPalettes.add(family);
+  try {
+    const el = document.createElement('style');
+    el.setAttribute('data-font-palette', family);
+    el.textContent = cssText;
+    document.head.appendChild(el);
+  } catch {
+    /* non-DOM environment */
+  }
+}
+
+function ensureMushafFontWith(
+  providerArg: MushafFontProvider,
+  cache: Map<string, { face: FontFace | null; promise: Promise<boolean> }>,
+  page: number,
+  timeoutMs = 1500,
+): Promise<boolean> {
   if (typeof document === 'undefined' || typeof FontFace === 'undefined') {
     return Promise.resolve(true);
   }
-  const source = provider.familyForPage(page);
+  const source = providerArg.familyForPage(page);
   if (!source) return Promise.resolve(true);
-  const existing = loaded.get(source.family);
+  // The palette rule must exist before the first glyph paints, so
+  // inject it with the FontFace, not after the load resolves.
+  if (source.paletteRule) injectFontPaletteRule(source.family, source.paletteRule);
+  const existing = cache.get(source.family);
   if (existing) return existing.promise;
   if (isFontReady(source.family)) {
     const done = Promise.resolve(true);
-    loaded.set(source.family, { face: null, promise: done });
+    cache.set(source.family, { face: null, promise: done });
     return done;
   }
   let face: FontFace;
@@ -177,20 +267,20 @@ export function ensureMushafFont(page: number, timeoutMs = 1500): Promise<boolea
       window.setTimeout(() => resolve(false), timeoutMs);
     }),
   ]);
-  loaded.set(source.family, { face, promise });
+  cache.set(source.family, { face, promise });
   // Evict oldest families past the cap. No family is pinned: with
   // per-page fonts every page has its own family, so the oldest
   // loaded family goes first (an evicted page's font reloads on
   // demand when the page is shown again).
-  if (loaded.size > MAX_LOADED_FAMILIES) {
-    for (const [family, entry] of loaded) {
-      if (loaded.size <= MAX_LOADED_FAMILIES) break;
+  if (cache.size > MAX_LOADED_FAMILIES) {
+    for (const [family, entry] of cache) {
+      if (cache.size <= MAX_LOADED_FAMILIES) break;
       try {
         if (entry.face) document.fonts.delete(entry.face);
       } catch {
         /* already gone */
       }
-      loaded.delete(family);
+      cache.delete(family);
     }
   }
   return promise;
@@ -199,6 +289,11 @@ export function ensureMushafFont(page: number, timeoutMs = 1500): Promise<boolea
 /** Number of families currently tracked (test/diagnostics hook). */
 export function loadedMushafFontCount(): number {
   return loaded.size;
+}
+
+/** Number of V4 families currently tracked (test/diagnostics hook). */
+export function loadedMushafV4FontCount(): number {
+  return loadedV4.size;
 }
 
 /**
@@ -224,5 +319,33 @@ export function useMushafFontReady(page: number): boolean {
       cancelled = true;
     };
   }, [page]);
+  return ready;
+}
+
+/**
+ * Provider-parameterized version of useMushafFontReady, for the V4
+ * provider: same settle-true-on-timeout contract, but the load goes
+ * through ensureMushafFontFor (own cache, own cap) and never touches
+ * the global provider. NOTE: this hook settling true does NOT prove
+ * the font actually loaded (timeout also settles it) — callers that
+ * must only paint glyphs in a truly loaded font should also await
+ * ensureMushafFontFor's boolean.
+ */
+export function useMushafFontReadyFor(providerArg: MushafFontProvider, page: number): boolean {
+  const [ready, setReady] = useState<boolean>(
+    () =>
+      typeof document === 'undefined' ||
+      isFontReady(providerArg.familyForPage(page)?.family ?? ''),
+  );
+  useEffect(() => {
+    let cancelled = false;
+    setReady(false);
+    ensureMushafFontFor(providerArg, page).then(() => {
+      if (!cancelled) setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [providerArg, page]);
   return ready;
 }

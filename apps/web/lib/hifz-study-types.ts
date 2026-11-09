@@ -20,11 +20,28 @@ export interface LineWordSlot {
   qulId?: number;
   /** Phase 3: the pause sign printed after this word, if any. */
   pauseAfter?: string;
+  /** QPC V4 Tajweed glyph string (1–3 page-relative PUA chars) for
+      this word, from the page's V4 map (key "surah:ayah:word",
+      word 1-based). Present only on V2-built pages when the map was
+      supplied; `text` stays the Tanzil text forever and is the
+      logical key for grading/hiding/peek/matching. A word renders
+      its glyph only in its plain state (see shouldUseV4Glyph) and
+      only in its own page's QCF4NNN_COLOR family. */
+  glyph?: string;
 }
 
 export interface LineMarkerSlot {
   kind: 'marker';
   text: string;
+  /** Wave 2 (2026-11-09): the ayah this marker ends, so the V4
+      marker glyph (the ayah's last V4 entry, key realWordCount+1)
+      can be looked up. `glyph` is present only on V2-built pages
+      when the page's V4 map was supplied and holds the key; the
+      renderer falls back to the SVG rosette whenever it is absent
+      (old-lines fallback path, missing key, V4 not loaded). */
+  surah: number;
+  ayah: number;
+  glyph?: string;
 }
 
 /** A rub el hizb ornament (۞) printed between words: visible, but
@@ -78,7 +95,6 @@ export interface HifzLabels {
   startAyahHint: string;
   dispute: string;
   disputed: string;
-  disclaimer: string;
   signInHint: string;
   engineUnavailable: string;
   selectAyahHint: string;
@@ -168,14 +184,37 @@ export interface HifzLabels {
   headerJuz: string;
   headerHizb: string;
   headerPage: string;
-  /** Display modes (bottom menu). */
+  /** Tarteel top bar (2026-11-08): hamburger menu, Quran search
+      sheet, page bookmark toggle, and the study-mode group label
+      (the old displayMode label means "page display" and does not
+      fit the practice/listen group). */
+  menuOpen: string;
+  searchOpen: string;
+  searchTitle: string;
+  bookmarkAdd: string;
+  bookmarkRemove: string;
+  /** Display modes (bottom menu). Kept for the mode toggle's
+      aria-label; the old page/scroll/card menu itself is gone —
+      the Tarteel display sheet (mushaf/nass/translation) replaces
+      it. */
   displayMode: string;
   displayPage: string;
   displayScroll: string;
   displayCard: string;
+  /** Tarteel display sheet (2026-11-08): three display modes —
+      mushaf (printed page, swipe), nass (scrolling Uthmani text),
+      translation (scrolling, read-only). */
+  displaySheetTitle: string;
+  displayMushaf: string;
+  displayMushafDesc: string;
+  displayNass: string;
+  displayNassDesc: string;
+  displayTranslation: string;
+  displayTranslationDesc: string;
+  /** Translation mode: loading / unavailable states. */
+  translationLoading: string;
+  translationUnavailable: string;
   /** Listen/follow mode (reciter audio + word highlight). */
-  modePractice: string;
-  modeListen: string;
   listenReciter: string;
   listenPlay: string;
   listenPause: string;

@@ -127,6 +127,48 @@ export function v2WordKey(surah: number, ayah: number, index: number): string {
     browser downloads the data twice (preload + fetch). */
 export const QURAN_MUSHAF_V2_URL = '/quran-mushaf-v2.json';
 
+/** Per-page V2 chunking (hifz completion, round 2, §8 — performance):
+    the whole 604-page layout (~193KB gzip) used to gate the mushaf on
+    slow 3G (~17.5s). A page only needs its own layout (~0.7KB gzip)
+    plus a tiny index that maps any ayah to its page (~3.7KB gzip), so
+    the critical path shrinks from ~193KB to ~4KB. The full JSON stays
+    in public/ as the fallback source (see loadV2Page) and the source
+    of truth for the generator/validator — the split files are derived
+    from it by scripts/split-quran-mushaf-v2.py (and emitted by
+    scripts/generate-quran-mushaf-v2.py on regeneration). */
+export interface V2MushafIndex {
+  version: number;
+  source: string;
+  /** 604. */
+  pageCount: number;
+  /** "surah:ayah" carrying a rub el hizb ornament (199). */
+  rubAyahs: string[];
+  /** "surah:ayah:token-index" of the 15 printed sajda words. */
+  sajdaWords: string[];
+  /** [surah, ayah, page] — the first ayah BEGINNING on each page that
+      has one (an ayah's first real word — after the Basmalah prefix —
+      sits on that page), in page order. Pages holding only a long
+      ayah's continuation have no entry; the binary search in
+      v2PageIndexForAyah still maps every ayah correctly because no
+      ayah begins there. Verified: all 6,236 ayahs map identically to
+      the full-data scan (split script + quran-mushaf-v2.test.ts). */
+  pageFirstAyahs: [number, number, number][];
+}
+
+/** Minimal V2 metadata (rub/sajda lists) — satisfied by both the full
+    data and the index, so expandV2Page / buildV2PageRender take either. */
+export type V2MushafMeta = Pick<V2MushafData, 'rubAyahs' | 'sajdaWords'>;
+
+/** Public URL of the V2 index (same-origin static file). Preloaded
+    from the hifz-tab head alongside the initial page's chunk — keep
+    the preload href and this constant identical. */
+export const QURAN_MUSHAF_V2_INDEX_URL = '/quran-mushaf-v2-index.json';
+
+/** Public URL of one page's layout chunk (same-origin static file). */
+export function v2PageUrl(page: number): string {
+  return `/quran-mushaf-v2-pages/p${page}.json`;
+}
+
 /** Per-page glyph data: QUL id → glyph string (1–3 PUA chars).
     One JSON file per page, written by
     apps/web/scripts/split-quran-mushaf-v2-glyphs.py from the
@@ -166,6 +208,28 @@ export function loadV2PageGlyphs(page: number): Promise<V2PageGlyphs | null> {
   return promise;
 }
 
+let indexPromise: Promise<V2MushafIndex | null> | null = null;
+
+/** The V2 index (ayah → page map + rub/sajda lists), or null on
+    failure. Fetched once (promise-cached) from the public static file,
+    so the page head can preload it; gzipped on the wire by the Next
+    server (~3.7KB). Served with a 1-day cache + stale-while-revalidate
+    (next.config headers): if the index ever changes, bump
+    QURAN_MUSHAF_V2_INDEX_URL — the URL must be versioned on a data
+    change, because repeat visitors may otherwise hold the old copy
+    for up to a day. */
+export function loadV2Index(): Promise<V2MushafIndex | null> {
+  if (!indexPromise) {
+    indexPromise = fetch(QURAN_MUSHAF_V2_INDEX_URL)
+      .then((res) => {
+        if (!res.ok) return null;
+        return res.json() as Promise<V2MushafIndex>;
+      })
+      .catch(() => null);
+  }
+  return indexPromise;
+}
+
 let dataPromise: Promise<V2MushafData | null> | null = null;
 
 /** All 604 V2 pages (plus rub/sajda lists), or null on failure.
@@ -184,20 +248,44 @@ export function loadMushafV2(): Promise<V2MushafData | null> {
   return dataPromise;
 }
 
-/** One V2 page (1-based), or null when the data failed / is out of range. */
+const pagePromises = new Map<number, Promise<V2Page | null>>();
+
+/** One V2 page (1-based), or null when the data failed / is out of range.
+    Fetched once per page (promise-cached) from its per-page chunk
+    (~0.7KB gzip) — the critical-path replacement for loading the whole
+    193KB file. When the chunk is missing (e.g. a partial deploy), it
+    falls back once to the full data and picks the page from there, so
+    a missing chunk never strands the mushaf; only when that fails too
+    does the caller fall back to the old exact-line rendering. */
 export async function loadV2Page(page: number): Promise<V2Page | null> {
-  const data = await loadMushafV2();
-  if (!data || page < 1 || page > data.pages.length) return null;
-  return data.pages[page - 1];
+  const existing = pagePromises.get(page);
+  if (existing) return existing;
+  const promise = fetch(v2PageUrl(page))
+    .then((res) => {
+      if (!res.ok) return null;
+      return res.json() as Promise<V2Page>;
+    })
+    .catch(() => null)
+    .then(async (chunk) => {
+      if (chunk) return chunk;
+      const data = await loadMushafV2();
+      if (!data || page < 1 || page > data.pages.length) return null;
+      return data.pages[page - 1];
+    });
+  pagePromises.set(page, promise);
+  return promise;
 }
 
-/** A slice of V2 pages, inclusive, in order (empty when unavailable). */
+/** A slice of V2 pages, inclusive, in order (empty when unavailable).
+    Each page is one small chunk fetch; the loader promise-caches per
+    page, so a re-render never re-fetches. */
 export async function loadV2Pages(from: number, to: number): Promise<V2Page[]> {
-  const data = await loadMushafV2();
-  if (!data) return [];
   const out: V2Page[] = [];
-  for (let p = Math.max(1, from); p <= Math.min(to, data.pages.length); p += 1) {
-    out.push(data.pages[p - 1]);
+  const wanted: number[] = [];
+  for (let p = Math.max(1, from); p <= Math.min(to, 604); p += 1) wanted.push(p);
+  const loaded = await Promise.all(wanted.map((p) => loadV2Page(p)));
+  for (const page of loaded) {
+    if (page) out.push(page);
   }
   return out;
 }
@@ -217,6 +305,29 @@ export function v2PageIndexFor(
     }
   }
   return null;
+}
+
+/** First page (0-based) holding the ayah, from the index alone — the
+    per-page replacement for v2PageIndexFor, without loading all 604
+    pages. Binary search over pageFirstAyahs: the page of the greatest
+    entry <= (surah, ayah) in lexicographic ayah order. Ayahs are
+    ordered by (surah, ayah), so no surah-length table is needed. */
+export function v2PageIndexForAyah(
+  index: V2MushafIndex,
+  surah: number,
+  ayah: number,
+): number | null {
+  const firsts = index.pageFirstAyahs;
+  let lo = 0;
+  let hi = firsts.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    const [s, a] = firsts[mid];
+    if (s < surah || (s === surah && a <= ayah)) lo = mid + 1;
+    else hi = mid;
+  }
+  if (lo === 0) return null;
+  return firsts[lo - 1][2] - 1;
 }
 
 /** First ayah on the page (first text segment), or null for an empty page. */
@@ -294,6 +405,12 @@ export type V2RenderLine =
       centered: boolean;
       /** Ayah number of a leading rosette, or null. */
       leadAyah: number | null;
+      /** Surah of the leading rosette's ayah (from the raw
+          `NUM:<surah>:<ayah>` lead string), or null. Wave 2
+          (2026-11-09): the hifz page needs it to look up the
+          leading marker's V4 glyph (key realWordCount+1); the
+          expansion used to keep only the ayah number. */
+      leadSurah: number | null;
       words: V2Word[];
     };
 
@@ -334,7 +451,7 @@ export interface V2Expansion {
  * per-word mix of glyph and Tanzil text.
  */
 export function expandV2Page(
-  data: V2MushafData,
+  data: V2MushafMeta,
   page: V2Page,
   tokens: ReadonlyMap<string, readonly string[]>,
   glyphs?: ReadonlyMap<number, string> | null,
@@ -395,8 +512,10 @@ export function expandV2Page(
     }
     const words: V2Word[] = [];
     let leadAyah: number | null = null;
+    let leadSurah: number | null = null;
     if (line.lead) {
       const parts = line.lead.split(':');
+      leadSurah = Number(parts[1]);
       leadAyah = Number(parts[2]);
     }
     for (const seg of line.seg) {
@@ -438,7 +557,7 @@ export function expandV2Page(
         allWords.push(word);
       }
     }
-    lines.push({ kind: 'text', centered: line.c === 1, leadAyah, words });
+    lines.push({ kind: 'text', centered: line.c === 1, leadAyah, leadSurah, words });
   }
 
   // Glyph mode is all-or-nothing per page: the map must hold every
