@@ -13,6 +13,8 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { HifzErrorSheet } from '../HifzErrorSheet';
 import { ErrorsHeadIcon } from '../HifzErrorsIcon';
@@ -40,6 +42,7 @@ const labels = {
   searchTitle: 'HDR_SEARCH_TITLE',
   bookmarkAdd: 'HDR_BKM_ADD',
   bookmarkRemove: 'HDR_BKM_REMOVE',
+  pickerLabel: 'HDR_PICKER',
   settingsOpen: 'HDR_SETTINGS',
   pillErrors: 'PILL_ERR',
   pillAccuracy: 'PILL_ACC',
@@ -168,6 +171,7 @@ describe('HifzStudyHeader (Tarteel top bar, 2026-11-08)', () => {
         onOpenSearch={() => {}}
         bookmarked={false}
         onToggleBookmark={() => {}}
+        onOpenPicker={() => {}}
         onOpenSettings={() => {}}
         {...props}
       />,
@@ -210,6 +214,79 @@ describe('HifzStudyHeader (Tarteel top bar, 2026-11-08)', () => {
     assert.match(html, /SURAH_NAME/);
     assert.doesNotMatch(html, /hifz-header-meta/);
     assert.doesNotMatch(html, /hifz-header-pos/);
+  });
+
+  it('surah card text is a real button opening the Quran index sheet (user 2026-11-10)', () => {
+    const html = renderHeader();
+    // Real <button type="button"> with the picker dialog semantics,
+    // wrapping the surah name + meta (never a span with onClick).
+    assert.match(html, /<button[^>]*class="hifz-header-text"[^>]*>/);
+    assert.match(html, /<button[^>]*hifz-header-text[^>]*aria-haspopup="dialog"[^>]*>/);
+    assert.match(html, /<button[^>]*hifz-header-text[^>]*aria-label="HDR_PICKER"[^>]*>/);
+    assert.match(html, /سُورَةُ SURAH_NAME/);
+    assert.match(html, /HDR_PAGE ١/);
+    // The bookmark stays a SEPARATE button, a sibling inside the
+    // pill — the card button must close before it opens, so the
+    // two buttons are never nested.
+    const textClose = html.indexOf('</button>', html.indexOf('hifz-header-text'));
+    const bookmarkAt = html.indexOf('hifz-header-bookmark');
+    assert.ok(textClose !== -1 && bookmarkAt > textClose, 'bookmark must sit after the card button closes (sibling, never nested)');
+    assert.match(html, /<button[^>]*class="hifz-header-bookmark"[^>]*aria-pressed="false"/);
+  });
+});
+
+/** First existing candidate wins (repo root or apps/web cwd) — the
+    same helper the wave-2 tests use. Static wiring checks: the
+    card's onClick, the hifz-owned sheet, and the ?tab=hifz links
+    (no DOM in this harness, so clicks are proven by the Playwright
+    shots, not here). */
+function readFirst(candidates: string[]): string | null {
+  for (const rel of candidates) {
+    try {
+      return readFileSync(resolve(process.cwd(), rel), 'utf8');
+    } catch {
+      /* try the next candidate */
+    }
+  }
+  return null;
+}
+
+describe('Surah card opens the hifz-owned Quran picker (user 2026-11-10)', () => {
+  it('header wires the card button to onOpenPicker; the study owns the sheet and stays in hifz', () => {
+    const header = readFirst([
+      'apps/web/components/hifz-study/HifzStudyHeader.tsx',
+      'components/hifz-study/HifzStudyHeader.tsx',
+    ]);
+    assert.ok(header, 'HifzStudyHeader.tsx not found');
+    assert.match(header, /onClick=\{onOpenPicker\}/);
+    const study = readFirst([
+      'apps/web/components/QuranHifzStudy.tsx',
+      'components/QuranHifzStudy.tsx',
+    ]);
+    assert.ok(study, 'QuranHifzStudy.tsx not found');
+    assert.match(study, /onOpenPicker=\{\(\) => setPickerOpen\(true\)\}/);
+    assert.match(study, /<QuranPickerSheet/);
+    assert.match(study, /onSelectRange=\{jumpToPickerRange\}/);
+    assert.match(study, /surahHref=\{\(n\) => `\/\$\{locale\}\/quran\/\$\{n\}\?tab=hifz`\}/);
+    assert.match(study, /setPickerOpen\(false\)/);
+    // Range jump resolves the range's first page to its first ayah
+    // (V2 pageFirstAyahs, boundaries fallback) and moves the surah
+    // too when the range starts in another surah.
+    assert.match(study, /pageFirstAyahs\.find\(\(\[, , p\]\) => p === firstPage\)/);
+    assert.match(study, /resumeAyahRef\.current = first\.ayah;/);
+  });
+
+  it('the hifz labels carry the picker labels (page.tsx passes the same values as the reader)', () => {
+    const page = readFirst([
+      'apps/web/app/[locale]/quran/[surah]/page.tsx',
+      'app/[locale]/quran/[surah]/page.tsx',
+    ]);
+    assert.ok(page, 'page.tsx not found');
+    assert.match(page, /pickerLabel: t\('pickerLabel'\)/);
+    assert.match(page, /picker: \{/);
+    assert.match(page, /title: t\('pickerTitle'\)/);
+    assert.match(page, /noResults: t\('noResults'\)/);
+    assert.match(page, /loading: t\('rangeLoading'\)/);
   });
 });
 

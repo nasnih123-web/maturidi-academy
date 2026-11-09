@@ -2759,7 +2759,12 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
    page | juz | hizb | surah:ayah meta below it; the page bookmark
    sits at the card's inline-end. */
 .quran-hifz-study .hifz-header-sub { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; margin: 0; padding: 3px 6px 3px 12px; background: #f0efec; border-radius: 12px; color: #1c1710; }
-.quran-hifz-study .hifz-header-text { display: flex; flex-direction: column; flex: 1; min-width: 0; align-items: center; text-align: center; }
+/* The card text is a real <button> (user 2026-11-10: tapping it
+   opens the Quran index sheet) — the reset below (background /
+   border / padding / font / color inherit, pointer cursor) keeps
+   the pill pixel-identical to the old <span>. Focus ring comes
+   from the global :focus-visible rule. */
+.quran-hifz-study .hifz-header-text { display: flex; flex-direction: column; flex: 1; min-width: 0; align-items: center; text-align: center; background: transparent; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
 .quran-hifz-study .hifz-header-surah { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: 1.1rem; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .quran-hifz-study .hifz-header-meta { font-family: system-ui, sans-serif; font-size: 0.8rem; line-height: 1.4; color: #6b655a; white-space: nowrap; }
 .quran-hifz-study .hifz-header-pos { font-weight: 700; color: #1c1710; }

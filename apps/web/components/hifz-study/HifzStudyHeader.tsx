@@ -129,6 +129,7 @@ export function HifzStudyHeader({
   onOpenSearch,
   bookmarked,
   onToggleBookmark,
+  onOpenPicker,
   onOpenSettings,
 }: {
   surahName: string;
@@ -147,6 +148,11 @@ export function HifzStudyHeader({
       null = no page known yet (no icon rendered). */
   bookmarked: boolean | null;
   onToggleBookmark: () => void;
+  /** Surah card (user 2026-11-10): tapping the card text opens the
+      Quran index sheet. The text is a real button (not a span with
+      an onClick); the bookmark stays a separate sibling button
+      inside the pill — never nested inside this one. */
+  onOpenPicker: () => void;
   onOpenSettings: () => void;
 }) {
   return (
@@ -163,7 +169,13 @@ export function HifzStudyHeader({
           <HamburgerIcon />
         </button>
         <p className="hifz-header-sub">
-          <span className="hifz-header-text">
+          <button
+            type="button"
+            className="hifz-header-text"
+            onClick={onOpenPicker}
+            aria-haspopup="dialog"
+            aria-label={labels.pickerLabel}
+          >
             <span className="hifz-header-surah">سُورَةُ {surahName}</span>
             {headerMeta &&
               headerMeta.page !== null &&
@@ -183,7 +195,7 @@ export function HifzStudyHeader({
                   )}
                 </span>
               )}
-          </span>
+          </button>
           {bookmarked !== null && (
             <button
               type="button"
