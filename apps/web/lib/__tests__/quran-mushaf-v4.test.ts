@@ -112,10 +112,17 @@ describe('shouldUseV4Glyph (brief §5 rule)', () => {
     assert.equal(shouldUseV4Glyph('G', { ...plain, listenNow: true }), false);
   });
 
-  it('wrong / close / peeked / skipped grades are text', () => {
-    for (const status of ['wrong', 'close', 'peeked', 'skipped'] as const) {
+  it('wrong / close / skipped grades are text', () => {
+    for (const status of ['wrong', 'close', 'skipped'] as const) {
       assert.equal(shouldUseV4Glyph('G', { ...plain, status }), false, status);
     }
+  });
+
+  it('peeked words keep their glyph (user directive 2026-11-09: pages and font first, like the reference shots)', () => {
+    // The faint beige tint marks a peeked word (no outline — user
+    // directive 2026-11-09 ~19:28); the glyph keeps its
+    // tajweed colours — the grade colour must NOT win here.
+    assert.equal(shouldUseV4Glyph('G', { ...plain, status: 'peeked' }), true);
   });
 
   it('correct and older-live words keep their glyph', () => {

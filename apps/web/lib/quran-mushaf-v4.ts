@@ -34,9 +34,14 @@
  * The glyph strings are COLR-layered: their tajweed colours come
  * from the font's palette 0, never from CSS `color`. That is why
  * the render rule below exists — any state the page expresses with
- * ink colour (grades, newest live word, listen-now, peeked) or
+ * ink colour (grades, newest live word, listen-now) or
  * with `color: transparent` (concealed words) must fall back to
  * Tanzil text, which the rule-based tajweed engine can colour.
+ * Peeked words are the exception (user directive 2026-11-09:
+ * pages and font first, like the reference shots): they keep
+ * their glyph and tajweed colours, and only the faint beige tint
+ * marks them as peeked (no outline — user directive
+ * 2026-11-09 ~19:28).
  * `visibility: hidden` (unwritten/spacer words) hides COLR glyphs
  * fine, so hidden words may stay glyphs.
  */
@@ -123,11 +128,14 @@ export function loadV4PageGlyphs(page: number): Promise<V4PageGlyphs | null> {
 }
 
 /** The grading states whose signal IS the ink colour: a COLR glyph
-    cannot turn red/amber/gray/brown, so those words render as text. */
+    cannot turn red/amber/gray/brown, so those words render as text.
+    Peeked is NOT here (user directive 2026-11-09: pages and font
+    first, like the reference shots): a peeked word keeps its glyph
+    and tajweed colours, and only its faint beige tint marks it
+    (no outline — user directive 2026-11-09 ~19:28). */
 export const V4_TEXT_STATUSES: ReadonlySet<WallWord['status']> = new Set([
   'wrong',
   'close',
-  'peeked',
   'skipped',
 ]);
 
@@ -135,8 +143,11 @@ export const V4_TEXT_STATUSES: ReadonlySet<WallWord['status']> = new Set([
  * The §5 rule (investigation brief): a word renders as a V4 glyph
  * if and only if it HAS a glyph and is in its plain state — not
  * concealed, not the newest live word, not graded wrong/close/
- * peeked/skipped, and not the listen-now word. Every other word
- * renders as Tanzil text via renderTajweedText.
+ * skipped, and not the listen-now word. Every other word
+ * renders as Tanzil text via renderTajweedText. Peeked words DO
+ * keep their glyph (user directive 2026-11-09 ~19:15): the faint
+ * beige tint is the peek cue, not the ink (no outline — user
+ * directive 2026-11-09 ~19:28).
  *
  * `status` is the wall word's status, or null for unwritten words
  * (no grade to express — hidden words may stay glyphs, and

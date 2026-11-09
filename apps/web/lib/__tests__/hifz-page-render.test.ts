@@ -259,9 +259,16 @@ describe('buildV2PageRender (QPC V2): Fatiha, page 1', () => {
     const basmalas = r.renderLines.filter((l) => l.kind === 'basmala');
     assert.equal(basmalas.length, 1);
     assert.equal(basmalas[0].slots.length, 4);
+    // The next surah's Basmalah is DISPLAY-ONLY: visible plain text,
+    // never a hidden spacer (phone feedback 2026-11-09).
     assert.ok(
       basmalas[0].slots.every(
-        (s) => s.kind === 'word' && s.surah === 18 && s.ayah === 1 && s.hidden,
+        (s) =>
+          s.kind === 'word' &&
+          s.surah === 18 &&
+          s.ayah === 1 &&
+          !s.hidden &&
+          s.displayOnly === true,
       ),
     );
     assert.deepEqual(
