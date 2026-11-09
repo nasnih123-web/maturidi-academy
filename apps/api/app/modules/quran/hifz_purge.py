@@ -44,9 +44,11 @@
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import log_audit
@@ -184,48 +186,75 @@ async def purge_hifz_data(
         await _release_live_slots(user_id)
 
         # ۱–۴. فرزندها (از راه والدِ دارای مالک).
-        res = await db.execute(
-            delete(HifzWordScore).where(HifzWordScore.attempt_id.in_(attempt_ids))
+        res = cast(
+            CursorResult[Any],
+            await db.execute(
+                delete(HifzWordScore).where(HifzWordScore.attempt_id.in_(attempt_ids))
+            ),
         )
         deleted["hifz_word_scores"] = int(res.rowcount or 0)
         # خطا دو FK دارد (attempt_id + user_id)؛ مرحلهٔ دوم با user_id
         # هر ردیفِ مانده (در عمل نباید باشد) را پوشش می‌دهد.
-        res = await db.execute(
-            delete(HifzMistake).where(HifzMistake.attempt_id.in_(attempt_ids))
+        res = cast(
+            CursorResult[Any],
+            await db.execute(
+                delete(HifzMistake).where(HifzMistake.attempt_id.in_(attempt_ids))
+            ),
         )
         n_mistakes = int(res.rowcount or 0)
-        res = await db.execute(
-            delete(HifzMistake).where(HifzMistake.user_id == user_id)
+        res = cast(
+            CursorResult[Any],
+            await db.execute(delete(HifzMistake).where(HifzMistake.user_id == user_id)),
         )
         deleted["hifz_mistakes"] = n_mistakes + int(res.rowcount or 0)
-        res = await db.execute(
-            delete(HifzTestQuestion).where(HifzTestQuestion.test_id.in_(test_ids))
+        res = cast(
+            CursorResult[Any],
+            await db.execute(
+                delete(HifzTestQuestion).where(HifzTestQuestion.test_id.in_(test_ids))
+            ),
         )
         deleted["hifz_test_questions"] = int(res.rowcount or 0)
-        res = await db.execute(
-            delete(HifzPlanItem).where(HifzPlanItem.plan_id.in_(plan_ids))
+        res = cast(
+            CursorResult[Any],
+            await db.execute(
+                delete(HifzPlanItem).where(HifzPlanItem.plan_id.in_(plan_ids))
+            ),
         )
         deleted["hifz_plan_items"] = int(res.rowcount or 0)
 
         # ۵–۱۰. والدها.
-        res = await db.execute(
-            delete(HifzAttempt).where(HifzAttempt.user_id == user_id)
+        res = cast(
+            CursorResult[Any],
+            await db.execute(delete(HifzAttempt).where(HifzAttempt.user_id == user_id)),
         )
         deleted["hifz_attempts"] = int(res.rowcount or 0)
-        res = await db.execute(delete(HifzTest).where(HifzTest.user_id == user_id))
+        res = cast(
+            CursorResult[Any],
+            await db.execute(delete(HifzTest).where(HifzTest.user_id == user_id)),
+        )
         deleted["hifz_tests"] = int(res.rowcount or 0)
-        res = await db.execute(delete(HifzPlan).where(HifzPlan.user_id == user_id))
+        res = cast(
+            CursorResult[Any],
+            await db.execute(delete(HifzPlan).where(HifzPlan.user_id == user_id)),
+        )
         deleted["hifz_plans"] = int(res.rowcount or 0)
-        res = await db.execute(
-            delete(HifzReview).where(HifzReview.user_id == user_id)
+        res = cast(
+            CursorResult[Any],
+            await db.execute(delete(HifzReview).where(HifzReview.user_id == user_id)),
         )
         deleted["hifz_reviews"] = int(res.rowcount or 0)
-        res = await db.execute(
-            delete(HifzTasmiSession).where(HifzTasmiSession.user_id == user_id)
+        res = cast(
+            CursorResult[Any],
+            await db.execute(
+                delete(HifzTasmiSession).where(HifzTasmiSession.user_id == user_id)
+            ),
         )
         deleted["hifz_tasmi_sessions"] = int(res.rowcount or 0)
-        res = await db.execute(
-            delete(HifzUserSettings).where(HifzUserSettings.user_id == user_id)
+        res = cast(
+            CursorResult[Any],
+            await db.execute(
+                delete(HifzUserSettings).where(HifzUserSettings.user_id == user_id)
+            ),
         )
         deleted["hifz_user_settings"] = int(res.rowcount or 0)
 

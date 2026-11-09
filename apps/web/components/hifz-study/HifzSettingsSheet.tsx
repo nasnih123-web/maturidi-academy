@@ -29,13 +29,13 @@ export function HifzSettingsSheet({
   <div
     className="hifz-sheet-backdrop"
     aria-hidden="true"
-    onClick={() => onClose}
+    onClick={onClose}
   />
   <div className="hifz-error-sheet" role="dialog" aria-modal="true" aria-label={labels.settingsTitle}>
     <span className="hifz-sheet-handle" aria-hidden="true" />
     <div className="hifz-error-sheet-head">
       <h3>{labels.settingsTitle}</h3>
-      <button type="button" onClick={() => onClose}>
+      <button type="button" onClick={onClose}>
         {labels.errorsClose}
       </button>
     </div>

@@ -45,6 +45,7 @@ import {
 } from "../services/listenAudio";
 import {
   clearLocalPosition,
+  clearServerPositionBestEffort,
   fetchReciters,
   fetchRecitationTiming,
   loadLocalPosition,
@@ -343,17 +344,20 @@ export function useListenPlayer(): ListenControls {
         setStatusBoth("idle");
         setAyahAndWord(finishedAyah, null);
         // Surah finished: no stale resume — the next visit starts at ayah 1.
+        // Clear the server row too: a push after a local clear would be
+        // a no-op (nothing left to push), so without this the other
+        // device would adopt the finished position at its next login.
         void (async () => {
           await clearLocalPosition();
           setSavedPosition(null);
-          pushBestEffort();
+          await clearServerPositionBestEffort();
         })();
         return false;
       }
       playAyahRef.current(outcome.ayah);
       return true;
     },
-    [refreshRemaining, setAyahAndWord, setStatusBoth, pushBestEffort],
+    [refreshRemaining, setAyahAndWord, setStatusBoth],
   );
   const advanceRef = useRef(advanceAfterAyah);
   advanceRef.current = advanceAfterAyah;
@@ -439,14 +443,19 @@ export function useListenPlayer(): ListenControls {
         pendingSeekRef.current = null;
         const target = pending !== null ? Math.min(Math.max(pending, entry.fromMs), entry.toMs) : entry.fromMs;
         loadingRef.current = true;
-        void seekListen(target / 1000).then(() => {
-          loadingRef.current = false;
-        });
+        // Resume only once the seek has landed: resuming first would
+        // briefly play from the old position instead of the target ayah.
+        void seekListen(target / 1000)
+          .catch(() => undefined)
+          .finally(() => {
+            loadingRef.current = false;
+            // The user may have stopped while the seek was in flight.
+            if (sourceLoadedRef.current) resumeListen();
+          });
         sourceLoadedRef.current = true;
         setAyahAndWord(ayah, null);
         setStatusBoth("playing");
         applySpeed();
-        resumeListen();
       } else if (modeRef.current === "interpolated") {
         const url = ayahAudioUrlsRef.current[ayah];
         if (!url) {
@@ -519,17 +528,24 @@ export function useListenPlayer(): ListenControls {
       resumeTargetRef.current = null;
       const entry =
         timing.ayahs.find((a) => a.ayah === (target?.ayah ?? currentAyahRef.current)) ?? timing.ayahs[0];
-      if (entry) {
-        const seekMs = target
+      const seekMs = entry
+        ? target
           ? Math.min(Math.max(target.progressMs, entry.fromMs), entry.toMs)
-          : entry.fromMs;
-        void seekListen(seekMs / 1000).catch(() => undefined);
-        setAyahAndWord(entry.ayah, null);
-      }
-      setStatusBoth("playing");
-      applySpeed();
-      playListenSource(source);
-      setListenLockScreen(true, surahName || `سورهٔ ${sur}`, rec);
+          : entry.fromMs
+        : 0;
+      if (entry) setAyahAndWord(entry.ayah, null);
+      // Seek before playing: starting first would briefly play from
+      // position 0 (the freshly loaded source) instead of the resume
+      // target. The guard covers a stop issued while seeking.
+      void seekListen(seekMs / 1000)
+        .catch(() => undefined)
+        .finally(() => {
+          if (!sourceLoadedRef.current) return;
+          setStatusBoth("playing");
+          applySpeed();
+          playListenSource(source);
+          setListenLockScreen(true, surahName || `سورهٔ ${sur}`, rec);
+        });
       return;
     }
     // Interpolated mode already loaded: resume the ayah file.

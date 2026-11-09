@@ -138,6 +138,12 @@ AYAH_DB = os.environ.get(
 OUT = Path(
     os.environ.get("OUT", REPO / "apps/web/public/quran-mushaf-v2.json")
 )
+# Round 2 §8 — per-page V2 chunks (see scripts/split-quran-mushaf-v2.py,
+# which derives the same files from the shipped JSON): the index maps
+# any ayah to its page, and each page's layout is its own file, so the
+# study/reader pages no longer download the whole 193KB file.
+OUT_INDEX = OUT.parent / "quran-mushaf-v2-index.json"
+OUT_PAGES_DIR = OUT.parent / "quran-mushaf-v2-pages"
 
 # Standalone pause-sign tokens in Tanzil: ornaments, never words.
 PAUSE_SIGNS = set("ۚۖۗۙۘۛۜ")
@@ -674,8 +680,15 @@ def main() -> int:
             "QPC V2 15-line layout (QUL, TarteelAI/quranic-universal-library "
             "issue #596: layouts free to bundle/transform) + Tanzil Uthmani "
             "v1.1 (CC BY 3.0). Words are Tanzil words positioned per the V2 "
-            "layout; the unlicensed QPC V2 glyph script and per-page fonts "
-            "are NOT used. See docs/quran/hifz-redesign-phase3-notes.md."
+            "layout; the word text is the QPC V2 glyph script (per-page maps "
+            "in public/quran-mushaf-v2-glyphs/) rendered with the QPC V2 "
+            "per-page fonts QCF2001-QCF2604 (public/fonts/qcf-v2/, used "
+            "unmodified under the KFGQPC EULA: free to use/copy/distribute, "
+            "no sale/modification/reverse-engineering), with a whole-page "
+            "Tanzil fallback when a glyph map is missing. The glyph script "
+            "+ layout data are licence-UNCLEAR (recorded in "
+            "THIRD_PARTY_NOTICES.md, not claimed as licensed). See "
+            "docs/quran/hifz-redesign-phase3-notes.md."
         ),
         "pages": pages,
         "rubAyahs": [f"{s}:{a}" for (s, a) in sorted(rub)],
@@ -688,6 +701,31 @@ def main() -> int:
         json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
     )
     print(f"wrote {OUT} ({OUT.stat().st_size} bytes)")
+    # Round 2 §8 — per-page chunks from the same data: the index
+    # (first ayah BEGINNING on each page, from first_begin above) +
+    # one file per page. The loader binary-searches the index to find
+    # any ayah's page (verified: 6,236/6,236 match the full-data scan
+    # — scripts/split-quran-mushaf-v2.py --check-only).
+    index = {
+        "version": data["version"],
+        "source": data["source"],
+        "pageCount": len(pages),
+        "rubAyahs": data["rubAyahs"],
+        "sajdaWords": data["sajdaWords"],
+        "pageFirstAyahs": [
+            [s, a, n] for n in sorted(first_begin) for (s, a) in [first_begin[n]]
+        ],
+    }
+    OUT_INDEX.write_text(
+        json.dumps(index, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+    )
+    print(f"wrote {OUT_INDEX} ({OUT_INDEX.stat().st_size} bytes)")
+    OUT_PAGES_DIR.mkdir(parents=True, exist_ok=True)
+    for page in pages:
+        (OUT_PAGES_DIR / f"p{page['n']}.json").write_text(
+            json.dumps(page, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+        )
+    print(f"wrote {len(pages)} files in {OUT_PAGES_DIR}")
     if warnings:
         for w in warnings:
             print(f"warning: {w}")

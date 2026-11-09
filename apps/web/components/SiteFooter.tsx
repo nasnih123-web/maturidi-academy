@@ -61,7 +61,10 @@ export function SiteFooter({
                   ? `/${locale}${l.href}`
                   : l.href;
               return (
-                <Link key={l.href} href={href}>
+                // Round 2 §8: no prefetch — footer links are site
+                // chrome; prefetching them on every page costs slow
+                // connections for routes the user may never visit.
+                <Link key={l.href} href={href} prefetch={false}>
                   {l.label}
                 </Link>
               );

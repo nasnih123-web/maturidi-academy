@@ -296,6 +296,51 @@ async def test_listen_position_two_device_scenario(tc):
 
 
 @pytest.mark.asyncio
+async def test_listen_position_delete(tc):
+    """حذف موقعیت (پایان سوره): ۴۰۱ بدون توکن؛ ۲۰۴ پس از حذف؛ GET
+    بعد از حذف null؛ حذف دوباره هم ۲۰۴ (idempotent)؛ ذخیرهٔ دوباره
+    پس از حذف کار می‌کند."""
+    client = tc["client"]
+    r = await client.delete(LISTEN)
+    assert r.status_code == 401, r.text
+    token = await _user_token(client, "listen-h@test.example")
+    r = await client.delete(LISTEN, headers=_auth(token))
+    assert r.status_code == 204, r.text
+    r = await client.put(LISTEN, json=_pos(surah=2, ayah=5), headers=_auth(token))
+    assert r.status_code == 200, r.text
+    r = await client.delete(LISTEN, headers=_auth(token))
+    assert r.status_code == 204, r.text
+    r = await client.get(LISTEN, headers=_auth(token))
+    assert r.status_code == 200, r.text
+    assert r.json() is None
+    r = await client.delete(LISTEN, headers=_auth(token))
+    assert r.status_code == 204, r.text
+    r = await client.put(LISTEN, json=_pos(surah=36, ayah=1), headers=_auth(token))
+    assert r.status_code == 200, r.text
+    assert r.json()["applied"] is True
+    r = await client.get(LISTEN, headers=_auth(token))
+    assert r.json()["surah"] == 36
+
+
+@pytest.mark.asyncio
+async def test_listen_position_delete_isolation(tc):
+    """حذف کاربر اول، ردیف کاربر دوم را دست نمی‌زند."""
+    client = tc["client"]
+    token_a = await _user_token(client, "listen-i-a@test.example")
+    token_b = await _user_token(client, "listen-i-b@test.example")
+    r = await client.put(LISTEN, json=_pos(surah=2, ayah=5), headers=_auth(token_a))
+    assert r.status_code == 200, r.text
+    r = await client.put(LISTEN, json=_pos(surah=114, ayah=6), headers=_auth(token_b))
+    assert r.status_code == 200, r.text
+    r = await client.delete(LISTEN, headers=_auth(token_a))
+    assert r.status_code == 204, r.text
+    r = await client.get(LISTEN, headers=_auth(token_a))
+    assert r.json() is None
+    r = await client.get(LISTEN, headers=_auth(token_b))
+    assert r.json()["surah"] == 114 and r.json()["ayah"] == 6
+
+
+@pytest.mark.asyncio
 async def test_listen_position_separate_from_attempt_position(tc):
     """موقعیت نشست تمرین، موقعیت شنیدن را عوض نمی‌کند (و برعکس)."""
     client = tc["client"]

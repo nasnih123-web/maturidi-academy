@@ -50,7 +50,15 @@ function NavLink({
       {entry.label}
     </a>
   ) : (
-    <Link href={entry.href} aria-current={active ? "page" : undefined}>
+    // Round 2 §8: no prefetch on header links. Next prefetches every
+    // in-viewport <Link> (desktop nav + mobile nav render the same
+    // entries twice, so /fa and /fa/adhan were prefetched twice each:
+    // ~40KB of RSC payloads + the adhan page chunk on EVERY page
+    // load, competing with the study page's own JS/fonts on slow 3G).
+    // Header navigation becomes a plain fetch instead of
+    // instant-from-prefetch — the right trade on a slow connection,
+    // where the header is on every page but the user rarely follows it.
+    <Link href={entry.href} aria-current={active ? "page" : undefined} prefetch={false}>
       {entry.label}
     </Link>
   );
@@ -163,7 +171,10 @@ export function SiteHeader({
           {labels.skip}
         </a>
         <div className="header-inner">
-          <Link href={`/${locale}`} className="brand" aria-label={labels.brandName}>
+          {/* Round 2 §8: no prefetch — same reason as NavLink below:
+              the brand link is in the viewport on every page, so its
+              /fa RSC payload (~30KB) was prefetched on every load. */}
+          <Link href={`/${locale}`} className="brand" aria-label={labels.brandName} prefetch={false}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {/* Performance (§8): the 34px brand mark used to download
                 the 1024px / 204KB logo.jpg; the 96px webp (4KB) is

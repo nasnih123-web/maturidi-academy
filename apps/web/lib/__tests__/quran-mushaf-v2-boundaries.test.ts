@@ -17,9 +17,11 @@ import { resolve } from 'node:path';
 
 import {
   buildV2Boundaries,
+  buildV2BoundariesFromIndex,
   v2PageStarts,
+  v2PageStartsFromIndex,
 } from '../quran-mushaf-v2-boundaries';
-import type { V2MushafData } from '../quran-mushaf-v2';
+import type { V2MushafData, V2MushafIndex } from '../quran-mushaf-v2';
 import {
   rangeContaining,
   type QuranBoundaries,
@@ -206,5 +208,59 @@ describe('buildV2Boundaries (real data)', () => {
     }
     // 25 V2 page starts are new ayahs (no QPC1 preview text).
     assert.equal(empty, 25);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Round 2 §8 — boundaries from the V2 index alone (no full file).    */
+/* ------------------------------------------------------------------ */
+
+function loadIndex(): V2MushafIndex | null {
+  const raw = readFirst('QURAN_MUSHAF_V2_INDEX_JSON', [
+    'apps/web/public/quran-mushaf-v2-index.json',
+    'public/quran-mushaf-v2-index.json',
+  ]);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as V2MushafIndex;
+  } catch {
+    return null;
+  }
+}
+
+describe('v2PageStartsFromIndex / buildV2BoundariesFromIndex (round 2 §8)', () => {
+  it('page starts from the index equal the page starts from the full data', (t) => {
+    const real = loadReal();
+    const index = loadIndex();
+    if (!real || !index) {
+      console.log('SKIP: V2 data or index not found');
+      return;
+    }
+    assert.deepEqual(v2PageStartsFromIndex(index), v2PageStarts(real.v2.pages));
+  });
+
+  it('merged boundaries from the index equal the merged boundaries from the full data', (t) => {
+    const real = loadReal();
+    const index = loadIndex();
+    if (!real || !index) {
+      console.log('SKIP: V2 data or index not found');
+      return;
+    }
+    assert.deepEqual(
+      buildV2BoundariesFromIndex(index, real.qpc1),
+      buildV2Boundaries(real.v2, real.qpc1),
+    );
+  });
+
+  it('v2PageStartsFromIndex throws on an empty index (synthetic)', () => {
+    const empty = {
+      version: 1,
+      source: 'test',
+      pageCount: 604,
+      rubAyahs: [],
+      sajdaWords: [],
+      pageFirstAyahs: [],
+    } as V2MushafIndex;
+    assert.throws(() => v2PageStartsFromIndex(empty), /no page starts/);
   });
 });

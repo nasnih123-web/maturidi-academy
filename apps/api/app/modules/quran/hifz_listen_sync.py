@@ -174,6 +174,23 @@ async def get_listen_position(db, user: User) -> dict | None:
     return _out(row) if row is not None else None
 
 
+async def delete_listen_position(db, user: User) -> bool:
+    """حذف موقعیت شنیدن کاربر (پایان سوره: ازسرگیریِ کهنه نماند).
+
+    فقط ردیف خود کاربر حذف می‌شود. True یعنی ردیفی بود و حذف شد؛
+    False یعنی ردیفی نبود (حذفِ دوباره هم امن است). کلاینت موبایل
+    هنگام پایان سوره همین را صدا می‌زند: موقعیت محلی همان‌جا پاک
+    می‌شود و بدون این حذف، دستگاه دوم در ورود بعدی همان موقعیتِ
+    تمام‌شده را از سرور می‌گرفت و «ادامه» پیشنهاد می‌داد.
+    """
+    row = await db.get(HifzListenPosition, user.id)
+    if row is None:
+        return False
+    await db.delete(row)
+    await db.commit()
+    return True
+
+
 async def save_listen_position(
     db, user: User, body: HifzListenPositionIn
 ) -> dict:

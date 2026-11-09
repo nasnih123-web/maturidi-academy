@@ -148,6 +148,15 @@ export async function syncListenPositionOnLogin(): Promise<ListenSyncResult> {
         await saveLocalPosition(pushed.position);
         return { position: pushed.position, source: "server", offline: false };
       }
+      if (pushed.applied && pushed.position) {
+        // Adopt the server's stored state: the server clamps a
+        // fast device clock to server time, so the local copy must
+        // take the clamped version clock — otherwise the stale
+        // future timestamp would win the next merge and resurrect
+        // this (by then old) position over the other device's newer
+        // progress.
+        await saveLocalPosition(pushed.position);
+      }
     } catch (e) {
       if (e instanceof ApiError && e.isNetworkError) {
         return { position: merged.position, source: "local", offline: true };
@@ -174,9 +183,33 @@ export async function pushLocalPositionBestEffort(): Promise<boolean> {
       await saveLocalPosition(pushed.position);
       return false;
     }
+    if (pushed.applied && pushed.position) {
+      // Adopt the server's stored state (clamped version clock —
+      // see syncListenPositionOnLogin) so a fast local clock cannot
+      // resurrect this position over the other device's newer one.
+      await saveLocalPosition(pushed.position);
+    }
     return pushed.applied;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Delete the server-side position (surah finished). Best-effort and
+ * never throws: guests skip it, offline devices keep the (already
+ * cleared) local state. The finish path must call this instead of
+ * pushing: a push after a local clear is a no-op (nothing left to
+ * push), so without this the server would keep the finished position
+ * and the other device would adopt it at its next login and offer a
+ * resume for a surah that is already done.
+ */
+export async function clearServerPositionBestEffort(): Promise<void> {
+  if (!(await hasStoredSession())) return;
+  try {
+    await api.del(LISTEN_PATH, { auth: true });
+  } catch {
+    /* offline / server error — local state is already cleared */
   }
 }
 

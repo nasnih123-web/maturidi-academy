@@ -77,7 +77,10 @@ export function AdhanCountdown({
   if (state.status !== 'ready' || !state.next) {
     if (state.status === 'needs_location') {
       return (
-        <Link href={`/${locale}/adhan`} className="adhan-strip-link">
+        // Round 2 §8: no prefetch — the strip is in the viewport on
+        // every page, so the adhan RSC payload + page chunk (~9KB)
+        // were prefetched on every load; see SiteHeader NavLink.
+        <Link href={`/${locale}/adhan`} className="adhan-strip-link" prefetch={false}>
           {labels.setupLink}
         </Link>
       );

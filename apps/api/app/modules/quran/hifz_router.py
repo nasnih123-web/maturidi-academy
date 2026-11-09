@@ -414,6 +414,15 @@ async def put_listen_position(
     return HifzListenPositionSaveOut(**result)
 
 
+@hifz_router.delete("/listen-position", status_code=204)
+async def delete_listen_position(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """حذف موقعیت شنیدن کاربر (پایان سوره؛ ردیفِ نبوده هم ۲۰۴ است)."""
+    await hifz_listen_sync.delete_listen_position(db, user)
+
+
 @hifz_router.post("/attempts/{attempt_id}/dispute", response_model=HifzDisputeOut)
 async def dispute_word(
     body: HifzDisputeIn,

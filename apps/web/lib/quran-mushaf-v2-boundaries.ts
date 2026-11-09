@@ -23,7 +23,12 @@
  * decision (Wave-1 inventory, item 1).
  */
 import type { BoundaryStart, QuranBoundaries } from './quran-view-modes';
-import { loadMushafV2, v2FirstAyahOfPage, type V2MushafData } from './quran-mushaf-v2';
+import {
+  loadV2Index,
+  v2FirstAyahOfPage,
+  type V2MushafData,
+  type V2MushafIndex,
+} from './quran-mushaf-v2';
 
 async function loadQpc1Boundaries(): Promise<QuranBoundaries> {
   const m = await import('./quran-boundaries.json');
@@ -42,6 +47,31 @@ export function v2PageStarts(pages: V2MushafData['pages']): BoundaryStart[] {
     if (!first) throw new Error(`V2 page ${page.n} has no text line`);
     return { n: i + 1, surah: first.surah, ayah: first.ayah, text: '' };
   });
+}
+
+/**
+ * Page starts from the V2 index alone (round 2 §8 — per-page
+ * chunking): the index carries the first ayah BEGINNING on each page,
+ * which is exactly the page-start list the boundaries need — every
+ * V2 page starts with an ayah beginning (verified: 604 of 604 pages;
+ * no page starts mid-ayah), so these entries are identical to
+ * v2PageStarts' first-segment ayahs on the current data. If the
+ * layout ever changes so a page starts mid-ayah, the boundaries test
+ * (buildV2BoundariesFromIndex == buildV2Boundaries on real data)
+ * fails loudly instead of silently changing navigation. Throws when
+ * the index is empty — callers treat that as a failed load and fall
+ * back to QPC1 (loadV2Boundaries catches it).
+ */
+export function v2PageStartsFromIndex(index: V2MushafIndex): BoundaryStart[] {
+  if (index.pageFirstAyahs.length === 0) {
+    throw new Error('V2 index has no page starts');
+  }
+  return index.pageFirstAyahs.map(([surah, ayah, page]) => ({
+    n: page,
+    surah,
+    ayah,
+    text: '',
+  }));
 }
 
 /**
@@ -66,14 +96,36 @@ export function buildV2Boundaries(
 }
 
 /**
+ * Same merge, from the V2 index alone (round 2 §8 — per-page
+ * chunking): the index carries the page starts, so the boundaries no
+ * longer need the whole 193KB layout file. Identical output to
+ * buildV2Boundaries on the current data (pinned by
+ * quran-mushaf-v2-boundaries.test.ts).
+ */
+export function buildV2BoundariesFromIndex(
+  index: V2MushafIndex,
+  qpc1: QuranBoundaries,
+): QuranBoundaries {
+  const textByRef = new Map<string, string>();
+  for (const kind of ['juz', 'hizb', 'page'] as const) {
+    for (const e of qpc1[kind]) textByRef.set(`${e.surah}:${e.ayah}`, e.text);
+  }
+  const page = v2PageStartsFromIndex(index).map((s) => ({
+    ...s,
+    text: textByRef.get(`${s.surah}:${s.ayah}`) ?? '',
+  }));
+  return { juz: qpc1.juz, hizb: qpc1.hizb, page };
+}
+
+/**
  * Merged V2 boundaries, or null when the V2 data cannot be loaded
  * (callers fall back to the QPC1 boundaries).
  */
 export async function loadV2Boundaries(): Promise<QuranBoundaries | null> {
   try {
-    const [v2, qpc1] = await Promise.all([loadMushafV2(), loadQpc1Boundaries()]);
-    if (!v2) return null;
-    return buildV2Boundaries(v2, qpc1);
+    const [index, qpc1] = await Promise.all([loadV2Index(), loadQpc1Boundaries()]);
+    if (!index) return null;
+    return buildV2BoundariesFromIndex(index, qpc1);
   } catch {
     return null;
   }

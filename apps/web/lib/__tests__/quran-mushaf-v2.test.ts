@@ -27,8 +27,13 @@ import { resolve } from 'node:path';
 
 import {
   expandV2Page,
+  loadV2Index,
+  loadV2Page,
+  loadV2Pages,
   v2PageIndexFor,
+  v2PageIndexForAyah,
   type V2MushafData,
+  type V2MushafIndex,
   type V2Page,
 } from '../quran-mushaf-v2';
 import { rangeContaining, type QuranBoundaries } from '../quran-view-modes';
@@ -614,5 +619,162 @@ describe('quran-mushaf-v2 (phase 8): special signs positions', () => {
     assert.equal(sajda?.text, 'خُشُوعًا');
     const kahf = words293.filter((w) => w.surah === 18);
     assert.ok(kahf.length > 0, 'surah 18 words are on page 293');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Round 2 §8 — per-page chunks: the index + one file per page.       */
+/* ------------------------------------------------------------------ */
+
+function loadIndex(): V2MushafIndex | null {
+  const raw = readFirst('QURAN_MUSHAF_V2_INDEX_JSON', [
+    'apps/web/public/quran-mushaf-v2-index.json',
+    'public/quran-mushaf-v2-index.json',
+  ]);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as V2MushafIndex;
+  } catch {
+    return null;
+  }
+}
+
+function readPageChunk(n: number): V2Page | null {
+  const raw = readFirst('QURAN_MUSHAF_V2_PAGE_JSON', [
+    `apps/web/public/quran-mushaf-v2-pages/p${n}.json`,
+    `public/quran-mushaf-v2-pages/p${n}.json`,
+  ]);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as V2Page;
+  } catch {
+    return null;
+  }
+}
+
+/** Max ayah per surah, from the V2 segments (total must be 6236). */
+function ayahCounts(data: V2MushafData): number[] {
+  const max: Record<number, number> = {};
+  for (const page of data.pages) {
+    for (const line of page.lines) {
+      if (line.t !== 'x') continue;
+      for (const seg of line.seg) max[seg.s] = Math.max(max[seg.s] ?? 0, seg.a);
+    }
+  }
+  return Array.from({ length: 114 }, (_, i) => max[i + 1] ?? 0);
+}
+
+describe('quran-mushaf-v2: per-page chunks (round 2 §8)', () => {
+  it('index: 604 pages, first 1:1 on p1, last 112:1 on p604, rub/sajda match the full data', (t) => {
+    const data = loadV2();
+    const index = loadIndex();
+    if (!data || !index) {
+      t.skip('quran-mushaf-v2.json یا quran-mushaf-v2-index.json در دسترس نیست');
+      return;
+    }
+    assert.equal(index.pageCount, 604);
+    assert.equal(index.version, data.version);
+    assert.equal(index.pageFirstAyahs.length, 604);
+    assert.deepEqual(index.pageFirstAyahs[0], [1, 1, 1]);
+    assert.deepEqual(index.pageFirstAyahs[603], [112, 1, 604]);
+    assert.deepEqual(index.rubAyahs, data.rubAyahs);
+    assert.deepEqual(index.sajdaWords, data.sajdaWords);
+    // Strictly increasing in ayah order, page numbers 1..604 in order.
+    for (let i = 0; i < 603; i += 1) {
+      const e1: [number, number, number] = index.pageFirstAyahs[i];
+      const e2: [number, number, number] = index.pageFirstAyahs[i + 1];
+      const [s1, a1, p1] = e1;
+      const [s2, a2, p2] = e2;
+      assert.ok(s1 < s2 || (s1 === s2 && a1 < a2), `entry ${i} -> ${i + 1} not increasing`);
+      assert.equal(p2, p1 + 1, `page numbers not consecutive at entry ${i}`);
+    }
+  });
+
+  it('v2PageIndexForAyah (index binary search) == v2PageIndexFor (full scan) for all 6236 ayahs', (t) => {
+    const data = loadV2();
+    const index = loadIndex();
+    if (!data || !index) {
+      t.skip('quran-mushaf-v2.json یا quran-mushaf-v2-index.json در دسترس نیست');
+      return;
+    }
+    const counts = ayahCounts(data);
+    assert.equal(counts.reduce((a, b) => a + b, 0), 6236);
+    let checked = 0;
+    for (let s = 1; s <= 114; s += 1) {
+      for (let a = 1; a <= counts[s - 1]; a += 1) {
+        assert.equal(
+          v2PageIndexForAyah(index, s, a),
+          v2PageIndexFor(data.pages, s, a),
+          `ayah ${s}:${a}`,
+        );
+        checked += 1;
+      }
+    }
+    assert.equal(checked, 6236);
+    // Spot checks from the old behaviour (kept as readable anchors).
+    assert.equal(v2PageIndexForAyah(index, 2, 1), 1, 'surah 2 starts on printed page 2');
+    assert.equal(v2PageIndexForAyah(index, 114, 1), 603, 'surah 114 starts on page 604');
+    assert.equal(v2PageIndexForAyah(index, 5, 77), 119);
+  });
+
+  it('all 604 per-page chunk files deep-equal the full data pages', (t) => {
+    const data = loadV2();
+    if (!data) {
+      t.skip('quran-mushaf-v2.json در دسترس نیست');
+      return;
+    }
+    for (let n = 1; n <= 604; n += 1) {
+      const chunk = readPageChunk(n);
+      assert.ok(chunk, `chunk p${n}.json missing or unreadable`);
+      assert.deepEqual(chunk, data.pages[n - 1], `chunk p${n}.json differs from full data`);
+    }
+  });
+
+  it('loadV2Page / loadV2Pages / loadV2Index fetch the chunks (stubbed fetch)', async (t) => {
+    const data = loadV2();
+    const index = loadIndex();
+    if (!data || !index) {
+      t.skip('quran-mushaf-v2.json یا quran-mushaf-v2-index.json در دسترس نیست');
+      return;
+    }
+    const origFetch = globalThis.fetch;
+    const stub = (handler: (url: string) => { ok: boolean; body: unknown } | null) => {
+      (globalThis as unknown as { fetch: unknown }).fetch = async (input: unknown) => {
+        const res = handler(String(input));
+        if (!res) return { ok: false, json: async () => null };
+        return { ok: res.ok, json: async () => res.body };
+      };
+    };
+    const restore = () => {
+      (globalThis as unknown as { fetch: unknown }).fetch = origFetch;
+    };
+    try {
+      // Chunk served: the page comes from its chunk file, never the full data.
+      stub((url) => {
+        if (url.endsWith('/quran-mushaf-v2-pages/p5.json')) return { ok: true, body: data.pages[4] };
+        if (url.endsWith('/quran-mushaf-v2-index.json')) return { ok: true, body: index };
+        return null;
+      });
+      assert.deepEqual(await loadV2Page(5), data.pages[4]);
+      assert.deepEqual(await loadV2Index(), index);
+      // A range loads its chunks in order.
+      stub((url) => {
+        const m = /\/quran-mushaf-v2-pages\/p(\d+)\.json$/.exec(url);
+        if (m) return { ok: true, body: data.pages[Number(m[1]) - 1] };
+        return null;
+      });
+      assert.deepEqual(await loadV2Pages(1, 3), [data.pages[0], data.pages[1], data.pages[2]]);
+      // Chunk 404 -> falls back to the full data once.
+      stub((url) => {
+        if (url.endsWith('/quran-mushaf-v2.json')) return { ok: true, body: data };
+        return null;
+      });
+      assert.deepEqual(await loadV2Page(6), data.pages[5]);
+      // Out of range (chunk 404 + full data has only 604 pages) -> null.
+      assert.equal(await loadV2Page(999), null);
+    } finally {
+      restore();
+    }
+    void t;
   });
 });
