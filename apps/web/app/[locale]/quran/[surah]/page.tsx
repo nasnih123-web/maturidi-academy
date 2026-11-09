@@ -1,8 +1,15 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getQuranProviders, getSurah, getSurahs } from '@/lib/quran';
-import { QURAN_MUSHAF_V2_URL } from '@/lib/quran-mushaf-v2';
+import {
+  QURAN_MUSHAF_V2_INDEX_URL,
+  v2PageIndexForAyah,
+  v2PageUrl,
+  type V2MushafIndex,
+} from '@/lib/quran-mushaf-v2';
 import { parseSvgMushafKey } from '@/lib/quran-svg-page';
 import { RANGE_COUNTS, type QuranViewMode } from '@/lib/quran-view-modes';
 import { getSiteConfig, type QuranSettings } from '@/lib/settings';
@@ -21,6 +28,28 @@ export async function generateMetadata({
     title: t('surahMetaTitle', { n }),
     description: t('metaDescription'),
   };
+}
+
+/**
+ * The V2 index, read from the public file (server-side only). Cached
+ * in module scope — the file is immutable at runtime, so one disk
+ * read serves every hifz-tab render in this server process. Null when
+ * the file is missing or unparsable (the client loader then fetches
+ * it over HTTP instead; the page still works).
+ */
+let cachedV2Index: V2MushafIndex | null | undefined;
+async function loadV2IndexFromDisk(): Promise<V2MushafIndex | null> {
+  if (cachedV2Index !== undefined) return cachedV2Index;
+  try {
+    const raw = await readFile(
+      path.join(process.cwd(), 'public', 'quran-mushaf-v2-index.json'),
+      'utf-8',
+    );
+    cachedV2Index = JSON.parse(raw) as V2MushafIndex;
+  } catch {
+    cachedV2Index = null;
+  }
+  return cachedV2Index;
 }
 
 /**
@@ -148,25 +177,55 @@ export default async function SurahPage({
     );
   }
 
+  // Round 2 §8 — per-page V2 chunks: the hifz tab preloads the tiny
+  // index + the initial ayah's page chunk (not the whole 193KB file).
+  // The index is read from disk (module-level cache — the file is
+  // immutable at runtime) and the page is the binary search over it;
+  // any failure here only drops the preloads, never the page — the
+  // client loader fetches index + chunk lazily instead.
+  let initialV2Page: number | null = null;
+  if (initialTab === 'hifz') {
+    try {
+      const index = await loadV2IndexFromDisk();
+      if (index) {
+        const p = v2PageIndexForAyah(index, view.surah.number, initialAyah ?? 1);
+        initialV2Page = p !== null ? p + 1 : null;
+      }
+    } catch {
+      initialV2Page = null;
+    }
+  }
+
   return (
     <div className="page-wrap">
-      {/* hifz-completion performance (§8): the study page's mushaf
-          renders from the V2 layout data, which used to start
-          downloading only after hydration (~14.5s in on slow 3G) and
-          gated the mushaf (~27s). Preloading it from the
-          server-rendered head (same URL the loader fetches, so the
-          browser reuses this one download) starts it with the first
-          wave instead. crossOrigin="anonymous" is required: without
-          it the preload does not match the fetch() and the data
+      {/* hifz-completion performance (§8, round 2 — per-page chunks):
+          the study page's mushaf used to need the whole 604-page V2
+          file (~193KB gzip, ~17.5s on slow 3G). Now it needs only the
+          tiny index (~3.7KB gzip) + the initial page's chunk (~0.7KB
+          gzip). Both are preloaded from the server-rendered head
+          (same URLs the loader fetches, so the browser reuses these
+          downloads) and start with the first wave instead of after
+          hydration. crossOrigin="anonymous" is required: without it
+          the preload does not match the fetch() and the data
           downloads twice. Only the hifz tab needs it — the umum
           reader loads V2 lazily on its own, only in page/range modes. */}
       {initialTab === 'hifz' && (
-        <link
-          rel="preload"
-          href={QURAN_MUSHAF_V2_URL}
-          as="fetch"
-          crossOrigin="anonymous"
-        />
+        <>
+          <link
+            rel="preload"
+            href={QURAN_MUSHAF_V2_INDEX_URL}
+            as="fetch"
+            crossOrigin="anonymous"
+          />
+          {initialV2Page !== null && (
+            <link
+              rel="preload"
+              href={v2PageUrl(initialV2Page)}
+              as="fetch"
+              crossOrigin="anonymous"
+            />
+          )}
+        </>
       )}
       <QuranReader
         locale={locale}
@@ -253,7 +312,6 @@ export default async function SurahPage({
             startAyahHint: t('hifzStartAyahHint'),
             dispute: t('hifzDispute'),
             disputed: t('hifzDisputed'),
-            disclaimer: t('hifzDisclaimer'),
             signInHint: t('hifzSignInHint'),
             engineUnavailable: t('hifzEngineUnavailable'),
             selectAyahHint: t('hifzSelectAyahHint'),
@@ -305,12 +363,24 @@ export default async function SurahPage({
             headerJuz: t('hifzHeaderJuz'),
             headerHizb: t('hifzHeaderHizb'),
             headerPage: t('hifzHeaderPage'),
+            menuOpen: t('hifzMenuOpen'),
+            searchOpen: t('hifzSearchOpen'),
+            searchTitle: t('hifzSearchTitle'),
+            bookmarkAdd: t('hifzBookmarkAdd'),
+            bookmarkRemove: t('hifzBookmarkRemove'),
             displayMode: t('hifzDisplayMode'),
             displayPage: t('hifzDisplayPage'),
             displayScroll: t('hifzDisplayScroll'),
             displayCard: t('hifzDisplayCard'),
-            modePractice: t('hifzModePractice'),
-            modeListen: t('hifzModeListen'),
+            displaySheetTitle: t('hifzDisplaySheetTitle'),
+            displayMushaf: t('hifzDisplayMushaf'),
+            displayMushafDesc: t('hifzDisplayMushafDesc'),
+            displayNass: t('hifzDisplayNass'),
+            displayNassDesc: t('hifzDisplayNassDesc'),
+            displayTranslation: t('hifzDisplayTranslation'),
+            displayTranslationDesc: t('hifzDisplayTranslationDesc'),
+            translationLoading: t('hifzTranslationLoading'),
+            translationUnavailable: t('hifzTranslationUnavailable'),
             listenReciter: t('hifzListenReciter'),
             listenPlay: t('hifzListenPlay'),
             listenPause: t('hifzListenPause'),

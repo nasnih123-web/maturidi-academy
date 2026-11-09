@@ -60,15 +60,24 @@ const DEFAULT_NAV_LABELS: MushafV2NavLabels = {
   width: 'عرض صفحه',
 };
 
-/** Ayah-end rosette: double ring with the ayah number inside
-    (own SVG, same visual language as the reader's markers). */
+/** Ayah-end rosette: thin dark double ring with the ayah number
+    inside and eight small teeth around the outer ring (the printed
+    mushaf / Tarteel manner — no fill, no gold, no top diamond).
+    Reader rebuild 2026-11-08, area 2. */
 function V2Rosette({ n, label }: { n: string; label?: string }) {
   return (
     <span className="mushaf-v2-rosette" aria-label={label ?? n}>
       <svg viewBox="0 0 40 40" aria-hidden="true">
-        <circle cx="20" cy="20" r="15" />
-        <circle cx="20" cy="20" r="10.5" />
-        <rect x="17.5" y="1" width="5" height="5" transform="rotate(45 20 3.5)" />
+        <circle cx="20" cy="20" r="14" />
+        <circle cx="20" cy="20" r="10" />
+        <circle cx="35" cy="20" r="1.3" />
+        <circle cx="30.6" cy="30.6" r="1.3" />
+        <circle cx="20" cy="35" r="1.3" />
+        <circle cx="9.4" cy="30.6" r="1.3" />
+        <circle cx="5" cy="20" r="1.3" />
+        <circle cx="9.4" cy="9.4" r="1.3" />
+        <circle cx="20" cy="5" r="1.3" />
+        <circle cx="30.6" cy="9.4" r="1.3" />
         <text x="20" y="20" textAnchor="middle" dominantBaseline="central">
           {n}
         </text>
@@ -99,6 +108,7 @@ export function QuranMushafV2Page({
   headerSurahTemplate,
   resolveSurahName,
   tajweed = false,
+  hideText = false,
   wordViews,
   hiddenAyahs,
   selectedWord,
@@ -126,6 +136,15 @@ export function QuranMushafV2Page({
   resolveSurahName?: (surahNumber: number) => string;
   /** Tajweed letter colours (study page: true; reader: false). */
   tajweed?: boolean;
+  /** Reader rebuild (2026-11-08, area 2): hide the mushaf text
+      for hifz (eye toggle in the reader bottom bar, state
+      `hideText` in QuranReader, threaded via QuranMushafPage).
+      When true, every word renders `visibility: hidden` (layout
+      preserved — same line count, tops and heights), while the
+      surah header, Basmalah and ayah rosettes stay visible and
+      each text line gets a faint guide rule (Tarteel p582 manner).
+      Toggling back restores the text. */
+  hideText?: boolean;
   /** Phase 4 hook: per-word hidden/state, keyed "surah:ayah:word". */
   wordViews?: MushafWordViews;
   /** Phase 4 hook: ayahs to hide entirely ("surah:ayah"). */
@@ -205,7 +224,7 @@ export function QuranMushafV2Page({
 
   return (
     <div
-      className={`mushaf-page mushaf-v2 mushaf-v2--w-${width}${expansion.glyph ? ' mushaf-v2--glyph' : ''}`}
+      className={`mushaf-page mushaf-v2 mushaf-v2--w-${width}${expansion.glyph ? ' mushaf-v2--glyph' : ''}${hideText ? ' mushaf-v2--hide-text' : ''}`}
       style={
         {
           '--mushaf-v2-scale': String(scale),
@@ -271,7 +290,10 @@ export function QuranMushafV2Page({
                   {line.words.map((word, wi) => {
                     const view = wordViews?.[word.key];
                     const ayahHidden = hiddenAyahs?.has(`${word.surah}:${word.ayah}`) ?? false;
-                    const hidden = ayahHidden || view?.hidden === true;
+                    // hideText hides EVERY word (visibility keeps its
+                    // slot, so line breaks and rosette positions do
+                    // not move); the rosette is a sibling and stays.
+                    const hidden = hideText || ayahHidden || view?.hidden === true;
                     const state = view?.state ?? null;
                     const isSelectedWord = selectedWord === word.key;
                     const isSelectedAyah =

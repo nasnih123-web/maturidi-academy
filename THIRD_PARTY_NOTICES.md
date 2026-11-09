@@ -309,6 +309,47 @@ sources.
   fix" section below); the glyph script + layout data remain
   licence-unclear, as recorded there.
 
+## Surah header frame (`sura-border.svg`) — hifz redesign (IN USE, 2026-11-08)
+
+- **Work:** the decorative double-ruled surah-header frame (two
+  arabesque side panels, two empty circles, ogival cartouche in the
+  middle) used as the background of the hifz study page's surah
+  header, with the surah-name calligraphy centred in the cartouche.
+  File: `apps/web/public/quran/surah-headers/sura-border.svg`
+  (17,279 bytes, SHA-256
+  `2dc643e21c3e6d949a4b172b9007171a1db1db71cf3a4fb5a288088c27ef2672`).
+- **Source:** "Sura border.svg" by Hadysylmy, Wikimedia /
+  en.wikipedia.org/wiki/File:Sura_border.svg (own work, 2026-03-03),
+  as shipped black-filled by the hadithdb project
+  (github.com/iadnanmukhtar/hadithdb,
+  `public/static/img/quran/surah-header/border.svg`): byte-for-byte
+  identical to the Wikipedia file except the fill colour
+  (`#005aff` → `#000000`). The blue original was NOT bundled.
+- **License:** CC BY-SA 4.0 (attribution + ShareAlike: any adaptation
+  of the frame must stay under the same licence). Attribution:
+  "Sura border.svg" by Hadysylmy, CC BY-SA 4.0.
+- **Status: PROVISIONALLY ACCEPTED ON THE USER'S EXPLICIT ORDER
+  (2026-11-08, option 1) — licence research is DEFERRED, NOT
+  finally approved.** The mission's acceptance bar was CC BY 4.0 or
+  KFGQPC free digital use; BY-SA (ShareAlike) is outside that bar,
+  and the user ordered the bundle anyway ("use this one, don't chase
+  the licence much, we will research the licence later"). The
+  licence must be researched separately before this is treated as
+  finally approved; do not present the frame as licence-cleared.
+  A short notice with the same status is kept next to the file
+  (`apps/web/public/quran/surah-headers/sura-border-NOTICE.md`).
+- **How it is used:** served unmodified as a CSS background
+  (`background: url("/quran/surah-headers/sura-border.svg")`) on
+  `.hifz-surah-frame` in the hifz study page only
+  (`apps/web/components/QuranHifzStudy.tsx`,
+  `apps/web/app/[locale]/globals.css`); the reader (umum) header
+  (`QuranMushafV2Page.tsx`) is unchanged and still shows the bare
+  name calligraphy. The frame is a hand redraw of the printed
+  Madani header bar, not the KFGQPC original vector: its ratio is
+  8.16:1 (viewBox `0 -500 16320 2000`) against Tarteel's measured
+  8.6:1, and its line weights (outer ~3px / inner ~2px at 869px
+  wide) and arabesque details differ slightly from the print.
+
 ## QPC V2 per-page fonts (QCF2001–QCF2604) + glyph script — Phase-1 hifz fix (IN USE, 2026-11-07)
 
 - **Works:** the real per-page QPC V2 fonts — 604 WOFF2 files
@@ -341,11 +382,22 @@ sources.
   whole page — never a per-word mix. The Basmalah line still renders
   Tanzil text (the layout gives it no glyph ids) and the ayah-end
   marker stays the painted rosette.
-- **EULA placement (STAGED — do when the fonts are placed, after the
-  EPERM block clears):** the full EULA text must be placed next to
-  the fonts in the repo at `apps/web/public/fonts/qcf-v2/EULA.txt`
-  (source: the official KFGQPC font distribution — see
-  `~/workspace/quran-hifz-phase1-font/STAGED-STEPS.md` step (c)).
+- **EULA placement (PLACED — verified 2026-11-08, round 2 §2):** the full
+  EULA text is in the repo at `apps/web/public/fonts/qcf-v2/EULA.txt`
+  (committed in `531e197`; 1,267 bytes, KFGQPC 2010 EULA).
+- **Round-2 re-verification (2026-11-08, §2):** QUL issue #596 was
+  re-read from GitHub in this mission and still states the layout is
+  free for personal + commercial use, bundling and modification, with
+  attribution optional — that covers the 15-line layout ONLY, not the
+  glyph script and not the fonts. Tarteel's Terms of Service were read
+  directly (`tarteel.ai/terms`, updated 2026-11-03): they prohibit
+  copying parts of the service, bulk collection, and copying /
+  republishing the service's output — the provenance conflict above
+  therefore stays UNRESOLVED (the Drive files' origin — QUL download
+  vs qurancomplex — is still unknown). Surah header SVGs are CC BY 4.0
+  (notice inside each of the 113 files). Still SILENT (not expressly
+  confirmed): web serving of the WOFF2 files and a mobile TTF bundle
+  under the KFGQPC terms; the mobile app currently ships no QCF files.
 - **Provenance conflict (surfaced, NOT resolved here):** if the Drive
   files came from QUL downloads, Tarteel's Terms of Service on paper
   prohibit copying/redistribution of QUL content. That conflict is

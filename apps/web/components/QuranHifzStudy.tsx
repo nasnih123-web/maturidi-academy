@@ -10,9 +10,11 @@
  * are visible from the start at their line positions, and as the
  * memorizer recites, text is WRITTEN word-by-word in UthmanicHafs
  * font into its line slots. A word appears in black ink with its
- * tajweed letters colored (green ghunnah/ikhfaa, blue heavy raa,
- * pink madd, gray waslah — lib/quran-tajweed, only the rules
- * verified against the Tarteel reference clip); the newest word
+ * tajweed letters colored per lib/quran-tajweed (green ghunnah only
+ * for shaddad nun/mim, dark-blue tafkhim, light-blue qalqalah, madd
+ * in dark-red / orange-red / light-orange / yellow, gray silent
+ * letters; ikhfaa is NOT coloured and there is no pink in the
+ * palette); the newest word
  * just heard is GREEN when correct and RED when wrong (a tashkeel
  * error counts as wrong) until the next word arrives. A wrong word
  * is red text with a red dashed underline. Graded words use TEXT
@@ -127,26 +129,44 @@ import {
 import {
   HIFZ_LISTEN_LONG_PRESS_MS,
   LISTEN_SPEED_STORAGE_KEY,
-  listenReciterPhotoUrl,
   parseStoredListenSpeed,
   type ListenRepeatMode,
   type ListenRepeatRange,
 } from '@/lib/hifz-player';
-import { HifzListenPlayer } from './HifzListenPlayer';
 import { HifzRosette, MicIcon } from './hifz-study/HifzRosette';
 import { HifzSettingsSheet } from './hifz-study/HifzSettingsSheet';
+import { HifzErrorSheet } from './hifz-study/HifzErrorSheet';
+import { ErrorsHeadIcon } from './hifz-study/HifzErrorsIcon';
+import { HifzDisplaySheet, type HifzDisplayMode } from './hifz-study/HifzDisplaySheet';
+import { EyeIcon, EyeOffIcon, HifzStudyHeader } from './hifz-study/HifzStudyHeader';
+import { HifzSearchSheet } from './hifz-study/HifzSearchSheet';
+import type { QuranSearchLabels } from './QuranSearchBox';
+import { loadBookmarks, pageBookmarkId, saveBookmarks } from '@/lib/quran-bookmarks';
+import { DEFAULT_SVG_MUSHAF } from '@/lib/quran-svg-page';
+import { HifzLivePills } from './hifz-study/HifzLivePills';
 import { HifzNumericInput } from './HifzNumericInput';
 import { HifzMutashabihat, type HifzMutashabihatLabels } from './HifzMutashabihat';
 import { loadBoundaries } from '@/lib/quran-boundaries-loader';
 import { loadMushafLines, type MushafExactLine } from '@/lib/quran-mushaf-lines';
 import {
-  loadMushafV2,
+  loadV2Index,
+  loadV2Page,
   v2FirstAyahOfSurahOnPage,
   v2PageAyahs,
-  v2PageIndexFor,
-  type V2MushafData,
+  v2PageIndexForAyah,
+  type V2MushafIndex,
   type V2Page,
 } from '@/lib/quran-mushaf-v2';
+import {
+  loadV4PageGlyphs,
+  shouldUseV4Glyph,
+  type V4PageGlyphs,
+} from '@/lib/quran-mushaf-v4';
+import {
+  ensureMushafFontFor,
+  qcfV4Provider,
+  useMushafFontReadyFor,
+} from '@/lib/quran-mushaf-font';
 import {
   ARABIC_INDIC,
   formatArabicIndicDecimal,
@@ -154,6 +174,7 @@ import {
   toArabicIndic,
 } from '@/lib/quran-print-lines';
 import { colorizeTajweedWord } from '@/lib/quran-tajweed';
+import { editionDisplayName } from '@/lib/quran-editions';
 import { rangeContaining } from '@/lib/quran-view-modes';
 import { buildPageRender, buildV2PageRender, pageIndexFor } from '@/lib/hifz-page-render';
 import { encodeWav } from '@/lib/hifz-wav';
@@ -177,17 +198,25 @@ import type {
 // Re-exported so the single consumer (QuranReader) keeps importing it from here.
 export type { HifzLabels } from '@/lib/hifz-study-types';
 
-/** The three page display modes (bottom menu): page-flip, scrolling, card. */
-type DisplayMode = 'page' | 'scroll' | 'card';
+/** The three Tarteel display modes (bottom sheet, 2026-11-08):
+    mushaf (printed Madinah page, swipe to turn), nass (scrolling
+    Uthmani text) and translation (scrolling, read-only). Stored in
+    the same 'hifz-display-mode' key as the old page/scroll/card
+    modes; legacy values map: page/card -> mushaf, scroll -> nass. */
+type DisplayMode = HifzDisplayMode;
 const DISPLAY_MODE_KEY = 'hifz-display-mode';
 function readDisplayMode(): DisplayMode {
   try {
     const v = window.localStorage.getItem(DISPLAY_MODE_KEY);
-    if (v === 'scroll' || v === 'card' || v === 'page') return v;
+    if (v === 'mushaf' || v === 'nass' || v === 'translation') return v;
+    // Legacy values (pre-Tarteel sheet): page/card were the printed
+    // page, scroll was the scrolling view.
+    if (v === 'page' || v === 'card') return 'mushaf';
+    if (v === 'scroll') return 'nass';
   } catch {
     /* storage unavailable */
   }
-  return 'page';
+  return 'mushaf';
 }
 
 
@@ -213,9 +242,14 @@ export function QuranHifzStudy({
   surahList,
   initialSurah,
   initialAyah,
+  initialPageTarget,
   initialTexts,
   labels,
   reciterPhotos,
+  initialTranslations,
+  translationEditions,
+  defaultTranslation,
+  searchLabels,
 }: {
   locale: string;
   surahList: SurahSummary[];
@@ -224,15 +258,36 @@ export function QuranHifzStudy({
     It is only a hint — the live session locates the recited ayah
     from the audio and the page follows it. */
   initialAyah: number | null;
+  /** Hifz identity (2026-11-08): ?view=page&target=N deep-link
+    page (from the reader shell; null when the hifz tab was opened
+    without a page view). The study starts on that page's first
+    ayah instead of the surah's first page. An explicit ?ayah=
+    wins over the target. */
+  initialPageTarget?: number | null;
   /** Ignored: the line data is always Hafs (see header). */
   initialMushaf: string;
   /** Ayah texts of the initial surah, from the server render. */
   initialTexts: Record<number, string>;
   labels: HifzLabels;
   /** Phase 5: reciter photos by AlQuran Cloud edition id (from the
-      CRM providers payload, threaded through the reader) — the
-      listen mini player maps its Quran.com reciter ids onto these. */
+      CRM providers payload, threaded through the reader). Unused
+      since the listen mini player was removed (2026-11-08) — kept
+      in the props so the player can return without re-threading. */
   reciterPhotos?: Record<string, string | null>;
+  /** Translation mode (Tarteel sheet, 2026-11-08): the default
+      edition's per-ayah translation of the initial surah, from the
+      server render — same source as the reader's ayah view. Other
+      active editions load on demand (see the translation effect). */
+  initialTranslations?: Record<number, string>;
+  /** Active translation editions (CRM quran.translations, e.g.
+      ['en.sahih', 'fa.makarem']) shown in translation mode. */
+  translationEditions?: string[];
+  /** The default (server-loaded) translation edition id. */
+  defaultTranslation?: string | null;
+  /** Labels for the one Quran search (QuranSearchBox in the search
+      sheet, opened from the top bar) — threaded through from the
+      reader, same object the reader itself receives. */
+  searchLabels: QuranSearchLabels;
 }) {
   const [surah, setSurah] = useState(initialSurah);
   const [ayah, setAyah] = useState(initialAyah ?? 1);
@@ -250,6 +305,22 @@ export function QuranHifzStudy({
         ? { [initialSurah]: initialTexts }
         : {},
   );
+  // Translation mode (Tarteel sheet): per-ayah translations keyed
+  // `${surah}:${edition}`. The default edition of the initial surah
+  // arrives with the server render; every other active edition (and
+  // every other surah) loads on demand when translation mode is
+  // open — same /api/v1/quran/surah fetch the neighbour texts use.
+  const [translationsByKey, setTranslationsByKey] = useState<
+    Record<string, Record<number, string>>
+  >(() =>
+    initialTranslations &&
+    Object.keys(initialTranslations).length > 0 &&
+    defaultTranslation
+      ? { [`${initialSurah}:${defaultTranslation}`]: initialTranslations }
+      : {},
+  );
+  const [trLoading, setTrLoading] = useState(false);
+  const [trFailed, setTrFailed] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [attempt, setAttempt] = useState<HifzAttempt | null>(null);
   const [attemptWords, setAttemptWords] = useState<HifzWordScore[]>([]);
@@ -407,6 +478,18 @@ export function QuranHifzStudy({
     }
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Tarteel display sheet (2026-11-08): the bottom sheet that
+  // picks mushaf / nass / translation (replaces the old bottom
+  // display menu). The eye + settings now live in the top bar.
+  const [displaySheetOpen, setDisplaySheetOpen] = useState(false);
+  // Tarteel top bar (2026-11-08): the Quran search sheet (opened
+  // by the magnifier) and the page bookmark on the surah card.
+  // The bookmark is localStorage, the same store the reader uses
+  // (quran-bookmarks-v1); the study page is always Hafs, so the
+  // bookmark id uses the default mushaf key. `null` = no page on
+  // screen yet (the card renders without a bookmark icon).
+  const [searchSheetOpen, setSearchSheetOpen] = useState(false);
+  const [bookmarked, setBookmarked] = useState<boolean | null>(null);
   // Phase-1 hifz fix: the session-setup form (surah/ayah picker,
   // range + repetition, listen controls) is a collapsible panel,
   // CLOSED by default, so the mushaf is the first visible element
@@ -713,21 +796,77 @@ export function QuranHifzStudy({
     [clearLiveConnectTimeout],
   );
 
-  // Phase 3 (hifz redesign): the real V2 mushaf data loads once
-  // (fetch from public/, preloaded from the page head on the hifz
-  // tab — lib/quran-mushaf-v2). While it loads the page waits; if it
-  // fails (null) the old lines render (see the fallback-only loads
-  // after surahPageIndices below).
-  const [v2Data, setV2Data] = useState<V2MushafData | null | undefined>(undefined);
+  // Phase 3 (hifz redesign) + round 2 §8 (per-page chunks): the V2
+  // index loads once (fetch from public/, preloaded from the page
+  // head on the hifz tab — lib/quran-mushaf-v2) and each page's layout
+  // loads as its own tiny chunk (see the v2Pages effect below). While
+  // the index loads the page waits; if it fails (null) the old lines
+  // render (see the fallback-only loads below).
+  // Per-page V2 layout chunks loaded so far, keyed by 0-based page
+  // index (round 2 §8): undefined = not loaded yet, null = the chunk
+  // (and the full-data fallback) failed, V2Page = loaded. The loader
+  // promise-caches per page, so re-renders never re-fetch.
+  const [v2Index, setV2Index] = useState<V2MushafIndex | null | undefined>(undefined);
+  const [v2Pages, setV2Pages] = useState<Record<number, V2Page | null>>({});
+  // QPC V4 Tajweed glyphs (2026-11-08): this page's
+  // "surah:ayah:word" → glyph-string map. Tri-state like the
+  // reader's v2Glyphs: undefined = still loading, null = unavailable
+  // (the whole page falls back to Tanzil text), map = ready. Cleared
+  // on page change so a stale page's map can never render under the
+  // new page (see the clear effect next to the v2Pages effect).
+  const [v4Glyphs, setV4Glyphs] = useState<V4PageGlyphs | null | undefined>(undefined);
+  // Whether the current page's V4 font REALLY loaded (tri-state:
+  // undefined = load still pending, true = loaded, false = failed or
+  // timed out). The useMushafFontReadyFor hook below settles true on
+  // timeout too (it only gates the placeholder), so the glyph branch
+  // in renderLineWord keys on this boolean, never on the hook —
+  // otherwise a timed-out font would paint tofu PUA.
+  const [v4FontLoaded, setV4FontLoaded] = useState<boolean | undefined>(undefined);
   useEffect(() => {
     let cancelled = false;
-    loadMushafV2().then((data) => {
-      if (!cancelled) setV2Data(data);
+    loadV2Index().then((index) => {
+      if (!cancelled) setV2Index(index);
     });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Hifz identity (2026-11-08): a ?view=page&target=N deep link
+  // starts the study on page N — its first ayah — not on the
+  // surah's first page. An explicit ?ayah= wins over the target.
+  // Applied once, when the V2 index arrives: pageFirstAyahs
+  // carries the first ayah BEGINNING on each page (every one of
+  // the 604 pages has an entry). If the index failed outright, the
+  // boundaries' page starts are the fallback (they only load on
+  // V2 failure). A target in another surah moves the surah too —
+  // resumeAyahRef carries the ayah across the surah-change reset
+  // in the texts effect, the same pattern the resume button uses.
+  const targetPageAppliedRef = useRef(false);
+  useEffect(() => {
+    if (targetPageAppliedRef.current) return;
+    if (initialPageTarget === null || initialPageTarget === undefined) return;
+    if (initialAyah !== null) return;
+    let first: { surah: number; ayah: number } | null = null;
+    if (v2Index !== undefined && v2Index !== null) {
+      const entry = v2Index.pageFirstAyahs.find(([, , p]) => p === initialPageTarget);
+      if (entry) first = { surah: entry[0], ayah: entry[1] };
+    } else if (v2Index === null && boundaries) {
+      const entry = boundaries.page[initialPageTarget - 1];
+      if (entry) first = { surah: entry.surah, ayah: entry.ayah };
+    } else {
+      return; // index still loading (or boundaries not yet loaded)
+    }
+    if (!first) return;
+    targetPageAppliedRef.current = true;
+    if (first.surah !== surah) {
+      resumeAyahRef.current = first.ayah;
+      setSurah(first.surah);
+      setAyah(first.ayah);
+    } else {
+      setAyah(first.ayah);
+    }
+  }, [v2Index, boundaries, initialPageTarget, initialAyah, surah]);
 
   // Session timer: counts up once a second while a live session is
   // listening; resets when the session ends (the pill disappears).
@@ -892,6 +1031,24 @@ export function QuranHifzStudy({
     return keys;
   }, [wallAyahs]);
 
+  // Nass mode (Tarteel sheet): the same written-word map the page
+  // render builds internally, so hide/reveal, peek and grades work
+  // identically on the scrolling text. Keys are `${ayah}:${index}`.
+  const nassWrittenByKey = useMemo(() => {
+    const m = new Map<string, WallWord>();
+    for (const group of wallAyahs) {
+      for (const w of group.words) m.set(`${group.ayah}:${w.index}`, w);
+    }
+    return m;
+  }, [wallAyahs]);
+
+  // Ayah numbers of the current surah, for the nass / translation
+  // scrolling views.
+  const ayahNumbers = useMemo(
+    () => Array.from({ length: ayahCount }, (_, i) => i + 1),
+    [ayahCount],
+  );
+
   // The line page of the SELECTED ayah, and whether it is ready.
   // pageFailed covers both a failed line-data load and a selected
   // ayah no page covers: either way the wall below shows everything.
@@ -904,16 +1061,27 @@ export function QuranHifzStudy({
   // the old lines disagree on 25 page starts, so the study page
   // navigates by the V2 index while V2 data is loaded; the old index
   // stays for the fallback when the V2 load fails.
-  const useV2 = v2Data !== undefined && v2Data !== null;
+  const useV2 = v2Index !== undefined && v2Index !== null;
   const v2PageIndex = useMemo(
-    () => (v2Data ? v2PageIndexFor(v2Data.pages, surah, ayah) : null),
-    [v2Data, surah, ayah],
+    () => (v2Index ? v2PageIndexForAyah(v2Index, surah, ayah) : null),
+    [v2Index, surah, ayah],
   );
   const activePageIndex = useV2 ? v2PageIndex : pageIndex;
+  // Tri-state: undefined = the chunk is still loading (the page
+  // waits), null = the chunk failed (the old-lines fallback takes
+  // over), V2Page = loaded. (A plain ?? would collapse failed into
+  // loading, so the key presence is tested explicitly.)
   const activeV2Page =
-    useV2 && v2PageIndex !== null ? (v2Data?.pages[v2PageIndex] ?? null) : null;
-  const pageReady = useV2 ? activeV2Page !== null : pageLines !== null;
-  const pageFailed = mushafPages !== undefined && v2Data !== undefined && !pageReady;
+    useV2 && v2PageIndex !== null
+      ? v2PageIndex in v2Pages
+        ? v2Pages[v2PageIndex]
+        : undefined
+      : null;
+  const pageReady =
+    useV2
+      ? activeV2Page !== undefined && activeV2Page !== null
+      : pageLines !== null;
+  const pageFailed = mushafPages !== undefined && v2Index !== undefined && !pageReady;
   // Surah texts settled (loaded, or failed): only then may the wall
   // claim an ayah is unplaced. While they still load, placedAyahs is
   // empty by construction and the wall would wrongly swallow the
@@ -921,14 +1089,38 @@ export function QuranHifzStudy({
   const textsReady = textsBySurah[surah] !== undefined;
   const textsSettled = textsReady || textsFailed;
 
+  // The current printed page number (1-based), for the V4 font and
+  // glyph map. The family is per-page (QCF4NNN_COLOR), so it comes
+  // from the page here, never from static CSS. Null when there is no
+  // active page (old-lines fallback path) — glyphs never apply there.
+  const v4PageNumber = activePageIndex !== null ? activePageIndex + 1 : null;
+  const v4FontFamily =
+    v4PageNumber !== null
+      ? (qcfV4Provider.familyForPage(v4PageNumber)?.family ?? null)
+      : null;
+  // Placeholder gate, mirroring the reader's useMushafFontReady:
+  // while false the mushaf section shows blank placeholder lines of
+  // the same count/line-height, never tofu or a wrong-font flash.
+  // Settles true on timeout/failure too — the glyph branch
+  // additionally requires v4FontLoaded === true (see above).
+  const v4FontReady = useMushafFontReadyFor(qcfV4Provider, v4PageNumber ?? 1);
+
   // The current page's render lines (placed ayahs + line slots),
   // built by the pure buildPageRender helper. Scroll mode calls the
   // same helper for every page of the surah. Phase 3: the V2 page
   // renders first (buildV2PageRender); a null result falls back to
   // the old lines for the same page, never a half-mixed page.
   const pageRender = useMemo(() => {
-    if (useV2 && activeV2Page && v2Data) {
-      const v2 = buildV2PageRender(v2Data, activeV2Page, surah, textsBySurah, wallAyahs);
+    if (useV2 && activeV2Page && v2Index) {
+      const v2 = buildV2PageRender(
+        v2Index,
+        activeV2Page,
+        surah,
+        textsBySurah,
+        wallAyahs,
+        undefined,
+        v4Glyphs,
+      );
       // usedV2 drives the fallback-only old-lines load below: when
       // the V2 expansion of the current page fails, the old lines
       // are needed after all (neighbor texts missing, or a genuine
@@ -943,23 +1135,17 @@ export function QuranHifzStudy({
           renderLines: [] as RenderLine[],
         };
     return { ...fallback, usedV2: false };
-  }, [useV2, activeV2Page, v2Data, pageLines, textsBySurah, surah, wallAyahs]);
+  }, [useV2, activeV2Page, v2Index, pageLines, textsBySurah, surah, wallAyahs, v4Glyphs]);
   const { placedAyahs, renderLines, usedV2 } = pageRender;
 
   // Phase 3: a V2 page spanning a surah boundary needs the neighbor
   // surah's texts too (the study surah alone is not enough). Load
   // them into the same cache; until they arrive the page renders
-  // from the old lines, then switches to V2. In scroll mode the
-  // first/last pages can also span into the adjacent surahs, so
-  // those load too. A failed neighbor load just keeps the old-lines
-  // rendering — never a broken page.
+  // from the old lines, then switches to V2. A failed neighbor load
+  // just keeps the old-lines rendering — never a broken page.
   useEffect(() => {
-    if (!v2Data || !activeV2Page) return;
+    if (!v2Index || !activeV2Page) return;
     const needed = new Set(v2PageAyahs(activeV2Page).map((r) => Number(r.split(':')[0])));
-    if (displayMode === 'scroll') {
-      if (surah > 1) needed.add(surah - 1);
-      if (surah < 114) needed.add(surah + 1);
-    }
     const missing = [...needed].filter((s) => s !== surah && textsBySurah[s] === undefined);
     if (missing.length === 0) return;
     let cancelled = false;
@@ -980,7 +1166,53 @@ export function QuranHifzStudy({
     return () => {
       cancelled = true;
     };
-  }, [v2Data, activeV2Page, displayMode, surah, textsBySurah]);
+  }, [v2Index, activeV2Page, surah, textsBySurah]);
+
+  // Translation mode (Tarteel sheet): when it is open, every active
+  // edition for the current surah must be loaded. The default
+  // edition of the initial surah arrives with the server render;
+  // the rest (and every other surah) fetch here, once per
+  // surah+edition, and stay cached in translationsByKey. A failed
+  // fetch leaves the mode showing the editions that did load plus
+  // the honest unavailable note — never a broken page.
+  const activeTranslationEditions = useMemo(() => {
+    const list = (translationEditions ?? []).filter(Boolean);
+    if (list.length > 0) return list;
+    return defaultTranslation ? [defaultTranslation] : [];
+  }, [translationEditions, defaultTranslation]);
+  useEffect(() => {
+    if (displayMode !== 'translation') return;
+    if (activeTranslationEditions.length === 0) return;
+    const missing = activeTranslationEditions.filter(
+      (ed) => translationsByKey[`${surah}:${ed}`] === undefined,
+    );
+    if (missing.length === 0) return;
+    let cancelled = false;
+    setTrLoading(true);
+    setTrFailed(false);
+    void (async () => {
+      let failed = false;
+      for (const ed of missing) {
+        if (cancelled) return;
+        try {
+          const view = await getSurah(surah, { translation: ed, translationEdition: ed });
+          if (cancelled) return;
+          const tr: Record<number, string> = {};
+          for (const a of view.ayahs) if (a.translation) tr[a.number] = a.translation;
+          setTranslationsByKey((prev) => ({ ...prev, [`${surah}:${ed}`]: tr }));
+        } catch {
+          failed = true;
+        }
+      }
+      if (!cancelled) {
+        setTrFailed(failed);
+        setTrLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [displayMode, surah, activeTranslationEditions, translationsByKey]);
 
   // Written ayahs not placed on this page render in the wall below.
   const unplacedGroups = useMemo(
@@ -1872,17 +2104,65 @@ export function QuranHifzStudy({
   // header said QPC1 page 121 for 5:77 while the V2 page on screen
   // was 120 (verified live); juz/hizb agree between the two
   // editions, so only the page number changes, on the 56 differing
-  // ayahs. The academy's hizb stays the 120-scale (half-hizb)
-  // convention of the reader — Tarteel shows the 60-scale hizb
-  // (19 for page 182, where the academy shows 37); changing that
-  // scale in the header alone would break the reader-wide
-  // convention, so it is documented, not changed (phase 6 notes).
+  // ayahs.
+  // Hifz identity (2026-11-08): the displayed حزب is the 60-scale
+  // hizb Tarteel shows (same display rule as the umum reader's
+  // toDisplayHizb: ceil(n / 2) — 24→12, 59→30, 117→59). The stored
+  // data stays 120-scale; only this header converts. The old note
+  // that kept the 120-scale here is superseded by this decision.
   const headerMeta = useMemo(() => {
+    const toDisplayHizb = (h: number | null): number | null =>
+      h === null ? null : Math.ceil(h / 2);
     if (activeV2Page) {
-      return { page: activeV2Page.n, juz: activeV2Page.juz, hizb: activeV2Page.hizb };
+      return {
+        page: activeV2Page.n,
+        juz: activeV2Page.juz,
+        hizb: toDisplayHizb(activeV2Page.hizb),
+      };
     }
-    return headerRange;
+    if (!headerRange) return null;
+    return { ...headerRange, hizb: toDisplayHizb(headerRange.hizb) };
   }, [activeV2Page, headerRange]);
+
+  // Tarteel top bar: the card bookmark follows the page on screen.
+  // Read once per page change (the reader's store is the source of
+  // truth; this page only toggles its own page's entry).
+  useEffect(() => {
+    const page = headerMeta?.page ?? null;
+    if (page === null) {
+      setBookmarked(null);
+      return;
+    }
+    const id = pageBookmarkId(page, DEFAULT_SVG_MUSHAF);
+    setBookmarked(loadBookmarks().some((b) => b.id === id));
+  }, [headerMeta?.page]);
+
+  const toggleBookmark = useCallback(() => {
+    const page = headerMeta?.page ?? null;
+    if (page === null) return;
+    const id = pageBookmarkId(page, DEFAULT_SVG_MUSHAF);
+    const items = loadBookmarks();
+    if (items.some((b) => b.id === id)) {
+      saveBookmarks(items.filter((b) => b.id !== id));
+      setBookmarked(false);
+    } else {
+      saveBookmarks([
+        ...items,
+        {
+          id,
+          kind: 'page',
+          surah,
+          ayah: null,
+          page,
+          mushaf: DEFAULT_SVG_MUSHAF,
+          label: `${surahName} — ${page}`,
+          favorite: false,
+          createdAt: Date.now(),
+        },
+      ]);
+      setBookmarked(true);
+    }
+  }, [headerMeta?.page, surah, surahName]);
 
   // Live pills (Tarteel): error count and accuracy, from the words
   // written so far in this session (live + graded). A close word is
@@ -1952,26 +2232,59 @@ export function QuranHifzStudy({
     return [...byKey.values()].sort((a, b) => a.ayah - b.ayah || a.index - b.index);
   }, [liveWords, attemptWords, surah]);
 
-  // Pages of the current surah, for scroll mode (all pages stacked).
-  const surahPageIndices = useMemo(() => {
-    // Phase 3: scroll mode pages by the V2 index while V2 data is
-    // loaded (the V2 and old page spans differ on 25 pages).
-    if (useV2 && v2Data) {
-      const first = v2PageIndexFor(v2Data.pages, surah, 1);
-      if (first === null) return [];
-      const last = v2PageIndexFor(v2Data.pages, surah, ayahCount || 1) ?? first;
-      const out: number[] = [];
-      for (let p = first; p <= last; p += 1) out.push(p);
-      return out;
-    }
-    if (!mushafPages) return [];
-    const first = pageIndexFor(mushafPages, surah, 1);
-    if (first === null) return [];
-    const last = pageIndexFor(mushafPages, surah, ayahCount || 1) ?? first;
-    const out: number[] = [];
-    for (let p = first; p <= last; p += 1) out.push(p);
-    return out;
-  }, [useV2, v2Data, mushafPages, surah, ayahCount]);
+  // Round 2 §8 — per-page V2 chunks: only the active page is
+  // fetched. Each chunk is ~0.7KB gzip instead of the whole 193KB
+  // file. Failed pages land as null (never retried in this mount —
+  // the loader's fallback already tried the full data), so the
+  // effect terminates instead of refetch-looping.
+  useEffect(() => {
+    if (!useV2 || !v2Index) return;
+    const needed = activePageIndex !== null ? [activePageIndex] : [];
+    const missing = needed.filter((p) => v2Pages[p] === undefined);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    void Promise.all(missing.map((p) => loadV2Page(p + 1))).then((loaded) => {
+      if (cancelled) return;
+      setV2Pages((prev) => {
+        const next = { ...prev };
+        loaded.forEach((pg, i) => {
+          next[missing[i]] = pg;
+        });
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [useV2, v2Index, activePageIndex, v2Pages]);
+
+  // QPC V4 glyphs + font for the active page (2026-11-08): the glyph
+  // map and the font load together per page. A null map (file
+  // missing) or a failed font load falls back to Tanzil text; the
+  // font promise is shared with the useMushafFontReadyFor hook
+  // above (same per-page cache), so no double load.
+  useEffect(() => {
+    if (!useV2 || activePageIndex === null) return;
+    const page = activePageIndex + 1;
+    let cancelled = false;
+    loadV4PageGlyphs(page).then((glyphs) => {
+      if (!cancelled) setV4Glyphs(glyphs);
+    });
+    ensureMushafFontFor(qcfV4Provider, page).then((ok) => {
+      if (!cancelled) setV4FontLoaded(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [useV2, activePageIndex]);
+  // Clear both on page change (reader pattern): a stale page's map
+  // or font state must never render under the new page. Runs after
+  // the load effect in the same commit; the new page's fetch resolves
+  // later and repopulates both.
+  useEffect(() => {
+    setV4Glyphs(undefined);
+    setV4FontLoaded(undefined);
+  }, [activePageIndex]);
 
   // ---- Performance (§8): fallback-only data loads. ----
   // The old QPC1 line data (1.78MB raw / 354KB gzip) and the
@@ -1982,42 +2295,27 @@ export function QuranHifzStudy({
   // the mushaf renders from V2 (pageReady never waits for them) and
   // the header reads page/juz/hizb from the V2 page (headerMeta).
   // They download only when the V2 path cannot render the view:
-  //   - V2 failed outright (v2Data === null): at once, both.
-  //   - the current page's V2 expansion failed (usedV2 false), or a
-  //     scroll-mode edge page (first/last of the surah — the only
-  //     pages that can span into a neighbor surah) failed: after a
-  //     3s grace period. The usual transient cause — a neighbor
-  //     surah's texts not fetched yet — resolves in ~1s, and the
-  //     grace avoids a wasted 354KB download on slow 3G; the effect
-  //     cleanup cancels the timer if the render recovers. A genuine
-  //     mismatch still falls back, just 3s later.
-  // Interior scroll pages need only this surah's texts (already
-  // loaded once textsReady), so they cannot fail for missing tokens;
-  // a genuine mismatch there surfaces when its ayah becomes active.
+  //   - V2 failed outright (v2Index === null): at once, both.
+  //   - the current page's V2 expansion failed (usedV2 false):
+  //     after a 3s grace period. The usual transient cause — a
+  //     neighbor surah's texts not fetched yet — resolves in ~1s,
+  //     and the grace avoids a wasted 354KB download on slow 3G;
+  //     the effect cleanup cancels the timer if the render recovers.
+  //     A genuine mismatch still falls back, just 3s later.
   const needsOldLines = useMemo(() => {
-    if (v2Data === null) return true;
-    if (v2Data === undefined || !useV2) return false;
+    if (v2Index === null) return true;
+    if (v2Index === undefined || !useV2) return false;
+    // The active chunk is still loading: its expansion cannot be
+    // judged yet, and treating usedV2=false as a failure here would
+    // download the 354KB old lines on every healthy load.
+    if (activeV2Page === undefined) return false;
     if (!usedV2) return true;
-    if (displayMode === 'scroll' && surahPageIndices.length > 0) {
-      const first = surahPageIndices[0];
-      const last = surahPageIndices[surahPageIndices.length - 1];
-      for (const p of [first, last]) {
-        if (p === activePageIndex) continue;
-        const v2p = v2Data.pages[p];
-        if (
-          v2p &&
-          buildV2PageRender(v2Data, v2p, surah, textsBySurah, wallAyahs) === null
-        ) {
-          return true;
-        }
-      }
-    }
     return false;
-  }, [v2Data, useV2, usedV2, displayMode, surahPageIndices, activePageIndex, textsBySurah, wallAyahs, surah]);
+  }, [v2Index, useV2, usedV2, activePageIndex, activeV2Page, v2Pages, textsBySurah, wallAyahs, surah]);
 
   useEffect(() => {
     if (!needsOldLines || mushafPages !== undefined) return;
-    if (v2Data === null) {
+    if (v2Index === null) {
       let cancelled = false;
       loadMushafLines().then((pages) => {
         if (!cancelled) setMushafPages(pages);
@@ -2037,7 +2335,7 @@ export function QuranHifzStudy({
       cancelled = true;
       window.clearTimeout(id);
     };
-  }, [needsOldLines, v2Data, mushafPages]);
+  }, [needsOldLines, v2Index, mushafPages]);
 
   // Boundaries are header-fallback-only (headerMeta prefers the V2
   // page): they download only when V2 failed outright. The loader
@@ -2045,7 +2343,7 @@ export function QuranHifzStudy({
   // boundaries JSON — that fallback only runs while V2 is
   // unavailable, never on a healthy load.
   useEffect(() => {
-    if (v2Data !== null) return;
+    if (v2Index !== null) return;
     let cancelled = false;
     loadBoundaries().then((b) => {
       if (!cancelled) setBoundaries(b);
@@ -2053,7 +2351,7 @@ export function QuranHifzStudy({
     return () => {
       cancelled = true;
     };
-  }, [v2Data]);
+  }, [v2Index]);
 
   const isZipformer = engineStatus?.engine === 'zipformer';
   const isWhisper = engineStatus?.engine === 'whisper_quran';
@@ -2071,6 +2369,20 @@ export function QuranHifzStudy({
   // graded slot renders its status color, practice selection, and
   // dispute. In listen mode the current word gets the green
   // highlight (solid #188653 + white text, like the Segment builder).
+  // Swipe guard (Tarteel step 6): a swipe that starts on a word
+  // must not also tap it — the tap handlers below ignore clicks
+  // within 500ms of a swipe (lastSwipeAtRef is set by onPageTouchEnd).
+  const lastSwipeAtRef = useRef(0);
+  const wordTapSuppressed = () => Date.now() - lastSwipeAtRef.current < 500;
+  // QPC V4 glyph span (2026-11-08): the printed glyph string in
+  // this page's QCF4NNN_COLOR family, via inline style — the family
+  // is per-page, so static CSS cannot name it. No renderTajweedText
+  // call, no .hifz-tj-* spans: the COLR palette colours the glyph.
+  // Callers must already have decided the word may paint a glyph
+  // (shouldUseV4Glyph + v4FontLoaded === true).
+  const renderV4Glyph = (slot: LineWordSlot) => (
+    <span style={{ fontFamily: v4FontFamily ?? undefined }}>{slot.glyph}</span>
+  );
   const renderLineWord = (slot: LineWordSlot, key: string) => {
     // Listen mode: the word the reciter is currently on.
     const isListenNow =
@@ -2099,9 +2411,10 @@ export function QuranHifzStudy({
               type="button"
               key={key}
               className="hifz-line-word hifz-line-word-concealed"
-              onClick={() =>
-                setRevealedWords((prev) => new Set(prev).add(listenKey))
-              }
+              onClick={() => {
+                if (wordTapSuppressed()) return;
+                setRevealedWords((prev) => new Set(prev).add(listenKey));
+              }}
               aria-label={labels.showScript}
               data-word-key={listenKey}
               data-qul-id={slot.qulId}
@@ -2110,6 +2423,17 @@ export function QuranHifzStudy({
             </button>
           );
         }
+        // Listen follow-along words (not the current one) may paint
+        // their V4 glyph; the current word stays text so the green
+        // highlight + white ink reads as "current word".
+        const useGlyphListen =
+          v4FontLoaded === true &&
+          shouldUseV4Glyph(slot.glyph, {
+            concealed: false,
+            newestLive: false,
+            status: null,
+            listenNow: isListenNow,
+          });
         return (
           <span
             key={key}
@@ -2117,11 +2441,12 @@ export function QuranHifzStudy({
               'hifz-line-word',
               'hifz-word-listen',
               isListenNow ? 'hifz-word-listen-now' : '',
+              useGlyphListen ? 'hifz-line-word-glyph' : '',
             ].join(' ')}
             data-word-key={slot.index >= 0 ? `${slot.surah}:${slot.ayah}:${slot.index}` : undefined}
             data-qul-id={slot.qulId}
           >
-            {renderTajweedText(slot.text)}
+            {useGlyphListen ? renderV4Glyph(slot) : renderTajweedText(slot.text)}
             {slot.pauseAfter ? (
               <span className="hifz-word-pause" aria-hidden="true">
                 {slot.pauseAfter}
@@ -2130,15 +2455,27 @@ export function QuranHifzStudy({
           </span>
         );
       }
+      // Hidden (unwritten/spacer) words: visibility:hidden hides a
+      // COLR glyph element-level, so these MAY stay glyphs — the
+      // layout is identical either way, and the glyph keeps the
+      // hidden slot's true printed width.
+      const useGlyphHidden =
+        v4FontLoaded === true &&
+        shouldUseV4Glyph(slot.glyph, {
+          concealed: false,
+          newestLive: false,
+          status: null,
+          listenNow: false,
+        });
       return (
         <span
           key={key}
-          className="hifz-line-word-hidden"
+          className={useGlyphHidden ? 'hifz-line-word-hidden hifz-line-word-glyph' : 'hifz-line-word-hidden'}
           aria-hidden="true"
           data-word-key={slot.index >= 0 ? `${slot.surah}:${slot.ayah}:${slot.index}` : undefined}
           data-qul-id={slot.qulId}
         >
-          {slot.text}
+          {useGlyphHidden ? renderV4Glyph(slot) : slot.text}
           {slot.pauseAfter ? (
             <span className="hifz-word-pause" aria-hidden="true">
               {slot.pauseAfter}
@@ -2163,9 +2500,10 @@ export function QuranHifzStudy({
           type="button"
           key={key}
           className="hifz-line-word hifz-line-word-concealed"
-          onClick={() =>
-            setRevealedWords((prev) => new Set(prev).add(wordKey))
-          }
+          onClick={() => {
+            if (wordTapSuppressed()) return;
+            setRevealedWords((prev) => new Set(prev).add(wordKey));
+          }}
           aria-label={labels.showScript}
           data-word-key={wordKey}
           data-qul-id={slot.qulId}
@@ -2203,6 +2541,20 @@ export function QuranHifzStudy({
             ? `hifz-word-live ${newestTone}`
             : 'hifz-word-live'
           : `hifz-word-${w.status}`;
+    // V4 glyph iff the word is in its plain state (§5 rule):
+    // correct, older-live and practice-selected words keep their
+    // glyph (their tone is ink-identical to plain, or an outline
+    // only); the newest live word and wrong/close/peeked/skipped
+    // grades stay text because their signal IS the ink colour, and
+    // the listen-now word stays text so the green highlight reads.
+    const useGlyph =
+      v4FontLoaded === true &&
+      shouldUseV4Glyph(slot.glyph, {
+        concealed: false,
+        newestLive: isNewestLive,
+        status: w.status,
+        listenNow: isListenNow,
+      });
     return (
       <span
         key={key}
@@ -2211,6 +2563,7 @@ export function QuranHifzStudy({
           tone,
           isPractice ? 'hifz-word-practice' : '',
           isListenNow ? 'hifz-word-listen-now' : '',
+          useGlyph ? 'hifz-line-word-glyph' : '',
         ].join(' ')}
         data-word-key={slot.index >= 0 ? `${slot.surah}:${slot.ayah}:${slot.index}` : undefined}
         data-qul-id={slot.qulId}
@@ -2218,12 +2571,13 @@ export function QuranHifzStudy({
         <button
           type="button"
           className="hifz-word-text"
-          onClick={() =>
-            setPracticeWord({ ayah: slot.ayah, index: slot.index, text: slot.text })
-          }
+          onClick={() => {
+            if (wordTapSuppressed()) return;
+            setPracticeWord({ ayah: slot.ayah, index: slot.index, text: slot.text });
+          }}
           title={labels.practiceWordHint}
         >
-          {renderTajweedText(slot.text)}
+          {useGlyph ? renderV4Glyph(slot) : renderTajweedText(slot.text)}
         </button>
         {slot.pauseAfter ? (
           <span className="hifz-word-pause" aria-hidden="true">
@@ -2282,6 +2636,14 @@ export function QuranHifzStudy({
   // mic never hold audio at once: starting a recording pauses
   // listening; switching to listen stops any live run; stopping
   // listening never starts a recording.
+  // Tarteel (2026-11-08): the listen mini player is gone, so
+  // entering listen starts the CURRENT ayah by itself — otherwise
+  // listen mode would have no way to play at all. playAyah(ayah)
+  // plays the study's selected ayah (play() alone would start from
+  // the hook's own current ayah, which is 1 on first entry); when
+  // timings are not loaded yet it fetches them and seeks to this
+  // ayah. Pause/stop stay available: the bottom-bar mic becomes
+  // play/pause in listen mode, and the listen panel keeps Stop.
   const switchToListen = useCallback(() => {
     if (isZipformer) {
       if (liveState === 'listening' || liveState === 'paused') stopLive();
@@ -2290,7 +2652,8 @@ export function QuranHifzStudy({
       stopRecording();
     }
     setStudyMode('listen');
-  }, [isZipformer, liveState, liveStarting, stopLive, cancelLive, isWhisper, recState, stopRecording]);
+    listen.playAyah(ayah);
+  }, [isZipformer, liveState, liveStarting, stopLive, cancelLive, isWhisper, recState, stopRecording, listen.playAyah, ayah]);
 
   const switchToPractice = useCallback(() => {
     listen.stop();
@@ -2318,13 +2681,25 @@ export function QuranHifzStudy({
     clearMicLongPress();
     micLongPressTimerRef.current = window.setTimeout(() => {
       micLongPressFiredRef.current = true;
-      switchToListen();
+      // Listen mode: the same long-press switches back to practice
+      // (the old listen player's long-press did exactly that).
+      if (studyMode === 'listen') switchToPractice();
+      else switchToListen();
     }, HIFZ_LISTEN_LONG_PRESS_MS);
-  }, [clearMicLongPress, switchToListen]);
+  }, [clearMicLongPress, switchToListen, switchToPractice, studyMode]);
 
   const micOnClick = (): void => {
     if (micLongPressFiredRef.current) {
       micLongPressFiredRef.current = false;
+      return;
+    }
+    // Listen mode: the bottom-bar mic is the play/pause control
+    // (the mini player is gone). Paused resumes mid-ayah; idle or
+    // error restarts the current ayah.
+    if (studyMode === 'listen') {
+      if (listen.isPlaying) listen.pause();
+      else if (listen.listenStatus === 'paused') listen.resume();
+      else listen.playAyah(ayah);
       return;
     }
     // Phase 5: starting a recording pauses listening (audio focus).
@@ -2339,57 +2714,127 @@ export function QuranHifzStudy({
     }
   };
 
-  // Scroll mode: keep the page of the current ayah in view. The
-  // page sections are registered by ref; when the ayah moves to
-  // another page, that page scrolls into view (smooth, nearest).
-  const scrollPageRefs = useRef<Map<number, HTMLElement>>(new Map());
-  useEffect(() => {
-    if (displayMode !== 'scroll') return;
-    if (activePageIndex === null) return;
-    const el = scrollPageRefs.current.get(activePageIndex);
-    if (el) {
-      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
-    }
-  }, [displayMode, activePageIndex, ayah]);
+  // Tarteel (2026-11-08, step 6): page turning, shared by the
+  // swipe gesture and (until the bottom bar was rebuilt) the
+  // prev/next-page buttons. V2: load the neighbour page's chunk and
+  // jump to its first ayah of this surah; old lines: scan the page
+  // for this surah's first text line. Out of range (first/last
+  // page) or a page with no ayah of this surah: no-op, never an
+  // empty page or an error.
+  const goToPage = useCallback(
+    (delta: -1 | 1) => {
+      if (activePageIndex === null) return;
+      const target = activePageIndex + delta;
+      if (useV2) {
+        if (!v2Index || target < 0 || target >= v2Index.pageCount) return;
+        void loadV2Page(target + 1).then((pg) => {
+          if (!pg) return;
+          const first = v2FirstAyahOfSurahOnPage(pg, surah);
+          if (first !== null) setAyah(first);
+        });
+        return;
+      }
+      if (!mushafPages || target < 0 || target >= mushafPages.length) return;
+      const lines = mushafPages[target];
+      if (!lines) return;
+      for (const line of lines) {
+        if (line.t === 'text' && line.v) {
+          const [s, a] = line.v.split(':').map(Number);
+          if (s === surah) {
+            setAyah(a);
+            return;
+          }
+        }
+      }
+    },
+    [activePageIndex, useV2, v2Index, surah, mushafPages],
+  );
 
-  // Phase 7: Escape closes either open sheet (keyboard path to
+  // Swipe to turn the page (mushaf mode only): a horizontal swipe
+  // of 50px+ that dominates the vertical movement turns the page —
+  // left = next page, right = previous page (RTL mushaf order).
+  // Vertical scrolling is untouched (touch-action: pan-y on the
+  // section) and a tap on a word never fires a swipe: the threshold
+  // plus a 500ms tap-suppression window (see lastSwipeAtRef) keep
+  // word taps, peek taps and practice-word selection intact.
+  const swipeStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const onPageTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length !== 1) {
+      swipeStartRef.current = null;
+      return;
+    }
+    const t = e.touches[0];
+    swipeStartRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+  }, []);
+  const onPageTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      const start = swipeStartRef.current;
+      swipeStartRef.current = null;
+      if (!start || e.changedTouches.length !== 1) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - start.x;
+      const dy = t.clientY - start.y;
+      if (Math.abs(dx) < 50) return;
+      if (Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      if (Date.now() - start.t > 1000) return;
+      lastSwipeAtRef.current = Date.now();
+      goToPage(dx < 0 ? 1 : -1);
+    },
+    [goToPage],
+  );
+
+  // Phase 7: Escape closes any open sheet (keyboard path to
   // match the backdrop tap + the close button; no focus trap yet —
   // see the phase 7 notes, deliberately not changed).
   useEffect(() => {
-    if (!settingsOpen && !errorSheetOpen) return;
+    if (!settingsOpen && !errorSheetOpen && !displaySheetOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setSettingsOpen(false);
         setErrorSheetOpen(false);
+        setDisplaySheetOpen(false);
       }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [settingsOpen, errorSheetOpen]);
+  }, [settingsOpen, errorSheetOpen, displaySheetOpen]);
 
   // One printed page as a section: header/basmala/text lines + the
   // printed page number at the bottom (Eastern Arabic digits).
+  // Tarteel (2026-11-08): in mushaf mode the section takes the
+  // swipe handlers (page turning); nass/translation render their
+  // own scrolling views and never use this section.
   const renderPageSection = (pIdx: number, lines: RenderLine[], key: string) => (
     <section
       key={key}
-      ref={(el) => {
-        if (el) scrollPageRefs.current.set(pIdx, el);
-        else scrollPageRefs.current.delete(pIdx);
-      }}
       className="hifz-line-page"
       aria-label={labels.title}
+      onTouchStart={displayMode === 'mushaf' ? onPageTouchStart : undefined}
+      onTouchEnd={displayMode === 'mushaf' ? onPageTouchEnd : undefined}
     >
-      <p className="hifz-line-caption">
-        {surahName} · {labels.pageLabel} {toArabicIndic(pIdx + 1)}
-      </p>
+      {/* Wave 2 (2026-11-09): the caption ("surah · page N") is
+          gone — it duplicated the sticky header card, which already
+          carries surah + page | juz | hizb, and the footer below
+          carries the page number. Removing it frees 32.5px of
+          vertical budget for the 16.5px text size; no meta is lost. */}
       {lines.map((line) => {
         if (line.kind === 'header') {
-          // Phase-1 hifz fix: the floral black-white SVG frame (same
-          // asset as the reader's V2 page), only on the first page
-          // of a surah. Surah 1 has no SVG in that set, the old-lines
-          // fallback carries no surah number, and a failed load all
-          // fall back to the plain-text header.
+          // Tarteel (2026-11-08): the surah-name SVG is calligraphy
+          // ONLY — the file holds no frame (verified byte-for-byte
+          // against Drive: no rect/frame/border). The old comment
+          // calling it a "floral black-white SVG frame" was wrong.
+          // The frame is the real vector asset
+          // `public/quran/surah-headers/sura-border.svg` ("Sura
+          // border.svg" by Hadysylmy, CC BY-SA 4.0 — bundled on the
+          // user's explicit order, licence research deferred; see
+          // THIRD_PARTY_NOTICES.md), rendered as the background of
+          // .hifz-surah-frame with the name calligraphy centred in
+          // its cartouche (report 07). Sizing is by HEIGHT
+          // (aspect-ratio 16320/2000 = 8.16:1, ~43px on a 393px
+          // phone), never by width:98% — that rule made the header
+          // 3.7–4.4x taller than Tarteel. Surah 1 has no SVG in
+          // that set, and a failed load falls back to the
+          // plain-text header below.
           const headerSurah = line.surah;
           if (
             headerSurah !== undefined &&
@@ -2399,13 +2844,15 @@ export function QuranHifzStudy({
             const padded = String(headerSurah).padStart(3, '0');
             return (
               <p key={line.key} className="hifz-line hifz-line-header hifz-line-header--svg">
-                <img
-                  src={`/quran/surah-headers/surah-${padded}.svg`}
-                  alt={line.text}
-                  onError={() =>
-                    setFailedStudyHeaders((prev) => new Set(prev).add(headerSurah))
-                  }
-                />
+                <span className="hifz-surah-frame">
+                  <img
+                    src={`/quran/surah-headers/surah-${padded}.svg`}
+                    alt={line.text}
+                    onError={() =>
+                      setFailedStudyHeaders((prev) => new Set(prev).add(headerSurah))
+                    }
+                  />
+                </span>
               </p>
             );
           }
@@ -2423,6 +2870,48 @@ export function QuranHifzStudy({
               </p>
             );
           }
+          // Wave 1 (2026-11-09): the dedicated Basmalah SVG
+          // (public/quran/surah-headers/basmalah.svg — the printed
+          // surah-header form, composed from the page-1 V4 glyph
+          // outlines, never from Tarteel's bismallah.ttf) — but ONLY
+          // when the line is in a plain state: every slot hidden,
+          // or every slot written with a plain 'correct' grade.
+          // Any grade, live word, listen mode, script-hide, or a
+          // practice-selected Basmalah word falls back to the word
+          // spans below, so grading, peek, listen-now, per-word
+          // reveal and the practice outline keep working exactly as
+          // before. The Fatiha Basmalah (1:1:1-4, real ayah words)
+          // never reaches this branch — it renders as text-line
+          // words — so it stays glyphs/text as before.
+          const basmalaAllHidden = line.slots.every((s) => s.hidden);
+          const basmalaAllPlain = line.slots.every(
+            (s) => s.written !== null && s.written.status === 'correct' && !s.written.live,
+          );
+          const basmalaPracticeSelected =
+            practiceWord !== null &&
+            practiceWord.ayah === 1 &&
+            practiceWord.index >= 0 &&
+            practiceWord.index < 4;
+          if (
+            studyMode !== 'listen' &&
+            !scriptHidden &&
+            !basmalaPracticeSelected &&
+            (basmalaAllHidden || basmalaAllPlain)
+          ) {
+            return (
+              <p key={line.key} className="hifz-line hifz-line-basmala" dir="rtl">
+                <img
+                  className={
+                    basmalaAllHidden
+                      ? 'hifz-basmala-svg hifz-line-word-hidden'
+                      : 'hifz-basmala-svg'
+                  }
+                  src="/quran/surah-headers/basmalah.svg"
+                  alt={line.slots.map((s) => s.text).join(' ')}
+                />
+              </p>
+            );
+          }
           return (
             <p key={line.key} className="hifz-line hifz-line-basmala" dir="rtl">
               {line.slots.map((slot) => renderLineWord(slot, `${line.key}-${slot.index}`))}
@@ -2431,17 +2920,55 @@ export function QuranHifzStudy({
         }
         return (
           <p key={line.key} className="hifz-line" dir="rtl">
-            {line.slots.map((slot, si) =>
-              slot.kind === 'marker' ? (
-                <HifzRosette key={`m${si}`} digit={slot.text} />
-              ) : slot.kind === 'ornament' ? (
-                <span key={`o${si}`} className="hifz-line-ornament" aria-hidden="true">
-                  {slot.text}
-                </span>
-              ) : (
-                renderLineWord(slot, `${line.key}-${si}`)
-              ),
-            )}
+            {line.slots.flatMap((slot, si) => {
+              const node =
+                slot.kind === 'marker' ? (
+                  // Wave 2 (2026-11-09): the ayah-end marker as a V4
+                  // glyph (its COLR layers draw the ayah number;
+                  // advance 16.06px vs the SVG rosette's 28.8px —
+                  // this is what fixes p584 line 2). Falls back to
+                  // the SVG rosette whenever the slot has no glyph
+                  // (old-lines fallback path, missing V4 key) or
+                  // the V4 font is not loaded.
+                  slot.glyph !== undefined && v4FontLoaded === true ? (
+                    <span
+                      key={`m${si}`}
+                      className="hifz-line-marker hifz-line-marker-glyph"
+                      style={{ fontFamily: v4FontFamily ?? undefined }}
+                      aria-hidden="true"
+                    >
+                      {slot.glyph}
+                    </span>
+                  ) : (
+                    <HifzRosette key={`m${si}`} digit={slot.text} />
+                  )
+                ) : slot.kind === 'ornament' ? (
+                  <span key={`o${si}`} className="hifz-line-ornament" aria-hidden="true">
+                    {slot.text}
+                  </span>
+                ) : (
+                  renderLineWord(slot, `${line.key}-${si}`)
+                );
+              // Wave 2: a real space between slots (in the page's
+              // QCF family, ~1px) so text-align-last: justify can
+              // distribute it and flush the left edge (probe 2:
+              // plain justify alone does nothing; text-align-last
+              // flushes the void 93px -> 1px). Only while V4 glyphs
+              // are active: in the Uthmanic fallback a space is
+              // ~4px and would overflow the tightest lines.
+              if (si === 0 || v4FontLoaded !== true) return [node];
+              return [
+                <span
+                  key={`sep${si}`}
+                  className="hifz-line-sep"
+                  aria-hidden="true"
+                  style={{ fontFamily: v4FontFamily ?? undefined }}
+                >
+                  {' '}
+                </span>,
+                node,
+              ];
+            })}
           </p>
         );
       })}
@@ -2487,34 +3014,31 @@ export function QuranHifzStudy({
       className={`quran-hifz-study${hifzSettings.hideAyahMarkers ? ' hifz-hide-markers' : ''}`}
       dir={locale === 'fa' || locale === 'ar' ? 'rtl' : 'ltr'}
     >
-      {/* Header (Tarteel title box): surah name on its own line,
-          then page | juz | hizb + the current surah:ayah while a
-          live session runs. Page/juz/hizb come from the V2 page on
-          screen (headerMeta), not the QPC1 boundaries. */}
-      <header className="hifz-header">
-        <h2 className="hifz-title">{labels.title}</h2>
-        <p className="hifz-header-sub">
-          <span className="hifz-header-surah">{surahName}</span>
-          {headerMeta &&
-            headerMeta.page !== null &&
-            headerMeta.juz !== null &&
-            headerMeta.hizb !== null && (
-              <span className="hifz-header-meta">
-                {labels.headerPage} {toArabicIndic(headerMeta.page)} {' | '}
-                {labels.headerJuz} {toArabicIndic(headerMeta.juz)} {' | '}
-                {labels.headerHizb} {toArabicIndic(headerMeta.hizb)}
-                {liveActive && (
-                  <>
-                    {' | '}
-                    <span className="hifz-header-pos">
-                      {toArabicIndic(surah)}:{toArabicIndic(ayah)}
-                    </span>
-                  </>
-                )}
-              </span>
-            )}
-        </p>
-      </header>
+      {/* Header: Tarteel top bar, row 1 (hamburger + surah card +
+          search + gear) — see components/hifz-study/HifzStudyHeader.tsx.
+          Row 2 is gone: the mode toggle was removed 2026-11-08 and
+          the eye moved to the bottom bar (same change). */}
+      <HifzStudyHeader
+        surahName={surahName}
+        headerMeta={headerMeta}
+        liveActive={liveActive}
+        surah={surah}
+        ayah={ayah}
+        labels={labels}
+        menuOpen={setupOpen}
+        onOpenMenu={() => setSetupOpen((v) => !v)}
+        onOpenSearch={() => setSearchSheetOpen(true)}
+        bookmarked={bookmarked}
+        onToggleBookmark={toggleBookmark}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+
+      {/* The hide/show-script eye moved to the bottom bar
+          2026-11-08 (user order: eye only at the bottom); the
+          practice/listen mode toggle was removed the same day —
+          mode switching is now ONLY the long-press on the green
+          mic button (signed-in users); guests have no path to
+          listen mode (the mic is disabled for them). */}
 
       {/* Phase 4 — resume banner: an open session exists and the
           user asked for resumable sessions. Continuing jumps to the
@@ -2547,46 +3071,11 @@ export function QuranHifzStudy({
         </div>
       )}
 
-      {/* Mode toggle: practice (recite) or listen (follow the reciter). */}
-      <div className="hifz-mode-toggle" role="group" aria-label={labels.displayMode}>
-        <button
-          type="button"
-          aria-pressed={studyMode === 'practice'}
-          className={studyMode === 'practice' ? 'is-active' : ''}
-          onClick={() => switchToPractice()}
-        >
-          {labels.modePractice}
-        </button>
-        <button
-          type="button"
-          aria-pressed={studyMode === 'listen'}
-          className={studyMode === 'listen' ? 'is-active' : ''}
-          onClick={() => switchToListen()}
-        >
-          {labels.modeListen}
-        </button>
-      </div>
-      {/* Phase 5: the long-press switch (spec §6) is on the green
-          button; this hint says so — the toggle above stays the
-          keyboard/discoverable path. */}
-      <p className="hifz-hint">{labels.listenLongPressSwitch}</p>
-
       {/* Phase-1 hifz fix: the session-setup form (picker, range,
           repetition, listen controls) is a collapsible panel, CLOSED
           by default — the mushaf below is the first visible element
-          on load. The toggle shows the current selection (surah +
-          start ayah), so the closed panel still says what session is
-          configured. Nothing inside changed: the controls keep their
-          state and behaviour. */}
-      <div className="hifz-setup">
-        <button
-          type="button"
-          className="hifz-setup-toggle"
-          aria-expanded={setupOpen}
-          onClick={() => setSetupOpen((v) => !v)}
-        >
-          {surahName} · {labels.ayahLabel} {toArabicIndic(ayah)} {setupOpen ? '▾' : '▸'}
-        </button>
+          on load. It opens from the hamburger in the top bar. */}
+      <div className={`hifz-setup${setupOpen ? ' is-open' : ''}`}>
         {setupOpen && (
           <>
       <div className="hifz-picker" role="group" aria-label={labels.surahLabel}>
@@ -2791,103 +3280,26 @@ export function QuranHifzStudy({
           back) and 'ended' never advanced interpolated playback. */}
       <audio ref={listenAudioRef} preload="metadata" aria-hidden="true" />
 
-      {/* Phase 5: the glass mini player (reader visual language) is
-          the listen transport surface. It is fixed, so it never
-          shifts the layout when it appears or when playback starts
-          or stops; the spacer below reserves its space while listen
-          mode is on, so it never covers the mushaf text. */}
-      {studyMode === 'listen' && (
-        <>
-          <div className="hifz-listen-spacer" aria-hidden="true" />
-          <HifzListenPlayer
-            locale={locale}
-            reciterName={
-              labels.listenReciters.find((r) => r.id === listenReciter)?.label ?? listenReciter
-            }
-            reciterPhotoUrl={listenReciterPhotoUrl(listenReciter, reciterPhotos ?? {})}
-            title={surahName}
-            currentAyah={listen.currentAyah}
-            ayahCount={ayahCount}
-            progressMs={listen.progressMs}
-            durationMs={listen.durationMs}
-            speed={listen.speed}
-            repeatMode={listen.repeatMode}
-            repeatRemaining={listen.repeatRemaining}
-            status={listen.listenStatus}
-            errorKind={listen.listenErrorKind}
-            labels={{
-              play: labels.listenPlay,
-              pause: labels.listenPause,
-              resume: labels.listenResume,
-              prevAyah: labels.listenPrevAyah,
-              nextAyah: labels.listenNextAyah,
-              repeat: labels.listenRepeat,
-              repeatOff: labels.listenRepeatOff,
-              repeatAyah: labels.listenRepeatAyah,
-              repeatRange: labels.listenRepeatRange,
-              repeatSurah: labels.listenRepeatSurah,
-              speed: labels.listenSpeed,
-              progress: labels.listenProgress,
-              retry: labels.listenRetry,
-              loading: labels.listenLoading,
-              buffering: labels.listenBuffering,
-              offline: labels.listenOffline,
-              audioFailed: labels.listenAudioFailed,
-              longPressSwitch: labels.listenLongPressSwitch,
-            }}
-            onPlayPause={() => {
-              if (listen.isPlaying) listen.pause();
-              else listen.resume();
-            }}
-            onPrevAyah={() => listen.prevAyah()}
-            onNextAyah={() => listen.nextAyah()}
-            onSeek={(ms) => listen.seek(ms)}
-            onSpeedCycle={() => listen.cycleSpeed()}
-            onRepeatCycle={() => listen.cycleRepeatMode()}
-            onRetry={() => listen.retry()}
-            onLongPressSwitch={() => switchToPractice()}
-          />
-        </>
-      )}
+      {/* Tarteel (2026-11-08): the listen mini player is GONE — no
+          HifzListenPlayer, no spacer. The <audio> above stays (the
+          useQuranListen hook owns it) and listen mode autoplays the
+          current ayah on entry (switchToListen) with play/pause on
+          the bottom-bar mic. The listen-controls panel above keeps
+          reciter / repeat / stop / resume. HifzListenPlayer.tsx
+          itself is kept, unused, for reversibility. */}
 
-      {/* Live pills (Tarteel): error count (red), accuracy % (color
-          by range), session timer (gray, counts up). Shown while a
-          live session runs; the timer disappears after stop.
-          Phase 6: the row is dir=ltr so the visual order matches
-          the frames (error left, accuracy middle, timer right);
-          the pills themselves are solid Tarteel colors. */}
-      {showPills && studyMode === 'practice' && (
-        <div className="hifz-pills" dir="ltr" aria-live="polite">
-          <span className="hifz-pill hifz-pill-red">
-            <svg className="hifz-pill-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
-              <line x1="12" y1="7" x2="12" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              <circle cx="12" cy="17" r="1.4" fill="currentColor" />
-            </svg>
-            <span className="hifz-pill-label">{labels.pillErrors}: </span>{toArabicIndic(pillStats.errors)}
-          </span>
-          {/* Provisional (live words present, stored grade not yet
-              arrived): show a count, not a percent — the uncalibrated
-              live score is not a final percentage. When no live words
-              are present the stored grade's final percent stands. */}
-          {liveWords.length > 0 ? (
-            <span className="hifz-pill hifz-pill-gray">
-              <span className="hifz-pill-label">{labels.pillAccuracy}: </span>{toArabicIndic(pillStats.correct)} از{' '}
-              {toArabicIndic(pillStats.total)}
-            </span>
-          ) : (
-            <span className={`hifz-pill ${accuracyPillClass(accuracyTone)}`}>
-              <span className="hifz-pill-label">{labels.pillAccuracy}: </span>{formatArabicIndicDecimal(pillStats.accuracy)}٪
-            </span>
-          )}
-          {liveState === 'listening' && (
-            <span className="hifz-pill hifz-pill-gray hifz-pill-timer">
-              <span className="hifz-pill-dot" aria-hidden="true" />
-              <span className="hifz-pill-label">{labels.pillTimer}: </span>{timerText}
-            </span>
-          )}
-        </div>
-      )}
+      {/* Live pills: see components/hifz-study/HifzLivePills.tsx
+          (refactor step 7 - moved verbatim; pillStats, timerText
+          and accuracyTone stay here). */}
+      <HifzLivePills
+        visible={showPills && studyMode === 'practice'}
+        stats={pillStats}
+        accuracyTone={accuracyTone}
+        liveWordsPresent={liveWords.length > 0}
+        showTimer={liveState === 'listening'}
+        timerText={timerText}
+        labels={labels}
+      />
 
       {/* The blank line page: faint markers from the start, words
           written in Uthmanic font as recited. While the line data
@@ -2896,46 +3308,138 @@ export function QuranHifzStudy({
           the note waits for V2 — or, when V2 failed, for the
           fallback old lines — but NOT for the old lines on a healthy
           V2 load: they are fallback-only now and stay unloaded. */}
-      {(v2Data === undefined || (v2Data === null && mushafPages === undefined)) && (
-        <p className="hifz-line-loading">{labels.loadingPage}</p>
-      )}
-      {pageReady && textsReady && displayMode === 'page' && renderPageSection(activePageIndex ?? 0, renderLines, 'page')}
-      {pageReady && textsReady && displayMode === 'card' && (
-        <div className="hifz-card-frame">{renderPageSection(activePageIndex ?? 0, renderLines, 'card')}</div>
-      )}
-      {pageReady && textsReady && displayMode === 'scroll' && (
-        <div className="hifz-scroll-pages">
-          {surahPageIndices.map((pIdx) => {
-            // Phase 3: each scroll page renders from V2 first; the
-            // old page holding the same first ayah is the fallback
-            // (page spans differ between editions, so the old page
-            // is found by ayah, never by index).
-            if (useV2 && v2Data) {
-              const v2p = v2Data.pages[pIdx];
-              if (v2p) {
-                const v2pr = buildV2PageRender(v2Data, v2p, surah, textsBySurah, wallAyahs);
-                if (v2pr) return renderPageSection(pIdx, v2pr.renderLines, `scroll-${pIdx}`);
-                const first = v2FirstAyahOfSurahOnPage(v2p, surah);
-                const oldIdx =
-                  first !== null && mushafPages ? pageIndexFor(mushafPages, surah, first) : null;
-                if (oldIdx !== null) {
-                  const oldLines = mushafPages?.[oldIdx];
-                  if (oldLines) {
-                    const oldPr = buildPageRender(oldLines, surah, textsBySurah[surah], wallAyahs);
-                    return renderPageSection(pIdx, oldPr.renderLines, `scroll-${pIdx}`);
-                  }
+      {displayMode === 'mushaf' &&
+        (v2Index === undefined ||
+          (useV2 && activeV2Page === undefined) ||
+          (v2Index === null && mushafPages === undefined)) && (
+          <p className="hifz-line-loading">{labels.loadingPage}</p>
+        )}
+      {/* Mushaf (Tarteel default): the one printed page, swipe to turn.
+          V4 gate: while this page's glyph map is still loading or its
+          V4 font is not ready yet, blank placeholder lines of the same
+          count and line-height — never tofu, never a wrong-font flash.
+          A null map (file missing) or a failed/timed-out font load
+          renders the page at once, in Tanzil text (v4FontLoaded false
+          keeps every word on the text path). The old-lines fallback
+          (usedV2 false) never waits on V4. */}
+      {pageReady &&
+        textsReady &&
+        displayMode === 'mushaf' &&
+        usedV2 &&
+        (v4Glyphs === undefined || !v4FontReady) && (
+          <section className="hifz-line-page" aria-busy="true" aria-label={labels.title}>
+            {/* No caption here either (Wave 2): the placeholder
+                must match the real section's layout exactly, or
+                the page jumps when the glyphs arrive. */}
+            {renderLines.map((line) => (
+              <p
+                key={line.key}
+                className={
+                  line.kind === 'header'
+                    ? 'hifz-line hifz-line-header'
+                    : line.kind === 'basmala'
+                      ? 'hifz-line hifz-line-basmala'
+                      : 'hifz-line'
                 }
-                return null;
-              }
-            }
-            const lines = mushafPages?.[pIdx];
-            if (!lines) return null;
-            const pr = buildPageRender(lines, surah, textsBySurah[surah], wallAyahs);
-            return renderPageSection(pIdx, pr.renderLines, `scroll-${pIdx}`);
+                aria-hidden="true"
+              >
+                {'\u00a0'}
+              </p>
+            ))}
+            <p className="hifz-page-footer" aria-hidden="true">
+              {toArabicIndic((activePageIndex ?? 0) + 1)}
+            </p>
+          </section>
+        )}
+      {pageReady &&
+        textsReady &&
+        displayMode === 'mushaf' &&
+        (!usedV2 || (v4Glyphs !== undefined && v4FontReady)) &&
+        renderPageSection(activePageIndex ?? 0, renderLines, 'mushaf')}
+      {/* Nass (Tarteel): the whole surah as scrolling Uthmani text.
+          Same slots as the page (renderLineWord), so hide/reveal,
+          peek (›/») and grades work identically; only the layout
+          differs. The Basmalah is its own centred line (surahs 1
+          and 9 have none); ayah 1's words follow after it. Needs
+          only the surah texts, never the V2 page. */}
+      {textsReady && ayahCount > 0 && displayMode === 'nass' && (
+        <div className="hifz-nass" dir="rtl" aria-label={labels.displayNass}>
+          {surah !== 1 && surah !== 9 && (
+            <p className="hifz-line hifz-line-basmala" dir="rtl">
+              {(textsBySurah[surah]?.[1] ?? '')
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 4)
+                .map((text, i) => {
+                  const written = nassWrittenByKey.get(`1:${i}`) ?? null;
+                  return renderLineWord(
+                    { kind: 'word', surah, ayah: 1, index: i, text, written, hidden: written === null },
+                    `nass-b-${i}`,
+                  );
+                })}
+            </p>
+          )}
+          {ayahNumbers.map((a) => {
+            const words = (textsBySurah[surah]?.[a] ?? '').split(/\s+/).filter(Boolean);
+            const start = a === 1 && surah !== 1 && surah !== 9 ? 4 : 0;
+            return (
+              <p key={a} className="hifz-nass-ayah" dir="rtl">
+                {words.slice(start).map((text, k) => {
+                  const i = start + k;
+                  const written = nassWrittenByKey.get(`${a}:${i}`) ?? null;
+                  return renderLineWord(
+                    { kind: 'word', surah, ayah: a, index: i, text, written, hidden: written === null },
+                    `nass-${a}-${i}`,
+                  );
+                })}
+                <HifzRosette digit={toArabicIndic(a)} />
+              </p>
+            );
           })}
         </div>
       )}
-      {pageReady && !textsReady && (
+      {/* Translation (Tarteel): the whole surah as scrolling
+          translation, read-only. One block per ayah, one paragraph
+          per active edition (CRM order). The default edition arrives
+          with the server render; the rest load on demand (see the
+          translation effect). Needs only the surah texts, never the
+          V2 page. */}
+      {textsReady && ayahCount > 0 && displayMode === 'translation' && (
+        <div className="hifz-translation" aria-label={labels.displayTranslation}>
+          {trLoading && <p className="hifz-line-loading">{labels.translationLoading}</p>}
+          {activeTranslationEditions.length === 0 ? (
+            <p className="hifz-line-loading">{labels.translationUnavailable}</p>
+          ) : (
+            ayahNumbers.map((a) => (
+              <div key={a} className="hifz-translation-ayah">
+                <p className="hifz-translation-ref">
+                  {surahName} — {toArabicIndic(a)}
+                </p>
+                {activeTranslationEditions.map((ed) => {
+                  const tr = translationsByKey[`${surah}:${ed}`]?.[a];
+                  if (!tr) return null;
+                  return (
+                    <div key={ed} className="hifz-translation-edition">
+                      <p className="hifz-translation-edition-name">
+                        {editionDisplayName(ed, locale) ?? ed}
+                      </p>
+                      <p dir={ed.startsWith('en') ? 'ltr' : 'rtl'} lang={ed.split('.')[0]}>
+                        {tr}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            ))
+          )}
+          {trFailed && (
+            <p className="hifz-error" role="alert">
+              {labels.translationUnavailable}
+            </p>
+          )}
+        </div>
+      )}
+      {!textsReady && (displayMode !== 'mushaf' || pageReady) && (
         <div className="hifz-line-loading">
           {textsFailed ? (
             <>
@@ -2957,13 +3461,16 @@ export function QuranHifzStudy({
       )}
 
       {/* The wall: everything when the page failed, otherwise only the
-          ayahs whose words are NOT placed on the line page. Nothing
-          written yet on a ready page means no wall section at all (the
-          blank page above is the whole state). While the surah texts
-          still load, the wall stays hidden: placement is undecided
-          until they arrive, and showing the whole surah below would
-          repeat the silent fallback. */}
-      {(pageFailed || (pageReady && textsSettled && unplacedGroups.length > 0)) && (
+          ayahs whose words are NOT placed on the line page. Mushaf
+          mode only — nass and translation already show the whole
+          surah, so the wall would duplicate them. Nothing written
+          yet on a ready page means no wall section at all (the blank
+          page above is the whole state). While the surah texts still
+          load, the wall stays hidden: placement is undecided until
+          they arrive, and showing the whole surah below would repeat
+          the silent fallback. */}
+      {displayMode === 'mushaf' &&
+        (pageFailed || (pageReady && textsSettled && unplacedGroups.length > 0)) && (
       <section className="hifz-wall" aria-label={labels.title}>
         {pageFailed && <p className="hifz-line-failed-note">{labels.svgFailedNote}</p>}
         {(pageFailed ? wallAyahs : unplacedGroups).length === 0 ? (
@@ -3076,162 +3583,119 @@ export function QuranHifzStudy({
         </p>
       )}
 
-      {/* Bottom bar (Tarteel): peek, error sheet, previous/next ayah,
-          previous/next page. The error sheet opens by hand during
-          the session (never as an end-of-session results page).
-          Phase 6: hide + peek-word + peek-ayah share one white
-          capsule (frames: eye, <, << in one capsule), and the book
-          (errors) sits last in DOM so it renders at the far left
-          of the RTL row, as in the frames. The settings / prev /
-          next buttons are the academy's own controls (no Tarteel
-          equivalent) and keep their relative order. */}
-      <div className="hifz-bottom-bar">
-        <span className="hifz-bottom-capsule">
+      {/* Bottom bar (Tarteel, 2026-11-08): EXACTLY five items,
+          fixed to the viewport bottom (not in the page flow). In
+          RTL the first DOM child renders at the right, like
+          Tarteel: mic (far right) — display sheet — errors —
+          show-whole-ayah (») — show-next-word (›). The eye
+          (hide/show script) and the settings gear moved to the top
+          bar; prev/next ayah live in the setup panel; prev/next
+          page are the swipe gesture (goToPage). The mic is the
+          record control in practice mode and play/pause in listen
+          mode (the mini player is gone). */}
+      <div className="hifz-bottom-bar" role="group" aria-label={labels.displayMode}>
+        {(isZipformer || isWhisper) && (
           <button
             type="button"
-            disabled={!peekTarget}
-            onClick={() => void peekAyah()}
-            title={labels.peekAyahHint}
+            className={`hifz-mic-3d${micActive ? ' is-live' : ''}`}
+            aria-label={
+              studyMode === 'listen'
+                ? listen.isPlaying
+                  ? labels.listenPause
+                  : labels.listenPlay
+                : micLabel
+            }
+            disabled={studyMode === 'practice' && (!authed || micBusy || modelUnavailable)}
+            onClick={micOnClick}
+            onPointerDown={onMicPointerDown}
+            onPointerUp={clearMicLongPress}
+            onPointerLeave={clearMicLongPress}
+            onPointerCancel={clearMicLongPress}
+            onContextMenu={(e) => e.preventDefault()}
+            title={labels.listenLongPressSwitch}
           >
-            {labels.peekAyah}
+            {studyMode === 'listen' ? (
+              listen.isPlaying ? (
+                <span className="hifz-mic-pause" aria-hidden="true" />
+              ) : (
+                <span className="hifz-mic-play" aria-hidden="true" />
+              )
+            ) : micActive ? (
+              <span className="hifz-mic-stop" aria-hidden="true" />
+            ) : (
+              <MicIcon />
+            )}
           </button>
-          <button
-            type="button"
-            disabled={!peekTarget}
-            onClick={() => void peekNext()}
-            title={labels.peekWordHint}
-          >
-            {labels.peekWord}
-          </button>
-          {/* Phase 4 — Hide the script (crossed-eye): written words
-              become dotted placeholders; tapping one reveals just that
-              word. «Show» re-reveals everything at once. */}
-          <button
-            type="button"
-            aria-pressed={scriptHidden}
-            onClick={() => {
-              setScriptHidden((v) => !v);
-              setRevealedWords(new Set());
-            }}
-          >
-            {scriptHidden ? labels.showScript : labels.hideScript}
-          </button>
-        </span>
-        <button type="button" onClick={() => setSettingsOpen(true)}>
-          {labels.settingsOpen}
-        </button>
+        )}
         <button
           type="button"
-          disabled={ayah <= 1}
-          onClick={() => setAyah((a) => Math.max(1, a - 1))}
+          className="hifz-bottom-btn"
+          onClick={() => setDisplaySheetOpen(true)}
+          aria-label={labels.displaySheetTitle}
+          title={labels.displaySheetTitle}
         >
-          {labels.prevAyah}
+          <span aria-hidden="true">▦</span>
         </button>
+        {/* Hide/show-script eye (moved here from the old top-bar
+            row 2, 2026-11-08, user order: eye only at the bottom). */}
         <button
           type="button"
-          disabled={ayahCount > 0 && ayah >= ayahCount}
-          onClick={() => setAyah((a) => (ayahCount > 0 ? Math.min(ayahCount, a + 1) : a + 1))}
-        >
-          {labels.nextAyah}
-        </button>
-        <button
-          type="button"
-          disabled={activePageIndex === null || activePageIndex <= 0}
+          className="hifz-bottom-btn"
+          aria-pressed={scriptHidden}
+          aria-label={scriptHidden ? labels.showScript : labels.hideScript}
+          title={scriptHidden ? labels.showScript : labels.hideScript}
           onClick={() => {
-            if (activePageIndex === null) return;
-            const prev = activePageIndex - 1;
-            // Phase 3: the V2 page's first ayah of this surah; the
-            // old lines keep their own page index.
-            if (useV2 && v2Data) {
-              const first = v2FirstAyahOfSurahOnPage(v2Data.pages[prev], surah);
-              if (first !== null) setAyah(first);
-              return;
-            }
-            if (!mushafPages) return;
-            const lines = mushafPages[prev];
-            if (!lines) return;
-            for (const line of lines) {
-              if (line.t === 'text' && line.v) {
-                const [s, a] = line.v.split(':').map(Number);
-                if (s === surah) {
-                  setAyah(a);
-                  return;
-                }
-              }
-            }
+            setScriptHidden((v) => !v);
+            setRevealedWords(new Set());
           }}
         >
-          {labels.prevPage}
+          {scriptHidden ? <EyeOffIcon /> : <EyeIcon />}
         </button>
         <button
           type="button"
-          disabled={
-            activePageIndex === null ||
-            (useV2
-              ? !v2Data || activePageIndex >= v2Data.pages.length - 1
-              : !mushafPages || activePageIndex >= mushafPages.length - 1)
-          }
-          onClick={() => {
-            if (activePageIndex === null) return;
-            const next = activePageIndex + 1;
-            if (useV2 && v2Data) {
-              const first = v2FirstAyahOfSurahOnPage(v2Data.pages[next], surah);
-              if (first !== null) setAyah(first);
-              return;
-            }
-            if (!mushafPages) return;
-            const lines = mushafPages[next];
-            if (!lines) return;
-            for (const line of lines) {
-              if (line.t === 'text' && line.v) {
-                const [s, a] = line.v.split(':').map(Number);
-                if (s === surah) {
-                  setAyah(a);
-                  return;
-                }
-              }
-            }
-          }}
-        >
-          {labels.nextPage}
-        </button>
-        {/* Errors (the book): last in DOM = far left of the RTL row,
-            as in the Tarteel frames. */}
-        <button
-          type="button"
+          className="hifz-bottom-btn"
           onClick={() => setErrorSheetOpen(true)}
           aria-label={labels.errorsOpen}
+          title={labels.errorsTitle}
         >
-          {labels.errorsTitle}
+          <ErrorsHeadIcon className="hifz-bottom-btn-icon" />
         </button>
-      </div>
-
-      {/* Display-mode menu (bottom): page-flip / scrolling / card. */}
-      <div className="hifz-display-menu" role="group" aria-label={labels.displayMode}>
-        <span className="hifz-display-label">{labels.displayMode}</span>
+        {/* Accuracy pill (2026-11-08, user order — Tarteel image 2):
+            live accuracy % + error count next to the errors button.
+            Unlike the pills row's provisional count rule, this always
+            shows the percent (the user's reference shows 100%); it
+            is visible in practice mode only, idle 100% | 0. */}
+        {studyMode === 'practice' && (
+          <span
+            className={`hifz-pill hifz-bottom-pill ${accuracyPillClass(accuracyTone)}`}
+            aria-label={`${labels.pillAccuracy} ${formatArabicIndicDecimal(pillStats.accuracy)}٪، ${labels.pillErrors} ${toArabicIndic(pillStats.errors)}`}
+          >
+            <span className="hifz-pill-label">{labels.pillAccuracy}: </span>
+            {formatArabicIndicDecimal(pillStats.accuracy)}٪
+            <span aria-hidden="true"> | </span>
+            <span className="hifz-pill-label">{labels.pillErrors}: </span>
+            {toArabicIndic(pillStats.errors)}
+          </span>
+        )}
         <button
           type="button"
-          aria-pressed={displayMode === 'page'}
-          className={displayMode === 'page' ? 'is-active' : ''}
-          onClick={() => setDisplayModePersist('page')}
+          className="hifz-bottom-btn hifz-bottom-btn-peek"
+          disabled={!peekTarget}
+          onClick={() => void peekAyah()}
+          aria-label={labels.peekAyah}
+          title={labels.peekAyahHint}
         >
-          {labels.displayPage}
+          <span aria-hidden="true">»</span>
         </button>
         <button
           type="button"
-          aria-pressed={displayMode === 'scroll'}
-          className={displayMode === 'scroll' ? 'is-active' : ''}
-          onClick={() => setDisplayModePersist('scroll')}
+          className="hifz-bottom-btn hifz-bottom-btn-peek"
+          disabled={!peekTarget}
+          onClick={() => void peekNext()}
+          aria-label={labels.peekWord}
+          title={labels.peekWordHint}
         >
-          {labels.displayScroll}
-        </button>
-        <button
-          type="button"
-          aria-pressed={displayMode === 'card'}
-          className={displayMode === 'card' ? 'is-active' : ''}
-          onClick={() => setDisplayModePersist('card')}
-        >
-          {labels.displayCard}
+          <span aria-hidden="true">›</span>
         </button>
       </div>
 
@@ -3352,32 +3816,9 @@ export function QuranHifzStudy({
       <p className="hifz-hub-link">
         <a href={`/${locale}/quran/hifz`}>{labels.hubLink}</a>
       </p>
-      {/* Floating mic (bottom-right, Tarteel): the only record
-          control; its action follows the engine. Shown only in
-          practice mode — listen mode has its own play control. */}
-      {studyMode === 'practice' && (isZipformer || isWhisper) && (
-        <div className="hifz-mic-layer">
-          <button
-            type="button"
-            className={`hifz-mic-3d${micActive ? ' is-live' : ''}`}
-            aria-label={micLabel}
-            disabled={!authed || micBusy || modelUnavailable}
-            onClick={micOnClick}
-            onPointerDown={onMicPointerDown}
-            onPointerUp={clearMicLongPress}
-            onPointerLeave={clearMicLongPress}
-            onPointerCancel={clearMicLongPress}
-            onContextMenu={(e) => e.preventDefault()}
-            title={labels.listenLongPressSwitch}
-          >
-            {micActive ? (
-              <span className="hifz-mic-stop" aria-hidden="true" />
-            ) : (
-              <MicIcon />
-            )}
-          </button>
-        </div>
-      )}
+      {/* Tarteel (2026-11-08): the mic moved INTO the fixed bottom
+          bar (see above) — no floating layer anymore. In practice
+          mode it records; in listen mode it is play/pause. */}
       {liveError && (
         <p className="hifz-error" role="alert">
           {liveError}
@@ -3397,171 +3838,41 @@ export function QuranHifzStudy({
         onClose={() => setSettingsOpen(false)}
       />
 
-      {/* Error sheet (bottom sheet, opened by hand during the
-          session): wrong words (expected vs recited) and extra words.
-          No end-of-session results page exists. Phase 4: the
-          server-side groups render as one card per ayah — expected
-          (green) vs recited (red) with a «surah:ayah» label, plus a
-          per-item delete. Without a server group (guest / load
-          failed), the local live/graded words render as before. */}
-      {/* Error sheet (bottom sheet, opened by hand during the
-          session): wrong words (expected vs recited) and extra words.
-          No end-of-session results page exists. Phase 4: the
-          server-side groups render as one card per ayah — expected
-          (green) vs recited (red) with a «surah:ayah» label, plus a
-          per-item delete. Without a server group (guest / load
-          failed), the local live/graded words render as before.
-          Phase 6: Tarteel card layout — eye-slash icon + category +
-          «surah:ayah» chip in the card head; expected (green) and
-          heard (red) as two rows with side labels; the info pill at
-          the bottom. The expected text is no longer printed twice
-          (it used to appear both large and inside the meta line). */}
-      {errorSheetOpen && (
-        <>
-          <div
-            className="hifz-sheet-backdrop"
-            aria-hidden="true"
-            onClick={() => setErrorSheetOpen(false)}
-          />
-          <div className="hifz-error-sheet" role="dialog" aria-modal="true" aria-label={labels.errorsTitle}>
-            <span className="hifz-sheet-handle" aria-hidden="true" />
-            <div className="hifz-error-sheet-head">
-              <h3>{labels.errorsTitle}</h3>
-              <button type="button" onClick={() => setErrorSheetOpen(false)}>
-                {labels.errorsClose}
-              </button>
-            </div>
-            {groupedMistakes !== null ? (
-              groupedMistakes.length === 0 ? (
-                <p>{labels.errorsEmpty}</p>
-              ) : (
-                groupedMistakes.map((group) => (
-                  <article
-                    key={`${group.surah}:${group.ayah}:${group.category}`}
-                    className="hifz-error-card"
-                  >
-                    <div className="hifz-error-card-head">
-                      <svg className="hifz-error-card-icon" viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          d="M3 3l18 18M10.6 5.1A9.8 9.8 0 0 1 12 5c5 0 8.5 4.5 10 7-.4.7-1 1.6-1.9 2.5M6.6 6.6C4.9 7.9 3.4 9.9 2 12c1.5 2.5 5 7 10 7 1.5 0 2.9-.4 4.1-1"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                        />
-                        <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="2" />
-                      </svg>
-                      <span className="hifz-error-card-cat">
-                        {group.category === 'wrong_words' ? labels.errorsWrong : labels.errorsExtra}
-                      </span>
-                      <span className="hifz-error-card-chip">
-                        {toArabicIndic(group.surah)}:{toArabicIndic(group.ayah)}
-                      </span>
-                    </div>
-                    <ul>
-                      {group.items.map((item) => (
-                        <li key={item.id} className="hifz-error-item">
-                          {item.mistake_type === 'transposed' && (
-                            <p className="hifz-error-meta">{labels.errorsTransposed}</p>
-                          )}
-                          {group.category === 'wrong_words' ? (
-                            <>
-                              <p className="hifz-error-row">
-                                <span className="hifz-error-expected">{item.expected_text}</span>
-                                <span className="hifz-error-row-label">{labels.errorsExpected}</span>
-                              </p>
-                              {item.heard && (
-                                <p className="hifz-error-row">
-                                  <span className="hifz-error-heard">{item.heard}</span>
-                                  <span className="hifz-error-row-label">{labels.errorsHeard}</span>
-                                </p>
-                              )}
-                            </>
-                          ) : (
-                            <p className="hifz-error-row">
-                              <span className="hifz-error-heard">{item.heard}</span>
-                              <span className="hifz-error-row-label">{labels.errorsHeard}</span>
-                            </p>
-                          )}
-                          <button
-                            type="button"
-                            className="hifz-error-delete"
-                            onClick={() => void deleteMistake(item.id)}
-                          >
-                            {labels.errorsDelete}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </article>
-                ))
-              )
-            ) : (
-              <>
-                <article className="hifz-error-card">
-                  <div className="hifz-error-card-head">
-                    <span className="hifz-error-card-cat">{labels.errorsWrong}</span>
-                  </div>
-                  {errorWords.length === 0 ? (
-                    <p>{labels.errorsEmpty}</p>
-                  ) : (
-                    <ul>
-                      {errorWords.map((w) => (
-                        <li key={`${w.ayah}:${w.index}`} className="hifz-error-item">
-                          <p className="hifz-error-row">
-                            <span className="hifz-error-expected">{w.expected}</span>
-                            <span className="hifz-error-row-label">{labels.errorsExpected}</span>
-                          </p>
-                          {w.heard && (
-                            <p className="hifz-error-row">
-                              <span className="hifz-error-heard">{w.heard}</span>
-                              <span className="hifz-error-row-label">{labels.errorsHeard}</span>
-                            </p>
-                          )}
-                          <span className="hifz-error-card-chip">
-                            {toArabicIndic(surah)}:{toArabicIndic(w.ayah)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </article>
-                <article className="hifz-error-card">
-                  <div className="hifz-error-card-head">
-                    <span className="hifz-error-card-cat">{labels.errorsExtra}</span>
-                  </div>
-                  {liveExtraWords.length === 0 && liveExtraCount === 0 ? (
-                    <p>{labels.errorsEmpty}</p>
-                  ) : liveExtraWords.length > 0 ? (
-                    <ul>
-                      {liveExtraWords.map((t, i) => (
-                        <li key={i} className="hifz-error-item">
-                          <p className="hifz-error-row">
-                            <span className="hifz-error-heard">{t}</span>
-                            <span className="hifz-error-row-label">{labels.errorsHeard}</span>
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p>
-                      {labels.errorsExtra}: {toArabicIndic(liveExtraCount)}
-                    </p>
-                  )}
-                </article>
-              </>
-            )}
-            <p className="hifz-error-learn">
-              <span className="hifz-error-learn-icon" aria-hidden="true">
-                i
-              </span>
-              {labels.errorsLearn}
-            </p>
-          </div>
-        </>
-      )}
+      {/* Search sheet (Tarteel top bar): the one Quran search. */}
+      <HifzSearchSheet
+        open={searchSheetOpen}
+        locale={locale}
+        surahList={surahList}
+        labels={labels}
+        searchLabels={searchLabels}
+        onClose={() => setSearchSheetOpen(false)}
+      />
 
-      <p className="hifz-disclaimer">{labels.disclaimer}</p>
+      {/* Display sheet (Tarteel, 2026-11-08): mushaf / nass /
+          translation picker; same sheet pattern as settings/errors. */}
+      <HifzDisplaySheet
+        open={displaySheetOpen}
+        mode={displayMode}
+        labels={labels}
+        onSelect={(m) => setDisplayModePersist(m)}
+        onClose={() => setDisplaySheetOpen(false)}
+      />
+
+      {/* Error sheet: see components/hifz-study/HifzErrorSheet.tsx
+          (refactor step 6 - moved verbatim; state, the errorWords
+          memo and the delete call stay here). */}
+      <HifzErrorSheet
+        open={errorSheetOpen}
+        groups={groupedMistakes}
+        errorWords={errorWords}
+        liveExtraWords={liveExtraWords}
+        liveExtraCount={liveExtraCount}
+        surah={surah}
+        labels={labels}
+        onDelete={deleteMistake}
+        onClose={() => setErrorSheetOpen(false)}
+      />
+
     </div>
   );
 }

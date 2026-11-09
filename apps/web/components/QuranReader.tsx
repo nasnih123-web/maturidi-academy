@@ -149,6 +149,96 @@ import {
 } from './QuranPickerSheet';
 import type { QuranSearchLabels } from './QuranSearchBox';
 
+/**
+ * Reader rebuild (2026-11-08) — component-level layout overrides,
+ * rendered as a <style> element by the umum reader root.
+ * globals.css is owned by the mushaf agent and is NOT touched; these
+ * rules live here so the reader chrome can change without it. Every
+ * rule is scoped under .quran-reader--rebuild (the umum reader root)
+ * or body.quran-chrome-hidden / body.quran-reader-paper (body classes
+ * the reader effect sets while mounted, removed on unmount).
+ *
+ * What it does: hides the site chrome (adhan strip + atmosphere, on
+ * top of the existing quran-chrome-hidden header/footer rule),
+ * removes the page-wrap padding, gives printed-page views a light
+ * paper environment, widens the mushaf column (mobile ~93% of the
+ * viewport, desktop 760px standard instead of 600px), strips the
+ * floating-card border/shadow off .mushaf-page, hides the duplicated
+ * in-page meta line (the top-bar chip carries it), compresses the
+ * range nav, and turns the settings toolbars into a bottom sheet on
+ * ALL widths (desktop included).
+ */
+const READER_REBUILD_CSS = `
+body.quran-chrome-hidden .adhan-strip-bar,
+body.quran-chrome-hidden .site-atmosphere { display: none; }
+body.quran-chrome-hidden .page-wrap { padding-top: 0; padding-bottom: 0; }
+body.quran-reader-paper { background: #f6f1e3; }
+body.quran-reader-paper main#main-content { background: #f6f1e3; }
+.quran-reader--rebuild.quran-reader--paper { background: #f6f1e3; color: #2b2118; }
+/* Compact sticky top bar (paper) + info chip. */
+.quran-reader--rebuild .quran-reader-topbar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem; margin-bottom: 0.25rem; background: rgba(247, 241, 221, 0.97); border-bottom: 1px solid rgba(138, 109, 27, 0.35); color: #2b2118; }
+.quran-reader--rebuild .quran-reader-topbar-chip { flex: 1; min-width: 0; text-align: center; }
+.quran-reader--rebuild .quran-reader-topbar-chip-title { display: block; font-weight: 800; font-size: 1.05rem; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.quran-reader--rebuild .quran-reader-topbar-chip-meta { display: block; font-size: 0.78rem; line-height: 1.4; color: #6f6151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.quran-reader--rebuild .quran-reader-topbar-btn { flex: none; display: inline-flex; align-items: center; gap: 0.35rem; min-height: 2.5rem; padding: 0.4rem 0.7rem; border-radius: 999px; border: 1px solid rgba(138, 109, 27, 0.5); background: transparent; color: #6b5518; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+.quran-reader--rebuild .quran-reader-topbar-btn:hover { background: rgba(138, 109, 27, 0.12); }
+.quran-reader--rebuild .quran-reader-topbar-steps { flex: none; display: flex; gap: 0.25rem; }
+.quran-reader--rebuild .quran-reader-topbar-steps a { display: inline-flex; align-items: center; justify-content: center; min-width: 2rem; min-height: 2.5rem; padding: 0.4rem 0.5rem; border-radius: 999px; border: 1px solid rgba(138, 109, 27, 0.5); color: #6b5518; text-decoration: none; font-size: 1rem; line-height: 1; }
+.quran-reader--rebuild .quran-reader-topbar-steps a:hover { background: rgba(138, 109, 27, 0.12); }
+@media (max-width: 480px) {
+  .quran-reader--rebuild .quran-reader-topbar-btn-text { display: none; }
+  .quran-reader--rebuild .quran-reader-topbar-btn { padding: 0.4rem 0.6rem; }
+}
+/* Settings open button lives in the top bar now: reset the old
+   full-width mobile rule (this 2-class selector beats it). */
+.quran-reader--rebuild .quran-settings-open-btn { display: inline-flex; align-items: center; gap: 0.35rem; width: auto; min-height: 2.5rem; margin-bottom: 0; padding: 0.4rem 0.7rem; border-radius: 999px; border: 1px solid rgba(138, 109, 27, 0.5); background: transparent; color: #6b5518; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+.quran-reader--rebuild .quran-settings-open-btn:hover { background: rgba(138, 109, 27, 0.12); }
+/* Settings toolbars: bottom sheet on ALL widths (was display:contents
+   on desktop, i.e. three always-visible rows above the mushaf). */
+.quran-reader--rebuild .quran-mobile-settings { display: none; }
+.quran-reader--rebuild .quran-mobile-settings-open { display: block; position: fixed; inset-inline: 0; bottom: 0; z-index: 360; max-height: 86dvh; overflow-y: auto; margin-inline: auto; max-width: 720px; padding: 1rem 1rem calc(1.5rem + env(safe-area-inset-bottom)); border-radius: 1.25rem 1.25rem 0 0; border: 1px solid rgba(212, 175, 55, 0.4); border-bottom: 0; background: #07231c; box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5); }
+.quran-reader--rebuild .quran-settings-backdrop { display: block; position: fixed; inset: 0; z-index: 355; border: 0; background: rgba(2, 8, 6, 0.7); cursor: pointer; }
+.quran-reader--rebuild .quran-mobile-settings-open .quran-settings-close-btn { display: block; width: 100%; min-height: 2.75rem; margin-bottom: 0.8rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.4); background: transparent; color: #e5c07b; font-size: 0.9rem; cursor: pointer; }
+.quran-reader--rebuild .quran-mobile-settings-open .quran-settings-group-title { display: block; margin: 1rem 0 0.5rem; font-size: 0.85rem; font-weight: 700; color: #e5c07b; }
+/* Mushaf column: generous, not a small floating card. The V2 width
+   cycle (narrow/standard/wide) keeps working — only its caps move.
+   NOTE: the width rules use 3 classes on purpose — the element also
+   carries .mushaf-page (same specificity, later in this block), so a
+   2-class width rule would lose to the page cap (measured 2026-11-08:
+   frame 825px instead of 760px). Standard is 740px (not 760px): at
+   760px a plain 15-line page ends ~42px under the fixed player on a
+   900px desktop viewport; at 740px it clears it (measured). 3.2cqw
+   default + 0.8–1.6 zoom are untouched (globals.css). */
+.quran-reader--rebuild .mushaf-page.mushaf-v2--w-narrow { max-width: min(94vw, 560px); }
+.quran-reader--rebuild .mushaf-page.mushaf-v2--w-standard { max-width: min(96vw, 740px); }
+.quran-reader--rebuild .mushaf-page.mushaf-v2--w-wide { max-width: min(98vw, 880px); }
+.quran-reader--rebuild .mushaf-page { max-width: min(97vw, 920px); margin-bottom: 0.5rem; padding: 0.6rem 1.1rem 1.2rem; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+@media (max-width: 768px) {
+  .quran-reader--rebuild .mushaf-page { padding: 0.5rem 0.4rem 0.75rem; }
+}
+/* The in-page meta line above the frame duplicates the top-bar chip:
+   hide it (the foot line with the page number stays). */
+.quran-reader--rebuild .mushaf-page-meta:not(.mushaf-page-foot) { display: none; }
+.quran-reader--rebuild .mushaf-v2-nav { margin-top: 0.5rem; }
+/* Range nav above the mushaf: one compact row, not two tall ones. */
+.quran-reader--rebuild .quran-mode-nav { flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.25rem; }
+.quran-reader--rebuild .quran-mode-nav button { padding: 0.35rem 0.6rem; font-size: 0.85rem; }
+.quran-reader--rebuild .quran-mode-nav .quran-range-nav-steps { display: flex; gap: 0.4rem; }
+/* The range nav moved below the mushaf, onto the paper background —
+   but its buttons still carry the dark-theme text color (nearly
+   invisible on paper). Recolor them for paper views only; the dark
+   list views keep the original colors. */
+.quran-reader--rebuild.quran-reader--paper .quran-mode-nav { color: #2b2118; }
+.quran-reader--rebuild.quran-reader--paper .quran-mode-nav button { color: #6b5518; border-color: rgba(138, 109, 27, 0.5); background: transparent; }
+.quran-reader--rebuild.quran-reader--paper .quran-mode-nav .quran-bookmark-btn { color: #8a6d1b; border-color: rgba(138, 109, 27, 0.5); }
+/* Fawasil footnote (kept, moved below the content): readable on
+   both the dark list background and the paper background. */
+.quran-reader--rebuild .quran-reader-fawasil { text-align: center; font-size: 0.75rem; color: hsl(var(--text-muted)); margin: 0.25rem 0 1rem; }
+.quran-reader--rebuild.quran-reader--paper .quran-reader-fawasil { color: #6f6151; }
+/* Hide-text eye button, active state (mini player). */
+.quran-reader--rebuild .quran-mini-btn[aria-pressed="true"] { background: rgba(138, 109, 27, 0.25); }
+`;
+
 export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   surahOf: string;
   reciterLabel: string;
@@ -334,6 +424,13 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   /** Expand/collapse labels for the mobile full-player sheet. */
   playerExpandLabel: string;
   playerCollapseLabel: string;
+  /* ---- Reader rebuild (2026-11-08): hide-text (hifz) eye toggle ----
+     Optional: Persian defaults live in the component, so the RSC
+     page needs no message-file change. */
+  /** Eye button: hide the mushaf text. */
+  hideTextLabel?: string;
+  /** Eye button: show the mushaf text again. */
+  showTextLabel?: string;
 }
 
 export type QuranSheetKind = 'picker' | 'mushaf' | 'settings' | 'bookmarks';
@@ -354,6 +451,19 @@ function formatTime(sec: number): string {
 }
 
 const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+
+/**
+ * Hifz identity (2026-11-08): the displayed حزب is the 60-scale
+ * hizb Tarteel shows. The stored data (boundaries + V2 pages) is
+ * the 120-scale half-hizb the reader has always used (Bayan's
+ * convention: the page-106 header reads حزب ۲۲), so the conversion
+ * is display-only: ceil(n / 2) — 24→12, 59→30, 117→59. The hizb
+ * RANGE view (its 120 targets, picker, hizbPages) is untouched:
+ * that number is the range identity, not a page position.
+ */
+function toDisplayHizb(hizb120: number | null): number | null {
+  return hizb120 === null ? null : Math.ceil(hizb120 / 2);
+}
 
 const STATUS_KEY: Record<PlaybackStatus, 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error'> = {
   idle: 'idle',
@@ -455,6 +565,20 @@ export function QuranReader({
 }) {
   const section: QuranSection = initialTab ?? 'general';
 
+  // Hifz identity (2026-11-08): hide the site chrome while the
+  // study screen is mounted, exactly like the umum reader does
+  // (QuranUmumReader's effect below). The hifz branch returns
+  // before QuranUmumReader, so this lives here, in the shared
+  // shell. The <style> with the same component-level rules is
+  // rendered in the hifz branch (adhan strip + atmosphere).
+  useEffect(() => {
+    if (section !== 'hifz') return;
+    document.body.classList.add('quran-chrome-hidden');
+    return () => {
+      document.body.classList.remove('quran-chrome-hidden');
+    };
+  }, [section]);
+
   // Non-umum sections render ONLY their own content — no header,
   // no toolbar, no player, no modes, no other section's content.
   // Hifz (Phase 3) is the real study screen; children is still an
@@ -463,9 +587,23 @@ export function QuranReader({
     // The study's first page must not depend on a client fetch: the
     // server already loaded this surah's ayah texts for the reader.
     const initialTexts: Record<number, string> = {};
-    for (const a of ayahs) initialTexts[a.number] = a.text;
+    // Translation mode (Tarteel sheet, 2026-11-08): the same
+    // server-loaded ayahs already carry the default edition's
+    // translation (settings.defaultTranslation) — thread it through
+    // so translation mode needs no fetch for the first edition.
+    const initialTranslations: Record<number, string> = {};
+    for (const a of ayahs) {
+      initialTexts[a.number] = a.text;
+      if (a.translation) initialTranslations[a.number] = a.translation;
+    }
     return (
       <div className="quran-reader">
+        {/* Hifz identity (2026-11-08): standalone Reader
+            environment — the same component-level chrome-hiding
+            rules the umum reader renders (body.quran-chrome-hidden
+            hides the adhan strip + atmosphere on top of the
+            header/footer rule in globals.css). */}
+        <style>{READER_REBUILD_CSS}</style>
         <QuranHifzStudy
           locale={locale}
           surahList={surahList}
@@ -473,7 +611,15 @@ export function QuranReader({
           initialAyah={initialAyah}
           initialMushaf={initialMushaf ?? 'hafs/kfqc'}
           initialTexts={initialTexts}
+          // Hifz identity (2026-11-08): a ?view=page&target=N deep
+          // link starts the study on page N, not on the surah's
+          // first page. Other views carry no page target.
+          initialPageTarget={initialView === 'page' ? (initialTarget ?? null) : null}
           labels={labels.hifz}
+          searchLabels={searchLabels}
+          initialTranslations={initialTranslations}
+          translationEditions={translationEditions}
+          defaultTranslation={settings.defaultTranslation}
           reciterPhotos={Object.fromEntries(
             reciters.map((r) => [r.id, r.photoUrl ?? null]),
           )}
@@ -623,6 +769,11 @@ function QuranUmumReader({
   /* ---- Round 7: mobile sheets ---- */
   /** Mobile-only: the whole settings panel as one bottom sheet. */
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
+  // Reader rebuild (2026-11-08): hide-text (hifz) mode for the V2
+  // mushaf page. The eye buttons (mini player + reading bottom bar)
+  // toggle it; it is threaded to the V2 page as the `hideText` prop
+  // via QuranMushafPage (area 2).
+  const [hideText, setHideText] = useState(false);
   /** Mobile-only: full player sheet expanded from the mini bar. */
   const [playerExpanded, setPlayerExpanded] = useState(false);
   // Escape closes the mobile sheets (player first, then settings).
@@ -1129,6 +1280,16 @@ function QuranUmumReader({
     [displayPage, boundaries],
   );
 
+  // Reader rebuild (2026-11-08): a printed mushaf page is on screen
+  // in the range page/juz/hizb views (target set) and in the ayah
+  // view (focused ayah's page). Only then do the light paper
+  // environment and the hide-text eye button apply; the surah list
+  // keeps the site's dark list styling.
+  const showsMushafPage =
+    (isRangeMode && rangeTarget !== null) ||
+    (!isRangeMode && viewMode === 'ayah' && focusedAyah !== null);
+  const isPrintedPageView = showsMushafPage;
+
   // Surahs for the ayah mode's display page (the page may span two
   // surahs; the entry surah is reused, the other is fetched — the
   // same pattern as the range fetch).
@@ -1380,6 +1541,12 @@ function QuranUmumReader({
           (readingLastRef ?? readingSpan.start).ayah,
         )
       : { juz: null, hizb: null, page: null };
+  // Hifz identity (2026-11-08): the reading top bar shows the
+  // page's FIRST surah (same rule as the top-bar chip below), and
+  // the hizb in the 60-scale display form.
+  const readingFirstSurahName =
+    readingGroups && readingGroups.length > 0 ? readingGroups[0].surahNameAr : '';
+  const readingHizb = toDisplayHizb(readingMeta.hizb);
   const readingSurahName =
     readingGroups && readingGroups.length > 0
       ? readingGroups[readingGroups.length - 1].surahNameAr
@@ -1412,15 +1579,27 @@ function QuranUmumReader({
   // Site chrome: the reader lives inside main (a z-index:1 stacking
   // context under the sticky site header), so a fixed layer inside it
   // can NEVER paint above the header — that is why the overlay and
-  // the sheets portal to document.body (below). As a second layer,
-  // while reading or in fallback fullscreen the site header/footer
-  // are hidden outright, so no chrome can ever peek through.
+  // the sheets portal to document.body (below).
+  // Reader rebuild (2026-11-08): the umum reader IS a standalone
+  // Reader environment, so the site header/footer (via the existing
+  // quran-chrome-hidden rule, plus the adhan strip + atmosphere via
+  // the rebuild <style>) stay hidden for the whole mount, not only
+  // while the reading overlay is open. Restored on unmount.
   useEffect(() => {
-    document.body.classList.toggle('quran-chrome-hidden', readingOpen || fallbackFs);
+    document.body.classList.add('quran-chrome-hidden');
     return () => {
       document.body.classList.remove('quran-chrome-hidden');
     };
-  }, [readingOpen, fallbackFs]);
+  }, []);
+  // Light paper environment only where a printed mushaf page is on
+  // screen (page/juz/hizb/ayah-page views); the surah/ayah lists keep
+  // the site's dark list styling.
+  useEffect(() => {
+    document.body.classList.toggle('quran-reader-paper', isPrintedPageView);
+    return () => {
+      document.body.classList.remove('quran-reader-paper');
+    };
+  }, [isPrintedPageView]);
   // Escape: close the topmost sheet, else the reading view, else the
   // fallback fullscreen. (Native fullscreen Escape is the browser's.)
   useEffect(() => {
@@ -1607,6 +1786,48 @@ function QuranUmumReader({
         )
       : { juz: null, hizb: null, page: null };
 
+  // Reader rebuild (2026-11-08): compact top-bar chip (replaces the
+  // big surah head). Page views: page · juz · hizb + the page's
+  // FIRST surah (Hifz identity 2026-11-08: the chip is the page's
+  // surah — the surah the URL / view opened — not the last surah
+  // the page happens to end on; p.293 opens الإسراء, not الکهف).
+  // Range lists: the list title; surah/ayah views: surah name +
+  // the old kicker line (number · ayah count · revelation).
+  // Juz/hizb numbers still follow the last-ayah rule (Bayan's
+  // page-106 header), only the hizb SCALE is the 60-scale display
+  // form (toDisplayHizb).
+  const topPageGroups = displayPageGroups ?? rangeGroups;
+  const topChipTitle =
+    isRangeMode && rangeTarget !== null
+      ? topPageGroups && topPageGroups.length > 0
+        ? topPageGroups[0].surahNameAr
+        : rangeTitle ?? listTitle
+      : isRangeMode
+        ? listTitle
+        : surah.nameAr;
+  const pageHizb = toDisplayHizb(pageMeta.hizb);
+  const topChipMeta =
+    isRangeMode && rangeTarget !== null
+      ? [
+          labels.pageCurrent.replace(
+            '%n%',
+            toArabicIndicDigits(displayPage ?? rangeTarget),
+          ),
+          pageMeta.juz !== null
+            ? labels.juzCurrent.replace('%n%', toArabicIndicDigits(pageMeta.juz))
+            : null,
+          pageHizb !== null
+            ? labels.hizbCurrent.replace('%n%', toArabicIndicDigits(pageHizb))
+            : null,
+        ]
+          .filter((x): x is string => x !== null)
+          .join(' · ')
+      : isRangeMode
+        ? ''
+        : `${labels.surahOf} ${toArabicIndicDigits(surah.number)} · ${toArabicIndicDigits(surah.ayahCount)} · ${surah.revelationType}`;
+  const hideTextLabel = labels.hideTextLabel ?? 'پنهان‌کردن متن';
+  const showTextLabel = labels.showTextLabel ?? 'نمایش متن';
+
 
 
   // Round 4: edition navigation (same reload pattern as the reciter
@@ -1770,9 +1991,12 @@ function QuranUmumReader({
   return (
     <div
       ref={readerRef}
-      className={`quran-reader ${scriptClass} ${displayFontClass(prefs.font)} ${displayThemeClass(prefs.theme)} quran-mushaf-${mushafKey.replace('/', '-')}${fallbackFs ? ' quran-fallback-fullscreen' : ''}`}
+      className={`quran-reader quran-reader--rebuild${isPrintedPageView ? ' quran-reader--paper' : ''} ${scriptClass} ${displayFontClass(prefs.font)} ${displayThemeClass(prefs.theme)} quran-mushaf-${mushafKey.replace('/', '-')}${fallbackFs ? ' quran-fallback-fullscreen' : ''}`}
       style={{ '--quran-ayah-size': `${prefs.fontSize}px` } as React.CSSProperties}
     >
+      {/* Reader rebuild (2026-11-08): component-level layout CSS —
+          see READER_REBUILD_CSS above. globals.css is untouched. */}
+      <style>{READER_REBUILD_CSS}</style>
       {fallbackFs ? (
         <button
           type="button"
@@ -1783,67 +2007,65 @@ function QuranUmumReader({
           ✕ {labels.exitFullscreenLabel}
         </button>
       ) : null}
-      <header className="quran-surah-head">
-        <div>
-          {isRangeMode ? (
-            <>
-              <h1 className="quran-surah-title">
-                {rangeTarget !== null ? rangeTitle : listTitle}
-              </h1>
-              {rangeGroups && rangeGroups.length > 0 ? (
-                <p className="quran-surah-sub" lang="ar" dir="rtl">
-                  {rangeGroups.map((g) => g.surahNameAr).join(' ، ')}
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <p className="quran-surah-kicker">
-                {labels.surahOf} {surah.number} · {surah.ayahCount} · {surah.revelationType}
-              </p>
-              <h1 className="quran-surah-title" lang="ar" dir="rtl">
-                {surah.nameAr}
-              </h1>
-              <p className="quran-surah-sub">
-                {surah.name}
-                {surah.englishName !== surah.name ? ` · ${surah.englishName}` : ''}
-              </p>
-              <p className="quran-fawasil-note">
-                {fawasilLine}
-                {fawasilFallbackLine ? ` · ${fawasilFallbackLine}` : ''}
-              </p>
-            </>
-          )}
-        </div>
+      {/* Reader rebuild (2026-11-08): the big surah head (H1 32px
+          mobile / 48px desktop) is gone — replaced by one compact
+          sticky top bar (picker + surah steps + surah/page/juz/hizb
+          chip + settings), like Tarteel's top bar. The settings
+          button moved INTO the bar; the settings sheet itself is
+          unchanged (same controls, same handlers). The fawasil note
+          moved to a footnote below the content; the Latin surah name
+          lives in the picker rows. */}
+      <div className="quran-reader-topbar">
+        <button
+          type="button"
+          className="quran-reader-topbar-btn"
+          onClick={() => setSheet('picker')}
+          aria-haspopup="dialog"
+        >
+          ☰ <span className="quran-reader-topbar-btn-text">{labels.pickerLabel}</span>
+        </button>
         {!isRangeMode ? (
-          <nav className="quran-surah-nav" aria-label={`${surah.nameAr}`}>
+          <span className="quran-reader-topbar-steps">
             {surah.number > 1 ? (
-              <Link href={`/${locale}/quran/${surah.number - 1}`} className="quran-nav-btn">
-                {labels.prevSurah}
+              <Link
+                href={`/${locale}/quran/${surah.number - 1}`}
+                aria-label={labels.prevSurah}
+              >
+                ›
               </Link>
             ) : null}
             {surah.number < 114 ? (
-              <Link href={`/${locale}/quran/${surah.number + 1}`} className="quran-nav-btn">
-                {labels.nextSurah}
+              <Link
+                href={`/${locale}/quran/${surah.number + 1}`}
+                aria-label={labels.nextSurah}
+              >
+                ‹
               </Link>
             ) : null}
-          </nav>
+          </span>
         ) : null}
-      </header>
-
-      {/* Round 7: on mobile the whole settings panel collapses into ONE
-          button + bottom sheet. Same controls, same handlers — only the
-          presentation collapses; on desktop the wrapper is
-          display:contents, so the layout is exactly as before. */}
-      <button
-        type="button"
-        className="quran-settings-open-btn"
-        onClick={() => setSettingsSheetOpen(true)}
-        aria-expanded={settingsSheetOpen}
-        aria-haspopup="dialog"
-      >
-        ⚙ {labels.settingsSheetTitle}
-      </button>
+        <span className="quran-reader-topbar-chip">
+          <span className="quran-reader-topbar-chip-title" lang="ar" dir="rtl">
+            {topChipTitle}
+          </span>
+          {topChipMeta ? (
+            <span className="quran-reader-topbar-chip-meta">{topChipMeta}</span>
+          ) : null}
+        </span>
+        <button
+          type="button"
+          className="quran-settings-open-btn"
+          onClick={() => setSettingsSheetOpen(true)}
+          aria-expanded={settingsSheetOpen}
+          aria-haspopup="dialog"
+        >
+          ⚙ <span className="quran-reader-topbar-btn-text">{labels.settingsSheetTitle}</span>
+        </button>
+      </div>
+      {/* Round 7: the settings panel is ONE button + bottom sheet on
+          ALL widths now (the rebuild CSS turns the wrapper into a
+          sheet on desktop too — the three toolbars no longer sit
+          above the mushaf). Same controls, same handlers. */}
       {settingsSheetOpen ? (
         <button
           type="button"
@@ -2115,18 +2337,10 @@ function QuranUmumReader({
       {/* End of the round-7 mobile settings wrapper (toolbars +
           bookmarks panel). Search + player stay outside it. */}
 
-      {/* Round 10: the reader-page search box is removed — the index
-          page's live search is the search path. The «فهرست قرآن»
-          button below opens the same picker the nav/reading bars
-          open, in the search box's exact place. */}
-      <button
-        type="button"
-        className="quran-index-btn"
-        onClick={() => setSheet('picker')}
-        aria-haspopup="dialog"
-      >
-        {labels.pickerLabel}
-      </button>
+      {/* Reader rebuild (2026-11-08): the standalone «فهرست قرآن»
+          button is gone — the top bar's picker button opens the same
+          picker (setSheet('picker')). The index page's live search
+          stays the search path (round 10, unchanged). */}
 
       {/* Audio player bar — the waveform lives INSIDE the progress bar
           (no separate waveform row). Hidden for range LISTS (navigation,
@@ -2224,6 +2438,23 @@ function QuranUmumReader({
                 >
                   ⏭
                 </button>
+                {/* Reader rebuild (2026-11-08): hide-text eye toggle —
+                    visible in the bottom bar, not buried in settings.
+                    Shown only where a mushaf page is on screen. The
+                    eye is struck through while the text is hidden. */}
+                {showsMushafPage ? (
+                  <button
+                    type="button"
+                    className="quran-mini-btn"
+                    onClick={() => setHideText((v) => !v)}
+                    aria-pressed={hideText}
+                    aria-label={hideText ? showTextLabel : hideTextLabel}
+                    title={hideText ? showTextLabel : hideTextLabel}
+                    style={hideText ? { textDecoration: 'line-through' } : undefined}
+                  >
+                    👁
+                  </button>
+                ) : null}
               </span>
             </div>
           ) : null}
@@ -2510,88 +2741,10 @@ function QuranUmumReader({
       {/* ---- Range READING (target set) ---- */}
       {isRangeMode && rangeTarget !== null ? (
         <>
-          <div className="quran-mode-nav">
-            <button type="button" onClick={() => setRangeTarget(null)}>
-              {labels.backToList}
-            </button>
-            <span>
-              {rangeTarget !== null ? rangeNavLabel.replace('%n%', String(rangeTarget)) : ''}
-            </span>
-            {displayPage !== null ? (
-              // Round 11: range page bookmarks record the displayed
-              // mushaf — page, juz and hizb all show that mushaf's
-              // SVG now, so DEFAULT_SVG_MUSHAF is no longer right
-              // for juz/hizb. (For Hafs the key IS the default, so
-              // Hafs bookmarks are unchanged.)
-              <button
-                type="button"
-                className="quran-bookmark-btn"
-                onClick={() =>
-                  toggleBookmark({
-                    id: pageBookmarkId(
-                      displayPage,
-                      mushafKey,
-                    ),
-                    kind: 'page',
-                    surah: surah.number,
-                    ayah: null,
-                    page: displayPage,
-                    mushaf: mushafKey,
-                    label: labels.pageCurrent.replace('%n%', String(displayPage)),
-                    favorite: false,
-                    createdAt: Date.now(),
-                  })
-                }
-                aria-label={
-                  bookmarkIds.has(
-                    pageBookmarkId(
-                      displayPage,
-                      mushafKey,
-                    ),
-                  )
-                    ? labels.bookmarkRemove
-                    : labels.bookmarkPage
-                }
-                title={
-                  bookmarkIds.has(
-                    pageBookmarkId(
-                      displayPage,
-                      mushafKey,
-                    ),
-                  )
-                    ? labels.bookmarkRemove
-                    : labels.bookmarkPage
-                }
-              >
-                {bookmarkIds.has(
-                  pageBookmarkId(
-                    displayPage,
-                    mushafKey,
-                  ),
-                )
-                  ? '★'
-                  : '☆'}
-              </button>
-            ) : null}
-            <span className="quran-range-nav-steps">
-              <button
-                type="button"
-                onClick={() => setRangeTarget(Math.max(1, rangeTarget - 1))}
-                disabled={rangeTarget <= 1}
-                aria-label={rangePrevLabel}
-              >
-                {rangePrevLabel}
-              </button>
-              <button
-                type="button"
-                onClick={() => setRangeTarget(Math.min(rangeCount, rangeTarget + 1))}
-                disabled={rangeTarget >= rangeCount}
-                aria-label={rangeNextLabel}
-              >
-                {rangeNextLabel}
-              </button>
-            </span>
-          </div>
+          {/* Reader rebuild (2026-11-08): the range nav moved BELOW
+              the mushaf (see below) — nothing above the page except
+              the compact top bar, so the first line starts high and
+              the fixed player cannot cover it on plain pages. */}
           {viewMode === 'page' && mushafKey !== DEFAULT_SVG_MUSHAF ? (
             <>
               {/* Round 6, non-Hafs page: the page is its OWN mushaf's
@@ -2615,6 +2768,7 @@ function QuranUmumReader({
                 scriptClass={scriptClass}
                 playingKey={null}
                 highlightKey={svgSelectedKey}
+                hideText={hideText}
                 onPlayAyah={() => {}}
                 svgPage
                 mushafKey={mushafKey}
@@ -2702,7 +2856,7 @@ function QuranUmumReader({
                 // (same rule as the non-Hafs page branch); the surah
                 // part already comes from the page's own ayah list.
                 juz={mushafKey !== DEFAULT_SVG_MUSHAF ? null : pageMeta.juz}
-                hizb={mushafKey !== DEFAULT_SVG_MUSHAF ? null : pageMeta.hizb}
+                hizb={mushafKey !== DEFAULT_SVG_MUSHAF ? null : pageHizb}
                 headerSurah={(displayPageGroups ?? rangeGroups)[
                   (displayPageGroups ?? rangeGroups).length - 1
                 ].surahNameAr}
@@ -2743,6 +2897,7 @@ function QuranUmumReader({
                 onNavigatePage={
                   viewMode === 'page' ? (p: number) => setRangeTarget(p) : undefined
                 }
+                hideText={hideText}
                 resolveSurahName={surahNameAr}
                 highlightKey={
                   mushafKey !== DEFAULT_SVG_MUSHAF ? svgSelectedKey : (svgSelectedKey ?? playingKey)
@@ -2843,6 +2998,90 @@ function QuranUmumReader({
               ))}
             </div>
           )}
+          {/* Reader rebuild (2026-11-08): range nav lives here now,
+              below the mushaf — same buttons, same handlers. */}
+          <div className="quran-mode-nav">
+            <button type="button" onClick={() => setRangeTarget(null)}>
+              {labels.backToList}
+            </button>
+            <span>
+              {rangeTarget !== null ? rangeNavLabel.replace('%n%', String(rangeTarget)) : ''}
+            </span>
+            {displayPage !== null ? (
+              // Round 11: range page bookmarks record the displayed
+              // mushaf — page, juz and hizb all show that mushaf's
+              // SVG now, so DEFAULT_SVG_MUSHAF is no longer right
+              // for juz/hizb. (For Hafs the key IS the default, so
+              // Hafs bookmarks are unchanged.)
+              <button
+                type="button"
+                className="quran-bookmark-btn"
+                onClick={() =>
+                  toggleBookmark({
+                    id: pageBookmarkId(
+                      displayPage,
+                      mushafKey,
+                    ),
+                    kind: 'page',
+                    surah: surah.number,
+                    ayah: null,
+                    page: displayPage,
+                    mushaf: mushafKey,
+                    label: labels.pageCurrent.replace('%n%', String(displayPage)),
+                    favorite: false,
+                    createdAt: Date.now(),
+                  })
+                }
+                aria-label={
+                  bookmarkIds.has(
+                    pageBookmarkId(
+                      displayPage,
+                      mushafKey,
+                    ),
+                  )
+                    ? labels.bookmarkRemove
+                    : labels.bookmarkPage
+                }
+                title={
+                  bookmarkIds.has(
+                    pageBookmarkId(
+                      displayPage,
+                      mushafKey,
+                    ),
+                  )
+                    ? labels.bookmarkRemove
+                    : labels.bookmarkPage
+                }
+              >
+                {bookmarkIds.has(
+                  pageBookmarkId(
+                    displayPage,
+                    mushafKey,
+                  ),
+                )
+                  ? '★'
+                  : '☆'}
+              </button>
+            ) : null}
+            <span className="quran-range-nav-steps">
+              <button
+                type="button"
+                onClick={() => setRangeTarget(Math.max(1, rangeTarget - 1))}
+                disabled={rangeTarget <= 1}
+                aria-label={rangePrevLabel}
+              >
+                {rangePrevLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRangeTarget(Math.min(rangeCount, rangeTarget + 1))}
+                disabled={rangeTarget >= rangeCount}
+                aria-label={rangeNextLabel}
+              >
+                {rangeNextLabel}
+              </button>
+            </span>
+          </div>
           {/* Round 11: the non-Hafs tap panel is shared by
              page, juz and hizb views — it used to live inside
              the page-only branch. It renders in the same spot
@@ -2992,7 +3231,7 @@ function QuranUmumReader({
                   exactLines={exactLines}
                   pageNumber={displayPage}
                   juz={pageMeta.juz}
-                  hizb={pageMeta.hizb}
+                  hizb={pageHizb}
                   headerSurah={displayPageGroups[displayPageGroups.length - 1].surahNameAr}
                   headerSurahTemplate={labels.mushafHeaderSurah}
                   pageCurrent={labels.pageCurrent}
@@ -3003,6 +3242,7 @@ function QuranUmumReader({
                   playingKey={playingKey}
                   highlightKey={`${surah.number}:${focusedAyah.standardNumber}`}
                   linesClickable={false}
+                  hideText={hideText}
                   onPlayAyah={(sn, d) => {
                     const idx = playMap.get(`${sn}:${d.standardNumber}`);
                     if (idx !== undefined) playIndex(idx);
@@ -3118,6 +3358,16 @@ function QuranUmumReader({
         </>
       ) : null}
 
+      {/* Reader rebuild (2026-11-08): the fawasil note moved out of
+          the removed big head into this footnote (surah/ayah modes
+          only — range views never showed it). */}
+      {!isRangeMode ? (
+        <p className="quran-reader-fawasil">
+          {fawasilLine}
+          {fawasilFallbackLine ? ` · ${fawasilFallbackLine}` : ''}
+        </p>
+      ) : null}
+
       {/* ---- Round 5: fullscreen reading view ---- */}
       {readingOpen
         ? createPortal(
@@ -3139,7 +3389,7 @@ function QuranUmumReader({
                     : ''}
                 </span>
                 <span className="quran-reading-top-surah" lang="ar" dir="rtl">
-                  {readingSurahName}
+                  {readingFirstSurahName}
                 </span>
                 <span className="quran-reading-top-range">
                   <span lang="ar" dir="rtl">
@@ -3147,8 +3397,8 @@ function QuranUmumReader({
                       readingMeta.juz !== null
                         ? labels.juzCurrent.replace('%n%', toArabicIndicDigits(readingMeta.juz))
                         : null,
-                      readingMeta.hizb !== null
-                        ? labels.hizbCurrent.replace('%n%', toArabicIndicDigits(readingMeta.hizb))
+                      readingHizb !== null
+                        ? labels.hizbCurrent.replace('%n%', toArabicIndicDigits(readingHizb))
                         : null,
                     ]
                       .filter((x): x is string => x !== null)
@@ -3237,7 +3487,7 @@ function QuranUmumReader({
                     exactLines={readingLines}
                     pageNumber={readingPage ?? 1}
                     juz={readingMeta.juz}
-                    hizb={readingMeta.hizb}
+                    hizb={readingHizb}
                     headerSurah={readingSurahName}
                     headerSurahTemplate={labels.mushafHeaderSurah}
                     pageCurrent={labels.pageCurrent}
@@ -3248,6 +3498,7 @@ function QuranUmumReader({
                     playingKey={playingKey}
                     linesClickable={false}
                     hideMeta
+                    hideText={hideText}
                     onPlayAyah={() => {}}
                     // Round 6: the reading view shows the real printed
                     // SVG page of the CURRENT mushaf; tapping a
@@ -3319,6 +3570,18 @@ function QuranUmumReader({
                   aria-haspopup="dialog"
                 >
                   {labels.readingSettingsLabel}
+                </button>
+                {/* Reader rebuild (2026-11-08): hide-text eye toggle in
+                    the bottom bar (same `hideText` state as the mini
+                    player). The overlay only ever shows mushaf pages,
+                    so the button is always shown here. */}
+                <button
+                  type="button"
+                  className="quran-reading-bar-btn"
+                  onClick={() => setHideText((v) => !v)}
+                  aria-pressed={hideText}
+                >
+                  👁 {hideText ? showTextLabel : hideTextLabel}
                 </button>
                 <button
                   type="button"

@@ -17,8 +17,8 @@ import {
   pageIndexFor,
 } from '../hifz-page-render';
 import type { MushafExactLine } from '../quran-mushaf-lines';
-import type { V2MushafData } from '../quran-mushaf-v2';
-import type { WallWord } from '../hifz-study-types';
+import type { V2MushafData, V2MushafIndex } from '../quran-mushaf-v2';
+import type { WallWord, RenderLine } from '../hifz-study-types';
 
 /** First existing candidate wins (repo root or apps/web cwd). */
 function readFirst(envName: string, candidates: string[]): string | null {
@@ -244,5 +244,206 @@ describe('buildV2PageRender (QPC V2): Fatiha, page 1', () => {
       return;
     }
     assert.equal(buildV2PageRender(v2, v2.pages[0], 1, {}, []), null);
+  });
+
+  it('page 293 while studying Al-Isra: the Al-Kahf Basmalah line has 4 slots, not empty', (t) => {
+    const v2 = loadV2();
+    const texts = loadTexts();
+    if (!v2 || !texts) {
+      t.skip('دادهٔ V2 یا متن تنزیل در دسترس نیست');
+      return;
+    }
+    // V2 pages are 0-based: pages[292] is printed page 293.
+    const r = buildV2PageRender(v2, v2.pages[292], 17, texts, []);
+    assert.ok(r, 'expected a V2 render for page 293');
+    const basmalas = r.renderLines.filter((l) => l.kind === 'basmala');
+    assert.equal(basmalas.length, 1);
+    assert.equal(basmalas[0].slots.length, 4);
+    assert.ok(
+      basmalas[0].slots.every(
+        (s) => s.kind === 'word' && s.surah === 18 && s.ayah === 1 && s.hidden,
+      ),
+    );
+    assert.deepEqual(
+      basmalas[0].slots.map((s) => (s.kind === 'word' ? s.text : '')),
+      texts[18][1].split(/\s+/).filter(Boolean).slice(0, 4),
+    );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* V4 glyph plumbing: buildV2PageRender fills slot.glyph by the       */
+/* corrected key (real-word ordinal, not token index + 1).            */
+/* ------------------------------------------------------------------ */
+
+function loadV4Page(page: number): Map<string, string> | null {
+  const raw = readFirst('QURAN_MUSHAF_V4_GLYPHS_JSON', [
+    `apps/web/public/quran-mushaf-v4-glyphs/p${page}.json`,
+    `public/quran-mushaf-v4-glyphs/p${page}.json`,
+  ]);
+  if (!raw) return null;
+  try {
+    return new Map(Object.entries(JSON.parse(raw) as Record<string, string>));
+  } catch {
+    return null;
+  }
+}
+
+function allWordSlots(renderLines: RenderLine[]) {
+  const out: { surah: number; ayah: number; index: number; text: string; glyph?: string; hidden: boolean }[] = [];
+  for (const line of renderLines) {
+    if (line.kind === 'basmala') {
+      for (const s of line.slots) out.push({ ...s, hidden: s.hidden });
+      continue;
+    }
+    if (line.kind !== 'text') continue;
+    for (const slot of line.slots) {
+      if (slot.kind === 'word') out.push(slot);
+    }
+  }
+  return out;
+}
+
+describe('buildV2PageRender with V4 glyphs (corrected key)', () => {
+  it('page 293: every text-line word gets its glyph, text stays Tanzil', (t) => {
+    const v2 = loadV2();
+    const texts = loadTexts();
+    const v4 = loadV4Page(293);
+    if (!v2 || !texts || !v4) {
+      t.skip('دادهٔ V2 یا متن تنزیل یا گلیف‌های V4 در دسترس نیست');
+      return;
+    }
+    const r = buildV2PageRender(v2, v2.pages[292], 17, texts, [], undefined, v4);
+    assert.ok(r, 'expected a V2 render for page 293');
+    const slots = allWordSlots(r.renderLines);
+    const textSlots = slots.filter((s) => !(s.surah === 18 && s.ayah === 1 && s.index < 4));
+    assert.ok(textSlots.length > 0);
+    // Every real word has a glyph from the page map…
+    for (const s of textSlots) {
+      assert.ok(typeof s.glyph === 'string' && s.glyph.length > 0, `${s.surah}:${s.ayah}:${s.index}`);
+    }
+    // …and slot.text is still the Tanzil token, never the PUA glyph.
+    const first = textSlots.find((s) => s.surah === 17 && s.ayah === 105 && s.index === 0);
+    assert.ok(first);
+    assert.equal(first.text, texts[17][105].split(/\s+/).filter(Boolean)[0]);
+    assert.notEqual(first.glyph, first.text);
+    // A word after a pause sign maps by real-word ordinal, not
+    // token index + 1: 17:105 token 5 (وَمَآ, after ۗ) is V4 word 5.
+    const afterPause = textSlots.find((s) => s.surah === 17 && s.ayah === 105 && s.index === 5);
+    assert.ok(afterPause);
+    assert.equal(afterPause.glyph, v4.get('17:105:5'));
+  });
+
+  it('page 293: the Basmalah line has NO glyphs (it is not in the V4 data)', (t) => {
+    const v2 = loadV2();
+    const texts = loadTexts();
+    const v4 = loadV4Page(293);
+    if (!v2 || !texts || !v4) {
+      t.skip('دادهٔ V2 یا متن تنزیل یا گلیف‌های V4 در دسترس نیست');
+      return;
+    }
+    const r = buildV2PageRender(v2, v2.pages[292], 17, texts, [], undefined, v4);
+    assert.ok(r, 'expected a V2 render for page 293');
+    const basmala = r.renderLines.find((l) => l.kind === 'basmala');
+    assert.ok(basmala && basmala.kind === 'basmala');
+    assert.equal(basmala.slots.length, 4);
+    assert.ok(basmala.slots.every((s) => s.glyph === undefined));
+    // …while the first real word of 18:1 on the same page DOES.
+    const firstReal = allWordSlots(r.renderLines).find(
+      (s) => s.surah === 18 && s.ayah === 1 && s.index === 4,
+    );
+    assert.ok(firstReal);
+    assert.equal(firstReal.glyph, v4.get('18:1:1'));
+  });
+
+  it('a partial map falls back per word; null/undefined maps give no glyphs', (t) => {
+    const v2 = loadV2();
+    const texts = loadTexts();
+    const v4 = loadV4Page(293);
+    if (!v2 || !texts || !v4) {
+      t.skip('دادهٔ V2 یا متن تنزیل یا گلیف‌های V4 در دسترس نیست');
+      return;
+    }
+    // Drop one key: only that word loses its glyph (never the page).
+    const partial = new Map(v4);
+    partial.delete('17:105:1');
+    const r = buildV2PageRender(v2, v2.pages[292], 17, texts, [], undefined, partial);
+    assert.ok(r);
+    const slots = allWordSlots(r.renderLines);
+    const dropped = slots.find((s) => s.surah === 17 && s.ayah === 105 && s.index === 0);
+    assert.ok(dropped);
+    assert.equal(dropped.glyph, undefined);
+    const kept = slots.find((s) => s.surah === 17 && s.ayah === 105 && s.index === 1);
+    assert.ok(kept);
+    assert.equal(kept.glyph, v4.get('17:105:2'));
+    for (const map of [null, undefined] as const) {
+      const rn = buildV2PageRender(v2, v2.pages[292], 17, texts, [], undefined, map);
+      assert.ok(rn);
+      assert.ok(allWordSlots(rn.renderLines).every((s) => s.glyph === undefined));
+    }
+  });
+
+  it('page 451: the 37:130 pair stays text (merged glyph + marker must not paint)', (t) => {
+    const v2 = loadV2();
+    const texts = loadTexts();
+    const v4 = loadV4Page(451);
+    if (!v2 || !texts || !v4) {
+      t.skip('دادهٔ V2 یا متن تنزیل یا گلیف‌های V4 در دسترس نیست');
+      return;
+    }
+    const r = buildV2PageRender(v2, v2.pages[450], 37, texts, [], undefined, v4);
+    assert.ok(r, 'expected a V2 render for page 451');
+    const slots = allWordSlots(r.renderLines);
+    const first = slots.find((s) => s.surah === 37 && s.ayah === 130 && s.index === 2);
+    const second = slots.find((s) => s.surah === 37 && s.ayah === 130 && s.index === 3);
+    assert.ok(first && second, 'both pair slots exist');
+    assert.equal(first.glyph, undefined);
+    assert.equal(second.glyph, undefined);
+    // Neighbours on the same page still get glyphs.
+    const neighbour = slots.find((s) => s.surah === 37 && s.ayah === 130 && s.index === 0);
+    assert.ok(neighbour);
+    assert.ok(typeof neighbour.glyph === 'string' && neighbour.glyph.length > 0);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Round 2 §8 — buildV2PageRender takes the V2 index as its metadata. */
+/* ------------------------------------------------------------------ */
+
+function loadV2Index(): V2MushafIndex | null {
+  const raw = readFirst('QURAN_MUSHAF_V2_INDEX_JSON', [
+    'apps/web/public/quran-mushaf-v2-index.json',
+    'public/quran-mushaf-v2-index.json',
+  ]);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as V2MushafIndex;
+  } catch {
+    return null;
+  }
+}
+
+describe('buildV2PageRender with the V2 index (round 2 §8)', () => {
+  it('index-as-meta renders Fatiha page 1 identically to full-data-as-meta', (t) => {
+    const v2 = loadV2();
+    const index = loadV2Index();
+    const texts = loadTexts();
+    if (!v2 || !index || !texts) {
+      t.skip('دادهٔ V2 یا ایندکس یا متن تنزیل در دسترس نیست');
+      return;
+    }
+    const fromFull = buildV2PageRender(v2, v2.pages[0], 1, texts, []);
+    const fromIndex = buildV2PageRender(index, v2.pages[0], 1, texts, []);
+    assert.ok(fromFull, 'full-data render');
+    assert.ok(fromIndex, 'index render');
+    assert.deepEqual(
+      [...fromIndex.placedAyahs].sort((a, b) => a - b),
+      [...fromFull.placedAyahs].sort((a, b) => a - b),
+    );
+    assert.equal(fromIndex.basmalaSplit, fromFull.basmalaSplit);
+    assert.equal(
+      JSON.stringify(fromIndex.renderLines),
+      JSON.stringify(fromFull.renderLines),
+    );
   });
 });
