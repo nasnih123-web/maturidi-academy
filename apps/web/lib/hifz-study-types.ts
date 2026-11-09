@@ -16,6 +16,12 @@ export interface LineWordSlot {
   written: WallWord | null;
   /** Hidden slots keep layout stable but are never shown. */
   hidden: boolean;
+  /** Display-only: another surah's words printed on this page
+      (tail lines, the next surah's Basmalah). Always visible in
+      plain mushaf ink — never hidden, never graded, never tappable
+      for practice, never matched against the wall. Absent
+      (undefined) on study-surah words. */
+  displayOnly?: boolean;
   /** Phase 3 (hifz redesign): the V2 layout word id (1..83668). */
   qulId?: number;
   /** Phase 3: the pause sign printed after this word, if any. */
@@ -57,16 +63,6 @@ export type RenderLine =
   | { kind: 'header'; key: string; text: string; surah?: number }
   | { kind: 'basmala'; key: string; slots: LineWordSlot[] }
   | { kind: 'text'; key: string; slots: LineSlot[] };
-/** Labels for the mutashabihat (similar-ayah) panel (HifzMutashabihat).
-    Defined here so the lib layer never imports from components. */
-export interface HifzMutashabihatLabels {
-  title: string;
-  hide: string;
-  show: string;
-  empty: string;
-  goToAyah: string;
-}
-
 export interface HifzLabels {
   title: string;
   surahLabel: string;
@@ -242,10 +238,6 @@ export interface HifzLabels {
   listenRetry: string;
   listenResumeFrom: string;
   listenLongPressSwitch: string;
-  /** Mutashabihat panel (phrases computed from our Tanzil text). */
-  mutashabihat: HifzMutashabihatLabels;
-  /** Link to the separate hifz hub (dashboard/testing/Tasmi). */
-  hubLink: string;
 }
 
 export interface HifzWordScore {

@@ -145,7 +145,6 @@ import { loadBookmarks, pageBookmarkId, saveBookmarks } from '@/lib/quran-bookma
 import { DEFAULT_SVG_MUSHAF } from '@/lib/quran-svg-page';
 import { HifzLivePills } from './hifz-study/HifzLivePills';
 import { HifzNumericInput } from './HifzNumericInput';
-import { HifzMutashabihat, type HifzMutashabihatLabels } from './HifzMutashabihat';
 import { loadBoundaries } from '@/lib/quran-boundaries-loader';
 import { loadMushafLines, type MushafExactLine } from '@/lib/quran-mushaf-lines';
 import {
@@ -2391,6 +2390,41 @@ export function QuranHifzStudy({
       slot.ayah === listenAyah &&
       listenWord !== null &&
       slot.index === listenWord - 1;
+    // Display-only (another surah's words on this page): always
+    // visible in plain mushaf ink — no practice, no grading, no
+    // wall status. V4 glyph when the word may paint in its plain
+    // state, else the Tanzil text with its tajweed letters. Not
+    // tappable: there is no practice word, dispute, or listen-now
+    // state for another surah's words.
+    if (slot.displayOnly) {
+      const useGlyphDisplay =
+        v4FontLoaded === true &&
+        shouldUseV4Glyph(slot.glyph, {
+          concealed: false,
+          newestLive: false,
+          status: null,
+          listenNow: false,
+        });
+      return (
+        <span
+          key={key}
+          className={[
+            'hifz-line-word',
+            'hifz-line-word-display-only',
+            useGlyphDisplay ? 'hifz-line-word-glyph' : '',
+          ].join(' ')}
+          data-word-key={slot.index >= 0 ? `${slot.surah}:${slot.ayah}:${slot.index}` : undefined}
+          data-qul-id={slot.qulId}
+        >
+          {useGlyphDisplay ? renderV4Glyph(slot) : renderTajweedText(slot.text)}
+          {slot.pauseAfter ? (
+            <span className="hifz-word-pause" aria-hidden="true">
+              {slot.pauseAfter}
+            </span>
+          ) : null}
+        </span>
+      );
+    }
     if (slot.hidden || slot.written === null) {
       if (studyMode === 'listen') {
         // Phase 4 — Hide the script in listen mode too: the whole
@@ -2542,11 +2576,13 @@ export function QuranHifzStudy({
             : 'hifz-word-live'
           : `hifz-word-${w.status}`;
     // V4 glyph iff the word is in its plain state (§5 rule):
-    // correct, older-live and practice-selected words keep their
-    // glyph (their tone is ink-identical to plain, or an outline
-    // only); the newest live word and wrong/close/peeked/skipped
-    // grades stay text because their signal IS the ink colour, and
-    // the listen-now word stays text so the green highlight reads.
+    // correct, older-live, peeked and practice-selected words keep
+    // their glyph (their tone is ink-identical to plain, or an
+    // outline only — peeked: user directive 2026-11-09 ~19:28, the faint
+    // beige tint is the cue (no outline) and the glyph keeps its tajweed colours);
+    // the newest live word and wrong/close/skipped grades stay text
+    // because their signal IS the ink colour, and the listen-now
+    // word stays text so the green highlight reads.
     const useGlyph =
       v4FontLoaded === true &&
       shouldUseV4Glyph(slot.glyph, {
@@ -3801,21 +3837,6 @@ export function QuranHifzStudy({
         {isWhisper && recState === 'recording' && <p className="hifz-hint">{labels.recording}</p>}
         {!authed && <p className="hifz-hint">{labels.signInHint}</p>}
       </div>
-      {/* Mutashabihat (shared phrases, computed from our Tanzil
-          text) + link to the separate hifz hub. No results, stats
-          or history are added to the study page itself. */}
-      <HifzMutashabihat
-        surah={surah}
-        ayah={ayah}
-        onNavigate={(s, a) => {
-          setSurah(s);
-          setAyah(a);
-        }}
-        labels={labels.mutashabihat}
-      />
-      <p className="hifz-hub-link">
-        <a href={`/${locale}/quran/hifz`}>{labels.hubLink}</a>
-      </p>
       {/* Tarteel (2026-11-08): the mic moved INTO the fixed bottom
           bar (see above) — no floating layer anymore. In practice
           mode it records; in listen mode it is play/pause. */}

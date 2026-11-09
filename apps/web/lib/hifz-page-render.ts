@@ -62,8 +62,8 @@ export function basmalaSurahsOnPage(lines: MushafExactLine[]): Set<number> {
  * Build the render lines for ONE printed page (pure — no hooks).
  * Ayahs whose study words match the printed segment totals render
  * in line slots (revealed when written, hidden otherwise); every
- * other segment uses its printed tokens as hidden spacers, so marker
- * positions stay true. For a surah with a Basmalah line on this
+ * other segment uses its printed tokens as display-only words
+ * (visible plain ink), so marker positions stay true. For a surah with a Basmalah line on this
  * page, ayah 1's printed segments exclude the four Basmalah words,
  * so the study total is compared minus four.
  * Used for the current page (page/card mode) and for every page of
@@ -170,7 +170,8 @@ export function buildPageRender(
             index: -1,
             text: tok,
             written: null,
-            hidden: true,
+            hidden: false,
+            displayOnly: true,
           });
         });
         for (const off of seg.ornaments) {
@@ -309,8 +310,9 @@ export function buildV2PageRender(
       // Al-Isra). The old code only filled the study surah's
       // Basmalah, so the next surah's line rendered as an empty
       // `&nbsp;` row. Fill it from that surah's texts when loaded
-      // (neighbour texts load with the V2 page); display-only
-      // spacers — the wall never holds another surah's words.
+      // (neighbour texts load with the V2 page); display-only —
+      // visible plain text, the wall never holds another surah's
+      // words.
       const next = expansion.lines[li + 1];
       const first = next?.kind === 'text' ? next.words[0] : undefined;
       if (first && first.ayah === 1 && first.surah !== 1 && first.surah !== 9) {
@@ -339,6 +341,7 @@ export function buildV2PageRender(
           const other = textsBySurah[first.surah]?.[1]?.split(/\s+/).filter(Boolean).slice(0, 4) ?? [];
           other.forEach((text, i) => {
             // Same: the next surah's Basmalah has no V4 glyphs either.
+            // Display-only (visible plain text), like the tail words.
             slots.push({
               kind: 'word',
               surah: first.surah,
@@ -346,7 +349,8 @@ export function buildV2PageRender(
               index: i,
               text,
               written: null,
-              hidden: true,
+              hidden: false,
+              displayOnly: true,
             });
           });
         }
@@ -375,9 +379,14 @@ export function buildV2PageRender(
       if (word.rubBefore) slots.push({ kind: 'ornament', text: RUB_EL_HIZB });
       // The wall only ever holds the STUDY surah's words: a word of
       // another surah with the same ayah number must never match it.
+      // Such words are DISPLAY-ONLY: visible in plain mushaf ink
+      // (the tail lines of the previous surah on this page), never
+      // hidden spacers — no wall status, no grading, not tappable
+      // for practice. Markers are untouched.
       const written =
         word.surah === surah ? (writtenByKey.get(`${word.ayah}:${word.index}`) ?? null) : null;
-      const hidden = word.surah === surah ? written === null : true;
+      const displayOnly = word.surah !== surah;
+      const hidden = !displayOnly && written === null;
       slots.push({
         kind: 'word',
         surah: word.surah,
@@ -386,6 +395,7 @@ export function buildV2PageRender(
         text: word.text,
         written,
         hidden,
+        ...(displayOnly ? { displayOnly: true as const } : {}),
         qulId: word.qulId,
         pauseAfter: word.pauseAfter,
         glyph: v4GlyphForWord(word.surah, word.ayah, word.index),
