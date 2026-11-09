@@ -1,0 +1,37 @@
+sha qpc-v2.db      = 4bf9549dfcfd367d4d4b151bd58b51af63b677d1c980cf5e52541c2f981d7e6d
+sha qpc-v4.db      = 4bf9549dfcfd367d4d4b151bd58b51af63b677d1c980cf5e52541c2f981d7e6d
+v2.db == v4.db ?   True
+sha qpc-v2.json    = 40964a1b7932e9a69e0dfc0d58dce3b73e30a803febda119fd6828bcb75fac98
+sha qul qpc-v4.json= 40964a1b7932e9a69e0dfc0d58dce3b73e30a803febda119fd6828bcb75fac98
+v2.json == qul v4 ? True
+sha ext hafs json  = f366269234e24f322146c043fe5fbf0132990613a94aff4b3f23847f45793ea7
+sha qul hafs json  = f366269234e24f322146c043fe5fbf0132990613a94aff4b3f23847f45793ea7
+ext hafs == qul hafs ? True
+v2 vs v4 words rows: 83668 vs 83668, differing rows: 0
+V2 layout info: [('QCF V2 ( 1421H print )', 604, 15, 'v2')]
+V2 layout pages rows: 9046; distinct pages: 604; max page: 604
+V2 layout first_word_id not in words table: 0; last_word_id missing: 0
+V2 layout covers word ids: 83668 of 83668; missing ids: [] (count 0); extra ids: []
+V2 layout line_type counts: Counter({'ayah': 8820, 'surah_name': 114, 'basmallah': 112})
+V2 page1 lines: 8 first/last word: ..36; page604 lines: 15 first/last: ..83668
+ayah-by-ayah verses: 6236; page range: 1..604
+ayah-by-ayah page_number mismatches vs layout: 0; ayahs spanning >1 page: 0
+indopak-13-lines-layout-qudratullah.db: info=[('Indopak 13 lines - Qudratullah', 849, 13, 'mushaf-indopak-nastaleeq-hanafi-compressed')] max_page=849 rows=11022 line_types={'surah_name': 114, 'ayah': 10796, 'basmallah': 112}
+indopak-13-lines-taj-company.db: info=[('Indopak 13 lines - Taj company', 847, 13, 'indopak-nastaleeq')] max_page=847 rows=10995 line_types={'surah_name': 114, 'ayah': 10769, 'basmallah': 112}
+qudratullah-indopak-15-lines.db: info=[('Indopak 15 lines - Qudratullah', 610, 15, 'indopak-nastaleeq')] max_page=610 rows=9131 line_types={'surah_name': 114, 'ayah': 8905, 'basmallah': 112}
+qpc-nastaleeq-15-lines.db: info=[('QPC Hafs Nastaleeq 15 lines', 610, 15, 'qpc-nastaleeq')] max_page=610 rows=8903 line_types={'surah_name': 1, 'ayah': 8902}
+metadata records: 114; sum verses_count: 6236; bismillah_pre False: ['1', '9']
+header SVGs: 113; surahs present: 2..114; missing: [1]
+header SVGs failing XML parse: 0 []
+surah-002.svg chars: 7580; starts: '<!-- header-surah-name | Naveed Ahmad, Muath Ahmed Ibn-Hassan | QUL https://qul.tarteel.ai | CC BY 4.0 -->\n<svg xmlns="h'
+tajweed rule classes (18 distinct): {'ham_wasl': 12950, 'laam_shamsiyah': 2371, 'madda_normal': 7471, 'madda_permissible': 4484, 'madda_necessary': 143, 'idgham_wo_ghunnah': 2064, 'slnt': 4153, 'ghunnah': 4907, 'qalaqah': 3733, 'ikhafa': 8425, 'madda_obligatory_monfasel': 2484, 'madda_obligatory_mottasel': 2622, 'idgham_ghunnah': 7697, 'ikhafa_shafawi': 968, 'idgham_shafawi': 1657, 'iqlab': 1043, 'idgham_mutajanisayn': 55, 'idgham_mutaqaribayn': 13}
+tafsir al-Wasit: rows=6236 distinct_ayah=6236 empty_text=128 grouped_rows=128
+indopak.db vs indopak-nastaleeq.db: 6236 vs 6236 verses; differing texts: 6236
+p245.ttf exists: True size: 395164
+p245 non-lazy open OK: glyphs=184 family=QCF2245
+p245 lazy open OK: glyphs=184
+page 1: TTF glyphs=376 cmap=746 | WOFF2 glyphs=37 cmap=72
+page 2: TTF glyphs=384 cmap=767 | WOFF2 glyphs=45 cmap=88
+page 245: TTF glyphs=184 cmap=CMAP-ERROR: error: unpack requires a buffer of 4 bytes | WOFF2 glyphs=185 cmap=367
+page 604: TTF glyphs=109 cmap=217 | WOFF2 glyphs=74 cmap=146
+TTF families: 604 distinct; duplicates: []; errors: 0

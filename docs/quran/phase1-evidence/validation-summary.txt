@@ -1,0 +1,178 @@
+### QPC V2 Font.ttf.bz2.zip | zip 136208148 B | md5_match=True | zip_bad=None | members=604
+    member: p1.ttf (618744 B)
+    member: p10.ttf (336340 B)
+    member: p100.ttf (438088 B)
+    member: p101.ttf (421364 B)
+    member: p102.ttf (338392 B)
+    member: p103.ttf (362748 B)
+    member: p104.ttf (337524 B)
+    member: p105.ttf (331152 B)
+    ... +596 more members
+  FONTS: count=604 total_bytes=208121760 glyphs min=102 max=488 sum=111473 families_sample=['QCF2001', 'QCF2002', 'QCF2003'] families_last=['QCF2602', 'QCF2603', 'QCF2604']
+    fonttools errors: 1 e.g. [('p245.ttf', 'unpack requires a buffer of 4 bytes')]
+### QPC V2 Font.woff2.bz2.zip | zip 97828880 B | md5_match=True | zip_bad=None | members=604
+    member: p1.woff2 (40956 B)
+    member: p10.woff2 (127068 B)
+    member: p100.woff2 (172240 B)
+    member: p101.woff2 (163288 B)
+    member: p102.woff2 (129328 B)
+    member: p103.woff2 (138204 B)
+    member: p104.woff2 (127916 B)
+    member: p105.woff2 (125920 B)
+    ... +596 more members
+  FONTS: count=604 total_bytes=97748500 glyphs min=37 max=192 sum=89173 families_sample=['QCF2001', 'QCF2002', 'QCF2003'] families_last=['QCF2602', 'QCF2603', 'QCF2604']
+### ar-tafsir-al-wasit.db.zip | zip 5006128 B | md5_match=True | zip_bad=None | members=1
+    member: ar-tafsir-al-wasit.db (21061632 B)
+  DB ar-tafsir-al-wasit.db:
+    table tafsir: rows=6236 cols=['ayah_key', 'group_ayah_key', 'from_ayah', 'to_ayah', 'ayah_keys', 'text']
+    sample tafsir: ["('1:1', '1:1', '1:1', '1:1', '1:1', '{ بسم ٱلله الرَّحْمٰنِ الرَّحِيـمِ }الاسم: اللفظ الذى يدل على ذات أو معنى. وقد اختلف النحويون فى اشتقاقه على وجهين، فقال البصريون: هو مشتق من السمو، وهو العلو والرفعة، فقيل: اسم، لأن صاحبه بمنزلة المرتفع به.وقال الكوفيون: إنه مشتق من السمة وهى العلامة، لأن الاسم ", '(\'1:2\', \'1:2\', \'1:2\', \'1:2\', \'1:2\', \'{ الحمد } هو الثناء باللسان على الجميل الصادر عن اختيار من نعمة أو غيرها.{ رب العالمين } أى: مالكهم، إذ الرب مصدر " ربه يربه " إذا تعاهده بالتربية حتى يبلغ به شيئاً فشيئا درجة الكمال. وهو اسم من أسماء الله - تعالى - ولا يطلق على غيره إلا مقيداً فيقال: رب الدار، و']
+### digital-khatt-v2.db.zip | zip 1593339 B | md5_match=True | zip_bad=None | members=1
+    member: digital-khatt-v2.db (3518464 B)
+  DB digital-khatt-v2.db:
+    table words: rows=83668 cols=['id', 'location', 'surah', 'ayah', 'word', 'text']
+    sample words: ["(1, '1:1:1', 1, 1, 1, 'بِسْمِ')", "(2, '1:1:2', 1, 1, 2, 'ٱللَّهِ')"]
+### font.ttf.zip | zip 109595 B | md5_match=True | zip_bad=None | members=1
+    member: font.ttf (310912 B)
+  FONTS: count=1 total_bytes=310912 glyphs min=992 max=992 sum=992 families_sample=['AlQuran IndoPak by QuranWBW'] families_last=['AlQuran IndoPak by QuranWBW']
+### font.woff.zip | zip 104502 B | md5_match=True | zip_bad=None | members=1
+    member: font.woff (104412 B)
+  FONTS: count=1 total_bytes=104412 glyphs min=992 max=992 sum=992 families_sample=['AlQuran IndoPak by QuranWBW'] families_last=['AlQuran IndoPak by QuranWBW']
+### font.woff2.zip | zip 78789 B | md5_match=True | zip_bad=None | members=1
+    member: font.woff2 (78672 B)
+  FONTS: count=1 total_bytes=78672 glyphs min=992 max=992 sum=992 families_sample=['AlQuran IndoPak by QuranWBW'] families_last=['AlQuran IndoPak by QuranWBW']
+### header-surah-svg.zip | zip 368527 B | md5_match=True | zip_bad=None | members=113
+    member: surah-002.svg (7584 B)
+    member: surah-003.svg (8146 B)
+    member: surah-004.svg (7443 B)
+    member: surah-005.svg (7593 B)
+    member: surah-006.svg (8347 B)
+    member: surah-007.svg (8437 B)
+    member: surah-008.svg (8069 B)
+    member: surah-009.svg (8482 B)
+    ... +105 more members
+  SVG: count=113 first=['surah-002.svg', 'surah-003.svg', 'surah-004.svg', 'surah-005.svg', 'surah-006.svg'] last=['surah-110.svg', 'surah-111.svg', 'surah-112.svg', 'surah-113.svg', 'surah-114.svg']
+### indopak-13-lines-layout-qudratullah.db.zip | zip 120475 B | md5_match=True | zip_bad=None | members=1
+    member: indopak-13-lines-layout-qudratullah.db (290816 B)
+  DB indopak-13-lines-layout-qudratullah.db:
+    table info: rows=1 cols=['name', 'number_of_pages', 'lines_per_page', 'font_name']
+    table pages: rows=11022 cols=['page_number', 'line_number', 'line_type', 'is_centered', 'first_word_id', 'last_word_id', 'surah_number']
+    sample info: ["('Indopak 13 lines - Qudratullah', 849, 13, 'mushaf-indopak-nastaleeq-hanafi-compressed')"]
+    sample pages: ["(1, 1, 'surah_name', 1, '', '', 1)", "(1, 2, 'ayah', 1, 1, 5, '')"]
+### indopak-13-lines-taj-company.db.zip | zip 120254 B | md5_match=True | zip_bad=None | members=1
+    member: indopak-13-lines-taj-company.db (290816 B)
+  DB indopak-13-lines-taj-company.db:
+    table info: rows=1 cols=['name', 'number_of_pages', 'lines_per_page', 'font_name']
+    table pages: rows=10995 cols=['page_number', 'line_number', 'line_type', 'is_centered', 'first_word_id', 'last_word_id', 'surah_number']
+    sample info: ["('Indopak 13 lines - Taj company', 847, 13, 'indopak-nastaleeq')"]
+    sample pages: ["(1, 1, 'surah_name', 1, '', '', 1)", "(1, 2, 'ayah', 1, 1, 5, '')"]
+### indopak-nastaleeq.db.zip | zip 425778 B | md5_match=True | zip_bad=None | members=1
+    member: indopak-nastaleeq.db (1626112 B)
+  DB indopak-nastaleeq.db:
+    table verses: rows=6236 cols=['id', 'verse_key', 'surah', 'ayah', 'text']
+    sample verses: ["(1, '1:1', 1, 1, 'بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِیْمِ ۟\\uf61e')", "(2, '1:2', 1, 2, 'اَلْحَمْدُ لِلّٰهِ رَبِّ الْعٰلَمِیْنَ ۟ۙ\\uf500')"]
+### indopak-nastaleeq.json.zip | zip 396959 B | md5_match=True | zip_bad=None | members=1
+    member: indopak-nastaleeq.json (1840382 B)
+  JSON indopak-nastaleeq.json: type=object records=6236 distinct_ayahs=6236 surahs=114 err=None
+    sample: {'id': 1, 'verse_key': '1:1', 'surah': 1, 'ayah': 1, 'text': 'بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِیْمِ ۟\uf61e'}
+### indopak.db.zip | zip 425978 B | md5_match=True | zip_bad=None | members=1
+    member: indopak.db (1630208 B)
+  DB indopak.db:
+    table verses: rows=6236 cols=['id', 'verse_key', 'surah', 'ayah', 'text']
+    sample verses: ["(1, '1:1', 1, 1, 'بِسۡمِ اللهِ الرَّحۡمٰنِ الرَّحِيۡمِ')", "(2, '1:2', 1, 2, 'اَلۡحَمۡدُ لِلّٰهِ رَبِّ الۡعٰلَمِيۡنَۙ\\u200f')"]
+### qpc-hafs-tajweed.db.zip | zip 559375 B | md5_match=True | zip_bad=None | members=1
+    member: qpc-hafs-tajweed.db (4186112 B)
+  DB qpc-hafs-tajweed.db:
+    table verses: rows=6236 cols=['id', 'verse_key', 'surah', 'ayah', 'text']
+    sample verses: ["(1, '1:1', 1, 1, 'بِسۡمِ <rule class=ham_wasl>ٱ</rule>للَّهِ <rule class=ham_wasl>ٱ</rule><rule class=laam_shamsiyah>ل</rule>رَّحۡمَ<rule class=madda_normal>ـٰ</rule>نِ <rule class=ham_wasl>ٱ</rule><rule class=laam_shamsiyah>ل</rule>رَّح<rule class=madda_permissible>ِي</rule>مِ ١')", "(2, '1:2', 1, 2, 'ٱلۡحَمۡدُ لِلَّهِ رَبِّ <rule class=ham_wasl>ٱ</rule>لۡعَ<rule class=madda_normal>ـٰ</rule>لَم<rule class=madda_permissible>ِي</rule>نَ ٢')"]
+### qpc-hafs-tajweed.json.zip | zip 506822 B | md5_match=True | zip_bad=None | members=1
+    member: qpc-hafs-tajweed.json (3999792 B)
+  JSON qpc-hafs-tajweed.json: type=object records=6236 distinct_ayahs=6236 surahs=114 err=None
+    sample: {'id': 1, 'verse_key': '1:1', 'surah': 1, 'ayah': 1, 'text': 'بِسۡمِ <rule class=ham_wasl>ٱ</rule>للَّهِ <rule class=ham_wasl>ٱ</rule><rule class=laam_shamsiyah>ل</rule>رَّحۡمَ<rule class=madda_normal>ـٰ</rule>نِ <rule class=ham_wasl>ٱ</rule><rule class=laam_shamsiyah>ل</rule>رَّح<rule class=madda_p
+### qpc-hafs-word-by-word.db.zip | zip 1581385 B | md5_match=True | zip_bad=None | members=1
+    member: qpc-hafs-word-by-word.db (3465216 B)
+  DB qpc-hafs-word-by-word.db:
+    table words: rows=83668 cols=['id', 'location', 'surah', 'ayah', 'word', 'text']
+    sample words: ["(1, '1:1:1', 1, 1, 1, 'بِسۡمِ')", "(2, '1:1:2', 1, 1, 2, 'ٱللَّهِ')"]
+### qpc-hafs-word-by-word.json.zip | zip 1467797 B | md5_match=True | zip_bad=None | members=1
+    member: qpc-hafs-word-by-word.json (8841417 B)
+  JSON qpc-hafs-word-by-word.json: type=object records=83668 distinct_ayahs=6236 surahs=114 err=None
+    sample: {'id': 1, 'surah': '1', 'ayah': '1', 'word': '1', 'location': '1:1:1', 'text': 'بِسۡمِ'}
+### qpc-nastaleeq-15-lines.db.zip | zip 97124 B | md5_match=True | zip_bad=None | members=1
+    member: qpc-nastaleeq-15-lines.db (237568 B)
+  DB qpc-nastaleeq-15-lines.db:
+    table info: rows=1 cols=['name', 'number_of_pages', 'lines_per_page', 'font_name']
+    table pages: rows=8903 cols=['page_number', 'line_number', 'line_type', 'is_centered', 'first_word_id', 'last_word_id', 'surah_number']
+    sample info: ["('QPC Hafs Nastaleeq 15 lines', 610, 15, 'qpc-nastaleeq')"]
+    sample pages: ["(1, 1, 'surah_name', 1, '', '', 1)", "(1, 2, 'ayah', 1, 1, 5, '')"]
+### qpc-nastaleeq.db.zip | zip 1599252 B | md5_match=True | zip_bad=None | members=1
+    member: qpc-nastaleeq.db (3502080 B)
+  DB qpc-nastaleeq.db:
+    table words: rows=83668 cols=['id', 'location', 'surah', 'ayah', 'word', 'text']
+    sample words: ["(1, '1:1:1', 1, 1, 1, 'بِسْمِ')", "(2, '1:1:2', 1, 1, 2, 'اللّٰهِ')"]
+### qpc-v1-glyph-codes-wbw.db.zip | zip 1200211 B | md5_match=True | zip_bad=None | members=1
+    member: qpc-v1-glyph-codes-wbw.db (2437120 B)
+  DB qpc-v1-glyph-codes-wbw.db:
+    table words: rows=83668 cols=['id', 'location', 'surah', 'ayah', 'word', 'text']
+    sample words: ["(1, '1:1:1', 1, 1, 1, 'ﭑ')", "(2, '1:1:2', 1, 1, 2, 'ﭒ')"]
+### qpc-v1-glyph-codes-wbw.json.zip | zip 1142378 B | md5_match=True | zip_bad=None | members=1
+    member: qpc-v1-glyph-codes-wbw.json (7825089 B)
+  JSON qpc-v1-glyph-codes-wbw.json: type=object records=83668 distinct_ayahs=6236 surahs=114 err=None
+    sample: {'id': 1, 'surah': '1', 'ayah': '1', 'word': '1', 'location': '1:1:1', 'text': 'ﭑ'}
+### qpc-v2-15-lines.db.zip | zip 99483 B | md5_match=True | zip_bad=None | members=1
+    member: qpc-v2-15-lines.db (241664 B)
+  DB qpc-v2-15-lines.db:
+    table info: rows=1 cols=['name', 'number_of_pages', 'lines_per_page', 'font_name']
+    table pages: rows=9046 cols=['page_number', 'line_number', 'line_type', 'is_centered', 'first_word_id', 'last_word_id', 'surah_number']
+    sample info: ["('QCF V2 ( 1421H print )', 604, 15, 'v2')"]
+    sample pages: ["(1, 1, 'surah_name', 1, '', '', 1)", "(1, 2, 'ayah', 1, 1, 5, '')"]
+### qpc-v2-ayah-by-ayah-glyphs.db.zip | zip 113194 B | md5_match=True | zip_bad=None | members=1
+    member: qpc-v2-ayah-by-ayah-glyphs.db (507904 B)
+  DB qpc-v2-ayah-by-ayah-glyphs.db:
+    table verses: rows=6236 cols=['id', 'verse_key', 'surah', 'ayah', 'text', 'page_number']
+    sample verses: ["(1, '1:1', 1, 1, 'ﱁ ﱂ ﱃ ﱄ ﱅ', 1)", "(2, '1:2', 1, 2, 'ﱆ ﱇ ﱈ ﱉ ﱊ', 1)"]
+### qpc-v2-ayah-by-ayah-glyphs.json.zip | zip 105083 B | md5_match=True | zip_bad=None | members=1
+    member: qpc-v2-ayah-by-ayah-glyphs.json (895946 B)
+  JSON qpc-v2-ayah-by-ayah-glyphs.json: type=object records=6236 distinct_ayahs=6236 surahs=114 err=None
+    sample: {'id': 1, 'verse_key': '1:1', 'surah': 1, 'ayah': 1, 'text': 'ﱁ ﱂ ﱃ ﱄ ﱅ', 'page_number': 1}
+### qpc-v2.db.zip | zip 1197952 B | md5_match=True | zip_bad=None | members=1
+    member: qpc-v2.db (2437120 B)
+  DB qpc-v2.db:
+    table words: rows=83668 cols=['id', 'location', 'surah', 'ayah', 'word', 'text']
+    sample words: ["(1, '1:1:1', 1, 1, 1, 'ﱁ')", "(2, '1:1:2', 1, 1, 2, 'ﱂ')"]
+### qpc-v2.json.zip | zip 1133859 B | md5_match=True | zip_bad=None | members=1
+    member: qpc-v2.json (7824904 B)
+  JSON qpc-v2.json: type=object records=83668 distinct_ayahs=6236 surahs=114 err=None
+    sample: {'id': 1, 'surah': '1', 'ayah': '1', 'word': '1', 'location': '1:1:1', 'text': 'ﱁ'}
+### qpc-v4.db.zip | zip 1197952 B | md5_match=True | zip_bad=None | members=1
+    member: qpc-v4.db (2437120 B)
+  DB qpc-v4.db:
+    table words: rows=83668 cols=['id', 'location', 'surah', 'ayah', 'word', 'text']
+    sample words: ["(1, '1:1:1', 1, 1, 1, 'ﱁ')", "(2, '1:1:2', 1, 1, 2, 'ﱂ')"]
+### qudratullah-indopak-15-lines.db.zip | zip 100463 B | md5_match=True | zip_bad=None | members=1
+    member: qudratullah-indopak-15-lines.db (241664 B)
+  DB qudratullah-indopak-15-lines.db:
+    table info: rows=1 cols=['name', 'number_of_pages', 'lines_per_page', 'font_name']
+    table pages: rows=9131 cols=['page_number', 'line_number', 'line_type', 'is_centered', 'first_word_id', 'last_word_id', 'surah_number']
+    sample info: ["('Indopak 15 lines - Qudratullah', 610, 15, 'indopak-nastaleeq')"]
+    sample pages: ["(1, 1, 'surah_name', 1, '', '', 1)", "(1, 2, 'ayah', 1, 1, 5, '')"]
+### quran-metadata-surah-name.json.zip | zip 3719 B | md5_match=True | zip_bad=None | members=1
+    member: quran-metadata-surah-name.json (20253 B)
+  JSON quran-metadata-surah-name.json: type=object records=114 distinct_ayahs=0 surahs=0 err=None
+    sample: {'id': 1, 'name': 'Al-Fātiĥah', 'name_simple': 'Al-Fatihah', 'name_arabic': 'الفاتحة', 'revelation_order': 5, 'revelation_place': 'makkah', 'verses_count': 7, 'bismillah_pre': False}
+### quran-metadata-surah-name.sqlite.zip | zip 3597 B | md5_match=True | zip_bad=None | members=1
+    member: quran-metadata-surah-name.sqlite (16384 B)
+  DB quran-metadata-surah-name.sqlite:
+    table chapters: rows=114 cols=['id', 'name', 'name_simple', 'name_arabic', 'revelation_order', 'revelation_place', 'verses_count', 'bismillah_pre']
+    sample chapters: ["(1, 'Al-Fātiĥah', 'Al-Fatihah', 'الفاتحة', 5, 'makkah', 7, 0)", "(2, 'Al-Baqarah', 'Al-Baqarah', 'البقرة', 87, 'madinah', 286, 1)"]
+### tajweed-images-old.db.zip | zip 1378196 B | md5_match=True | zip_bad=None | members=1
+    member: tajweed-images-old.db (7585792 B)
+  DB tajweed-images-old.db:
+    table words: rows=83668 cols=['id', 'location', 'surah', 'ayah', 'word', 'text']
+    sample words: ["(1, '1:1:1', 1, 1, 1, 'https://static-cdn.tarteel.ai/qul/images/w/rq-color/1/1/1.png')", "(2, '1:1:2', 1, 1, 2, 'https://static-cdn.tarteel.ai/qul/images/w/rq-color/1/1/2.png')"]
+
+### QUL downloads cross-check (~/workspace/qul-downloads)
+  digital-khatt-indopak.json: 8897207 B sha256=51d6ff9120a1d374f07d8f51482b8400d09a1af0ce570a8475a666b973a8072e
+  digital-khatt-v2.json: 8892529 B sha256=c7f72b9b5969006a86ba0ea4307d7262ca5e4522a4ce92b82a1fa531e919775b
+  qpc-hafs-word-by-word.json: 8841417 B sha256=f366269234e24f322146c043fe5fbf0132990613a94aff4b3f23847f45793ea7
+  qpc-nastaleeq.json: 8878341 B sha256=97e37799459a8963d51b016664e5c46cbd06d6cc1dde1cb4d7cd90e3ab94ca6b
+  qpc-v4.json: 7824904 B sha256=40964a1b7932e9a69e0dfc0d58dce3b73e30a803febda119fd6828bcb75fac98

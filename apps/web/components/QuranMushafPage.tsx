@@ -21,13 +21,24 @@
  *
  * Printed-page dress (original code-drawn ornaments, never copied
  * artwork): a double gold frame with geometric corner motifs around
- * the text block, a full-width surah-heading band, and gold circular
+ * the text block, a full-width surah-heading band, and thin dark
  * double-ring ayah-end markers with the ayah number inside. Page
  * numbers use Arabic-Indic digits throughout, as in the print.
  */
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { DisplayAyah } from '@/lib/quran-madhhab';
 import type { MushafExactLine } from '@/lib/quran-mushaf-lines';
+import {
+  expandV2Page,
+  loadV2Index,
+  loadV2Page,
+  loadV2PageGlyphs,
+  type V2Expansion,
+  type V2MushafIndex,
+  type V2Page,
+  type V2PageGlyphs,
+} from '@/lib/quran-mushaf-v2';
+import { QuranMushafV2Page } from './QuranMushafV2Page';
 import {
   DEFAULT_SVG_MUSHAF,
   type SvgMushafKey,
@@ -47,12 +58,13 @@ export interface MushafSurahGroup {
 
 /**
  * Ayah-end marker — an original inline-SVG ornament in the apps'
- * circular-marker manner (round 5): a DOUBLE gold ring with the
- * Arabic-Indic ayah number centered inside and a small gold diamond
- * flourish on the ring's top, like the circular ornate markers in
- * the user's Bayan reference. Drawn here from basic geometry
- * (circles + one rotated square); no artwork is copied from any
- * mushaf, app, or scan.
+ * circular-marker manner (round 5): a thin dark DOUBLE ring with
+ * the Arabic-Indic ayah number centered inside and a small dark
+ * diamond flourish on the ring's top. Reader rebuild 2026-11-08
+ * (area 2): the diamond is now an outline, not a gold fill, and
+ * the rings carry no fill — the Tarteel manner. Drawn here from
+ * basic geometry (circles + one rotated square); no artwork is
+ * copied from any mushaf, app, or scan.
  */
 function AyahRosette({ n }: { n: string }) {
   return (
@@ -146,12 +158,14 @@ export function QuranMushafPage({
   hideMeta,
   onPlayAyah,
   onPlayLine,
+  hideText,
   svgPage,
   onSelectAyah,
   svgFallbackNote,
   svgUnavailableNote,
   mushafKey,
   resolveSurahName,
+  onNavigatePage,
 }: {
   groups: MushafSurahGroup[];
   /** Exact print lines for this page; null → flowing fallback. */
@@ -186,6 +200,11 @@ export function QuranMushafPage({
   onPlayAyah: (surahNumber: number, displayItem: DisplayAyah) => void;
   /** Play from a print line's first verse (exact-lines path only). */
   onPlayLine?: (surahNumber: number, ayahNumber: number) => void;
+  /** Reader rebuild (2026-11-08, area 2): hide the mushaf text
+      for hifz; forwarded to QuranMushafV2Page. Only the V2 path
+      honours it — the exact-line / SVG fallback paths render the
+      text as before. */
+  hideText?: boolean;
   /**
    * Round 6: true when this view shows the REAL printed page as
    * inline SVG (page view, ayah view's page, reading view). False
@@ -209,6 +228,12 @@ export function QuranMushafPage({
   mushafKey?: SvgMushafKey;
   /** Surah number → Arabic name, for the non-Hafs page header. */
   resolveSurahName?: (surahNumber: number) => string;
+  /**
+   * Page-mode navigation for the V2 page's own prev/next/jump row.
+   * The reader passes it only in page view (in juz/hizb views the
+   * reader's own range navigation owns paging, so the V2 row hides).
+   */
+  onNavigatePage?: (page: number) => void;
 }) {
   const mushaf = mushafKey ?? DEFAULT_SVG_MUSHAF;
   // A failed SVG load falls back to the text page for the SAME page
@@ -218,12 +243,116 @@ export function QuranMushafPage({
   // Duri/Shubah. The flags reset whenever the page/key changes.
   const [svgFailed, setSvgFailed] = useState(false);
   const [svgAyahs, setSvgAyahs] = useState<SvgPageAyah[] | null>(null);
+  // Phase 3 (hifz redesign): the real V2 mushaf page. The V2 data
+  // loads lazily once (same pattern as the old exact lines) and the
+  // expansion is strict — any token mismatch falls back to the old
+  // exact-line rendering, never a wrong page. Round 2 §8: only the
+  // index (~3.7KB gzip) and this page's chunk (~0.7KB gzip) load —
+  // not the whole 193KB file.
+  const [v2Index, setV2Index] = useState<V2MushafIndex | null | undefined>(undefined);
+  const [v2SelectedWord, setV2SelectedWord] = useState<string | null>(null);
+  useEffect(() => {
+    if (mushaf !== DEFAULT_SVG_MUSHAF) return;
+    let cancelled = false;
+    loadV2Index().then((index) => {
+      if (!cancelled) setV2Index(index);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mushaf]);
+  // This page's layout chunk (round 2 §8). undefined = still loading,
+  // null = the chunk (and the full-data fallback) failed.
+  const [v2Page, setV2Page] = useState<V2Page | null | undefined>(undefined);
+  useEffect(() => {
+    if (mushaf !== DEFAULT_SVG_MUSHAF) return;
+    let cancelled = false;
+    loadV2Page(pageNumber).then((page) => {
+      if (!cancelled) setV2Page(page);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mushaf, pageNumber]);
+  // Phase-1 hifz fix: this page's glyph map (QUL id → glyph
+  // string). Loads alongside the V2 data; null (file missing, fetch
+  // failed) keeps the Tanzil-text expansion — the honest fallback.
+  // While the new page's map loads, the old one is cleared so a
+  // stale page's map can never render under the new page.
+  const [v2Glyphs, setV2Glyphs] = useState<V2PageGlyphs | null | undefined>(undefined);
+  useEffect(() => {
+    if (mushaf !== DEFAULT_SVG_MUSHAF) return;
+    let cancelled = false;
+    loadV2PageGlyphs(pageNumber).then((glyphs) => {
+      if (!cancelled) setV2Glyphs(glyphs);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mushaf, pageNumber]);
   useEffect(() => {
     setSvgFailed(false);
     setSvgAyahs(null);
+    setV2SelectedWord(null);
+    setV2Glyphs(undefined);
+    setV2Page(undefined);
   }, [pageNumber, svgPage, mushaf]);
   const showSvg = svgPage === true && !svgFailed;
   const nonHafsFallback = svgPage === true && svgFailed && mushaf !== DEFAULT_SVG_MUSHAF;
+  // Word tokens for the V2 expansion, from this page's own ayah
+  // groups. The reader's display groups are NOT raw Tanzil tokens:
+  // the madhhab mapping remaps Fatiha (Basmalah as an unnumbered
+  // header, ayah 7 split into two cards) and the double-Bismillah
+  // fix strips the 4 Basmalah words from the first ayah of surahs
+  // 2..114 (strippedWords). The V2 layout counts standard Tanzil
+  // tokens, so restore them: prepend the reader's own Basmalah
+  // tokens where stripped, concatenate the two Fatiha-7 cards in
+  // display order, and restore surah 1 ayah 1 (the Basmalah itself)
+  // from the label when no card carries it. Only the COUNTS are
+  // verified by the strict expansion; the Basmalah words render in
+  // the reader's own label spelling, as they do elsewhere.
+  const v2Expansion: V2Expansion | null = useMemo(() => {
+    if (mushaf !== DEFAULT_SVG_MUSHAF || !v2Index || !v2Page || showSvg) return null;
+    const bismillahTokens = bismillah.split(/\s+/).filter(Boolean);
+    const tokens = new Map<string, readonly string[]>();
+    for (const group of groups) {
+      for (const item of group.items) {
+        const key = `${group.surahNumber}:${item.standardNumber}`;
+        let toks = item.ayah.text.split(/\s+/).filter(Boolean);
+        if (item.strippedWords) toks = [...bismillahTokens, ...toks];
+        const prev = tokens.get(key);
+        tokens.set(key, prev ? [...prev, ...toks] : toks);
+      }
+      if (group.surahNumber === 1 && group.bismillahHeader && !tokens.has('1:1')) {
+        tokens.set('1:1', bismillahTokens);
+      }
+    }
+    return expandV2Page(v2Index, v2Page, tokens, v2Glyphs ?? undefined);
+  }, [mushaf, v2Index, v2Page, showSvg, pageNumber, groups, bismillah, v2Glyphs]);
+  if (v2Expansion?.ok && v2Page) {
+    return (
+      <QuranMushafV2Page
+        page={v2Page}
+        expansion={v2Expansion}
+        bismillah={bismillah}
+        pageCurrent={pageCurrent}
+        juzCurrent={juzCurrent}
+        hizbCurrent={hizbCurrent}
+        headerSurahTemplate={headerSurahTemplate}
+        resolveSurahName={resolveSurahName}
+        hideText={hideText}
+        selectedAyah={highlightKey ?? null}
+        selectedWord={v2SelectedWord}
+        onSelectWord={setV2SelectedWord}
+        onSelectAyah={onSelectAyah}
+        onPlayLine={onPlayLine}
+        linesClickable={linesClickable}
+        onNavigate={onNavigatePage}
+        showNav={onNavigatePage !== undefined}
+        hideMeta={hideMeta}
+      />
+    );
+  }
   // Non-Hafs header comes from the page's OWN ayah list (last ayah's
   // surah), never from the Hafs pipeline's groups: juz/hizb stay null
   // (the caller passes null) and the surah part is omitted until the

@@ -44,15 +44,19 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.core.errors import APIError
 
 from .alignment import strip_diacritics
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "MappingPendingError",
@@ -169,7 +173,10 @@ def _load_tokens(path: Path) -> set[str]:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
-        raise MappingPendingError(f"tokens.txt خوانده نشد: {exc}") from exc
+        # مسیر فایل و جزئیات OSError فقط در لاگ سرور؛ پیام عمومی،
+        # عمومی می‌ماند (فاز ۱۱).
+        logger.warning("hifz tokens.txt unreadable: %s", exc)
+        raise MappingPendingError("خواندن جدول نمادهای واجی ناموفق بود") from exc
     symbols: set[str] = set()
     for line in lines:
         if not line.strip():
@@ -278,11 +285,90 @@ def _norm(text: str) -> str:
     return "".join(out)
 
 
+#: حروف شمسی/قمری برای تا کردن الِ وصله در نرمال‌ساز بهبودیافته.
+_SOLAR_LETTERS = frozenset("تثدذرزسشصضطظلن")
+_LUNAR_LETTERS = frozenset("ابجحخعغفقكمهوي")
+
+#: پیشوندهای تک‌حرفی که الفِ وصله پس از آن‌ها هم ساکت است.
+_WASLAH_PREFIXES = frozenset("وفبكل")
+
+
+def _fold_waslah_al(text: str) -> str:
+    """تا کردن الِ وصله در ابتدای کلمه (یا پس از پیشوند تک‌حرفی).
+
+    فقط وقتی کلمه با «ٱل» (الف وصله + لام) آغاز شود — تشخیص بر
+    مبنای ٱ (U+0671) در متن است، نه «ال» تاشده، تا «إِلَى» و
+    «أُو۟لَـٰٓئِكَ» آسیب نبینند. حرفِ پس از «ال» شمسی باشد «ال»
+    کامل حذف می‌شود، قمری باشد فقط «ا» حذف می‌شود (لام می‌ماند،
+    چون در رشتهٔ واجی هست). متن ورودی باید بی‌حرکت باشد (پس از
+    strip_diacritics) تا حرفِ پس از «ال» بی‌واسطه دیده شود.
+    """
+    start: int | None = None
+    if text.startswith("ٱل"):
+        start = 0
+    elif len(text) >= 4 and text[0] in _WASLAH_PREFIXES and text[1:3] == "ٱل":
+        start = 1
+    if start is None:
+        return text
+    rest = text[start + 2 :]
+    nxt = ""
+    for ch in rest:
+        if ch == "ـ":
+            continue
+        nxt = ch
+        break
+    if not nxt:
+        return text
+    letter = _FOLD.get(nxt, nxt)
+    if letter in _SOLAR_LETTERS:
+        return text[:start] + rest
+    if letter in _LUNAR_LETTERS:
+        return text[:start] + "ل" + rest
+    return text
+
+
+def _norm_relaxed(text: str) -> str:
+    """نرمال‌ساز بهبودیافتهٔ گذر دوم — فقط برای آیه‌های ردشده در گذر اول.
+
+    گونه‌های اعتبارسنجی‌شدهٔ Wave 1 (بخش ۳، §۵: V1 تا V5 + بسمله):
+    - V1: الف خنجری ٰ → ا و ۧ → ي پیش از حذف حرکات (هر دو را
+      strip_diacritics حذف می‌کند، در حالی که تلفظ می‌شوند).
+    - V2: نمادهای تلفظی الفبای واجی — ں → ن، ۾ → م، حذف ڇ (قلقله).
+    - V3: تا کردن الِ وصله (_fold_waslah_al).
+    - V4: حذف پسوند «وا» در پایان کلمه (واو جماعتِ پایانی در واج نیست).
+    - V5: همزهٔ روی کرسی ؤ/ئ → ا (سمت واجی همزهٔ برهنه می‌نویسد).
+    فقط تابع هزینهٔ DP است؛ رشته‌های واجیِ خامِ قطعه‌ها و متن تنزیل
+    دست نمی‌خورند. برای این ۵۱ آیه V4 و V5 خنثی بودند، ولی بخشی از
+    بستهٔ اعتبارسنجی‌شده‌اند و با آن نگه داشته شده‌اند.
+    """
+    text = text.replace("ٰ", "ا").replace("ۧ", "ي")
+    text = text.replace("ں", "ن").replace("۾", "م").replace("ڇ", "")
+    text = text.replace("ؤ", "ء").replace("ئ", "ء")
+    text = text.replace("ۥ", "و").replace("ۦ", "ي")
+    text = strip_diacritics(text)
+    text = _fold_waslah_al(text)
+    out: list[str] = []
+    for ch in text:
+        ch = _FOLD.get(ch, ch)
+        if ch in (" ", "ـ"):
+            continue
+        if out and out[-1] == ch:
+            continue
+        out.append(ch)
+    norm = "".join(out)
+    if len(norm) > 2 and norm.endswith("وا"):
+        norm = norm[:-2]
+    return norm
+
+
 def _align_segments(
-    phonetic_words: list[str], orth_words: list[str]
+    phonetic_words: list[str],
+    orth_words: list[str],
+    norm: Callable[[str], str] | None = None,
 ) -> tuple[int, list[tuple[tuple[int, ...], tuple[int, ...]]]] | None:
     """DP مرز قطعه‌ها: (هزینه، [(شاخص‌های کلمه، شاخص‌های واج)]).
 
+    `norm`: نرمال‌ساز هزینه (پیش‌فرض `_norm`؛ گذر دوم `_norm_relaxed`).
     گذارها: ۱ واج : ۱ کلمه، ۱ واج : ۲–۸ کلمه (ادغام در تلفظ پیوسته —
     زنجیره‌های ادغام تا ۷ کلمه در داده دیده شده است، پس سقف ۸ است تا
     سقف به مرز نچسبد)، ۲–۶ واج : ۱ کلمه (شکست حروف مقطعه). کلمهٔ
@@ -294,8 +380,9 @@ def _align_segments(
     if len(orth_words) == 1:
         return 0, [((0,), tuple(range(len(phonetic_words))))]
     m, n = len(phonetic_words), len(orth_words)
-    pn = [_norm(p) for p in phonetic_words]
-    wn = [_norm(w) for w in orth_words]
+    _norm_fn = _norm if norm is None else norm
+    pn = [_norm_fn(p) for p in phonetic_words]
+    wn = [_norm_fn(w) for w in orth_words]
     inf = float("inf")
     dp = [[inf] * (n + 1) for _ in range(m + 1)]
     bt: list[list[tuple[int, int, tuple[int, ...], tuple[int, ...]] | None]] = [
@@ -353,7 +440,8 @@ def _load_tanzil(path: Path) -> dict[int, dict[int, str]]:
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise MappingPendingError(f"متن Tanzil خوانده نشد: {exc}") from exc
+        logger.warning("hifz tanzil text unreadable: %s", exc)
+        raise MappingPendingError("خواندن متن تنزیل ناموفق بود") from exc
     data: dict[int, dict[int, str]] = {}
     for line in raw.splitlines():
         m = _TANZIL_LINE_RE.match(line)
@@ -367,20 +455,35 @@ def _load_tanzil(path: Path) -> dict[int, dict[int, str]]:
 
 
 def _split_adjusted(
-    tanzil: dict[int, dict[int, str]], surah: int, ayah: int
+    tanzil: dict[int, dict[int, str]],
+    surah: int,
+    ayah: int,
+    relaxed_basmalah: bool = False,
 ) -> tuple[list[str], list[str], dict[int, int]]:
     """متن ارائه‌شده → (کامل، تعدیل‌شده، نگاشت شاخص تعدیل‌شده→کامل).
 
     تعدیل: حذف بسملهٔ ابتدای آیهٔ ۱ (جز سوره‌های ۱ و ۹) و حذف
     نشانه‌های وقفِ تنها. ترتیب حفظ می‌شود، پس نگاشت یک‌به‌یک است.
+    `relaxed_basmalah` (فقط گذر دوم): بسمله با مقایسهٔ صورت
+    نرمال‌شده شناخته می‌شود، نه رشتهٔ دقیق — تنزیل در ۹۵:۱ و ۹۷:۱
+    «بِّسْمِ» با شده می‌نویسد، در حالی که بسملهٔ مرجع (۱:۱) «بِسْمِ»
+    بدون شده است؛ مقایسهٔ دقیق آن دو را جدا نمی‌کند و بسمله به‌عنوان
+    کلمات آیه تراز می‌شود (هزینهٔ ۲۲ در برابر آستانهٔ ۱۰).
     """
     full = tanzil[surah][ayah].split()
     basmalah = tanzil[1][1].split()
     words = full
     offset = 0
-    if ayah == 1 and surah not in (1, 9) and words[:4] == basmalah:
-        words = words[4:]
-        offset = 4
+    if ayah == 1 and surah not in (1, 9):
+        if relaxed_basmalah:
+            match = [_norm_relaxed(w) for w in words[:4]] == [
+                _norm_relaxed(w) for w in basmalah
+            ]
+        else:
+            match = words[:4] == basmalah
+        if match:
+            words = words[4:]
+            offset = 4
     adjusted: list[str] = []
     index_map: dict[int, int] = {}
     for pos, word in enumerate(words):
@@ -434,8 +537,42 @@ def map_files_present(data_dir: str | Path | None = None) -> tuple[bool, str]:
     for filename in (_ORDERED_FILE, _TOKENS_FILE):
         path = resolved / filename
         if not path.is_file() or path.stat().st_size == 0:
-            return False, f"map file missing or empty: {path}"
+            # مسیر مطلق در پیام عمومی نمی‌آید (فاز ۱۱: نشت مسیر از
+            # /hifz/status)؛ جزئیات در لاگ سرور می‌ماند.
+            logger.warning("hifz phoneme map file missing or empty: %s", path)
+            return False, "map file missing or empty"
     return True, ""
+
+
+def _build_adjusted_segments(
+    plist: list[str],
+    pairs: list[tuple[tuple[int, ...], tuple[int, ...]]],
+    adjusted: list[str],
+    index_map: dict[int, int],
+) -> list[Segment]:
+    """ساختن قطعه‌های تعدیل‌شده از جفت‌های DP (گذر اول و دوم، یکسان).
+
+    رشتهٔ واجیِ هر قطعه، به‌هم‌پیوستنِ رشته‌های خامِ واحدهای واجی‌اش
+    است (تطابق زنده با همان رشتهٔ خام کار می‌کند)؛ شاخص‌ها با
+    index_map به مبنای ارائه‌شده ترجمه می‌شوند.
+    """
+    segs: list[Segment] = []
+    for word_idxs, phon_idxs in pairs:
+        # Split groups (one word, several phonetic words): the
+        # session matches the concatenated string (the stream has
+        # no spaces between phonetic words).
+        phon = "".join(plist[p] for p in phon_idxs)
+        segs.append(
+            Segment(
+                word_indices=tuple(index_map[w] for w in word_idxs),
+                phoneme=phon,
+                leading_waslah=(
+                    adjusted[word_idxs[0]].startswith("ٱ")
+                    and phon.startswith("ء")
+                ),
+            )
+        )
+    return segs
 
 
 def load_phoneme_mapping(data_dir: str | Path | None = None) -> PhonemeMapping:
@@ -459,7 +596,10 @@ def load_phoneme_mapping(data_dir: str | Path | None = None) -> PhonemeMapping:
     try:
         ordered = json.loads(ordered_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        raise MappingPendingError(f"{_ORDERED_FILE} خوانده نشد: {exc}") from exc
+        logger.warning("hifz ordered phoneme map unreadable: %s", exc)
+        raise MappingPendingError(
+            "خواندن نگاشت واجی ناموفق بود"
+        ) from exc
     # شمار دقیق مدخل‌ها معیار نیست: فایل ناقص، آیه‌های غایب را با
     # خطای صادقانه (نه تراز اشتباه) نشان می‌دهد؛ آیه‌های دارای مدخل،
     # هر یک جداگانه اعتبارسنجی می‌شوند. پوشش کلی، در آزمون دادهٔ
@@ -480,8 +620,15 @@ def load_phoneme_mapping(data_dir: str | Path | None = None) -> PhonemeMapping:
             return (999, 999)
 
     # مرحلهٔ ۱: قطعه‌های تعدیل‌شدهٔ هر آیه (با رد بر اساس هزینه).
+    # گذر اول دقیقاً با قاعده‌های پیشین تراز می‌کند؛ آیه‌های
+    # پذیرفته‌شده دقیقاً همان قطعه‌های امروز را می‌گیرند.
     adjusted_segments: dict[tuple[int, int], list[Segment]] = {}
     basmalah_segments: list[Segment] | None = None
+    # آیه‌های ردشده بر اثر هزینه، برای گذر دوم نگه داشته می‌شوند؛
+    # ردشده‌های دیگر (نماد ناشناخته، مدخل نامعتبر، تراز ناممکن)
+    # با نرمال‌ساز بهبودیافته درست نمی‌شوند و دوباره تراز نمی‌شوند
+    # (ناممکن‌بودنِ DP فقط به شمارها بستگی دارد، نه به نرمال‌ساز).
+    retry: list[tuple[int, int, list[str]]] = []
     for key in sorted(ordered, key=_sort_key):
         try:
             surah, ayah = (int(x) for x in str(key).split(":"))
@@ -521,33 +668,53 @@ def load_phoneme_mapping(data_dir: str | Path | None = None) -> PhonemeMapping:
             report.rejected.append(
                 (surah, ayah, f"هزینهٔ تراز {cost} از آستانه گذشت")
             )
+            retry.append((surah, ayah, plist))
             continue
-        segs: list[Segment] = []
-        for word_idxs, phon_idxs in pairs:
-            # Split groups (one word, several phonetic words): the
-            # session matches the concatenated string (the stream has
-            # no spaces between phonetic words).
-            phon = "".join(plist[p] for p in phon_idxs)
-            segs.append(
-                Segment(
-                    word_indices=tuple(_index_map[w] for w in word_idxs),
-                    phoneme=phon,
-                    leading_waslah=(
-                        adjusted[word_idxs[0]].startswith("ٱ")
-                        and phon.startswith("ء")
-                    ),
-                )
-            )
+        segs = _build_adjusted_segments(plist, pairs, adjusted, _index_map)
         adjusted_segments[(surah, ayah)] = segs
         if (surah, ayah) == (1, 1):
             basmalah_segments = segs
+
+    # مرحلهٔ ۱٫۵ (گذر دوم): فقط آیه‌های ردشدهٔ بر اثر هزینه، با
+    # نرمال‌ساز بهبودیافته (_norm_relaxed) و مقایسهٔ بسملهٔ
+    # نرمال‌شده دوباره تراز می‌شوند. آستانه دست نمی‌خورد؛ اگر آیه‌ای
+    # اینجا هم رد شد، همان ردِ صادقانهٔ گذر اول می‌ماند (۵۰۳).
+    # با دادهٔ فعلی، هر ۵۱ آیهٔ ردشده اینجا پذیرفته می‌شوند و
+    # ۶٬۱۸۵ آیهٔ گذر اول بایت‌به‌بایت دست‌نخورده می‌مانند.
+    relaxed_keys: set[tuple[int, int]] = set()
+    for surah, ayah, plist in retry:
+        try:
+            _full, adjusted, _index_map = _split_adjusted(
+                tanzil, surah, ayah, relaxed_basmalah=True
+            )
+        except KeyError:
+            continue
+        aligned = _align_segments(plist, adjusted, norm=_norm_relaxed)
+        if aligned is None:
+            continue
+        cost, pairs = aligned
+        if cost > max(_MAX_DP_COST_FLOOR, _MAX_DP_COST_PER_SEGMENT * len(pairs)):
+            continue
+        segs = _build_adjusted_segments(plist, pairs, adjusted, _index_map)
+        adjusted_segments[(surah, ayah)] = segs
+        relaxed_keys.add((surah, ayah))
+        if (surah, ayah) == (1, 1):
+            basmalah_segments = segs
+        report.rejected = [
+            r for r in report.rejected if (r[0], r[1]) != (surah, ayah)
+        ]
 
     # مرحلهٔ ۲: ترتیب ارائه‌شده (بسملهٔ اول + رد وقف در جای خود).
     # قطعه‌های مرحلهٔ ۱ از قبل شاخص ارائه‌شده دارند (ترجمه با
     # index_map)؛ اینجا فقط بسمله پیش می‌آید و رد وقف درهم می‌شود.
     final: dict[tuple[int, int], list[Segment]] = {}
     for (surah, ayah), segs in adjusted_segments.items():
-        full, _adjusted, _index_map = _split_adjusted(tanzil, surah, ayah)
+        # آیه‌های گذر دوم با همان جداسازیِ بسملهٔ نرمال‌شدهٔ گذر دوم
+        # بازسازی می‌شوند تا شاخص‌ها با قطعه‌هایشان بخوانند؛ بقیه
+        # دقیقاً با جداسازیِ پیشین (بایت‌به‌بایت دست‌نخورده).
+        full, _adjusted, _index_map = _split_adjusted(
+            tanzil, surah, ayah, relaxed_basmalah=(surah, ayah) in relaxed_keys
+        )
         out: list[Segment] = []
         if ayah == 1 and surah not in (1, 9):
             if basmalah_segments is None:

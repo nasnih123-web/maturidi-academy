@@ -44,6 +44,13 @@ export function QuranListScreen({ navigation }: ListProps): React.JSX.Element {
 
   return (
     <Screen title={t("quran.title", locale)} subtitle={t("quran.subtitle", locale)}>
+      {/* Phase 4 — Hifz hub entry (resume + progress); the per-surah
+          «practice» button still opens the study page directly. */}
+      <Button
+        title={t("hifz.title", locale)}
+        size="sm"
+        onPress={() => navigation.navigate("HifzHub")}
+      />
       <TextField
         value={query}
         onChangeText={setQuery}
@@ -196,6 +203,17 @@ export function SurahScreen({ route, navigation }: SurahProps): React.JSX.Elemen
       subtitle={detail ? `${detail.ayahs.length} ${t("quran.ayahs", locale)}` : undefined}
     >
       <Button title={t("common.back", locale)} variant="ghost" size="sm" onPress={() => navigation.goBack()} />
+      <Button
+        title={t("quran.hifzPractice", locale)}
+        size="sm"
+        onPress={() => navigation.navigate("HifzStudy", { number, nameAr })}
+      />
+      <Button
+        title={t("listen.title", locale)}
+        size="sm"
+        variant="secondary"
+        onPress={() => navigation.navigate("HifzListen", { number, nameAr })}
+      />
       {loading ? (
         <ActivityIndicator size="large" color={common.primary} />
       ) : error || !detail ? (

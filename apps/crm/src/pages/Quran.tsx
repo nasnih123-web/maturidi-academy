@@ -1,5 +1,5 @@
 import React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Button } from "@maturidi/ui-web";
 import { LOCALES, useI18n, type Locale } from "../lib/i18n";
 import { apiFetch } from "../lib/api";
@@ -1360,6 +1360,19 @@ function HifzPanel(): React.ReactElement {
       apiFetch<HifzAdminAttempt[]>("/api/v1/quran/hifz/admin/attempts?limit=50"),
   });
 
+  // Phase 4 — per-attempt delete from the CRM attempts table (admin
+  // endpoint DELETE /admin/attempts/{id}); the list refetches after
+  // a delete. Bulk delete (P1-5) still needs a user decision.
+  const queryClient = useQueryClient();
+  const deleteAttempt = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<void>(`/api/v1/quran/hifz/admin/attempts/${id}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["hifz-admin-attempts"] }),
+  });
+
   if (settings.isLoading) return <div className="empty">{t("common.loading")}</div>;
   if (settings.isError)
     return (
@@ -1455,6 +1468,7 @@ function HifzPanel(): React.ReactElement {
               <th>{t("quran.hifzAttemptsStatus")}</th>
               <th>{t("quran.hifzAttemptsEngine")}</th>
               <th>{t("quran.hifzAttemptsCounts")}</th>
+              <th>{t("quran.hifzAttemptsDelete")}</th>
             </tr>
           </thead>
           <tbody>
@@ -1468,6 +1482,20 @@ function HifzPanel(): React.ReactElement {
                 <td>
                   {a.counts.correct}/{a.counts.close}/{a.counts.wrong}/
                   {a.counts.skipped}
+                </td>
+                <td>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={deleteAttempt.isPending}
+                    onClick={() => {
+                      if (!window.confirm(t("quran.hifzAttemptsDeleteConfirm")))
+                        return;
+                      deleteAttempt.mutate(a.id);
+                    }}
+                  >
+                    {t("quran.hifzAttemptsDelete")}
+                  </Button>
                 </td>
               </tr>
             ))}

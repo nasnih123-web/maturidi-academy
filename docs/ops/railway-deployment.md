@@ -37,6 +37,23 @@ Railway dashboard, set each worker service's **config file path**
   lacks the `+asyncpg` driver suffix.
 - **Redis** — Railway plugin (New → Database → Redis); set `REDIS_URL`
   from the plugin's connection string on api + all workers.
+  - **Hifz live-stream limit (P1-3) — hard constraint while Redis is
+    absent:** the live limit (1 per user / 4 total) is in-process, so
+    it is only correct with **exactly 1 replica and 1 worker**
+    (`start.sh` has no `--workers`). A second replica or `--workers`
+    without Redis silently multiplies the cap (N×4 total, N×1 per
+    user) and lets one user hold N recognizers. Do **not** scale the
+    api service until Redis is provisioned.
+  - **Activation checklist for the distributed limiter** (all three,
+    not one): (a) provision the Redis plugin and set `REDIS_URL` on
+    api + all workers; (b) set `APP_ENV=production` (this also turns
+    on the event-bus fail-fast and the auth fail-closed); (c) the
+    P1-3 tests (`tests/test_hifz_p1_345.py`) are green. Until then the
+    distributed limiter is **not** active in production — the code
+    stays on the in-process limiter and the 1-replica/1-worker
+    constraint above applies. On Redis outage in production, new
+    live streams are rejected (`hifz_live_unavailable`, fail-closed);
+    existing streams are **not** cut.
 - **Object storage** — Railway has **no MinIO/S3 plugin**. Use an external
   S3-compatible bucket (e.g. Cloudflare R2 / AWS S3 / a self-hosted MinIO)
   and set `STORAGE_PROVIDER=s3` plus the `S3_*` variables below.

@@ -23,6 +23,82 @@ if (
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // hifz-completion performance (§8): the V2 mushaf layout
+  // (public/quran-mushaf-v2.json, ~1.1MB raw / ~193KB gzip) is a
+  // static, effectively immutable dataset fetched on every mushaf /
+  // hifz visit. The default public-file header (max-age=0) forced a
+  // revalidation round-trip per visit; a 1-day fresh window +
+  // stale-while-revalidate keeps repeat visits off the network while
+  // still propagating a data change within a day. If the data ever
+  // changes incompatibly, bump QURAN_MUSHAF_V2_URL in
+  // lib/quran-mushaf-v2.ts instead of relying on this header.
+  async headers() {
+    return [
+      {
+        source: '/quran-mushaf-v2.json',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=604800',
+          },
+        ],
+      },
+      // Round 2 §8 — per-page V2 chunks: the same 1-day + SWR window
+      // for the index and the per-page files, so repeat visits skip
+      // the network for them too. Same versioning rule as the full
+      // file: bump QURAN_MUSHAF_V2_INDEX_URL / v2PageUrl on a data
+      // change instead of relying on this header.
+      {
+        source: '/quran-mushaf-v2-index.json',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=604800',
+          },
+        ],
+      },
+      {
+        source: '/quran-mushaf-v2-pages/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=604800',
+          },
+        ],
+      },
+      // Round 2 §8 — fonts + glyph data are immutable by name, so
+      // repeat visits must not spend a round-trip revalidating them:
+      // the font files carry their version in the name
+      // (UthmanicHafs-v-3.0, QCF p-numbers, Vazirmatn) and the glyph
+      // JSONs are per-page data (p1..p604) derived from the fixed
+      // QPC V2 dataset. A same-name replacement must be renamed
+      // (bump the version / page key) instead of relying on this
+      // header. Measured note: short-window probes already show 0
+      // bytes on repeat loads (Chrome serves these from cache within
+      // its heuristic window); the header makes that contractual for
+      // users returning hours/days later, when the heuristic window
+      // has expired and max-age=0 would force a conditional request
+      // per file (~400ms of 3G round-trips, in parallel).
+      {
+        source: '/fonts/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/quran-mushaf-v2-glyphs/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+    ];
+  },
   // M-06 (Next 16/Turbopack): پکیج لینک‌شدهٔ monorepo باید resolve شود؛
   // بدون این، بیلد Turbopack ساب‌پث‌های CSS پکیج را پیدا نمی‌کند.
   transpilePackages: ['@maturidi/design-tokens'],

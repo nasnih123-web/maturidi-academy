@@ -1,0 +1,752 @@
+{
+  "loads": [
+    {
+      "domContentLoaded": 608,
+      "load": 608,
+      "fcp": 772,
+      "fp": 772,
+      "transfer": 50014,
+      "timeToMushafMs": 2083,
+      "jsChunks": [
+        {
+          "url": "0y7-s5nqy047n.js",
+          "bytes": 30558,
+          "status": 200
+        },
+        {
+          "url": "17rhjwh83wd9t.js",
+          "bytes": 13268,
+          "status": 200
+        },
+        {
+          "url": "19sxv-70acmko.js",
+          "bytes": 215,
+          "status": 200
+        },
+        {
+          "url": "1iau--kwi62i8.js",
+          "bytes": 13827,
+          "status": 200
+        },
+        {
+          "url": "turbopack-3-ry682tkyiqk.js",
+          "bytes": 10030,
+          "status": 200
+        },
+        {
+          "url": "1ezy8w0-q11de.js",
+          "bytes": 25135,
+          "status": 200
+        },
+        {
+          "url": "03a6zt9sggqnl.js",
+          "bytes": 12033,
+          "status": 200
+        },
+        {
+          "url": "41s4m70mf_bci.js",
+          "bytes": 51862,
+          "status": 200
+        },
+        {
+          "url": "3rp3ipdzbl3tt.js",
+          "bytes": 158650,
+          "status": 200
+        },
+        {
+          "url": "1-yddxjiglktk.js",
+          "bytes": 229817,
+          "status": 200
+        },
+        {
+          "url": "0y0skj7-hii7-.js",
+          "bytes": 184512,
+          "status": 200
+        },
+        {
+          "url": "0m0ihs310md1e.js",
+          "bytes": 264742,
+          "status": 200
+        },
+        {
+          "url": "1dy0nni8mmio9.js",
+          "bytes": 1128020,
+          "status": 200
+        },
+        {
+          "url": "21ongo-oc85n3.js",
+          "bytes": 4202,
+          "status": 200
+        },
+        {
+          "url": "07z5h8ypjrcrg.js",
+          "bytes": 17034,
+          "status": 200
+        },
+        {
+          "url": "20k8tnv1nz980.js",
+          "bytes": 68317,
+          "status": 200
+        },
+        {
+          "url": "14i6ulhibifh8.js",
+          "bytes": 1778661,
+          "status": 200
+        }
+      ],
+      "jsTotalBytes": 3990883,
+      "label": "phone-0"
+    },
+    {
+      "domContentLoaded": 282,
+      "load": 481,
+      "fcp": 1120,
+      "fp": 1120,
+      "transfer": 193872,
+      "timeToMushafMs": 1294,
+      "jsChunks": [
+        {
+          "url": "17rhjwh83wd9t.js",
+          "bytes": 13268,
+          "status": 200
+        },
+        {
+          "url": "0y7-s5nqy047n.js",
+          "bytes": 30558,
+          "status": 200
+        },
+        {
+          "url": "1iau--kwi62i8.js",
+          "bytes": 13827,
+          "status": 200
+        },
+        {
+          "url": "turbopack-3-ry682tkyiqk.js",
+          "bytes": 10030,
+          "status": 200
+        },
+        {
+          "url": "19sxv-70acmko.js",
+          "bytes": 215,
+          "status": 200
+        },
+        {
+          "url": "41s4m70mf_bci.js",
+          "bytes": 51862,
+          "status": 200
+        },
+        {
+          "url": "03a6zt9sggqnl.js",
+          "bytes": 12033,
+          "status": 200
+        },
+        {
+          "url": "3rp3ipdzbl3tt.js",
+          "bytes": 158650,
+          "status": 200
+        },
+        {
+          "url": "1ezy8w0-q11de.js",
+          "bytes": 25135,
+          "status": 200
+        },
+        {
+          "url": "0y0skj7-hii7-.js",
+          "bytes": 184512,
+          "status": 200
+        },
+        {
+          "url": "1-yddxjiglktk.js",
+          "bytes": 229817,
+          "status": 200
+        },
+        {
+          "url": "0m0ihs310md1e.js",
+          "bytes": 264742,
+          "status": 200
+        },
+        {
+          "url": "1dy0nni8mmio9.js",
+          "bytes": 1128020,
+          "status": 200
+        },
+        {
+          "url": "14i6ulhibifh8.js",
+          "bytes": 1778661,
+          "status": 200
+        },
+        {
+          "url": "21ongo-oc85n3.js",
+          "bytes": 4202,
+          "status": 200
+        },
+        {
+          "url": "20k8tnv1nz980.js",
+          "bytes": 68317,
+          "status": 200
+        },
+        {
+          "url": "07z5h8ypjrcrg.js",
+          "bytes": 17034,
+          "status": 200
+        }
+      ],
+      "jsTotalBytes": 3990883,
+      "label": "phone-1"
+    },
+    {
+      "domContentLoaded": 286,
+      "load": 349,
+      "fcp": null,
+      "fp": null,
+      "transfer": 193872,
+      "timeToMushafMs": 678,
+      "jsChunks": [
+        {
+          "url": "17rhjwh83wd9t.js",
+          "bytes": 13268,
+          "status": 200
+        },
+        {
+          "url": "0y7-s5nqy047n.js",
+          "bytes": 30558,
+          "status": 200
+        },
+        {
+          "url": "1-yddxjiglktk.js",
+          "bytes": 229817,
+          "status": 200
+        },
+        {
+          "url": "3rp3ipdzbl3tt.js",
+          "bytes": 158650,
+          "status": 200
+        },
+        {
+          "url": "turbopack-3-ry682tkyiqk.js",
+          "bytes": 10030,
+          "status": 200
+        },
+        {
+          "url": "1iau--kwi62i8.js",
+          "bytes": 13827,
+          "status": 200
+        },
+        {
+          "url": "19sxv-70acmko.js",
+          "bytes": 215,
+          "status": 200
+        },
+        {
+          "url": "41s4m70mf_bci.js",
+          "bytes": 51862,
+          "status": 200
+        },
+        {
+          "url": "1ezy8w0-q11de.js",
+          "bytes": 25135,
+          "status": 200
+        },
+        {
+          "url": "03a6zt9sggqnl.js",
+          "bytes": 12033,
+          "status": 200
+        },
+        {
+          "url": "0y0skj7-hii7-.js",
+          "bytes": 184512,
+          "status": 200
+        },
+        {
+          "url": "14i6ulhibifh8.js",
+          "bytes": 1778661,
+          "status": 200
+        },
+        {
+          "url": "1dy0nni8mmio9.js",
+          "bytes": 1128020,
+          "status": 200
+        },
+        {
+          "url": "0m0ihs310md1e.js",
+          "bytes": 264742,
+          "status": 200
+        },
+        {
+          "url": "21ongo-oc85n3.js",
+          "bytes": 4202,
+          "status": 200
+        },
+        {
+          "url": "20k8tnv1nz980.js",
+          "bytes": 68317,
+          "status": 200
+        },
+        {
+          "url": "07z5h8ypjrcrg.js",
+          "bytes": 17034,
+          "status": 200
+        }
+      ],
+      "jsTotalBytes": 3990883,
+      "label": "phone-2"
+    },
+    {
+      "domContentLoaded": 571,
+      "load": 571,
+      "fcp": 688,
+      "fp": 688,
+      "transfer": 50014,
+      "timeToMushafMs": 2090,
+      "jsChunks": [
+        {
+          "url": "17rhjwh83wd9t.js",
+          "bytes": 13268,
+          "status": 200
+        },
+        {
+          "url": "0y7-s5nqy047n.js",
+          "bytes": 30558,
+          "status": 200
+        },
+        {
+          "url": "turbopack-3-ry682tkyiqk.js",
+          "bytes": 10030,
+          "status": 200
+        },
+        {
+          "url": "19sxv-70acmko.js",
+          "bytes": 215,
+          "status": 200
+        },
+        {
+          "url": "3rp3ipdzbl3tt.js",
+          "bytes": 158650,
+          "status": 200
+        },
+        {
+          "url": "41s4m70mf_bci.js",
+          "bytes": 51862,
+          "status": 200
+        },
+        {
+          "url": "1iau--kwi62i8.js",
+          "bytes": 13827,
+          "status": 200
+        },
+        {
+          "url": "1ezy8w0-q11de.js",
+          "bytes": 25135,
+          "status": 200
+        },
+        {
+          "url": "1-yddxjiglktk.js",
+          "bytes": 229817,
+          "status": 200
+        },
+        {
+          "url": "03a6zt9sggqnl.js",
+          "bytes": 12033,
+          "status": 200
+        },
+        {
+          "url": "0y0skj7-hii7-.js",
+          "bytes": 184512,
+          "status": 200
+        },
+        {
+          "url": "0m0ihs310md1e.js",
+          "bytes": 264742,
+          "status": 200
+        },
+        {
+          "url": "1dy0nni8mmio9.js",
+          "bytes": 1128020,
+          "status": 200
+        },
+        {
+          "url": "14i6ulhibifh8.js",
+          "bytes": 1778661,
+          "status": 200
+        },
+        {
+          "url": "07z5h8ypjrcrg.js",
+          "bytes": 17034,
+          "status": 200
+        },
+        {
+          "url": "21ongo-oc85n3.js",
+          "bytes": 4202,
+          "status": 200
+        }
+      ],
+      "jsTotalBytes": 3922566,
+      "label": "desktop-0"
+    },
+    {
+      "domContentLoaded": 290,
+      "load": 586,
+      "fcp": 1196,
+      "fp": 1196,
+      "transfer": 193872,
+      "timeToMushafMs": 1190,
+      "jsChunks": [
+        {
+          "url": "2e8nasvtmd2uo.js",
+          "bytes": 4940,
+          "status": 200
+        },
+        {
+          "url": "0-d0jopeqe35o.js",
+          "bytes": 4960,
+          "status": 200
+        },
+        {
+          "url": "0qzlyudlq9j4b.js",
+          "bytes": -1,
+          "status": 200
+        },
+        {
+          "url": "17rhjwh83wd9t.js",
+          "bytes": 13268,
+          "status": 200
+        },
+        {
+          "url": "0y7-s5nqy047n.js",
+          "bytes": 30558,
+          "status": 200
+        },
+        {
+          "url": "turbopack-3-ry682tkyiqk.js",
+          "bytes": 10030,
+          "status": 200
+        },
+        {
+          "url": "19sxv-70acmko.js",
+          "bytes": 215,
+          "status": 200
+        },
+        {
+          "url": "1iau--kwi62i8.js",
+          "bytes": 13827,
+          "status": 200
+        },
+        {
+          "url": "3rp3ipdzbl3tt.js",
+          "bytes": 158650,
+          "status": 200
+        },
+        {
+          "url": "41s4m70mf_bci.js",
+          "bytes": 51862,
+          "status": 200
+        },
+        {
+          "url": "03a6zt9sggqnl.js",
+          "bytes": 12033,
+          "status": 200
+        },
+        {
+          "url": "1ezy8w0-q11de.js",
+          "bytes": 25135,
+          "status": 200
+        },
+        {
+          "url": "1-yddxjiglktk.js",
+          "bytes": 229817,
+          "status": 200
+        },
+        {
+          "url": "0y0skj7-hii7-.js",
+          "bytes": 184512,
+          "status": 200
+        },
+        {
+          "url": "0m0ihs310md1e.js",
+          "bytes": 264742,
+          "status": 200
+        },
+        {
+          "url": "1dy0nni8mmio9.js",
+          "bytes": 1128020,
+          "status": 200
+        },
+        {
+          "url": "14i6ulhibifh8.js",
+          "bytes": 1778661,
+          "status": 200
+        },
+        {
+          "url": "21ongo-oc85n3.js",
+          "bytes": 4202,
+          "status": 200
+        },
+        {
+          "url": "20k8tnv1nz980.js",
+          "bytes": 68317,
+          "status": 200
+        },
+        {
+          "url": "2e8nasvtmd2uo.js",
+          "bytes": 4940,
+          "status": 200
+        },
+        {
+          "url": "0-d0jopeqe35o.js",
+          "bytes": 4960,
+          "status": 200
+        }
+      ],
+      "jsTotalBytes": 3993649,
+      "label": "desktop-1"
+    },
+    {
+      "domContentLoaded": 397,
+      "load": 480,
+      "fcp": null,
+      "fp": null,
+      "transfer": 193872,
+      "timeToMushafMs": 814,
+      "jsChunks": [
+        {
+          "url": "20o0ew0x6ba41.js",
+          "bytes": -1,
+          "status": 200
+        },
+        {
+          "url": "2vp0ukyotg0_2.js",
+          "bytes": -1,
+          "status": 200
+        },
+        {
+          "url": "32e-api7z4vav.js",
+          "bytes": -1,
+          "status": 200
+        },
+        {
+          "url": "07z5h8ypjrcrg.js",
+          "bytes": -1,
+          "status": 200
+        },
+        {
+          "url": "2ptg23k51_qrg.js",
+          "bytes": -1,
+          "status": 200
+        },
+        {
+          "url": "0volkk_lgn0c7.js",
+          "bytes": -1,
+          "status": 200
+        },
+        {
+          "url": "04oqy_qqsthmz.js",
+          "bytes": -1,
+          "status": 200
+        },
+        {
+          "url": "17rhjwh83wd9t.js",
+          "bytes": 13268,
+          "status": 200
+        },
+        {
+          "url": "0y7-s5nqy047n.js",
+          "bytes": 30558,
+          "status": 200
+        },
+        {
+          "url": "1-yddxjiglktk.js",
+          "bytes": 229817,
+          "status": 200
+        },
+        {
+          "url": "3rp3ipdzbl3tt.js",
+          "bytes": 158650,
+          "status": 200
+        },
+        {
+          "url": "turbopack-3-ry682tkyiqk.js",
+          "bytes": 10030,
+          "status": 200
+        },
+        {
+          "url": "1iau--kwi62i8.js",
+          "bytes": 13827,
+          "status": 200
+        },
+        {
+          "url": "19sxv-70acmko.js",
+          "bytes": 215,
+          "status": 200
+        },
+        {
+          "url": "41s4m70mf_bci.js",
+          "bytes": 51862,
+          "status": 200
+        },
+        {
+          "url": "1ezy8w0-q11de.js",
+          "bytes": 25135,
+          "status": 200
+        },
+        {
+          "url": "03a6zt9sggqnl.js",
+          "bytes": 12033,
+          "status": 200
+        },
+        {
+          "url": "0y0skj7-hii7-.js",
+          "bytes": 184512,
+          "status": 200
+        },
+        {
+          "url": "14i6ulhibifh8.js",
+          "bytes": 1778661,
+          "status": 200
+        },
+        {
+          "url": "1dy0nni8mmio9.js",
+          "bytes": 1128020,
+          "status": 200
+        },
+        {
+          "url": "0m0ihs310md1e.js",
+          "bytes": 264742,
+          "status": 200
+        }
+      ],
+      "jsTotalBytes": 3901330,
+      "label": "desktop-2"
+    }
+  ],
+  "navigation": {
+    "phone": {
+      "ayahSwitchMs": 588,
+      "ayahSwitchOk": true,
+      "urlAfterAyahSwitch": "http://localhost:3000/fa/quran/1?tab=hifz&ayah=2",
+      "surahSwitchMs": 717,
+      "surahSwitchOk": true,
+      "surahSelectValue": "2",
+      "urlAfterSurahSwitch": "http://localhost:3000/fa/quran/1?tab=hifz&ayah=1"
+    },
+    "desktop": {
+      "ayahSwitchMs": 614,
+      "ayahSwitchOk": true,
+      "urlAfterAyahSwitch": "http://localhost:3000/fa/quran/1?tab=hifz&ayah=2",
+      "surahSwitchMs": 668,
+      "surahSwitchOk": true,
+      "surahSelectValue": "2",
+      "urlAfterSurahSwitch": "http://localhost:3000/fa/quran/1?tab=hifz&ayah=1"
+    }
+  },
+  "a11y": {
+    "phone": {
+      "header": "حفاظ: تمرین حفظ با صفحهٔ مصحفالفاتحةصفحه ١ | جزء ١ | حزب ١",
+      "mushafLines": 1,
+      "mushafWords": 29,
+      "overflow": false,
+      "pills": [],
+      "micRect": {
+        "x": 305,
+        "y": 754,
+        "w": 68,
+        "h": 68
+      },
+      "bottomBarButtons": 9,
+      "bottomBarBelow44px": [],
+      "axe": {
+        "violations": []
+      }
+    },
+    "desktop": {
+      "header": "حفاظ: تمرین حفظ با صفحهٔ مصحفالفاتحةصفحه ١ | جزء ١ | حزب ١",
+      "mushafLines": 1,
+      "mushafWords": 29,
+      "overflow": false,
+      "pills": [],
+      "micRect": {
+        "x": 1184,
+        "y": 794,
+        "w": 76,
+        "h": 76
+      },
+      "bottomBarButtons": 9,
+      "bottomBarBelow44px": [],
+      "axe": {
+        "violations": []
+      }
+    }
+  },
+  "escape": {
+    "phone": {
+      "settingsClosedByEscape": true,
+      "errorsClosedByEscape": true
+    },
+    "desktop": {
+      "settingsClosedByEscape": true,
+      "errorsClosedByEscape": true
+    }
+  },
+  "homePageChunks": {
+    "chunkCount": 17,
+    "v2ChunkPresent": false,
+    "mushafLinesChunkPresent": false,
+    "searchIndexChunkPresent": false
+  },
+  "summary-phone": {
+    "fcpMsMedian": 946.0,
+    "timeToMushafMsMedian": 1294,
+    "loadMsMedian": 481,
+    "jsTotalBytesMedian": 3990883,
+    "chunkCounts": [
+      17,
+      17,
+      17
+    ],
+    "v2ChunkInEveryLoad": true
+  },
+  "summary-desktop": {
+    "fcpMsMedian": 942.0,
+    "timeToMushafMsMedian": 1190,
+    "loadMsMedian": 571,
+    "jsTotalBytesMedian": 3922566,
+    "chunkCounts": [
+      16,
+      21,
+      21
+    ],
+    "v2ChunkInEveryLoad": true
+  },
+  "pillContrastCss": [
+    {
+      "pill": "red",
+      "bg": "#dc2626",
+      "color": "#ffffff",
+      "contrast": 4.83
+    },
+    {
+      "pill": "green",
+      "bg": "#15803d",
+      "color": "#ffffff",
+      "contrast": 5.02
+    },
+    {
+      "pill": "lime",
+      "bg": "#a3a832",
+      "color": "#1a2e05",
+      "contrast": 5.71
+    },
+    {
+      "pill": "amber",
+      "bg": "#b45309",
+      "color": "#ffffff",
+      "contrast": 5.02
+    },
+    {
+      "pill": "gray",
+      "bg": "#e5e7eb",
+      "color": "#374151",
+      "contrast": 8.33
+    }
+  ],
+  "pillsNote": "Pills render only while a live session runs (showPills = liveState listening/paused/ended); a guest run has no pills in the DOM, so contrast is re-verified from the stylesheet values above."
+}

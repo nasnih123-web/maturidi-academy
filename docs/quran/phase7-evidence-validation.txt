@@ -1,0 +1,14 @@
+[PASS] 1. line-type counts per page (604 pages) — 604/604 pages match
+[PASS] 1b. total lines — db 9046 vs json 9046
+[PASS] 2. first/last_word_id of all text lines — 8820 text lines, 0 mismatches
+[PASS] 3. is_centered flag — 0 mismatches
+[PASS] 4. ayah->page vs glyphs DB (6236 ayahs) — 6236/6236 match
+[PASS] 5. per-ayah word counts vs Tanzil (6236 ayahs) — 6236/6236 match
+[PASS] 5b. total real words — json 77433 vs tanzil 77433
+[PASS] 6. rubAyahs: 199 distinct valid ayahs — count 199, distinct 199
+[PASS] 7. sajdaWords: 15, each the word before a Tanzil sajda mark — json 15 vs tanzil 15
+[PASS] 8. QUL-id continuity across segments — 17109/17109 transitions ok
+[PASS] 8b. last segment ends at QUL id 83668 (final ayah-number token) — last segment q 83665 + n 3
+[PASS] 8c. every segment q exists in QUL words DB — 17110 distinct q values, 0 missing
+
+RESULT: all independent checks passed

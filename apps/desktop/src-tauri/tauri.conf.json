@@ -49,9 +49,6 @@
     }
   },
   "identifier": "academy.maturidi.desktop",
-  "plugins": {
-    "notification": {}
-  },
   "productName": "Maturidi Academy",
   "version": "0.1.0"
 }

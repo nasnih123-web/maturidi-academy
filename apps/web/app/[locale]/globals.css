@@ -218,12 +218,18 @@ img, svg { max-inline-size: 100%; }
 .skip-link { position: absolute; inset-inline-start: -999px; top: 0.5rem; z-index: 500; background: hsl(var(--primary)); color: #fff; padding: 0.5rem 1rem; border-radius: var(--radius-sm); }
 .skip-link:focus-visible { inset-inline-start: 0.5rem; }
 
-/* ═══ Header — Telegram-iOS glass on imperial dark ═══ */
+/* ═══ Header — imperial dark ═══
+   The sticky header used to be translucent glass (rgba 0.55 +
+   backdrop blur), but page text scrolling underneath stayed legible
+   through it — on mobile it read as the header's own texts
+   overlapping (D-HEADER-MOBILE, phase 7: reproduced in Playwright
+   at 360/393/430px — the page title ghosted through the header
+   while scrolling). A sticky header must be opaque: solid dark
+   green, same hue as the old glass at full opacity. The glass
+   effect stays on the footer, drawers and menus. */
 .site-header {
   position: sticky; top: 0; z-index: 100;
-  background: rgba(7, 35, 28, 0.55);
-  backdrop-filter: blur(24px) saturate(1.5);
-  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  background: #07231c;
   border-bottom: 1px solid rgba(212, 175, 55, 0.18);
   box-shadow: 0 8px 32px rgba(4, 16, 13, 0.45);
 }
@@ -1003,6 +1009,14 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .mushaf-surah-ornament { display: flex; align-items: center; justify-content: center; gap: 0.9rem; text-align: center; font-size: 1.5rem; color: #2b2118; margin: 0 auto 1rem; padding: 0.45rem 1rem; border-top: 2px solid #8a6d1b; border-bottom: 2px solid #8a6d1b; background: #efe6c8; }
 .mushaf-surah-ornament::before, .mushaf-surah-ornament::after { content: '◆'; color: #8a6d1b; font-size: 0.7em; }
 .mushaf-bismillah { text-align: center; font-size: 1.7rem; color: #2b2118; margin: 0 0 1rem; }
+/* Tarteel (2026-11-08): pin the Uthmani font directly on the
+   Basmalah instead of inheriting it from the .quran-script-uthmani
+   ancestor. The script rules are more specific, so they still win
+   when a script class applies (e.g. indopak → Nastaliq); this only
+   fills the gap when no script class is present. */
+.mushaf-bismillah {
+  font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif;
+}
 .mushaf-text { font-size: 1.55rem; line-height: 2.4; text-align: justify; color: #2b2118; }
 /* Exact Madani lines: one print line per block, justified like the
    printed page. Lines are full by construction, so justification
@@ -1020,9 +1034,9 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .mushaf-ayah-playing { color: #8a6d1b; text-decoration: underline; text-decoration-color: rgba(138, 109, 27, 0.5); }
 .mushaf-ayah-end { display: inline-block; width: 1.5em; height: 1.5em; vertical-align: middle; margin-inline: 0.1em; }
 .mushaf-ayah-end svg { display: block; width: 100%; height: 100%; }
-.mushaf-ayah-end svg circle { fill: #f7f1dd; stroke: #8a6d1b; stroke-width: 1.6; }
-.mushaf-ayah-end svg rect { fill: #8a6d1b; stroke: none; }
-.mushaf-ayah-end svg text { fill: #8a6d1b; font-size: 12px; font-weight: 700; font-family: inherit; }
+.mushaf-ayah-end svg circle { fill: none; stroke: #26221c; stroke-width: 0.9; }
+.mushaf-ayah-end svg rect { fill: none; stroke: #26221c; stroke-width: 0.9; }
+.mushaf-ayah-end svg text { fill: #26221c; font-size: 12px; font-weight: 500; font-family: inherit; }
 /* Uthman Taha frame: double gold rule + geometric corner motifs
    (original code-drawn ornaments, never copied artwork). */
 .mushaf-frame { position: relative; border: 2px solid #8a6d1b; outline: 1px solid #8a6d1b; outline-offset: 5px; padding: 1.4rem 1.5rem; }
@@ -2419,8 +2433,17 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
    threshold, amber between thresholds, red below amber, gray skipped.
    All controls are real buttons >= 44px; no horizontal overflow. */
 .quran-hifz-study { max-width: none; margin: 0 calc(-1 * clamp(1rem, 3vw, 2rem)); padding: 0 0 110px; background: #ffffff; color: #1c1710; }
-.quran-hifz-study .hifz-title { text-align: center; font-size: 1.4rem; margin: 0 0 1rem; padding: 1rem 1rem 0; }
 .quran-hifz-study .hifz-picker { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; justify-content: center; margin-bottom: 1rem; padding: 0 1rem; }
+/* Phase-1 hifz fix: the session-setup form (surah/ayah picker,
+   range + repetition, listen controls) lives in a collapsible panel
+   that is CLOSED by default, so the mushaf is the first visible
+   element on load and line 1 is in the viewport. The panel opens
+   from the hamburger in the top bar. */
+.quran-hifz-study .hifz-setup { margin: 0; padding: 0 1rem; }
+.quran-hifz-study .hifz-setup.is-open { margin: 0.75rem 0; }
+.quran-hifz-study .hifz-setup .hifz-picker,
+.quran-hifz-study .hifz-setup .hifz-range,
+.quran-hifz-study .hifz-setup .hifz-listen-controls { padding-inline: 0; }
 .quran-hifz-study .hifz-picker label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
 .quran-hifz-study .hifz-picker select,
 .quran-hifz-study .hifz-picker input { min-height: 44px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.30); background: #ffffff; color: #1c1710; padding: 0 0.6rem; font-size: 1rem; }
@@ -2442,14 +2465,18 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
 .quran-hifz-study .hifz-word { display: inline-flex; flex-direction: column; align-items: center; gap: 0.15rem; padding: 0.25rem 0.6rem; border-radius: 8px; }
 .quran-hifz-study .hifz-word-text { background: none; border: none; padding: 0; min-height: 44px; font: inherit; color: inherit; cursor: pointer; }
 .quran-hifz-study .hifz-word-correct { background: rgba(46,125,50,0.35); color: #b9e7bd; }
-.quran-hifz-study .hifz-word-close { background: rgba(183,121,31,0.35); color: #ffe1a3; }
+/* Tashkeel error (close): YELLOW highlight + dark ink + dotted
+   underline — the documented Tarteel color (was amber text). The
+   dotted underline is the non-color cue. */
+.quran-hifz-study .hifz-word-close { background: rgba(255,214,0,0.30); color: #ffe45c; text-decoration: underline dotted #ffe45c; text-underline-offset: 0.2em; }
 .quran-hifz-study .hifz-word-wrong { background: rgba(179,38,30,0.35); color: #ffb3ab; }
 .quran-hifz-study .hifz-word-skipped { background: rgba(128,128,128,0.55); color: #e8e8e8; }
 .quran-hifz-study .hifz-word-hidden { background: rgba(255,255,255,0.08); color: #cfc4a8; }
-.quran-hifz-study .hifz-word-peeked { background: rgba(255,255,255,0.12); outline: 1px dashed rgba(255,255,255,0.5); }
+/* Peeked word: BROWN (documented) + dashed outline (non-color cue). */
+.quran-hifz-study .hifz-word-peeked { background: rgba(122,74,0,0.40); outline: 1px dashed #d9a45b; color: #f0cd96; }
 .quran-hifz-study .hifz-word-practice { outline: 2px solid #d6ad64; outline-offset: 2px; }
 .quran-hifz-study .hifz-word-peek,
-.quran-hifz-study .hifz-word-dispute { min-height: 32px; padding: 0 0.6rem; font-size: 0.8rem; border-radius: 999px; font-family: system-ui, sans-serif; }
+.quran-hifz-study .hifz-word-dispute { min-height: 44px; padding: 0 0.6rem; font-size: 0.8rem; border-radius: 999px; font-family: system-ui, sans-serif; }
 .quran-hifz-study .hifz-word-heard,
 .quran-hifz-study .hifz-word-peeked-tag,
 .quran-hifz-study .hifz-word-disputed { font-size: 0.75rem; font-family: system-ui, sans-serif; opacity: 0.85; }
@@ -2465,10 +2492,10 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
 /* Status chips on the LIGHT wall need dark text (the dark-page variants
    below the wall rules use light text and would be unreadable here). */
 .quran-hifz-study .hifz-wall .hifz-word-correct { background: transparent; color: #1c1710; }
-.quran-hifz-study .hifz-wall .hifz-word-close { background: transparent; color: #8a5a00; }
+.quran-hifz-study .hifz-wall .hifz-word-close { background: #ffe14d; color: #1c1710; text-decoration: underline dotted #1c1710; text-underline-offset: 0.2em; }
 .quran-hifz-study .hifz-wall .hifz-word-wrong { background: transparent; color: #b3261e; text-decoration: underline dashed #b3261e; text-underline-offset: 0.2em; }
-.quran-hifz-study .hifz-wall .hifz-word-skipped { background: transparent; color: #8a8378; }
-.quran-hifz-study .hifz-wall .hifz-word-peeked { background: rgba(0,0,0,0.06); outline: 1px dashed rgba(0,0,0,0.45); color: #1c1710; }
+.quran-hifz-study .hifz-wall .hifz-word-skipped { background: transparent; color: #6b655a; }
+.quran-hifz-study .hifz-wall .hifz-word-peeked { background: rgba(122,74,0,0.10); outline: 1px dashed #7a4a00; color: #7a4a00; }
 .quran-hifz-study .hifz-wall .hifz-word-live { background: rgba(0,0,0,0.04); color: #1c1710; }
 .quran-hifz-study .hifz-wall .hifz-word-practice { outline: 2px solid #8a6d1b; outline-offset: 2px; }
 .quran-hifz-study .hifz-wall .hifz-word-heard,
@@ -2480,56 +2507,210 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
    stable. Status colors mirror the wall's dark-text variants: the
    page is white, so the base dark-background word colors would be
    unreadable here. The bottom padding keeps content clear of the
-   fixed mic layer. */
-.quran-hifz-study { padding-bottom: 110px; }
-.quran-hifz-study .hifz-line-page { background: #ffffff; color: #1c1710; border: none; border-top: 1px solid #e5e0d5; border-bottom: 1px solid #e5e0d5; border-radius: 0; box-shadow: none; padding: 1.25rem 1.5rem 1.5rem; margin-bottom: 0; }
-.quran-hifz-study .hifz-line-caption { text-align: center; font-family: system-ui, sans-serif; font-size: 0.85rem; color: #8a8378; margin: 0 0 1rem; }
-.quran-hifz-study .hifz-line { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: clamp(1.25rem, 4.2vw, 2.1rem); line-height: 2.1; text-align: justify; text-align-last: justify; margin: 0; padding: 0.15rem 0; border-bottom: 1px solid rgba(0,0,0,0.10); }
+   FIXED bottom bar (Tarteel: 79px mic + padding ≈ 95–120px with
+   the safe area). */
+.quran-hifz-study { padding-bottom: 120px; }
+.quran-hifz-study .hifz-line-page { background: #F9F7F8; color: #1c1710; border: none; border-top: 1px solid #e5e0d5; border-bottom: 1px solid #e5e0d5; border-radius: 0; box-shadow: none; padding: 1.25rem 1.5rem 1.5rem; margin-bottom: 0; touch-action: pan-y; }
+.quran-hifz-study .hifz-line-caption { text-align: center; font-family: system-ui, sans-serif; font-size: 0.85rem; color: #6b655a; margin: 0 0 1rem; }
+.quran-hifz-study .hifz-line { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: clamp(1.25rem, 4.2vw, 2.1rem); line-height: 2.1; text-align: right; text-align-last: right; margin: 0; padding: 0.15rem 0; border-bottom: 1px solid rgba(0,0,0,0.10); }
 .quran-hifz-study .hifz-line:last-child { border-bottom: none; }
-.quran-hifz-study .hifz-line-header { text-align: center; text-align-last: center; font-size: 0.85em; color: #8a8378; border-top: 1px solid #e5e0d5; border-bottom: 1px solid #e5e0d5; padding: 0.4rem 0; margin: 0.5rem 0; }
-.quran-hifz-study .hifz-line-basmala { text-align: center; text-align-last: center; }
+.quran-hifz-study .hifz-line-header { text-align: center; text-align-last: center; font-size: 0.85em; color: #6b655a; border-top: 1px solid #e5e0d5; border-bottom: 1px solid #e5e0d5; padding: 0.4rem 0; margin: 0.5rem 0; }
+/* Phase-1 hifz fix: the surah header is the surah-name
+   calligraphy SVG (same asset as the reader's V2 page) — the file
+   holds ONLY the name, no frame (verified byte-for-byte against
+   Drive). The old comment calling it a "floral black-white SVG
+   frame" was wrong; the frame is the real vector asset
+   `sura-border.svg` in the same folder (see .hifz-surah-frame).
+   Surah 1 has no SVG in that set, so it keeps the plain-text
+   header. */
+.quran-hifz-study .hifz-line-header--svg { border: 0; padding: 0; margin: 0.75rem 0; }
+/* Tarteel (2026-11-08): the header frame is the real vector
+   asset `public/quran/surah-headers/sura-border.svg` ("Sura
+   border.svg" by Hadysylmy, CC BY-SA 4.0 — bundled on the user's
+   explicit order, licence research deferred; see
+   THIRD_PARTY_NOTICES.md), used as the background of
+   .hifz-surah-frame; the surah-name calligraphy sits centred in
+   the frame's middle cartouche. The frame's own ratio is
+   16320/2000 = 8.16:1 (Tarteel's printed bar measures 8.6:1, so
+   this bar is ~6% taller at the same width). Sizing is by HEIGHT,
+   never by width:98% — that rule made the header 3.7–4.4x taller
+   than Tarteel. Width 100% of the line page's content box gives
+   ~42px height on a 393px phone (Tarteel ≈43px). The previous CSS
+   approximation (double rule + circles + cartouche spans) is
+   removed, not layered on. */
+.quran-hifz-study .hifz-surah-frame { display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 16320 / 2000; margin: 0 auto; box-sizing: border-box; background: #FCFBF7 url("/quran/surah-headers/sura-border.svg") center / 100% 100% no-repeat; }
+.quran-hifz-study .hifz-surah-frame img { display: block; height: 88%; width: auto; max-width: 94%; }
+/* (The .hifz-line-basmala rule lives AFTER the mobile media query
+   below: same specificity as .hifz-line, so file order decides —
+   before Wave 1 the later mobile rule's font-size: 1rem /
+   line-height: 2.1 beat the Basmalah's clamp()/1.25. See there.) */
 /* Ayah-end marker: an ornate rosette (own SVG, like the printed
    mushaf). The outline and number live in the SVG, so this span
    carries no border or shadow of its own. */
 .quran-hifz-study .hifz-line-marker { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; margin: 0 0.15em; }
 .quran-hifz-study .hifz-line-marker svg { display: block; width: 1.5em; height: 1.5em; }
+/* Rub el hizb ornament (۞): printed between words at quarter-hizb
+   boundaries. Visible like the printed page, but never a word — it
+   carries no score and takes no provider index. */
+.quran-hifz-study .hifz-line-ornament { display: inline; vertical-align: middle; margin: 0 0.15em; color: #8a8378; font-size: 0.9em; }
 .quran-hifz-study .hifz-line-word-hidden { visibility: hidden; }
-.quran-hifz-study .hifz-line-word { display: inline-flex; align-items: baseline; gap: 0.2rem; padding: 0 0.25rem; border-radius: 6px; }
+/* Word separation (user order 2026-11-08 "کلمات بهم چسبیده"):
+   the hifz line renders word spans with NO space characters
+   between them (measured: 39 of 43 inter-word gaps were 0px),
+   so the words touch. A 0.25em end-margin on every word span
+   gives the natural ~0.22em Quranic gap. The lines have 59-180px
+   of slack, so the ~38px of gaps fit without wrapping.
+   Wave 2 (2026-11-09): the line now ALSO carries real space
+   characters between slots (`.hifz-line-sep`, in the page's QCF
+   family, ~1px each) on mobile, and the mobile rule below
+   justifies with text-align-last — so the left edge flushes
+   (probe 2: void 93px -> 1px) while the words-per-line split is
+   unchanged. Desktop keeps the ragged left edge (its 1200px
+   column would stretch the gaps to ~70px). */
+.quran-hifz-study .hifz-line-word,
+.quran-hifz-study .hifz-line-word-hidden { margin-inline-end: 0.25em; }
+/* QPC V4 glyph words (2026-11-08): a glyph's own advance already
+   contains the inter-word space, so the 0.25em end-margin (the fix
+   for touching Tanzil text spans) must not apply to glyph words —
+   at fill sizes it would overflow the line. Text words keep it.
+   Wave 1 (2026-11-09, research §6.1): the same applies to the
+   `padding: 0 0.25rem` on .hifz-line-word (8px per word span) —
+   in written state it overflowed L3/L8/L9 on p293 (up to 102.1%).
+   Glyph words get padding: 0 too; the inter-word gap stays the
+   glyph's own advance. */
+.quran-hifz-study .hifz-line-word.hifz-line-word-glyph,
+.quran-hifz-study .hifz-line-word-hidden.hifz-line-word-glyph { margin-inline-end: 0; padding: 0; }
+/* Wave 1 (2026-11-09): the V4 glyphs paint with the Tarteel-approx
+   palette, not palette 0 (research §2/§8.3 — the reference shot
+   governs). The per-family @font-palette-values rule is injected
+   by the font loader (injectFontPaletteRule); this selects it on
+   every glyph word. Harmless on non-COLR text: font-palette is
+   ignored where the font has no palettes. */
+.quran-hifz-study .hifz-line-word-glyph,
+.quran-hifz-study .hifz-line-word-glyph > span,
+.quran-hifz-study .hifz-line-marker-glyph { font-palette: --quran-v4-tarteel; }
+/* Wave 2 (2026-11-09): the ayah-end marker as a V4 glyph. The
+   glyph IS a word of the font (advance 16.06px, its own spacing),
+   so — unlike the SVG rosette above — it takes no margins and no
+   flex box: plain inline text on the baseline, so it joins the
+   justify distribution like any word. The palette rule above
+   selects the Tarteel-approx palette, whose marker indices
+   (10/11/12) are the reference shot's dark tone. */
+.quran-hifz-study .hifz-line-marker-glyph { display: inline; margin: 0; }
+/* Phase 4 — Hide the script: a written word becomes a dotted,
+   clickable placeholder (same width, layout stable); tapping it
+   reveals just that word. Hide-ayah-markers hides the rosettes. */
+.quran-hifz-study .hifz-line-word-concealed { border-bottom: 2px dotted #8a8378; cursor: pointer; background: transparent; }
+.quran-hifz-study .hifz-line-word-concealed,
+.quran-hifz-study .hifz-line-word-concealed * { color: transparent !important; }
+.quran-hifz-study.hifz-hide-markers .hifz-line-marker { visibility: hidden; }
+/* Phase 4 — range picker, resume banner, settings rows, error cards. */
+.quran-hifz-study .hifz-range { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; margin: 0.5rem 0 1rem; padding: 0 1rem; }
+.quran-hifz-study .hifz-range label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; }
+.quran-hifz-study .hifz-range input { width: 5.5rem; padding: 0.35rem 0.5rem; border: 1px solid #d6d0c4; border-radius: 8px; font-size: 1rem; }
+.quran-hifz-study .hifz-resume-banner { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; justify-content: center; margin: 0.5rem 1rem 1rem; padding: 0.75rem 1rem; background: rgba(46,125,50,0.10); border: 1px solid rgba(46,125,50,0.35); border-radius: 12px; }
+.quran-hifz-study .hifz-setting-row { display: flex; gap: 1rem; align-items: center; justify-content: space-between; margin: 0; padding: 0.85rem 0; font-size: 0.95rem; line-height: 1.6; cursor: pointer; }
+.quran-hifz-study .hifz-setting-row + .hifz-setting-row { border-top: 1px solid #f0ece4; }
+.quran-hifz-study .hifz-setting-text { display: flex; flex-direction: column; gap: 0.25rem; }
+.quran-hifz-study .hifz-setting-hint { font-size: 0.85rem; color: #6b655a; line-height: 1.7; }
+/* Phase 6 — iOS-style toggle switch (green when on, gray when
+   off), as in the Tarteel settings frames. The native checkbox
+   stays the accessible control; only its painting changes. The
+   knob travels toward inline-end when on (left in RTL). */
+.quran-hifz-study .hifz-setting-row input[type="checkbox"] { -webkit-appearance: none; appearance: none; flex: none; width: 52px; height: 32px; min-height: 0; margin: 0; padding: 0; border: none; border-radius: 999px; background: #d1d1d6; cursor: pointer; position: relative; transition: background 0.2s ease; }
+.quran-hifz-study .hifz-setting-row input[type="checkbox"]::after { content: ""; position: absolute; top: 2px; inset-inline-start: 2px; width: 28px; height: 28px; border-radius: 50%; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.3); transition: transform 0.2s ease; }
+.quran-hifz-study .hifz-setting-row input[type="checkbox"]:checked { background: #34c759; }
+.quran-hifz-study .hifz-setting-row input[type="checkbox"]:checked::after { transform: translateX(20px); }
+[dir="rtl"] .quran-hifz-study .hifz-setting-row input[type="checkbox"]:checked::after { transform: translateX(-20px); }
+.quran-hifz-study .hifz-setting-row input[type="checkbox"]:focus-visible { outline: 2px solid #8a6d1b; outline-offset: 2px; }
+/* Phase 6 — settings card: white card with divider rows, as in
+   the Tarteel settings frames. */
+.quran-hifz-study .hifz-settings-card { background: #ffffff; border: 1px solid #e5e0d5; border-radius: 12px; padding: 0.25rem 1rem; margin-top: 0.75rem; }
+.quran-hifz-study .hifz-error-card { border: 1px solid #e5ddd0; border-radius: 12px; padding: 0.75rem 1rem; margin: 0.75rem 0; background: #fffef9; }
+/* Phase 6 — error-card head: eye-slash icon + category + the
+   «surah:ayah» chip in a bordered rounded box (frames §8). */
+.quran-hifz-study .hifz-error-card-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+.quran-hifz-study .hifz-error-card-icon { width: 1.4rem; height: 1.4rem; flex: none; color: #1c1710; }
+.quran-hifz-study .hifz-error-card-cat { font-weight: 700; }
+.quran-hifz-study .hifz-error-card-chip { margin-inline-start: auto; border: 1px solid #d6d0c4; border-radius: 8px; padding: 0.1rem 0.5rem; font-size: 0.9rem; color: #1c1710; background: #ffffff; font-family: system-ui, sans-serif; }
+.quran-hifz-study .hifz-error-item { border-top: 1px solid #f0ece4; padding-top: 0.5rem; }
+.quran-hifz-study .hifz-error-item:first-child { border-top: none; padding-top: 0; }
+/* Phase 6 — expected / heard as two rows; the row label sits at
+   the far end (left in RTL), small and gray, as in the frames. */
+.quran-hifz-study .hifz-error-row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin: 0.35rem 0; }
+.quran-hifz-study .hifz-error-row-label { flex: none; font-size: 0.8rem; color: #6b655a; font-family: system-ui, sans-serif; }
+.quran-hifz-study .hifz-error-heard { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: 1.4rem; color: #b3261e; }
+/* Phase 6 — info pill at the sheet bottom (frames §8); static
+   text, not a button — its action was never observed. */
+.quran-hifz-study .hifz-error-learn { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin: 1rem 0 0; padding: 0.6rem 1rem; border: 1px solid #e5e0d5; border-radius: 999px; background: #f7f5f0; color: #6b655a; font-size: 0.9rem; font-family: system-ui, sans-serif; text-align: center; }
+.quran-hifz-study .hifz-error-learn-icon { display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; flex: none; border-radius: 50%; border: 1.5px solid #16a34a; color: #16a34a; font-weight: 700; font-size: 0.85rem; font-style: normal; }
+.quran-hifz-study .hifz-error-delete { margin-inline-start: 0.75rem; font-size: 0.85rem; }
+.quran-hifz-study .hifz-line-word { display: inline; padding: 0 0.25rem; border-radius: 6px; }
 .quran-hifz-study .hifz-line-word .hifz-word-text { min-height: 0; }
 .quran-hifz-study .hifz-line-word.hifz-word-correct { background: transparent; color: #1c1710; }
-.quran-hifz-study .hifz-line-word.hifz-word-close { background: transparent; color: #8a5a00; }
+.quran-hifz-study .hifz-line-word.hifz-word-close { background: #ffe14d; color: #1c1710; text-decoration: underline dotted #1c1710; text-underline-offset: 0.2em; }
 .quran-hifz-study .hifz-line-word.hifz-word-wrong { background: transparent; color: #b3261e; text-decoration: underline dashed #b3261e; text-underline-offset: 0.2em; }
-.quran-hifz-study .hifz-line-word.hifz-word-skipped { background: transparent; color: #8a8378; }
-.quran-hifz-study .hifz-line-word.hifz-word-peeked { background: rgba(0,0,0,0.06); outline: 1px dashed rgba(0,0,0,0.45); color: #1c1710; }
-/* Tajweed letter colors (the clip's mushaf ink). They apply only to
-   LIVE words: once a word is graded, the grade color wins and the
-   letters inherit it, so a wrong word never shows a green letter.
-   The newest word just heard is green all over when correct and red
-   when wrong until the next word arrives (Tarteel premium); older
-   live words settle to black ink with their tajweed letters. */
-.quran-hifz-study .hifz-word-live .hifz-tj-green { color: #2e9e44; }
-.quran-hifz-study .hifz-word-live .hifz-tj-blue { color: #1a9fd4; }
-.quran-hifz-study .hifz-word-live .hifz-tj-pink { color: #d6336c; }
-.quran-hifz-study .hifz-word-live .hifz-tj-gray { color: #a39d90; }
+.quran-hifz-study .hifz-line-word.hifz-word-skipped { background: transparent; color: #6b655a; }
+.quran-hifz-study .hifz-line-word.hifz-word-peeked { background: rgba(122,74,0,0.10); outline: 1px dashed #7a4a00; color: #7a4a00; }
+/* Tajweed letter colors (the 8-color documented palette, phase 7).
+   They apply only to LIVE words: once a word is graded, the grade
+   color wins and the letters inherit it, so a wrong word never
+   shows a green letter and a graded word never mixes its tajweed
+   colors into its grade. The newest word just heard is green all
+   over when correct, red when wrong (with a dashed underline) and
+   yellow-highlighted when it is a tashkeel error (with a dotted
+   underline) until the next word arrives (Tarteel premium); older
+   live words settle to black ink with their tajweed letters.
+   Hexes are the darkest readable step of each named color on white
+   (measured contrast: darkred 10.0, orangered 5.2, lightorange 3.2,
+   yellow 4.9, green 5.0, lightblue 4.1, darkblue 6.7, gray 7.6). */
+.quran-hifz-study .hifz-word-live .hifz-tj-darkred { color: #8b0000; }
+.quran-hifz-study .hifz-word-live .hifz-tj-orangered { color: #c2410c; }
+.quran-hifz-study .hifz-word-live .hifz-tj-lightorange { color: #d97706; }
+.quran-hifz-study .hifz-word-live .hifz-tj-yellow { color: #a16207; }
+.quran-hifz-study .hifz-word-live .hifz-tj-green { color: #15803d; }
+.quran-hifz-study .hifz-word-live .hifz-tj-lightblue { color: #0284c7; }
+.quran-hifz-study .hifz-word-live .hifz-tj-darkblue { color: #1d4ed8; }
+.quran-hifz-study .hifz-word-live .hifz-tj-gray { color: #57534e; }
 .quran-hifz-study .hifz-word-live-new { color: #1b7a2e; }
+.quran-hifz-study .hifz-word-live-new .hifz-tj-darkred,
+.quran-hifz-study .hifz-word-live-new .hifz-tj-orangered,
+.quran-hifz-study .hifz-word-live-new .hifz-tj-lightorange,
+.quran-hifz-study .hifz-word-live-new .hifz-tj-yellow,
 .quran-hifz-study .hifz-word-live-new .hifz-tj-green,
-.quran-hifz-study .hifz-word-live-new .hifz-tj-blue,
-.quran-hifz-study .hifz-word-live-new .hifz-tj-pink,
+.quran-hifz-study .hifz-word-live-new .hifz-tj-lightblue,
+.quran-hifz-study .hifz-word-live-new .hifz-tj-darkblue,
 .quran-hifz-study .hifz-word-live-new .hifz-tj-gray { color: #1b7a2e; }
-.quran-hifz-study .hifz-word-live-new-wrong { color: #b3261e; }
+.quran-hifz-study .hifz-word-live-new-wrong { color: #b3261e; text-decoration: underline dashed #b3261e; text-underline-offset: 0.2em; }
+.quran-hifz-study .hifz-word-live-new-wrong .hifz-tj-darkred,
+.quran-hifz-study .hifz-word-live-new-wrong .hifz-tj-orangered,
+.quran-hifz-study .hifz-word-live-new-wrong .hifz-tj-lightorange,
+.quran-hifz-study .hifz-word-live-new-wrong .hifz-tj-yellow,
 .quran-hifz-study .hifz-word-live-new-wrong .hifz-tj-green,
-.quran-hifz-study .hifz-word-live-new-wrong .hifz-tj-blue,
-.quran-hifz-study .hifz-word-live-new-wrong .hifz-tj-pink,
+.quran-hifz-study .hifz-word-live-new-wrong .hifz-tj-lightblue,
+.quran-hifz-study .hifz-word-live-new-wrong .hifz-tj-darkblue,
 .quran-hifz-study .hifz-word-live-new-wrong .hifz-tj-gray { color: #b3261e; }
+/* Newest word, tashkeel error: the same yellow highlight as a
+   graded close word; the tajweed letters inherit the ink color. */
+.quran-hifz-study .hifz-word-live-new-close { background: #ffe14d; color: #1c1710; text-decoration: underline dotted #1c1710; text-underline-offset: 0.2em; }
+.quran-hifz-study .hifz-word-live-new-close .hifz-tj-darkred,
+.quran-hifz-study .hifz-word-live-new-close .hifz-tj-orangered,
+.quran-hifz-study .hifz-word-live-new-close .hifz-tj-lightorange,
+.quran-hifz-study .hifz-word-live-new-close .hifz-tj-yellow,
+.quran-hifz-study .hifz-word-live-new-close .hifz-tj-green,
+.quran-hifz-study .hifz-word-live-new-close .hifz-tj-lightblue,
+.quran-hifz-study .hifz-word-live-new-close .hifz-tj-darkblue,
+.quran-hifz-study .hifz-word-live-new-close .hifz-tj-gray { color: #1c1710; }
 .quran-hifz-study .hifz-line-word.hifz-word-practice { outline: 2px solid #8a6d1b; outline-offset: 2px; }
-.quran-hifz-study .hifz-line-word .hifz-word-dispute { min-height: 28px; padding: 0 0.5rem; font-size: 0.7rem; }
+.quran-hifz-study .hifz-line-word .hifz-word-dispute { min-height: 44px; padding: 0 0.5rem; font-size: 0.7rem; }
 .quran-hifz-study .hifz-line-word .hifz-word-disputed { font-size: 0.65rem; color: #444444; font-family: system-ui, sans-serif; }
 .quran-hifz-study .hifz-line-loading { text-align: center; opacity: 0.65; padding: 1rem; font-family: system-ui, sans-serif; }
 .quran-hifz-study .hifz-line-failed-note { text-align: center; opacity: 0.7; font-family: system-ui, sans-serif; margin: 0 0 1rem; }
-/* Floating 3D mic: a separate fixed layer, like the music player.
-   CSS-only depth (gradients, shadows, gloss); no image, no video,
-   no opacity on the component itself. Pulsing ring while live. */
-.quran-hifz-study .hifz-mic-layer { position: fixed; right: max(1.25rem, env(safe-area-inset-right)); bottom: max(1.25rem, env(safe-area-inset-bottom)); z-index: 60; }
+/* Floating 3D mic: CSS-only depth (gradients, shadows, gloss);
+   no image, no video, no opacity on the component itself. Pulsing
+   ring while live. Tarteel (2026-11-08): the mic is no longer a
+   separate fixed layer (.hifz-mic-layer is gone) — it lives inside
+   the fixed bottom bar at Ø79px (see .hifz-bottom-bar below). */
 .quran-hifz-study .hifz-mic-3d { position: relative; width: 76px; height: 76px; border: none; border-radius: 50%; color: #ffffff; cursor: pointer; background: radial-gradient(circle at 32% 28%, #4ade80, #22c55e 45%, #16a34a 75%, #15803d); box-shadow: 0 18px 30px rgba(22,163,74,0.45), 0 4px 10px rgba(0,0,0,0.25), inset 0 2px 3px rgba(255,255,255,0.65), inset 0 -6px 12px rgba(0,0,0,0.25); }
 .quran-hifz-study .hifz-mic-3d::after { content: ""; position: absolute; top: 8%; left: 14%; width: 44%; height: 28%; border-radius: 50%; background: radial-gradient(closest-side, rgba(255,255,255,0.55), rgba(255,255,255,0)); pointer-events: none; }
 .quran-hifz-study .hifz-mic-3d:disabled { cursor: not-allowed; opacity: 0.85; filter: saturate(0.75); }
@@ -2540,66 +2721,419 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
 }
 .quran-hifz-study .hifz-mic-icon { display: block; width: 38px; height: 38px; margin: 0 auto; }
 .quran-hifz-study .hifz-mic-stop { display: block; width: 24px; height: 24px; margin: 0 auto; border-radius: 4px; background: currentColor; }
+/* Listen mode (no mini player): play triangle / pause bars inside
+   the same green circle. */
+.quran-hifz-study .hifz-mic-play { display: block; width: 0; height: 0; margin: 0 auto; transform: translateX(3px); border-left: 22px solid currentColor; border-top: 14px solid transparent; border-bottom: 14px solid transparent; }
+.quran-hifz-study .hifz-mic-pause { display: block; width: 20px; height: 24px; margin: 0 auto; border-left: 7px solid currentColor; border-right: 7px solid currentColor; }
 @media (max-width: 768px) {
-  .quran-hifz-study .hifz-mic-3d { width: 68px; height: 68px; }
   .quran-hifz-study .hifz-line-page { padding: 1rem 1rem 1.25rem; }
 }
 .quran-hifz-study .hifz-hint { text-align: center; opacity: 0.85; line-height: 1.8; }
 .quran-hifz-study .hifz-error { color: #8f1d17; text-align: center; }
-.quran-hifz-study .hifz-controls, .quran-hifz-study .hifz-session, .quran-hifz-study .hifz-panels, .quran-hifz-study .hifz-disclaimer, .quran-hifz-study .hifz-practice-note, .quran-hifz-study .hifz-line-loading, .quran-hifz-study .hifz-line-failed-note, .quran-hifz-study .hifz-error, .quran-hifz-study .hifz-extra { padding-inline: 1rem; }
+.quran-hifz-study .hifz-controls, .quran-hifz-study .hifz-session, .quran-hifz-study .hifz-panels, .quran-hifz-study .hifz-practice-note, .quran-hifz-study .hifz-line-loading, .quran-hifz-study .hifz-line-failed-note, .quran-hifz-study .hifz-error, .quran-hifz-study .hifz-extra { padding-inline: 1rem; }
 .quran-hifz-study .hifz-extra { text-align: center; font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: 1.3rem; }
 .quran-hifz-study .hifz-session,
 .quran-hifz-study .hifz-panels { margin-top: 1.25rem; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; padding: 1rem; line-height: 1.9; }
 .quran-hifz-study .hifz-session h3,
 .quran-hifz-study .hifz-panels h3 { margin: 0.75rem 0 0.25rem; }
-.quran-hifz-study .hifz-disclaimer { margin-top: 1.25rem; padding: 0.75rem 1rem; border: 1px solid rgba(214,173,100,0.5); border-radius: 8px; line-height: 1.9; font-size: 0.95rem; }
 .quran-hifz-study .hifz-panels ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .quran-hifz-study .hifz-panels li button { font-size: 0.9rem; }
-/* ---- Tarteel rebuild: header, pills, mode toggle, listen,
-   bottom bar, display menu, error sheet, page footer, card frame ---- */
-.quran-hifz-study .hifz-header { text-align: center; padding: 1rem 1rem 0; }
-.quran-hifz-study .hifz-header .hifz-title { padding: 0; margin: 0 0 0.25rem; }
-.quran-hifz-study .hifz-header-sub { margin: 0 0 1rem; font-family: system-ui, sans-serif; font-size: 0.9rem; color: #6b655a; }
+/* ---- Tarteel top bar (2026-11-08): row 1 is exactly Tarteel's
+   four — hamburger + surah card + search + gear (RTL); row 2 is
+   our own eye + practice/listen toggle, compact. The reference bar
+   is ~58 CSS px at 393px wide (Android status bar excluded); row 1
+   targets 60–72px, the whole top chrome ~100–112px (was 300.7px).
+   The old title <h2>, the absolute corner actions and the
+   standalone mode toggle are gone with the old chrome. */
+.quran-hifz-study .hifz-header { position: sticky; top: 0; z-index: 60; background: #ffffff; border-bottom: 1px solid #e5e0d5; padding: 6px 12px 6px; }
+.quran-hifz-study .hifz-topbar-row { display: flex; align-items: stretch; gap: 8px; }
+.quran-hifz-study .hifz-header-action { width: 40px; height: 40px; min-height: 40px; flex: none; border-radius: 50%; background: #ffffff; border: 1px solid #e5e0d5; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: inline-flex; align-items: center; justify-content: center; color: #1c1710; cursor: pointer; padding: 0; align-self: center; }
+.quran-hifz-study .hifz-header-action-icon { width: 1.3rem; height: 1.3rem; }
+/* Phase 6 — the header sub-line is Tarteel's gray rounded title
+   box: surah name («سُورَةُ …», Uthmani) on its own line, then the
+   page | juz | hizb | surah:ayah meta below it; the page bookmark
+   sits at the card's inline-end. */
+.quran-hifz-study .hifz-header-sub { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; margin: 0; padding: 3px 6px 3px 12px; background: #f0efec; border-radius: 12px; color: #1c1710; }
+.quran-hifz-study .hifz-header-text { display: flex; flex-direction: column; flex: 1; min-width: 0; align-items: center; text-align: center; }
+.quran-hifz-study .hifz-header-surah { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: 1.1rem; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.quran-hifz-study .hifz-header-meta { font-family: system-ui, sans-serif; font-size: 0.8rem; line-height: 1.4; color: #6b655a; white-space: nowrap; }
 .quran-hifz-study .hifz-header-pos { font-weight: 700; color: #1c1710; }
-.quran-hifz-study .hifz-mode-toggle { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 1rem; padding: 0 1rem; }
-.quran-hifz-study .hifz-mode-toggle button.is-active { background: #1c1710; color: #ffffff; border-color: #1c1710; }
+.quran-hifz-study .hifz-header-bookmark { flex: none; width: 32px; height: 32px; min-height: 32px; padding: 0; border: none; background: transparent; color: #6b655a; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.quran-hifz-study .hifz-header-bookmark[aria-pressed="true"] { color: #1c1710; }
+.quran-hifz-study .hifz-header-bookmark-icon { width: 1.15rem; height: 1.15rem; }
+/* Fit the whole 15-line mushaf page between the sticky top bar and
+   the fixed bottom bar on phones (user order 2026-11-08 "جا بشه").
+   Measured on p293 (393x852): the page was 122px too tall (last
+   line bottom 878 vs bar top 756). The first attempt (18px/1.9)
+   fit but the user said the text looked stuck together, so the
+   leading is back to the original 2.1 and the font does the
+   shrinking instead. The word gaps (0.25em, see below) need room:
+   at 17px the tightest lines overflowed by 0.2-11.1px and wrapped
+   (p584 L2 +11.1px, p582 L3 +2.1px), so the font is 16px — the
+   words shrink ~6% and every test line clears the width with
+   11-21px to spare. The word spans are ~30px at 16px inside a
+   37.8px line box, so the lines still breathe. Desktop untouched. */
+@media (max-width: 768px) {
+  .quran-hifz-study .hifz-line-page { padding-top: 0.5rem; }
+  .quran-hifz-study .hifz-line-caption { margin-bottom: 0.5rem; }
+  .quran-hifz-study .hifz-line { font-size: 16.5px; line-height: 2.1; padding: 0.1rem 0; }
+  /* Wave 2 (2026-11-09) — size + left edge. 16.5px is the honest
+     maximum, not the ~20px print-filling size: the binding line
+     is p584 L2 (368.4px natural at 16px with rosettes; 341.2px
+     with V4 glyph markers + 1px QCF spaces), so a uniform size
+     caps at 16.93px — 17px already wraps it. 16.5px leaves 9px
+     spare there. Leading stays 2.1: at 16.5px the page fits with
+     +44..+66px slack on all 4 pages once the caption is gone
+     (see renderPageSection), so no leading cut is needed.
+     Justify is mobile-only and TEXT lines only (:not header/
+     basmala — both stay centred): the 1200px desktop column
+     would stretch the gaps to ~70px. text-align-last (not plain
+     justify) does the work — each mushaf line is its own last
+     line (probe 2: void 93px -> 1px). */
+  .quran-hifz-study .hifz-line:not(.hifz-line-header):not(.hifz-line-basmala) { text-align: justify; text-align-last: justify; }
+  .quran-hifz-study .hifz-header { padding-bottom: 0; }
+}
+/* Basmalah line — THIS RULE MUST STAY AFTER the mobile media query
+   above (Wave 1 fix, 2026-11-09, research §6.3). Same specificity
+   as .hifz-line, so file order decides: the mobile rule's
+   font-size: 1rem / line-height: 2.1 used to beat this rule's
+   clamp()/1.25, and the Basmalah rendered at 16px instead of
+   ~21.6px. Do not move this block above the media query. */
+.quran-hifz-study .hifz-line-basmala {
+  text-align: center;
+  text-align-last: center;
+  /* Tarteel (2026-11-08): pin the Uthmani font directly on the
+     Basmalah (it used to inherit .hifz-line's font only) and make
+     the box compact — Tarteel's Basmalah is ~25px tall with the
+     text ~224px wide on a 393px phone; the old 2.1 line-height
+     made a 47.8px box. */
+  font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif;
+  font-size: clamp(1.35rem, 5.5vw, 2rem);
+  line-height: 1.25;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+/* Wave 1 (2026-11-09): the dedicated Basmalah SVG
+   (public/quran/surah-headers/basmalah.svg — printed header form,
+   composed from the page-1 V4 glyph outlines). Centred, ~59% of
+   the line width like the reference shot (measured 528/901px),
+   capped at 212px so it never outgrows the text Basmalah's size
+   on desktop. Height follows the SVG's aspect (~26px at 212px). */
+.quran-hifz-study .hifz-line-basmala .hifz-basmala-svg { display: block; width: 212px; max-width: 59%; height: auto; margin: 0 auto; }
 .quran-hifz-study .hifz-listen-controls { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; justify-content: center; margin-bottom: 1rem; padding: 0 1rem; }
 .quran-hifz-study .hifz-listen-controls label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
 .quran-hifz-study .hifz-listen-controls select { min-height: 44px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.30); background: #ffffff; color: #1c1710; padding: 0 0.6rem; font-size: 1rem; }
 .quran-hifz-study .hifz-listen-controls audio { display: none; }
-.quran-hifz-study .hifz-pills { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin-bottom: 1rem; padding: 0 1rem; }
-.quran-hifz-study .hifz-pill { display: inline-flex; align-items: center; min-height: 32px; padding: 0.2rem 0.9rem; border-radius: 999px; font-family: system-ui, sans-serif; font-size: 0.9rem; font-weight: 700; }
-.quran-hifz-study .hifz-pill-red { background: rgba(179,38,30,0.12); color: #8f1d17; }
-.quran-hifz-study .hifz-pill-green { background: rgba(46,125,50,0.14); color: #1b5e20; }
-.quran-hifz-study .hifz-pill-amber { background: rgba(183,121,31,0.16); color: #7a4a00; }
-.quran-hifz-study .hifz-pill-gray { background: rgba(0,0,0,0.07); color: #444444; }
-.quran-hifz-study .hifz-page-footer { text-align: center; font-family: system-ui, sans-serif; font-size: 0.95rem; color: #8a8378; margin: 1rem 0 0; }
-.quran-hifz-study .hifz-card-frame { background: #f7ecd4; border: 2px solid #d6ad64; border-radius: 16px; padding: 0.75rem; margin: 0 1rem 1rem; box-shadow: 0 8px 30px rgba(0,0,0,0.18); }
-.quran-hifz-study .hifz-card-frame .hifz-line-page { border: none; border-radius: 8px; }
-.quran-hifz-study .hifz-scroll-pages { display: flex; flex-direction: column; gap: 1.5rem; }
-.quran-hifz-study .hifz-bottom-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin: 1rem 0; padding: 0 1rem; }
-.quran-hifz-study .hifz-display-menu { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: center; margin: 0 0 1rem; padding: 0.75rem 1rem; border-top: 1px solid #e5e0d5; border-bottom: 1px solid #e5e0d5; background: #fffef9; }
-.quran-hifz-study .hifz-display-label { font-family: system-ui, sans-serif; font-size: 0.9rem; color: #6b655a; }
-.quran-hifz-study .hifz-display-menu button.is-active { background: #1c1710; color: #ffffff; border-color: #1c1710; }
+/* Phase 5: the always-rendered (hidden) listen audio element. */
+.quran-hifz-study > audio[aria-hidden="true"] { display: none; }
+/* Tarteel (2026-11-08): the listen mini player is gone — the
+   spacer + .hifz-listen-mini rules were removed with it. The
+   reader's .quran-player-mini glass (umum) is untouched. */
+/* Phase 6 — sticky-player overlap (pre-existing, phase 3 notes):
+   the fixed glass mini player (reader, 88px) sits over the bottom
+   of the viewport, so at max scroll the site footer's last lines
+   slide underneath it (measured before: .footer-bottom overlapped
+   40px, .site-footer 88px). The study root's own 120px bottom
+   padding only clears content INSIDE the study; the footer after
+   it needs its own clearance. :has() reserves 116px under the
+   footer only while a player or the hifz bottom bar is actually
+   present — other pages are untouched. */
+body:has(.quran-player-mini:not(.quran-player-mini-hidden)) .site-footer,
+body:has(.quran-hifz-study .hifz-bottom-bar) .site-footer {
+  padding-bottom: 116px;
+}
+.quran-hifz-study .hifz-listen-controls .hifz-listen-resume { min-height: 44px; border-radius: 999px; border: 1px solid #16a34a; background: #f0fdf4; color: #166534; padding: 0 0.9rem; font-size: 0.95rem; cursor: pointer; }
+.quran-hifz-study .hifz-pills { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-start; margin-bottom: 1rem; padding: 0 1rem; }
+/* Phase 6 — pills are left-aligned, like the Tarteel frames (pills
+   sit at the left-bottom, mic at the right). A centred full-width
+   row's timer pill slid under the fixed 68px mic on a 393px phone;
+   left-aligned + wrapping never reaches the mic. */
+/* Phase 6 — live pills are SOLID Tarteel capsules (frames §5):
+   saturated background, white text on red/green/amber, dark text
+   on lime. All pairs are WCAG AA (measured: red/white 4.83,
+   green/white 5.02, lime #a3a832/dark 5.71, amber/white 5.02,
+   gray/dark 8.33). The accuracy thresholds are unchanged (green
+   ≥99, lime ≥98, amber ≥95, red <95 — they already match every
+   observed band in the frames). */
+.quran-hifz-study .hifz-pill { display: inline-flex; align-items: center; min-height: 36px; padding: 0.25rem 0.9rem; border-radius: 999px; font-family: system-ui, sans-serif; font-size: 0.9rem; font-weight: 700; }
+.quran-hifz-study .hifz-pill-red { background: #dc2626; color: #ffffff; }
+.quran-hifz-study .hifz-pill-green { background: #15803d; color: #ffffff; }
+.quran-hifz-study .hifz-pill-lime { background: #a3a832; color: #1a2e05; }
+.quran-hifz-study .hifz-pill-amber { background: #b45309; color: #ffffff; }
+.quran-hifz-study .hifz-pill-gray { background: #e5e7eb; color: #374151; }
+.quran-hifz-study .hifz-pill-icon { width: 1.05em; height: 1.05em; margin-inline-end: 0.35rem; flex: none; }
+.quran-hifz-study .hifz-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: #dc2626; margin-inline-end: 0.45rem; flex: none; }
+/* Phase 6 — on a phone the pill labels are hidden: the pills become
+   icon + number only, exactly like the Tarteel frames, and the whole
+   row (~240px) fits one line clear of the fixed 68px mic. On desktop
+   the labels stay (room is plentiful). The order is fixed
+   (error → accuracy → timer) and the icon/color/dot still identify
+   each pill without its label. */
+@media (max-width: 768px) {
+  .quran-hifz-study .hifz-pill-label { display: none; }
+}
+.quran-hifz-study .hifz-page-footer { text-align: center; font-family: system-ui, sans-serif; font-size: 0.95rem; color: #6b655a; margin: 1rem 0 0; }
+/* Tarteel (2026-11-08): the bottom bar is FIXED to the viewport
+   bottom (it used to sit in the page flow, below the fold) and
+   holds EXACTLY five items — mic, display sheet, errors, » (whole
+   ayah), › (next word). Round white 36px buttons (Tarteel Ø35.8);
+   the mic is Ø79px (Tarteel 79.4). The study root's 120px bottom
+   padding + the footer :has() rule clear it. The old flow bar,
+   its shared capsule and the bottom display menu are gone. */
+.quran-hifz-study .hifz-bottom-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 55; display: flex; align-items: flex-end; justify-content: center; gap: 0.5rem; padding: 0.5rem 1rem calc(0.5rem + env(safe-area-inset-bottom)); background: linear-gradient(to top, rgba(249,247,248,0.97), rgba(249,247,248,0.85)); border-top: 1px solid #e5e0d5; }
+.quran-hifz-study .hifz-bottom-bar .hifz-mic-3d { width: 79px; height: 79px; flex: none; }
+.quran-hifz-study .hifz-bottom-btn { flex: none; width: 36px; height: 36px; border-radius: 50%; background: #ffffff; border: 1px solid #e5e0d5; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: inline-flex; align-items: center; justify-content: center; color: #1c1710; cursor: pointer; padding: 0; font-size: 1.1rem; }
+.quran-hifz-study .hifz-bottom-btn:disabled { opacity: 0.45; cursor: default; }
+.quran-hifz-study .hifz-bottom-btn-peek { font-size: 1.6rem; line-height: 1; }
+.quran-hifz-study .hifz-bottom-btn-icon { width: 1.25rem; height: 1.25rem; }
+/* Accuracy pill in the bottom bar (2026-11-08): compact variant of
+   .hifz-pill — same tone colors, tighter padding so mic + 5 buttons
+   + pill fit a 393px bar (gap above is 0.5rem for the same reason). */
+.quran-hifz-study .hifz-bottom-pill { flex: none; padding: 0.25rem 0.6rem; font-size: 0.85rem; }
+/* Tarteel display sheet (2026-11-08): three cards (Tarteel
+   352.7×55.5 at 393px, 8.5px gaps); the selected card gets the
+   black frame. */
+.quran-hifz-study .hifz-display-cards { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; }
+.quran-hifz-study .hifz-display-card { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; width: 100%; padding: 0.7rem 1rem; text-align: start; background: #ffffff; border: 1px solid #e5e0d5; border-radius: 12px; cursor: pointer; }
+.quran-hifz-study .hifz-display-card.is-active { border: 2px solid #1c1710; padding: calc(0.7rem - 1px) calc(1rem - 1px); }
+.quran-hifz-study .hifz-display-card-title { font-weight: 700; font-size: 1rem; color: #1c1710; }
+.quran-hifz-study .hifz-display-card-desc { font-size: 0.85rem; color: #6b655a; }
+/* Tarteel display sheet — nass mode: scrolling Uthmani text, one
+   ayah per row, rosette at the end; same font as the page lines. */
+.quran-hifz-study .hifz-nass { padding: 0 1rem 1rem; }
+.quran-hifz-study .hifz-nass-ayah { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: clamp(1.25rem, 4.2vw, 2.1rem); line-height: 2.1; text-align: justify; text-align-last: justify; margin: 0; padding: 0.15rem 0; border-bottom: 1px solid rgba(0,0,0,0.10); }
+/* Tarteel display sheet — translation mode: read-only scrolling
+   translation, one block per ayah, one paragraph per edition. */
+.quran-hifz-study .hifz-translation { padding: 0 1rem 1rem; }
+.quran-hifz-study .hifz-translation-ayah { border-bottom: 1px solid #e5e0d5; padding: 0.75rem 0; }
+.quran-hifz-study .hifz-translation-ref { font-family: system-ui, sans-serif; font-size: 0.85rem; color: #6b655a; margin: 0 0 0.5rem; text-align: center; }
+.quran-hifz-study .hifz-translation-edition-name { font-family: system-ui, sans-serif; font-size: 0.85rem; font-weight: 700; color: #1c1710; margin: 0 0 0.25rem; }
+.quran-hifz-study .hifz-translation-edition p:last-child { margin: 0 0 0.5rem; line-height: 1.9; }
 /* Listen mode: the page's words are visible for following along;
    the current word gets the Segment builder highlight (solid green
    #188653 + white text, rounded). Tajweed letters inside it go white. */
 .quran-hifz-study .hifz-word-listen { color: #1c1710; }
 .quran-hifz-study .hifz-word-listen-now { background: #188653; color: #ffffff; border-radius: 6px; }
+.quran-hifz-study .hifz-word-listen-now .hifz-tj-darkred,
+.quran-hifz-study .hifz-word-listen-now .hifz-tj-orangered,
+.quran-hifz-study .hifz-word-listen-now .hifz-tj-lightorange,
+.quran-hifz-study .hifz-word-listen-now .hifz-tj-yellow,
 .quran-hifz-study .hifz-word-listen-now .hifz-tj-green,
-.quran-hifz-study .hifz-word-listen-now .hifz-tj-blue,
-.quran-hifz-study .hifz-word-listen-now .hifz-tj-pink,
+.quran-hifz-study .hifz-word-listen-now .hifz-tj-lightblue,
+.quran-hifz-study .hifz-word-listen-now .hifz-tj-darkblue,
 .quran-hifz-study .hifz-word-listen-now .hifz-tj-gray { color: #ffffff; }
+/* Phase 6 — sheet chrome (frames §8/§10): dimmed backdrop
+   (tap closes), centered drag handle, slide-up entrance, taller
+   sheet. The gold top border is gone — the frames show a plain
+   white sheet with rounded top corners. */
+.quran-hifz-study .hifz-sheet-backdrop { position: fixed; inset: 0; z-index: 65; background: rgba(0,0,0,0.45); }
+.quran-hifz-study .hifz-sheet-handle { display: block; width: 40px; height: 4px; margin: 0 auto 0.75rem; border-radius: 999px; background: #d6d0c4; flex: none; }
+@keyframes hifz-sheet-up { from { transform: translateY(24px); } to { transform: none; } }
 /* Error sheet: fixed bottom sheet, opened by hand during the session. */
-.quran-hifz-study .hifz-error-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 70; max-height: 70vh; overflow-y: auto; background: #ffffff; color: #1c1710; border-top: 2px solid #d6ad64; border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,0.25); padding: 1rem 1.25rem calc(1rem + env(safe-area-inset-bottom)); }
+.quran-hifz-study .hifz-error-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 70; max-height: 80vh; overflow-y: auto; background: #ffffff; color: #1c1710; border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,0.25); padding: 1rem 1.25rem calc(1rem + env(safe-area-inset-bottom)); animation: hifz-sheet-up 0.25s ease-out; }
 .quran-hifz-study .hifz-error-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .quran-hifz-study .hifz-error-sheet-head h3 { margin: 0; }
-.quran-hifz-study .hifz-error-sheet h4 { margin: 1rem 0 0.5rem; }
 .quran-hifz-study .hifz-error-sheet ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .quran-hifz-study .hifz-error-sheet li { font-family: system-ui, sans-serif; font-size: 0.95rem; line-height: 1.7; }
-.quran-hifz-study .hifz-error-expected { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: 1.4rem; color: #b3261e; }
+/* Errors sheet whole-empty state (2026-11-08, Tarteel image 1):
+   big green head icon with a soft glow + the empty text, centered. */
+.quran-hifz-study .hifz-error-empty { display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 2rem 1rem 1rem; text-align: center; }
+.quran-hifz-study .hifz-error-empty-icon { width: 120px; height: 120px; filter: drop-shadow(0 0 24px rgba(74,222,128,0.55)); }
+.quran-hifz-study .hifz-error-empty p { margin: 0; font-size: 1.05rem; color: #6b655a; }
+.quran-hifz-study .hifz-error-expected { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: 1.4rem; color: #1b5e20; }
 .quran-hifz-study .hifz-error-meta { color: #6b655a; font-size: 0.85rem; }
-.quran-hifz-study .hifz-error-extra { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: 1.3rem; color: #b3261e; }
+/* Search sheet (Tarteel top bar): QuranSearchBox ships dark-site
+   colors; inside the white hifz sheet it needs the light treatment. */
+.quran-hifz-study .hifz-search-sheet .quran-search-box { margin-bottom: 0.5rem; }
+.quran-hifz-study .hifz-search-sheet .quran-search-input { background: #ffffff; color: #1c1710; border-color: #d6d0c4; }
+.quran-hifz-study .hifz-search-sheet .quran-search-input::placeholder { color: #6b655a; }
+.quran-hifz-study .hifz-search-sheet .quran-search-hint,
+.quran-hifz-study .hifz-search-sheet .quran-search-status,
+.quran-hifz-study .hifz-search-sheet .quran-search-ayah-meta,
+.quran-hifz-study .hifz-search-sheet .quran-search-recent-label { color: #6b655a; }
+.quran-hifz-study .hifz-search-sheet .quran-search-results,
+.quran-hifz-study .hifz-search-sheet .quran-search-strip { background: #faf9f6; border-color: #e5e0d5; }
+.quran-hifz-study .hifz-search-sheet .quran-search-results h3,
+.quran-hifz-study .hifz-search-sheet .quran-search-strip h3,
+.quran-hifz-study .hifz-search-sheet .quran-search-count { color: #1c1710; }
+.quran-hifz-study .hifz-search-sheet .quran-search-row,
+.quran-hifz-study .hifz-search-sheet .quran-search-ayah-row,
+.quran-hifz-study .hifz-search-sheet .quran-search-snippet { color: #1c1710; }
+.quran-hifz-study .hifz-search-sheet .quran-search-row:hover,
+.quran-hifz-study .hifz-search-sheet .quran-search-ayah-row:hover { background: rgba(0,0,0,0.05); }
+.quran-hifz-study .hifz-search-sheet .quran-search-recent-chip,
+.quran-hifz-study .hifz-search-sheet .quran-search-recent-clear,
+.quran-hifz-study .hifz-search-sheet .quran-search-more-btn,
+.quran-hifz-study .hifz-search-sheet .quran-search-retry { background: #ffffff; color: #1c1710; border-color: #d6d0c4; }
 @media (prefers-reduced-motion: reduce) {
   .quran-hifz-study * { transition: none !important; animation: none !important; }
 }
+
+/* ---- Phase 3 (hifz redesign): real V2 mushaf page ----
+   QuranMushafV2Page renders one 15-line V2 page word-by-word.
+   The frame reuses .mushaf-page/.mushaf-frame; the rules below are
+   V2-only. Line size scales with --mushaf-v2-scale (zoom control,
+   0.8–1.6) on top of the container-query width, so zoom never
+   reflows the page count. The page uses `contain: layout` and the
+   font gate shows same-count placeholder lines while the font
+   loads, so there is no layout shift on font arrival. */
+.mushaf-v2 { contain: layout style; }
+.mushaf-v2--w-narrow { max-width: min(92vw, 480px); }
+.mushaf-v2--w-standard { max-width: min(92vw, 600px); }
+.mushaf-v2--w-wide { max-width: min(96vw, 760px); }
+/* Phase-1 hifz fix (video spec, measured from real Tarteel frames,
+   all relative to mushaf page width W): paper is ONE color #FCFBF7
+   in both views (reader V2 page + study line page); inner margins
+   left/right are ~1–1.5% of W, so the frame padding is 1.25cqw.
+   Reader rebuild 2026-11-08 (area 2): the frame is a thin dark
+   double rule like the printed mushaf / Tarteel (1px dark lines,
+   3px apart), not the gold double rule — the gold frame belonged
+   to the old card look. */
+.mushaf-v2-frame { contain: layout; background: #FCFBF7; padding: 0.6cqw 1.25cqw; border: 1px solid #26221c; outline: 1px solid #26221c; outline-offset: 3px; }
+/* D1 (user decision 2026-11-08): default line size is 3.2cqw — the
+   pre-531e197 size that keeps each printed line on ONE visual row.
+   (3.2cqw x 1.9 = 6.08cqw pitch). Lines are justified: each line is
+   its own block, so text-align alone never justifies it —
+   text-align-last: justify does. NOTE (measured 2026-11-08, see
+   quran-hifz-identity-typography/02-typography-diagnosis.md §5):
+   in Chromium, justification here is effectively inter-word space
+   only — text-justify: inter-character produces NO kashida (tatweel)
+   on these single-codepoint PUA word glyphs, nor on real Arabic text
+   on this page (word widths change by 0.00px between left-aligned
+   and justified). All of a line's ~33% void therefore lands in the
+   inter-word gaps. Do not "fix" spacing by changing text-justify. */
+.mushaf-v2-line {
+  margin: 0;
+  font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif;
+  font-size: calc(3.2cqw * var(--mushaf-v2-scale, 1));
+  line-height: 1.9;
+  text-align: justify;
+  text-align-last: justify;
+  text-justify: inter-character;
+  color: #2b2118;
+}
+.mushaf-v2-line--centered { text-align: center; text-align-last: center; }
+.mushaf-v2-placeholder-line { visibility: hidden; }
+/* Video spec: surah header = surah-name calligraphy SVG, width
+   ~0.98xW, ONLY on the first page of a surah. The file holds ONLY
+   the name, no frame (the old "floral black-white SVG frame"
+   wording was wrong — verified byte-for-byte against Drive).
+   The SVG keeps its intrinsic aspect ratio (never distorted to a
+   target height: the spec's 0.11xW height does not match this SVG's
+   own ratio, so the screenshot comparison must judge which is right
+   — see the Phase-1 report). The umum header is unchanged by the
+   Tarteel hifz mission; only the hifz header got the CSS frame. */
+.mushaf-v2-surah-header { width: 98%; margin: 0 auto 1rem; }
+.mushaf-v2-surah-header img { display: block; width: 100%; height: auto; }
+.mushaf-v2-word {
+  display: inline-block;
+  padding: 0 0.12em;
+  border-radius: 4px;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: inherit;
+}
+button.mushaf-v2-word { cursor: pointer; }
+button.mushaf-v2-word:hover { background: rgba(138, 109, 27, 0.12); }
+button.mushaf-v2-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset: 1px; }
+.mushaf-v2-word--hidden { visibility: hidden; }
+.mushaf-v2-word.is-selected { outline: 2px solid #8a6d1b; outline-offset: 1px; background: rgba(138, 109, 27, 0.12); }
+.mushaf-v2-word.is-ayah-selected { background: rgba(138, 109, 27, 0.18); }
+/* Phase 4 word states (same palette as the study page's wall). */
+.mushaf-v2-word--correct { background: transparent; color: #1c1710; }
+.mushaf-v2-word--close { background: #ffe14d; color: #1c1710; text-decoration: underline dotted #1c1710; text-underline-offset: 0.2em; }
+.mushaf-v2-word--wrong { background: transparent; color: #b3261e; text-decoration: underline dashed #b3261e; text-underline-offset: 0.2em; }
+.mushaf-v2-word--skipped { background: transparent; color: #6b655a; }
+.mushaf-v2-word--peek { background: rgba(122, 74, 0, 0.10); outline: 1px dashed #7a4a00; color: #7a4a00; }
+.mushaf-v2-word--recent { color: #1b7a2e; }
+/* Tajweed letter colours inside V2 words (same 8-colour palette and
+   hexes as the study page, phase 7). */
+.mushaf-v2 .hifz-tj-darkred { color: #8b0000; }
+.mushaf-v2 .hifz-tj-orangered { color: #c2410c; }
+.mushaf-v2 .hifz-tj-lightorange { color: #d97706; }
+.mushaf-v2 .hifz-tj-yellow { color: #a16207; }
+.mushaf-v2 .hifz-tj-green { color: #15803d; }
+.mushaf-v2 .hifz-tj-lightblue { color: #0284c7; }
+.mushaf-v2 .hifz-tj-darkblue { color: #1d4ed8; }
+.mushaf-v2 .hifz-tj-gray { color: #57534e; }
+/* Video spec: ayah rosette = 8-petal, diameter 0.065-0.07xW
+   (1.05em x 3.2cqw font body = 3.36cqw). Reader rebuild
+   2026-11-08 (area 2): thin dark double ring, no fill, eight
+   small teeth around the outer ring, dark number — the Tarteel
+   manner; the old gold ring + cream fill + top diamond is gone. */
+.mushaf-v2-rosette { display: inline-block; width: 1.05em; height: 1.05em; vertical-align: middle; margin-inline: 0.1em; }
+.mushaf-v2-rosette svg { display: block; width: 100%; height: 100%; }
+.mushaf-v2-rosette svg circle { fill: none; stroke: #26221c; stroke-width: 0.9; }
+.mushaf-v2-rosette svg text { fill: #26221c; font-size: 12px; font-weight: 500; font-family: inherit; }
+.mushaf-v2-rosette-btn { display: inline-block; padding: 0; background: none; border: 0; cursor: pointer; vertical-align: middle; }
+.mushaf-v2-rosette-btn:focus-visible { outline: 2px solid #26221c; outline-offset: 1px; border-radius: 50%; }
+/* Reader rebuild 2026-11-08 (area 2): hidden-text (hifz) mode.
+   Words are visibility:hidden (layout preserved — same line
+   count, tops and heights); the rosettes, surah header and
+   Basmalah stay visible, and each text line gets a faint guide
+   rule (inset box-shadow, so it adds no height). Tarteel p582
+   manner. */
+.mushaf-v2--hide-text .mushaf-v2-line { box-shadow: inset 0 -1px 0 rgba(38, 34, 28, 0.10); }
+/* Reader rebuild 2026-11-08 (area 2): the surah-1 text header
+   (fallback when no SVG exists) uses the same dark thin rules
+   and no cream background as the printed page. */
+.mushaf-v2 .mushaf-surah-ornament { border-top-color: #26221c; border-bottom-color: #26221c; background: transparent; }
+.mushaf-v2 .mushaf-surah-ornament::before, .mushaf-v2 .mushaf-surah-ornament::after { color: #26221c; }
+.mushaf-v2-rub { color: #8a8378; }
+.mushaf-v2-sajda { color: #8a6d1b; }
+.mushaf-v2-pause { color: inherit; }
+.mushaf-v2-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.mushaf-v2-nav button {
+  padding: 0.45rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #8a6d1b;
+  background: #f7f1dd;
+  color: #2b2118;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.mushaf-v2-nav button:disabled { opacity: 0.45; cursor: default; }
+.mushaf-v2-jump { display: flex; gap: 0.35rem; align-items: center; }
+.mushaf-v2-jump input {
+  width: 5.5rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #8a6d1b;
+  background: #fffdf5;
+  color: #2b2118;
+  font-size: 0.9rem;
+}
+.mushaf-v2-zoom { display: inline-flex; gap: 0.25rem; align-items: center; }
+@media (max-width: 768px) {
+  .mushaf-v2-line { line-height: 1.9; }
+}
+/* Phase-1 hifz fix: glyph mode. The text lines render in the
+   CURRENT page's QCF2NNN family (CSS var set by the component),
+   solid black like the print. Ornaments that are NOT PUA glyphs —
+   the rub mark, sajda mark, pause signs, and the rosette numeral —
+   keep a real Arabic font: the QCF font holds only its page's glyph
+   codes and would render them as missing glyphs. The Basmalah line
+   and the surah-1 text header are outside .mushaf-v2-line, so they
+   keep their existing font and are unaffected. */
+.mushaf-v2--glyph .mushaf-v2-line {
+  font-family: var(--mushaf-v2-page-font, "KFGQPC HAFS Uthmanic Script"), "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif;
+  color: #000;
+}
+.mushaf-v2--glyph .mushaf-v2-rub,
+.mushaf-v2--glyph .mushaf-v2-sajda,
+.mushaf-v2--glyph .mushaf-v2-pause,
+.mushaf-v2--glyph .mushaf-v2-rosette svg text {
+  font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif;
+}
+/* Phase 3 (hifz redesign): the pause sign printed after a V2 word
+   on the study page (e.g. ۚ ۖ). It rides with its word's colour. */
+.hifz-word-pause { margin-inline-start: 0.05em; }

@@ -5,8 +5,8 @@
  * No data fetching, no business logic — screens own their hooks (ADR-001).
  */
 import React from "react";
-import { Text } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import { Text, View } from "react-native";
+import { NavigationContainer, useNavigation } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { common, fontFamily, fontSize } from "@maturidi/ui-native";
@@ -15,7 +15,10 @@ import { t, type I18nKey } from "../i18n/strings";
 
 import { AuthScreen } from "../screens/AuthScreen";
 import { HomeScreen } from "../screens/HomeScreen";
+import { HifzHubScreen, HifzStudyScreen } from "../screens/HifzScreens";
+import { HifzListenScreen } from "../screens/ListenScreen";
 import { QuranListScreen, SurahScreen } from "../screens/QuranScreens";
+import { ListenMiniPlayer, ListenPlayerProvider, useListen } from "../components/ListenPlayer";
 import { TasbihScreen } from "../screens/TasbihScreen";
 import { AdhanScreen } from "../screens/AdhanScreen";
 import { FatwaScreen } from "../screens/FatwaScreen";
@@ -32,6 +35,9 @@ export type RootStackParamList = {
 export type QuranStackParamList = {
   QuranHome: undefined;
   Surah: { number: number; nameAr: string };
+  HifzHub: undefined;
+  HifzStudy: { number: number; nameAr: string; ayah?: number };
+  HifzListen: { number: number; nameAr: string; ayah?: number };
 };
 
 export type LibraryStackParamList = {
@@ -70,6 +76,9 @@ function QuranNavigator(): React.JSX.Element {
     <QuranStack.Navigator screenOptions={{ headerShown: false }}>
       <QuranStack.Screen name="QuranHome" component={QuranListScreen} />
       <QuranStack.Screen name="Surah" component={SurahScreen} />
+      <QuranStack.Screen name="HifzHub" component={HifzHubScreen} />
+      <QuranStack.Screen name="HifzStudy" component={HifzStudyScreen} />
+      <QuranStack.Screen name="HifzListen" component={HifzListenScreen} />
     </QuranStack.Navigator>
   );
 }
@@ -107,46 +116,61 @@ const TAB_COMPONENTS: Record<TabKey, React.ComponentType> = {
 
 function MainTabs(): React.JSX.Element {
   const locale = useEffectiveLocale();
+  const navigation = useNavigation();
+  const listen = useListen();
+  const openListen = () => {
+    // From any tab: jump to the Quran stack's listen screen for the
+    // surah currently in the player (or surah 1 when nothing is open).
+    (navigation as unknown as { navigate: (tab: string, params: unknown) => void }).navigate("Quran", {
+      screen: "HifzListen",
+      params: { number: listen.surah, nameAr: listen.surahName || String(listen.surah) },
+    });
+  };
   return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: common.primary,
-        tabBarInactiveTintColor: "#64748b",
-        tabBarLabelStyle: { fontFamily: fontFamily.bodyFa, fontSize: fontSize.xs },
-        tabBarStyle: { paddingBottom: 6, paddingTop: 6, height: 64 },
-      }}
-    >
-      {TAB_META.map((meta) => (
-        <Tab.Screen
-          key={meta.key}
-          name={meta.key}
-          component={TAB_COMPONENTS[meta.key]}
-          options={{
-            title: t(meta.labelKey, locale),
-            tabBarIcon: ({ color }) => (
-              <Text style={{ color, fontSize: 22 }} accessibilityIgnoresInvertColors>
-                {meta.glyph}
-              </Text>
-            ),
-          }}
-        />
-      ))}
-    </Tab.Navigator>
+    <View style={{ flex: 1 }}>
+      <Tab.Navigator
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: common.primary,
+          tabBarInactiveTintColor: "#64748b",
+          tabBarLabelStyle: { fontFamily: fontFamily.bodyFa, fontSize: fontSize.xs },
+          tabBarStyle: { paddingBottom: 6, paddingTop: 6, height: 64 },
+        }}
+      >
+        {TAB_META.map((meta) => (
+          <Tab.Screen
+            key={meta.key}
+            name={meta.key}
+            component={TAB_COMPONENTS[meta.key]}
+            options={{
+              title: t(meta.labelKey, locale),
+              tabBarIcon: ({ color }) => (
+                <Text style={{ color, fontSize: 22 }} accessibilityIgnoresInvertColors>
+                  {meta.glyph}
+                </Text>
+              ),
+            }}
+          />
+        ))}
+      </Tab.Navigator>
+      <ListenMiniPlayer onOpen={openListen} />
+    </View>
   );
 }
 
 export function RootNavigator(): React.JSX.Element {
   const { status } = useAuth();
   return (
-    <NavigationContainer>
-      <RootStack.Navigator screenOptions={{ headerShown: false }}>
-        {status === "signed-in" ? (
-          <RootStack.Screen name="Main" component={MainTabs} />
-        ) : (
-          <RootStack.Screen name="Auth" component={AuthScreen} />
-        )}
-      </RootStack.Navigator>
-    </NavigationContainer>
+    <ListenPlayerProvider>
+      <NavigationContainer>
+        <RootStack.Navigator screenOptions={{ headerShown: false }}>
+          {status === "signed-in" ? (
+            <RootStack.Screen name="Main" component={MainTabs} />
+          ) : (
+            <RootStack.Screen name="Auth" component={AuthScreen} />
+          )}
+        </RootStack.Navigator>
+      </NavigationContainer>
+    </ListenPlayerProvider>
   );
 }

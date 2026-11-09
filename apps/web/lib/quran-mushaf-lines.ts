@@ -9,6 +9,12 @@
  * no per-word objects, no fonts. The Quran text itself is the Hafs
  * text; the line BREAKS are the dataset's contribution.
  *
+ * Navigation no longer depends on these breaks: since the hifz
+ * completion migration, reader navigation uses the V2 boundaries
+ * (lib/quran-mushaf-v2-boundaries.ts) and these lines remain ONLY as
+ * the render fallback when the V2 data fails to load — never as the
+ * source of a page number.
+ *
  * Provenance / licence (stated honestly): QUL (Tarteel's Quranic
  * Universal Library) distributes its mushaf-layout resources with the
  * platform statement that resources are "intended for you to download

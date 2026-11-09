@@ -9,7 +9,12 @@ rust-version = "1.77"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# NOTE (Phase 9): `tray-icon` must be requested explicitly. In the resolved
+# tauri 2.12.x the tray-icon feature is NOT part of the default features, so
+# without it `tauri::tray` does not exist and `generate_context!()` fails
+# on `Context::set_tray_icon` (the config has a trayIcon). The Phase-13
+# code compiled on CI against an older tauri where this was still default.
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

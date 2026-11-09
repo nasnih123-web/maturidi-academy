@@ -1,10 +1,15 @@
 import { getApiBaseUrl, ApiError } from './api';
+import { apiBaseUrl } from './api-base';
 
 /**
  * Quran domain layer (Phase 5 — Track 2/web).
  *
- * Server-safe fetch client for the `/api/v1/quran/*` contract (Track 1,
- * apps/api/app/modules/quran). Per ADR-001 components never fetch here
+ * Shared fetch client for the `/api/v1/quran/*` contract (Track 1,
+ * apps/api/app/modules/quran), used by BOTH server components (RSC
+ * pages) and client components (the hifz study page, the reader).
+ * The base URL therefore branches on environment (see
+ * quranApiBaseUrl): API_URL on the server, NEXT_PUBLIC_API_URL in
+ * the browser. Per ADR-001 components never fetch here
  * directly: pages (RSC) call the `get*` functions and pass plain data to
  * components; browser code uses `quran-client.ts` for the authenticated
  * note endpoints.
@@ -134,8 +139,26 @@ export interface AyahNote {
   updatedAt: string;
 }
 
+/**
+ * Phase 7 — the API base for this shared module. lib/quran.ts is
+ * imported by BOTH server components (RSC pages) and client
+ * components (the hifz study page, the reader): the study picker's
+ * client-side surah switch calls getSurah() in the browser, where
+ * process.env.API_URL is undefined and the server resolver
+ * (lib/api.ts, documented "RSC only") throws in production — before
+ * any fetch is issued. The page then retried 3x and showed only the
+ * retry button, with no mushaf at all. Client calls therefore use
+ * the public base (same pattern as lib/quran-range-client.ts);
+ * server calls keep API_URL. `isBrowser` is a parameter (not a
+ * `typeof window` read inside) so the branch is unit-testable.
+ */
+export function quranApiBaseUrl(isBrowser: boolean): string {
+  const base = isBrowser ? apiBaseUrl() : getApiBaseUrl();
+  return base.replace(/\/+$/, '');
+}
+
 function apiUrl(path: string): string {
-  return `${getApiBaseUrl().replace(/\/+$/, '')}${path}`;
+  return `${quranApiBaseUrl(typeof window !== 'undefined')}${path}`;
 }
 
 async function getJson<T>(path: string, opts?: { noStore?: boolean }): Promise<T> {
@@ -152,7 +175,7 @@ async function getJson<T>(path: string, opts?: { noStore?: boolean }): Promise<T
     });
   } catch (err) {
     throw new ApiError(
-      `API unreachable at ${getApiBaseUrl}: ${err instanceof Error ? err.message : String(err)}`,
+      `API unreachable at ${apiUrl(path)}: ${err instanceof Error ? err.message : String(err)}`,
       0,
     );
   }

@@ -64,9 +64,12 @@ export function Hero({
             <span className="hero-ring r2" />
             <div className="hero-logo-stage">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo.jpg" alt="" className="hero-logo-img" />
+              {/* Performance (§8): 512px webp (40KB) instead of the
+                  1024px / 204KB logo.jpg; the orb displays at most
+                  384px, so 512px covers it at retina density. */}
+              <img src="/logo-512.webp" alt="" width={512} height={512} className="hero-logo-img" />
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo.jpg" alt="" className="hero-logo-img hero-logo-back" />
+              <img src="/logo-512.webp" alt="" width={512} height={512} className="hero-logo-img hero-logo-back" />
             </div>
           </div>
         </div>

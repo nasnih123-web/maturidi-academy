@@ -1,7 +1,15 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getQuranProviders, getSurah, getSurahs } from '@/lib/quran';
+import {
+  QURAN_MUSHAF_V2_INDEX_URL,
+  v2PageIndexForAyah,
+  v2PageUrl,
+  type V2MushafIndex,
+} from '@/lib/quran-mushaf-v2';
 import { parseSvgMushafKey } from '@/lib/quran-svg-page';
 import { RANGE_COUNTS, type QuranViewMode } from '@/lib/quran-view-modes';
 import { getSiteConfig, type QuranSettings } from '@/lib/settings';
@@ -20,6 +28,28 @@ export async function generateMetadata({
     title: t('surahMetaTitle', { n }),
     description: t('metaDescription'),
   };
+}
+
+/**
+ * The V2 index, read from the public file (server-side only). Cached
+ * in module scope — the file is immutable at runtime, so one disk
+ * read serves every hifz-tab render in this server process. Null when
+ * the file is missing or unparsable (the client loader then fetches
+ * it over HTTP instead; the page still works).
+ */
+let cachedV2Index: V2MushafIndex | null | undefined;
+async function loadV2IndexFromDisk(): Promise<V2MushafIndex | null> {
+  if (cachedV2Index !== undefined) return cachedV2Index;
+  try {
+    const raw = await readFile(
+      path.join(process.cwd(), 'public', 'quran-mushaf-v2-index.json'),
+      'utf-8',
+    );
+    cachedV2Index = JSON.parse(raw) as V2MushafIndex;
+  } catch {
+    cachedV2Index = null;
+  }
+  return cachedV2Index;
 }
 
 /**
@@ -147,8 +177,56 @@ export default async function SurahPage({
     );
   }
 
+  // Round 2 §8 — per-page V2 chunks: the hifz tab preloads the tiny
+  // index + the initial ayah's page chunk (not the whole 193KB file).
+  // The index is read from disk (module-level cache — the file is
+  // immutable at runtime) and the page is the binary search over it;
+  // any failure here only drops the preloads, never the page — the
+  // client loader fetches index + chunk lazily instead.
+  let initialV2Page: number | null = null;
+  if (initialTab === 'hifz') {
+    try {
+      const index = await loadV2IndexFromDisk();
+      if (index) {
+        const p = v2PageIndexForAyah(index, view.surah.number, initialAyah ?? 1);
+        initialV2Page = p !== null ? p + 1 : null;
+      }
+    } catch {
+      initialV2Page = null;
+    }
+  }
+
   return (
     <div className="page-wrap">
+      {/* hifz-completion performance (§8, round 2 — per-page chunks):
+          the study page's mushaf used to need the whole 604-page V2
+          file (~193KB gzip, ~17.5s on slow 3G). Now it needs only the
+          tiny index (~3.7KB gzip) + the initial page's chunk (~0.7KB
+          gzip). Both are preloaded from the server-rendered head
+          (same URLs the loader fetches, so the browser reuses these
+          downloads) and start with the first wave instead of after
+          hydration. crossOrigin="anonymous" is required: without it
+          the preload does not match the fetch() and the data
+          downloads twice. Only the hifz tab needs it — the umum
+          reader loads V2 lazily on its own, only in page/range modes. */}
+      {initialTab === 'hifz' && (
+        <>
+          <link
+            rel="preload"
+            href={QURAN_MUSHAF_V2_INDEX_URL}
+            as="fetch"
+            crossOrigin="anonymous"
+          />
+          {initialV2Page !== null && (
+            <link
+              rel="preload"
+              href={v2PageUrl(initialV2Page)}
+              as="fetch"
+              crossOrigin="anonymous"
+            />
+          )}
+        </>
+      )}
       <QuranReader
         locale={locale}
         surah={view.surah}
@@ -200,6 +278,16 @@ export default async function SurahPage({
             liveDiagSampleRate: t('hifzLiveDiagSampleRate'),
             liveDiagFrames: t('hifzLiveDiagFrames'),
             liveDiagSocket: t('hifzLiveDiagSocket'),
+            liveRequestingPermission: t('hifzLiveRequestingPermission'),
+            liveEngineLoading: t('hifzLiveEngineLoading'),
+            liveInterrupted: t('hifzLiveInterrupted'),
+            liveStopping: t('hifzLiveStopping'),
+            liveLegacyCapture: t('hifzLiveLegacyCapture'),
+            liveDeviceChanged: t('hifzLiveDeviceChanged'),
+            liveFramesBeforeReady: t('hifzLiveFramesBeforeReady'),
+            liveReadingNow: t('hifzLiveReadingNow'),
+            liveDiagCapture: t('hifzLiveDiagCapture'),
+            liveDiagDropped: t('hifzLiveDiagDropped'),
             liveOnlyZipformer: t('hifzLiveOnlyZipformer'),
             ayahLabel: t('hifzAyahLabel'),
             prevAyah: t('hifzPrevAyah'),
@@ -212,10 +300,18 @@ export default async function SurahPage({
             practiceWordHint: t('hifzPracticeWordHint'),
             practiceWord: t('hifzPracticeWord'),
             clearPractice: t('hifzClearPractice'),
-            peek: t('hifzPeek'),
+            peekWord: t('hifzPeekWord'),
+            peekAyah: t('hifzPeekAyah'),
+            micDenied: t('hifzMicDenied'),
+            offline: t('hifzOffline'),
+            offlineDisconnected: t('hifzOfflineDisconnected'),
+            modelUnavailable: t('hifzModelUnavailable'),
+            pauseLive: t('hifzPauseLive'),
+            resumeLive: t('hifzResumeLive'),
+            pausedHint: t('hifzPausedHint'),
+            startAyahHint: t('hifzStartAyahHint'),
             dispute: t('hifzDispute'),
             disputed: t('hifzDisputed'),
-            disclaimer: t('hifzDisclaimer'),
             signInHint: t('hifzSignInHint'),
             engineUnavailable: t('hifzEngineUnavailable'),
             selectAyahHint: t('hifzSelectAyahHint'),
@@ -237,27 +333,100 @@ export default async function SurahPage({
             errorsHeard: t('hifzErrorsHeard'),
             errorsOpen: t('hifzErrorsOpen'),
             errorsClose: t('hifzErrorsClose'),
+            errorsDelete: t('hifzErrorsDelete'),
+            errorsTransposed: t('hifzErrorsTransposed'),
+            errorsLearn: t('hifzErrorsLearn'),
+            settingsTitle: t('hifzSettingsTitle'),
+            settingsOpen: t('hifzSettingsOpen'),
+            freezeSetting: t('hifzFreezeSetting'),
+            freezeHint: t('hifzFreezeHint'),
+            mistakeDetection: t('hifzMistakeDetection'),
+            tashkeelDetection: t('hifzTashkeelDetection'),
+            resumableSessions: t('hifzResumableSessions'),
+            hideMarkers: t('hifzHideMarkers'),
+            freezeHold: t('hifzFreezeHold'),
+            freezeResume: t('hifzFreezeResume'),
+            hideScript: t('hifzHideScript'),
+            showScript: t('hifzShowScript'),
+            rangeStart: t('hifzRangeStart'),
+            rangeEnd: t('hifzRangeEnd'),
+            repeatAyah: t('hifzRepeatAyah'),
+            repeatRange: t('hifzRepeatRange'),
+            rangeErrorStart: t('hifzRangeErrorStart'),
+            rangeErrorEnd: t('hifzRangeErrorEnd'),
+            rangeErrorOrder: t('hifzRangeErrorOrder'),
+            resumeTitle: t('hifzResumeTitle'),
+            resumeContinue: t('hifzResumeContinue'),
+            resumeDismiss: t('hifzResumeDismiss'),
+            peekWordHint: t('hifzPeekWordHint'),
+            peekAyahHint: t('hifzPeekAyahHint'),
             headerJuz: t('hifzHeaderJuz'),
             headerHizb: t('hifzHeaderHizb'),
             headerPage: t('hifzHeaderPage'),
+            menuOpen: t('hifzMenuOpen'),
+            searchOpen: t('hifzSearchOpen'),
+            searchTitle: t('hifzSearchTitle'),
+            bookmarkAdd: t('hifzBookmarkAdd'),
+            bookmarkRemove: t('hifzBookmarkRemove'),
             displayMode: t('hifzDisplayMode'),
             displayPage: t('hifzDisplayPage'),
             displayScroll: t('hifzDisplayScroll'),
             displayCard: t('hifzDisplayCard'),
-            modePractice: t('hifzModePractice'),
-            modeListen: t('hifzModeListen'),
+            displaySheetTitle: t('hifzDisplaySheetTitle'),
+            displayMushaf: t('hifzDisplayMushaf'),
+            displayMushafDesc: t('hifzDisplayMushafDesc'),
+            displayNass: t('hifzDisplayNass'),
+            displayNassDesc: t('hifzDisplayNassDesc'),
+            displayTranslation: t('hifzDisplayTranslation'),
+            displayTranslationDesc: t('hifzDisplayTranslationDesc'),
+            translationLoading: t('hifzTranslationLoading'),
+            translationUnavailable: t('hifzTranslationUnavailable'),
             listenReciter: t('hifzListenReciter'),
             listenPlay: t('hifzListenPlay'),
             listenPause: t('hifzListenPause'),
+            listenResume: t('hifzListenResume'),
             listenStop: t('hifzListenStop'),
+            listenPrevAyah: t('hifzListenPrevAyah'),
+            listenNextAyah: t('hifzListenNextAyah'),
+            listenRepeat: t('hifzListenRepeat'),
+            listenRepeatOff: t('hifzListenRepeatOff'),
+            listenRepeatAyah: t('hifzListenRepeatAyah'),
+            listenRepeatRange: t('hifzListenRepeatRange'),
+            listenRepeatSurah: t('hifzListenRepeatSurah'),
+            listenSpeed: t('hifzListenSpeed'),
+            listenCurrentAyah: t('hifzListenCurrentAyah'),
+            listenProgress: t('hifzListenProgress'),
             listenSegmentsNote: t('hifzListenSegmentsNote'),
             listenInterpolatedNote: t('hifzListenInterpolatedNote'),
             listenAudioFailed: t('hifzListenAudioFailed'),
+            listenLoading: t('hifzListenLoading'),
+            listenBuffering: t('hifzListenBuffering'),
+            listenOffline: t('hifzListenOffline'),
+            listenRetry: t('hifzListenRetry'),
+            listenResumeFrom: t('hifzListenResumeFrom'),
+            listenLongPressSwitch: t('hifzListenLongPressSwitch'),
             listenReciters: [
-              { id: 'alafasy', label: t('hifzListenReciterAlafasy') },
+              { id: 'abdul_basit_mujawwad', label: t('hifzListenReciterAbdulBasitMujawwad') },
               { id: 'abdul_basit', label: t('hifzListenReciterAbdulBasit') },
+              { id: 'sudais', label: t('hifzListenReciterSudais') },
+              { id: 'shatri', label: t('hifzListenReciterShatri') },
+              { id: 'hani_rifai', label: t('hifzListenReciterHaniRifai') },
               { id: 'husary', label: t('hifzListenReciterHusary') },
+              { id: 'alafasy', label: t('hifzListenReciterAlafasy') },
+              { id: 'minshawi_mujawwad', label: t('hifzListenReciterMinshawiMujawwad') },
+              { id: 'minshawi', label: t('hifzListenReciterMinshawi') },
+              { id: 'shuraym', label: t('hifzListenReciterShuraym') },
+              { id: 'tablawi', label: t('hifzListenReciterTablawi') },
+              { id: 'husary_muallim', label: t('hifzListenReciterHusaryMuallim') },
             ],
+            mutashabihat: {
+              title: t('hifzMutashabihatTitle'),
+              hide: t('hifzMutashabihatHide'),
+              show: t('hifzMutashabihatShow'),
+              empty: t('hifzMutashabihatEmpty'),
+              goToAyah: t('hifzMutashabihatGoToAyah'),
+            },
+            hubLink: t('hifzHubLink'),
           },
           madhhabLabel: t('madhhabLabel'),
           madhhabHanafi: t('madhhabHanafi'),

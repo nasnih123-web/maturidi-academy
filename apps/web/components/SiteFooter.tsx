@@ -34,11 +34,14 @@ export function SiteFooter({
       <div className="footer-grid">
         <div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
+          {/* Performance (§8): 96px webp (4KB) instead of the 1024px
+              / 204KB logo.jpg; lazy — the footer is below the fold. */}
           <img
-            src="/logo.jpg"
+            src="/logo-96.webp"
             alt=""
             width={40}
             height={40}
+            loading="lazy"
             style={{ borderRadius: 10, boxShadow: "0 0 14px rgba(212,175,55,.3)", marginBottom: "0.6rem" }}
           />
           <h2 style={{ margin: "0 0 0.5rem", fontWeight: 800 }}>{labels.brandName}</h2>
@@ -58,7 +61,10 @@ export function SiteFooter({
                   ? `/${locale}${l.href}`
                   : l.href;
               return (
-                <Link key={l.href} href={href}>
+                // Round 2 §8: no prefetch — footer links are site
+                // chrome; prefetching them on every page costs slow
+                // connections for routes the user may never visit.
+                <Link key={l.href} href={href} prefetch={false}>
                   {l.label}
                 </Link>
               );

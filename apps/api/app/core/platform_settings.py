@@ -105,6 +105,17 @@ SETTING_DEFS: dict[str, dict] = {
     "quran.qf_client_secret": {"type": "secret", "sensitive": True, "label": "رمز کاربری Quran Foundation v4 (هرگز نمایش داده نمی‌شود)"},
     "quran.asr_engine": {"type": "json", "sensitive": False, "label": "موتور ASR حفاظ (zipformer|whisper_quran)"},
     "quran.hifz_thresholds": {"type": "json", "sensitive": False, "label": "آستانه‌های رنگ نمرهٔ حفاظ (green/amber)"},
+    # --- P1-4: سیاست نگهداری دادهٔ حفظ (روز) — null = نامحدود (حذف
+    # خودکار خاموش). فقط ردیف‌های پایانی مشمول‌اند؛ پیش‌فرضِ همه null
+    # است و هیچ حذفی بدون تصمیم صریح کاربر روشن نمی‌شود. تنها استثنای
+    # پیشنهادی (آزمون‌های تکمیل‌شده، ۳۰ روز) هم پیش‌فرضش null است تا
+    # وقتی کاربر تأیید کند. اعتبارسنج: _validate_retention_days.
+    "quran.hifz_retention.attempts_days": {"type": "json", "sensitive": False, "label": "نگهداری نشست‌های تکمیل‌شدهٔ حفظ (روز؛ خالی=نامحدود)"},
+    "quran.hifz_retention.mistakes_days": {"type": "json", "sensitive": False, "label": "نگهداری خطاهای نشست تکمیل‌شده (روز؛ خالی=نامحدود)"},
+    "quran.hifz_retention.tests_days": {"type": "json", "sensitive": False, "label": "نگهداری آزمون‌های تکمیل‌شده (روز؛ خالی=نامحدود)"},
+    "quran.hifz_retention.reviews_inactive_days": {"type": "json", "sensitive": False, "label": "نگهداری ردیف‌های SRS غیرفعال (روز؛ خالی=نامحدود)"},
+    "quran.hifz_retention.tasmi_days": {"type": "json", "sensitive": False, "label": "نگهداری نشست‌های تسمی تکمیل‌شده (روز؛ خالی=نامحدود)"},
+    "quran.hifz_retention.plans_days": {"type": "json", "sensitive": False, "label": "نگهداری برنامه‌های تکمیل‌شده (روز؛ خالی=نامحدود)"},
     "munajat.enabled": {"type": "json", "sensitive": False, "label": "فعال‌بودن مناجات شبانه"},
     "munajat.window": {"type": "json", "sensitive": False, "label": "پنجرهٔ زمانی مناجات"},
     "adhan.defaults": {"type": "json", "sensitive": False, "label": "پیش‌فرض محاسبهٔ اذان (روش + مذهب)"},
@@ -578,6 +589,25 @@ def _validate_globe(value: Any) -> dict:
     return out
 
 
+# --- P1-4: سیاست نگهداری دادهٔ حفظ ---
+# مقدار هر کلید یا null (نامحدود = حذف خودکار خاموش) است یا عدد صحیحِ
+# روز بین ۱ تا ۳۶۵۰ (۱۰ سال). صفر، منفی، اعشاری و رشته رد می‌شوند؛
+# bool هم رد می‌شود (در Python زیرکلاس int است وگرنه  True=۱ روز
+# می‌شد). پیش‌فرضِ همهٔ کلیدها null است — هیچ حذفی بدون تصمیم صریح
+# کاربر روشن نمی‌شود.
+
+
+def _validate_retention_days(key: str, value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        # TRY004: نوعِ اشتباه TypeError می‌گیرد (مثل _validate_player_speed).
+        raise TypeError(f"{key} must be null or an integer number of days")
+    if not 1 <= value <= 3650:
+        raise ValueError(f"{key} must be between 1 and 3650 days (or null)")
+    return value
+
+
 def _validate_json_setting(key: str, value: Any) -> Any:
     """اعتبارسنج اختصاصی هر کلید json — خروجی canonical."""
     if key == "particles":
@@ -629,6 +659,8 @@ def _validate_json_setting(key: str, value: Any) -> Any:
         if not (0.0 < amber < green <= 1.0):
             raise ValueError("quran.hifz_thresholds requires 0 < amber < green <= 1")
         return {"green": green, "amber": amber}
+    if key.startswith("quran.hifz_retention."):
+        return _validate_retention_days(key, value)
     if key in ("quran.translations", "quran.tafsirs", "quran.reciters"):
         return _validate_edition_list(key, value)
     if key == "quran.active_languages":
