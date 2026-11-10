@@ -2844,6 +2844,32 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
     justify-content: space-between;
     padding-top: 0.5rem;
     padding-bottom: 0.5rem;
+    /* Round 2 (2026-11-10, user shot p582): the flex:1 stretch above
+       only works while the root's total content is <= 100dvh — ANY
+       extra content below/above the page (live pills, resume banner,
+       practice note, wall) pushes the root past 100dvh, free space
+       drops to zero, and the page falls back to its natural packed
+       height (measured: footer at 657 at scroll 0 in the tall state
+       vs 718 stretched — 133px gap at 875, ~190px once the user had
+       scrolled ~66px). Pin the page's OWN height instead: 100dvh
+       minus the 57px sticky header (measured at 393px) minus the
+       104px toolbar clearance (the root's padding-bottom). The
+       footer then lands ~28px above the toolbar at scroll 0 in
+       every root state. min-height, not height, so a short viewport
+       degrades to the natural page instead of clipping lines. */
+    min-height: calc(100vh - 57px - 104px);
+    min-height: calc(100dvh - 57px - 104px);
+  }
+  /* Guests only: the sign-in hint below the page (28px + the 16px
+     .hifz-controls margin-top = 44px) would otherwise be pushed
+     behind the fixed toolbar by the pinned page height above. When
+     it is present, shrink the page by exactly that 44px so the hint
+     stays visible above the toolbar (footer gap 72px, as in the
+     PR #123 guest state). Signed-in users have no hint, so the
+     rule does not match and the footer keeps its 28px gap. */
+  .quran-hifz-study.hifz-mode-mushaf:has(.hifz-controls > .hifz-hint) .hifz-line-page {
+    min-height: calc(100vh - 57px - 104px - 44px);
+    min-height: calc(100dvh - 57px - 104px - 44px);
   }
   .quran-hifz-study.hifz-mode-mushaf .hifz-page-footer { margin-top: 0.5rem; }
   /* Fit trims (same fix): the 0.1rem line padding and the
