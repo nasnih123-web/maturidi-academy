@@ -332,3 +332,135 @@ describe('HifzLivePills (refactor step 7)', () => {
     assert.doesNotMatch(renderPills({ showTimer: false }), /hifz-pill-timer/);
   });
 });
+
+describe('Recitation toolbar replaces the hifz bottom bar (user 2026-11-10)', () => {
+  function readStudy(): string {
+    const study = readFirst([
+      'apps/web/components/QuranHifzStudy.tsx',
+      'components/QuranHifzStudy.tsx',
+    ]);
+    assert.ok(study, 'QuranHifzStudy.tsx not found');
+    return study;
+  }
+
+  function readCss(): string {
+    const css = readFirst([
+      'apps/web/app/[locale]/globals.css',
+      'app/[locale]/globals.css',
+    ]);
+    assert.ok(css, 'globals.css not found');
+    return css;
+  }
+
+  it('the old bottom bar is gone: no hifz-bottom-bar / hifz-bottom-btn / hifz-mic-3d / MicIcon / ErrorsHeadIcon', () => {
+    const study = readStudy();
+    assert.doesNotMatch(study, /hifz-bottom-bar/);
+    assert.doesNotMatch(study, /hifz-bottom-btn/);
+    assert.doesNotMatch(study, /hifz-mic-3d/);
+    assert.doesNotMatch(study, /MicIcon/);
+    assert.doesNotMatch(study, /ErrorsHeadIcon/);
+    assert.doesNotMatch(study, /hifz-bottom-pill/);
+  });
+
+  it('the toolbar is dir=ltr with chevrons, pill, mic, eye and grid — every old control wired', () => {
+    const study = readStudy();
+    assert.match(study, /<div className="recitation-toolbar" dir="ltr" role="group"/);
+    // Single chevron = peek next word (old ›), double = peek whole ayah (old »).
+    assert.match(study, /onClick=\{\(\) => void peekNext\(\)\}/);
+    assert.match(study, /onClick=\{\(\) => void peekAyah\(\)\}/);
+    assert.match(study, /aria-label=\{labels\.peekWord\}/);
+    assert.match(study, /aria-label=\{labels\.peekAyah\}/);
+    assert.match(study, /disabled=\{!peekTarget\}/);
+    // The pill is a real button with the old accuracy content that
+    // opens the errors sheet (the old errors-icon button is gone).
+    // Its numbers are Latin digits (user decision 2026-11-10
+    // ~11:12: «100% | 0»), via the pill-only formatLatinDecimal —
+    // the rest of the app keeps Eastern Arabic digits.
+    assert.match(study, /<button[^>]*className=\{`progress-pill \$\{accuracyPillClass\(accuracyTone\)\}`\}/);
+    assert.match(study, /onClick=\{\(\) => setErrorSheetOpen\(true\)\}/);
+    assert.match(study, /formatLatinDecimal\(pillStats\.accuracy\)/);
+    assert.match(study, /\{pillStats\.errors\}/);
+    assert.doesNotMatch(study, /formatArabicIndicDecimal\(pillStats\.accuracy\)/);
+    // The mic keeps every handler + the disabled rule + the
+    // long-press mode switch, in the user's shell.
+    assert.match(study, /className="mic-button"/);
+    assert.match(study, /onClick=\{micOnClick\}/);
+    assert.match(study, /onPointerDown=\{onMicPointerDown\}/);
+    assert.match(study, /onPointerUp=\{clearMicLongPress\}/);
+    assert.match(study, /disabled=\{studyMode === 'practice' && \(!authed \|\| micBusy \|\| modelUnavailable\)\}/);
+    // Eye toggles the script; grid opens the display sheet.
+    assert.match(study, /setScriptHidden\(\(v\) => !v\)/);
+    assert.match(study, /onClick=\{\(\) => setDisplaySheetOpen\(true\)\}/);
+    // The decor SVGs and the user's mic SVG are present verbatim.
+    assert.match(study, /toolbar-decor toolbar-decor-left/);
+    assert.match(study, /toolbar-decor toolbar-decor-right/);
+    assert.match(study, /<rect x="18" y="3" width="12" height="31" rx="6" \/>/);
+  });
+
+  it('globals.css carries the user design verbatim (scoped) + fixed positioning + clearance', () => {
+    const css = readCss();
+    // The user's gradient, gold-ringed mic and mobile sizes.
+    assert.match(css, /#b6e2ca 0%,/);
+    assert.match(css, /#087d43 17%,/);
+    assert.match(css, /#006535 43%,/);
+    assert.match(css, /#00703a 65%,/);
+    assert.match(css, /\.quran-hifz-study \.mic-button \{/);
+    assert.match(css, /width: 166px;/);
+    assert.match(css, /border: 9px solid var\(--gold\);/);
+    assert.match(css, /height: 76px;/);
+    // Mobile-only sizes, user decision 2026-11-10 ~10:22,
+    // tightened 2026-11-10 ~11:26: the mic shrank 94px -> 78px
+    // -> 74px so the accuracy pill («100% | 0») clears it, and
+    // the chevron circles 42px -> 36px -> 34px (icons stay 22px,
+    // bold like the desktop ones).
+    assert.match(css, /width: 74px;/);
+    assert.match(css, /\.quran-hifz-study \.toolbar-left \.tool-button \{\s*width: 34px;\s*height: 34px;\s*\}/);
+    // Mobile-only packing, user decision 2026-11-10 ~11:26: the
+    // left side packs from the left edge with a real gap instead
+    // of space-evenly — with ~150px of content in a 153.5px track
+    // the even gaps were ~1px and the two chevron circles touched
+    // each other; the leftover space now lands between the pill
+    // and the mic. NOTE: gap started at 5px but the first
+    // measurement gave only 7px text-to-glow (target >=10), so
+    // the gap is 4px and the pill min-width 56px.
+    assert.match(css, /\.quran-hifz-study \.recitation-toolbar \.toolbar-left \{\s*justify-content: flex-start;\s*gap: 4px;\s*\}/);
+    // Mobile-only shrink, user decision 2026-11-10 ~11:12
+    // (corrected «نگیره» — the pill must NOT sit under the mic's
+    // glow halo), tightened 2026-11-10 ~11:26: pill font 14px ->
+    // 11px -> 10px, waveform 19px -> 14px, gap 4px -> 2px,
+    // min-width 76px -> 58px -> 56px, so the Latin text clears
+    // the halo. The rule MUST use the 4-class selector — the
+    // toolbar-scoped `.recitation-toolbar .progress-pill
+    // { font: inherit; }` (3-class) otherwise wins and the
+    // font-size never applies (measured 15.6px inherited, text
+    // still touching the halo).
+    assert.match(css, /\.quran-hifz-study \.recitation-toolbar \.toolbar-left \.progress-pill \{\s*min-width: 56px;\s*height: 42px;\s*font-size: 10px;\s*gap: 2px;\s*\}/);
+    assert.match(css, /\.quran-hifz-study \.waveform \{\s*width: 14px;\s*height: 13px;\s*\}/);
+    // Icon-visibility fix (same decision): the pre-existing base
+    // rule `.quran-hifz-study button` gives every button
+    // `min-height: 44px` + `padding: 0 1rem`, which collapses the
+    // small icon buttons' content box so the global
+    // `max-inline-size: 100%` clamps the SVGs to 0px (chevrons
+    // invisible) / 6px (eye, grid tiny) and stretches the circles
+    // into ellipses. The toolbar resets both.
+    assert.match(css, /\.quran-hifz-study \.recitation-toolbar \.tool-button \{\s*padding: 0;\s*min-height: 0;\s*\}/);
+    // Integration only: fixed + bottom offset (never clipped by
+    // the viewport edge) + clearance that clears the mic top.
+    assert.match(css, /\.quran-hifz-study \.recitation-toolbar \{/);
+    assert.match(css, /position: fixed;/);
+    assert.match(css, /bottom: 15px;/);
+    assert.match(css, /bottom: calc\(9px \+ env\(safe-area-inset-bottom\)\);/);
+    // Grid-placement fix: the absolutely-positioned mic does not
+    // occupy the centre column, so the side sections need explicit
+    // columns or the right section lands under the mic.
+    assert.match(css, /\.quran-hifz-study \.recitation-toolbar \.toolbar-left \{\s*grid-column: 1;\s*\}/);
+    assert.match(css, /\.quran-hifz-study \.recitation-toolbar \.toolbar-right \{\s*grid-column: 3;\s*\}/);
+    assert.match(css, /\.quran-hifz-study \{ padding-bottom: calc\(176px \+ env\(safe-area-inset-bottom\)\); \}/);
+    assert.match(css, /body:has\(\.quran-hifz-study \.recitation-toolbar\) \.site-footer/);
+    // No old bottom-bar rules survive.
+    assert.doesNotMatch(css, /\.hifz-bottom-bar \{/);
+    assert.doesNotMatch(css, /\.hifz-bottom-btn \{/);
+    assert.doesNotMatch(css, /\.hifz-mic-3d \{/);
+    assert.doesNotMatch(css, /hifz-mic-pulse/);
+  });
+});

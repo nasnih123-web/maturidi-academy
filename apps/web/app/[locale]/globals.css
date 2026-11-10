@@ -2508,9 +2508,15 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
    stable. Status colors mirror the wall's dark-text variants: the
    page is white, so the base dark-background word colors would be
    unreadable here. The bottom padding keeps content clear of the
-   FIXED bottom bar (Tarteel: 79px mic + padding ≈ 95–120px with
-   the safe area). */
-.quran-hifz-study { padding-bottom: 120px; }
+   FIXED recitation toolbar (user design, 2026-11-10): 136px bar
+   + 15px mic overflow on desktop (mic top 166px above the
+   viewport bottom), 76px bar + 9px mic overflow on mobile
+   (mic top 94px) — the padding clears the mic top with ~10px
+   to spare, plus the safe-area inset. */
+.quran-hifz-study { padding-bottom: calc(176px + env(safe-area-inset-bottom)); }
+@media (max-width: 700px) {
+  .quran-hifz-study { padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
+}
 .quran-hifz-study .hifz-line-page { background: #F9F7F8; color: #1c1710; border: none; border-top: 1px solid #e5e0d5; border-bottom: 1px solid #e5e0d5; border-radius: 0; box-shadow: none; padding: 1.25rem 1.5rem 1.5rem; margin-bottom: 0; touch-action: pan-y; }
 .quran-hifz-study .hifz-line-caption { text-align: center; font-family: system-ui, sans-serif; font-size: 0.85rem; color: #6b655a; margin: 0 0 1rem; }
 .quran-hifz-study .hifz-line { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: clamp(1.25rem, 4.2vw, 2.1rem); line-height: 2.1; text-align: right; text-align-last: right; margin: 0; padding: 0.15rem 0; border-bottom: 1px solid rgba(0,0,0,0.10); }
@@ -2711,25 +2717,21 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
 .quran-hifz-study .hifz-line-word .hifz-word-disputed { font-size: 0.65rem; color: #444444; font-family: system-ui, sans-serif; }
 .quran-hifz-study .hifz-line-loading { text-align: center; opacity: 0.65; padding: 1rem; font-family: system-ui, sans-serif; }
 .quran-hifz-study .hifz-line-failed-note { text-align: center; opacity: 0.7; font-family: system-ui, sans-serif; margin: 0 0 1rem; }
-/* Floating 3D mic: CSS-only depth (gradients, shadows, gloss);
-   no image, no video, no opacity on the component itself. Pulsing
-   ring while live. Tarteel (2026-11-08): the mic is no longer a
-   separate fixed layer (.hifz-mic-layer is gone) — it lives inside
-   the fixed bottom bar at Ø79px (see .hifz-bottom-bar below). */
-.quran-hifz-study .hifz-mic-3d { position: relative; width: 76px; height: 76px; border: none; border-radius: 50%; color: #ffffff; cursor: pointer; background: radial-gradient(circle at 32% 28%, #4ade80, #22c55e 45%, #16a34a 75%, #15803d); box-shadow: 0 18px 30px rgba(22,163,74,0.45), 0 4px 10px rgba(0,0,0,0.25), inset 0 2px 3px rgba(255,255,255,0.65), inset 0 -6px 12px rgba(0,0,0,0.25); }
-.quran-hifz-study .hifz-mic-3d::after { content: ""; position: absolute; top: 8%; left: 14%; width: 44%; height: 28%; border-radius: 50%; background: radial-gradient(closest-side, rgba(255,255,255,0.55), rgba(255,255,255,0)); pointer-events: none; }
-.quran-hifz-study .hifz-mic-3d:disabled { cursor: not-allowed; opacity: 0.85; filter: saturate(0.75); }
-.quran-hifz-study .hifz-mic-3d.is-live { animation: hifz-mic-pulse 1.6s ease-out infinite; }
-@keyframes hifz-mic-pulse {
-  0% { box-shadow: 0 18px 30px rgba(22,163,74,0.45), 0 4px 10px rgba(0,0,0,0.25), inset 0 2px 3px rgba(255,255,255,0.65), inset 0 -6px 12px rgba(0,0,0,0.25), 0 0 0 0 rgba(34,197,94,0.55); }
-  100% { box-shadow: 0 18px 30px rgba(22,163,74,0.45), 0 4px 10px rgba(0,0,0,0.25), inset 0 2px 3px rgba(255,255,255,0.65), inset 0 -6px 12px rgba(0,0,0,0.25), 0 0 0 20px rgba(34,197,94,0); }
-}
-.quran-hifz-study .hifz-mic-icon { display: block; width: 38px; height: 38px; margin: 0 auto; }
-.quran-hifz-study .hifz-mic-stop { display: block; width: 24px; height: 24px; margin: 0 auto; border-radius: 4px; background: currentColor; }
+/* Recitation toolbar — mic inner icons (stop / play / pause):
+   the same spans the old 3D mic used, sized to the new
+   166px mic (desktop) / 94px mic (mobile). The old Ø79px
+   3D mic (.hifz-mic-3d, pulse ring, gloss) is gone with the
+   old bottom bar — the toolbar's mic is the user's design. */
+.quran-hifz-study .hifz-mic-stop { display: block; width: 50px; height: 50px; margin: 0 auto; border-radius: 8px; background: currentColor; }
 /* Listen mode (no mini player): play triangle / pause bars inside
    the same green circle. */
-.quran-hifz-study .hifz-mic-play { display: block; width: 0; height: 0; margin: 0 auto; transform: translateX(3px); border-left: 22px solid currentColor; border-top: 14px solid transparent; border-bottom: 14px solid transparent; }
-.quran-hifz-study .hifz-mic-pause { display: block; width: 20px; height: 24px; margin: 0 auto; border-left: 7px solid currentColor; border-right: 7px solid currentColor; }
+.quran-hifz-study .hifz-mic-play { display: block; width: 0; height: 0; margin: 0 auto; transform: translateX(6px); border-left: 46px solid currentColor; border-top: 29px solid transparent; border-bottom: 29px solid transparent; }
+.quran-hifz-study .hifz-mic-pause { display: block; width: 42px; height: 50px; margin: 0 auto; border-left: 15px solid currentColor; border-right: 15px solid currentColor; }
+@media (max-width: 700px) {
+  .quran-hifz-study .hifz-mic-stop { width: 28px; height: 28px; border-radius: 5px; }
+  .quran-hifz-study .hifz-mic-play { transform: translateX(3px); border-left: 26px solid currentColor; border-top: 17px solid transparent; border-bottom: 17px solid transparent; }
+  .quran-hifz-study .hifz-mic-pause { width: 24px; height: 28px; border-left: 8px solid currentColor; border-right: 8px solid currentColor; }
+}
 @media (max-width: 768px) {
   .quran-hifz-study .hifz-line-page { padding: 1rem 1rem 1.25rem; }
 }
@@ -2846,11 +2848,18 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
    40px, .site-footer 88px). The study root's own 120px bottom
    padding only clears content INSIDE the study; the footer after
    it needs its own clearance. :has() reserves 116px under the
-   footer only while a player or the hifz bottom bar is actually
-   present — other pages are untouched. */
+   footer only while a player or the recitation toolbar is
+   actually present — other pages are untouched. The values
+   match the study root's clearance (176px desktop / 104px
+   mobile + safe area). */
 body:has(.quran-player-mini:not(.quran-player-mini-hidden)) .site-footer,
-body:has(.quran-hifz-study .hifz-bottom-bar) .site-footer {
-  padding-bottom: 116px;
+body:has(.quran-hifz-study .recitation-toolbar) .site-footer {
+  padding-bottom: calc(176px + env(safe-area-inset-bottom));
+}
+@media (max-width: 700px) {
+  body:has(.quran-hifz-study .recitation-toolbar) .site-footer {
+    padding-bottom: calc(104px + env(safe-area-inset-bottom));
+  }
 }
 .quran-hifz-study .hifz-listen-controls .hifz-listen-resume { min-height: 44px; border-radius: 999px; border: 1px solid #16a34a; background: #f0fdf4; color: #166534; padding: 0 0.9rem; font-size: 0.95rem; cursor: pointer; }
 .quran-hifz-study .hifz-pills { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-start; margin-bottom: 1rem; padding: 0 1rem; }
@@ -2883,23 +2892,376 @@ body:has(.quran-hifz-study .hifz-bottom-bar) .site-footer {
   .quran-hifz-study .hifz-pill-label { display: none; }
 }
 .quran-hifz-study .hifz-page-footer { text-align: center; font-family: system-ui, sans-serif; font-size: 0.95rem; color: #6b655a; margin: 1rem 0 0; }
-/* Tarteel (2026-11-08): the bottom bar is FIXED to the viewport
-   bottom (it used to sit in the page flow, below the fold) and
-   holds EXACTLY five items — mic, display sheet, errors, » (whole
-   ayah), › (next word). Round white 36px buttons (Tarteel Ø35.8);
-   the mic is Ø79px (Tarteel 79.4). The study root's 120px bottom
-   padding + the footer :has() rule clear it. The old flow bar,
-   its shared capsule and the bottom display menu are gone. */
-.quran-hifz-study .hifz-bottom-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 55; display: flex; align-items: flex-end; justify-content: center; gap: 0.5rem; padding: 0.5rem 1rem calc(0.5rem + env(safe-area-inset-bottom)); background: linear-gradient(to top, rgba(249,247,248,0.97), rgba(249,247,248,0.85)); border-top: 1px solid #e5e0d5; }
-.quran-hifz-study .hifz-bottom-bar .hifz-mic-3d { width: 79px; height: 79px; flex: none; }
-.quran-hifz-study .hifz-bottom-btn { flex: none; width: 36px; height: 36px; border-radius: 50%; background: #ffffff; border: 1px solid #e5e0d5; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: inline-flex; align-items: center; justify-content: center; color: #1c1710; cursor: pointer; padding: 0; font-size: 1.1rem; }
-.quran-hifz-study .hifz-bottom-btn:disabled { opacity: 0.45; cursor: default; }
-.quran-hifz-study .hifz-bottom-btn-peek { font-size: 1.6rem; line-height: 1; }
-.quran-hifz-study .hifz-bottom-btn-icon { width: 1.25rem; height: 1.25rem; }
-/* Accuracy pill in the bottom bar (2026-11-08): compact variant of
-   .hifz-pill — same tone colors, tighter padding so mic + 5 buttons
-   + pill fit a 393px bar (gap above is 0.5rem for the same reason). */
-.quran-hifz-study .hifz-bottom-pill { flex: none; padding: 0.25rem 0.6rem; font-size: 0.85rem; }
+/* Recitation toolbar (user design, 2026-11-10): the user's
+   green toolbar REPLACES the old Tarteel bottom bar. The CSS
+   below is the user's code VERBATIM, only scoped under
+   .quran-hifz-study (the class names are generic) — colors,
+   gradients, sizes, radii, shadows and the mobile query are
+   exactly as sent. Integration deltas (the design has none of
+   these): position fixed + bottom offset + z-index (the old
+   bar was fixed at bottom:0; this bar floats 15px/9px up so
+   the overflowing mic ring is never clipped by the viewport
+   edge), and the rules after the media query (pill is a
+   <button> here, disabled looks, hidden pill labels). The
+   accuracy tone class (.hifz-pill-*) still rides on the pill
+   for tests, but the user's gradient wins visually at every
+   tone — the numbers carry the accuracy now. */
+.quran-hifz-study .recitation-toolbar {
+  --deep-green: #006b38;
+  --emerald: #078d4b;
+  --mint: #b9e4cf;
+  --gold: #dfc99a;
+
+  width: min(100%, 1360px);
+  height: 136px;
+  margin-inline: auto;
+
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 15px;
+  z-index: 55;
+  display: grid;
+  grid-template-columns: 1fr 170px 1fr;
+  align-items: center;
+
+  border-radius: 100px;
+  border: 3px solid rgba(255,255,255,.85);
+
+  background:
+    linear-gradient(90deg,
+      #b6e2ca 0%,
+      #087d43 17%,
+      #006535 43%,
+      #00703a 65%,
+      #b8e4ce 100%);
+
+  box-shadow:
+    0 15px 35px rgba(0,95,48,.28),
+    0 0 28px rgba(55,190,115,.20),
+    inset 0 3px 9px rgba(255,255,255,.75),
+    inset 0 -4px 12px rgba(0,60,32,.22);
+
+  isolation: isolate;
+  overflow: visible;
+}
+
+.quran-hifz-study .toolbar-left,
+.quran-hifz-study .toolbar-right {
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  height: 100%;
+  z-index: 2;
+  min-width: 0;
+}
+
+.quran-hifz-study .tool-button {
+  width: 86px;
+  height: 86px;
+  flex: 0 0 auto;
+
+  border: 2px solid rgba(255,255,255,.9);
+  border-radius: 50%;
+
+  background:
+    linear-gradient(145deg, #ffffff, #e9f0e9);
+
+  color: #073c31;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  box-shadow:
+    0 5px 13px rgba(0,0,0,.13),
+    inset 0 2px 5px white;
+
+  cursor: pointer;
+}
+
+.quran-hifz-study .tool-button svg {
+  width: 34px;
+  height: 34px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.quran-hifz-study .grid-button svg {
+  width: 34px;
+  height: 34px;
+}
+
+.quran-hifz-study .toolbar-divider {
+  width: 2px;
+  height: 65px;
+  background: rgba(206,255,226,.28);
+}
+
+.quran-hifz-study .progress-pill {
+  height: 72px;
+  min-width: 172px;
+  border-radius: 40px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+
+  background: linear-gradient(110deg,#078e4b,#005c31);
+  color: white;
+
+  font-size: 27px;
+  font-weight: 600;
+
+  box-shadow:
+    inset 0 2px 6px rgba(255,255,255,.15),
+    0 5px 15px rgba(0,0,0,.12);
+}
+
+.quran-hifz-study .waveform {
+  width: 40px;
+  height: 30px;
+  fill: none;
+  stroke: white;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.quran-hifz-study .mic-button {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%,-50%);
+
+  width: 166px;
+  height: 166px;
+
+  border-radius: 50%;
+  border: 9px solid var(--gold);
+
+  background:
+    radial-gradient(circle at 35% 25%,
+      #1dc878,
+      #078d4b 48%,
+      #005d31 100%);
+
+  box-shadow:
+    0 0 0 9px rgba(255,255,255,.65),
+    0 0 0 15px rgba(132,222,175,.23),
+    0 12px 25px rgba(0,70,35,.38),
+    inset 0 4px 10px rgba(255,255,255,.35),
+    inset 0 -7px 12px rgba(0,45,25,.24);
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  z-index: 5;
+  cursor: pointer;
+}
+
+.quran-hifz-study .mic-outer-ring {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.quran-hifz-study .mic-button svg {
+  width: 68px;
+  height: 78px;
+  fill: white;
+  stroke: white;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.quran-hifz-study .toolbar-decor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 180px;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+  color: rgba(223,255,235,.38);
+}
+
+.quran-hifz-study .toolbar-decor svg {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  bottom: 0;
+}
+
+.quran-hifz-study .toolbar-decor-left {
+  left: 0;
+  border-radius: 100px 0 0 100px;
+}
+
+.quran-hifz-study .toolbar-decor-right {
+  right: 0;
+  border-radius: 0 100px 100px 0;
+  color: rgba(7,100,56,.23);
+}
+
+@media(max-width:700px) {
+  .quran-hifz-study .recitation-toolbar {
+    height: 76px;
+    grid-template-columns: 1fr 86px 1fr;
+    border-radius: 60px;
+    bottom: calc(9px + env(safe-area-inset-bottom));
+  }
+
+  .quran-hifz-study .tool-button {
+    width: 42px;
+    height: 42px;
+  }
+
+  /* Mobile-only fix (user decision 2026-11-10 ~10:22, tightened
+     2026-11-10 ~11:26): the two chevron circles («<» «<<»)
+     shrink 42px -> 36px -> 34px so the accuracy pill clears the
+     mic — the eye and ▦ buttons on the right stay 42px. The
+     chevron icons stay 22px (bold, like the desktop ones); only
+     the circles shrink. */
+  .quran-hifz-study .toolbar-left .tool-button {
+    width: 34px;
+    height: 34px;
+  }
+
+  /* Mobile-only fix (user decision 2026-11-10 ~11:26): the left
+     side packs from the left edge with a real gap instead of
+     space-evenly — with ~150px of content in a 153.5px track the
+     even gaps were ~1px and the two chevron circles touched each
+     other. The leftover space now lands between the pill and the
+     mic instead. Selector is 3-class so it beats the base
+     2-class space-evenly rule. NOTE: gap started at 5px but the
+     first measurement gave only 7px text-to-glow (target >=10),
+     so the gap is 4px and the pill min-width 56px — the 3px
+     saved move the pill text clear of the halo. */
+  .quran-hifz-study .recitation-toolbar .toolbar-left {
+    justify-content: flex-start;
+    gap: 4px;
+  }
+
+  .quran-hifz-study .tool-button svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .quran-hifz-study .toolbar-divider {
+    height: 35px;
+  }
+
+  /* Mobile-only fix (user decision 2026-11-10 ~11:12, corrected
+     «نگیره» — the pill must NOT sit under the mic's glow halo —
+     tightened 2026-11-10 ~11:26): the pill shrinks a bit
+     (font 14px -> 11px -> 10px, waveform 19px -> 14px,
+     gap 4px -> 2px, min-width 76px -> 58px -> 56px) so the Latin
+     «100% | 0» text clears the mic's white halo ring with a
+     clear gap; the mic is 74px and the chevron circles 34px.
+     Desktop untouched. NOTE: the selector must be 4-class — the
+     toolbar-scoped `.recitation-toolbar .progress-pill
+     { font: inherit; }` rule below (3-class) otherwise wins and
+     the font-size never applies (measured: 15.6px inherited
+     instead of 11px, which is why the text still touched the
+     halo). */
+  .quran-hifz-study .recitation-toolbar .toolbar-left .progress-pill {
+    min-width: 56px;
+    height: 42px;
+    font-size: 10px;
+    gap: 2px;
+  }
+
+  .quran-hifz-study .waveform {
+    width: 14px;
+    height: 13px;
+  }
+
+  /* Mobile-only fix (user decision 2026-11-10 ~10:22, tightened
+     2026-11-10 ~11:26): mic 94px -> 78px -> 74px so the accuracy
+     pill («100% | 0») clears it with a clear gap (80px left only
+     4px box gap and the text ended exactly on the mic's glow
+     ring); gold border and radial gradient unchanged, mic SVG
+     scaled proportionally (39x45 -> 32x37 -> 30x35). */
+  .quran-hifz-study .mic-button {
+    width: 74px;
+    height: 74px;
+    border-width: 5px;
+  }
+
+  .quran-hifz-study .mic-button svg {
+    width: 30px;
+    height: 35px;
+  }
+
+  .quran-hifz-study .toolbar-decor {
+    width: 65px;
+  }
+}
+
+/* Integration additions (NOT the user's design — the wiring
+   needs them, the look does not change):
+   - the pill is a <button> here (a <span> in the user's code),
+     so it needs the button reset;
+   - disabled looks, adapted from the old bottom bar;
+   - the pill's word labels stay hidden inside the toolbar at
+     every width (the user's pill is numbers-only, like the old
+     mobile rendering); the full stats live in the aria-label;
+   - BUG FIX in the user's code (verified in the browser): the
+     toolbar is a 3-column grid, but the mic is absolutely
+     positioned, so it does NOT occupy the centre column — the
+     right section auto-places into column 2 and lands UNDER
+     the mic (eye + grid unclickable). Explicit grid-column
+     puts each side where the user's image shows it. */
+.quran-hifz-study .recitation-toolbar .toolbar-left {
+  grid-column: 1;
+}
+.quran-hifz-study .recitation-toolbar .toolbar-right {
+  grid-column: 3;
+}
+.quran-hifz-study .recitation-toolbar .progress-pill {
+  border: none;
+  padding: 0;
+  min-height: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.quran-hifz-study .recitation-toolbar .progress-pill .hifz-pill-label {
+  display: none;
+}
+.quran-hifz-study .recitation-toolbar .tool-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* Pre-existing base rule `.quran-hifz-study button` (elsewhere in
+   this file) gives every button in the study page `min-height:
+   44px` and `padding: 0 1rem`. On the small toolbar icon buttons
+   that collapses the content box (36px circle - 32px padding -
+   4px border = 0px), so the global `img, svg
+   { max-inline-size: 100%; }` clamps the icons to 0px (chevrons
+   invisible) / 6px (eye, grid tiny), and min-height stretches
+   the circles into 36x44 / 42x44 ellipses. Desktop (86px) was
+   immune. Reset both here, toolbar scope only, so the icons
+   render at their designed 22px and the buttons stay true
+   circles. */
+.quran-hifz-study .recitation-toolbar .tool-button {
+  padding: 0;
+  min-height: 0;
+}
+.quran-hifz-study .recitation-toolbar .mic-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.85;
+  filter: saturate(0.75);
+}
 /* Tarteel display sheet (2026-11-08): three cards (Tarteel
    352.7×55.5 at 393px, 8.5px gaps); the selected card gets the
    black frame. */
