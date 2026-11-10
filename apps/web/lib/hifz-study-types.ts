@@ -94,6 +94,7 @@ export interface HifzLabels {
   dispute: string;
   disputed: string;
   signInHint: string;
+  toastClose: string;
   engineUnavailable: string;
   selectAyahHint: string;
   svgFailedNote: string;

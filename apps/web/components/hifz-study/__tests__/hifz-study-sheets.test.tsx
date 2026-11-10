@@ -381,13 +381,20 @@ describe('Recitation toolbar replaces the hifz bottom bar (user 2026-11-10)', ()
     assert.match(study, /formatLatinDecimal\(pillStats\.accuracy\)/);
     assert.match(study, /\{pillStats\.errors\}/);
     assert.doesNotMatch(study, /formatArabicIndicDecimal\(pillStats\.accuracy\)/);
-    // The mic keeps every handler + the disabled rule + the
-    // long-press mode switch, in the user's shell.
+    // The mic keeps every handler + the long-press mode switch, in
+    // the user's shell. Fixed page (2026-11-10): the mic is ENABLED
+    // for guests (a disabled button swallows the tap entirely, so
+    // the sign-in toast could never show) — the dimmed look is kept
+    // via aria-disabled, and micOnClick / onMicPointerDown guard on
+    // authed so guests gain no recording or listen path.
     assert.match(study, /className="mic-button"/);
     assert.match(study, /onClick=\{micOnClick\}/);
     assert.match(study, /onPointerDown=\{onMicPointerDown\}/);
     assert.match(study, /onPointerUp=\{clearMicLongPress\}/);
-    assert.match(study, /disabled=\{studyMode === 'practice' && \(!authed \|\| micBusy \|\| modelUnavailable\)\}/);
+    assert.match(study, /disabled=\{studyMode === 'practice' && \(micBusy \|\| modelUnavailable\)\}/);
+    assert.match(study, /aria-disabled=\{studyMode === 'practice' && !authed\}/);
+    assert.match(study, /if \(studyMode === 'practice' && !authed\) \{\s*showSignInToast\(\);/);
+    assert.doesNotMatch(study, /disabled=\{studyMode === 'practice' && \(!authed/);
     // Eye toggles the script; grid opens the display sheet.
     assert.match(study, /setScriptHidden\(\(v\) => !v\)/);
     assert.match(study, /onClick=\{\(\) => setDisplaySheetOpen\(true\)\}/);
@@ -462,5 +469,78 @@ describe('Recitation toolbar replaces the hifz bottom bar (user 2026-11-10)', ()
     assert.doesNotMatch(css, /\.hifz-bottom-btn \{/);
     assert.doesNotMatch(css, /\.hifz-mic-3d \{/);
     assert.doesNotMatch(css, /hifz-mic-pulse/);
+  });
+});
+
+describe('Fixed hifz study page + sign-in toast (user 2026-11-10)', () => {
+  function readStudy(): string {
+    const study = readFirst([
+      'apps/web/components/QuranHifzStudy.tsx',
+      'components/QuranHifzStudy.tsx',
+    ]);
+    assert.ok(study, 'QuranHifzStudy.tsx not found');
+    return study;
+  }
+  function readCss(): string {
+    const css = readFirst([
+      'apps/web/app/[locale]/globals.css',
+      'app/[locale]/globals.css',
+    ]);
+    assert.ok(css, 'globals.css not found');
+    return css;
+  }
+
+  it('the guest sign-in hint is a floating toast, not a line in the page flow', () => {
+    const study = readStudy();
+    // The static line keeps its place in .hifz-controls (visible in
+    // nass/translation + desktop) but carries the static class so
+    // the mobile mushaf CSS can hide it.
+    assert.match(study, /className="hifz-hint hifz-signin-hint-static"/);
+    // The toast renders in mushaf mode only, for guests, with the
+    // same label text (no hardcoded Persian) + a close button.
+    assert.match(study, /displayMode === 'mushaf' && !authed && signInToastVisible/);
+    assert.match(study, /className="hifz-signin-toast" role="status"/);
+    assert.match(study, /<p>\{labels\.signInHint\}<\/p>/);
+    assert.match(study, /aria-label=\{labels\.toastClose\}/);
+    // Show once on load for guests (token read synchronously, same
+    // source as the authed effect), auto-dismiss after ~6s, re-show
+    // when a guest taps the mic.
+    assert.match(study, /if \(!getAccessToken\(\)\) showSignInToast\(\);/);
+    assert.match(study, /window\.setTimeout\(\(\) => setSignInToastVisible\(false\), 6000\)/);
+    assert.match(study, /if \(studyMode === 'practice' && !authed\) \{\s*showSignInToast\(\);/);
+  });
+
+  it('globals.css locks the page fixed in mushaf mode on mobile, with a scrollable wall fallback', () => {
+    const css = readCss();
+    // The study root itself is fixed to the viewport (the lock):
+    // the document then has no scrollable overflow at all.
+    assert.match(css, /\.quran-hifz-study\.hifz-mode-mushaf:not\(\.hifz-has-wall\) \{\s*position: fixed;\s*inset: 0;\s*\}/);
+    // Second layer: overflow clip on html + body (hidden alone was
+    // measured NOT to stop window.scrollTo in the sandbox Chromium).
+    assert.match(css, /html:has\(\.quran-hifz-study\.hifz-mode-mushaf:not\(\.hifz-has-wall\)\) \{\s*overflow: clip;/);
+    assert.match(css, /body:has\(\.quran-hifz-study\.hifz-mode-mushaf:not\(\.hifz-has-wall\)\) \{\s*overflow: clip;/);
+    // The static hint is hidden only in mushaf-mobile; the toast is
+    // fixed above the toolbar and hidden by default elsewhere.
+    assert.match(css, /\.quran-hifz-study\.hifz-mode-mushaf \.hifz-signin-hint-static \{ display: none; \}/);
+    assert.match(css, /\.quran-hifz-study \.hifz-signin-toast \{ display: none; \}/);
+    assert.match(css, /\.quran-hifz-study\.hifz-mode-mushaf \.hifz-signin-toast \{/);
+    assert.match(css, /position: fixed;/);
+    // While the toast is up the page is pinned shorter (flex-grow:0
+    // + fixed height — min-height alone cannot hold it, the page is
+    // flex:1 and grows to fill the root) so the page-number footer
+    // lands above the toast, not behind it.
+    assert.match(css, /:has\(\.hifz-signin-toast\) \.hifz-line-page \{\s*flex-grow: 0;\s*height: calc\(100vh - 57px - 104px - 65px\);\s*height: calc\(100dvh - 57px - 104px - 65px\);/);
+    // Live panel: fixed above the toolbar, hidden when empty — the
+    // empty check must ignore the (display:none) static hint or the
+    // panel shows as an empty white strip for every guest.
+    assert.match(css, /\.hifz-live-panel:not\(:has\(\.hifz-controls > :not\(\.hifz-signin-hint-static\)\)\)/);
+    // Setup panel: fixed overlay with its own scroll, top below the
+    // header so the hamburger stays visible to close it.
+    assert.match(css, /\.hifz-setup\.is-open \{\s*position: fixed;\s*top: 57px;/);
+    // The wall state switches the lock + the page pin off: the root
+    // carries hifz-has-wall exactly when the wall section renders.
+    const study = readStudy();
+    assert.match(study, /wallVisible \? ' hifz-has-wall' : ''/);
+    assert.match(study, /const wallVisible =\s*displayMode === 'mushaf' &&/);
   });
 });

@@ -314,6 +314,7 @@
     "hifzDispute": "هذا صحيح",
     "hifzDisputed": "تم تسجيل الاعتراض",
     "hifzSignInHint": "سجّل الدخول للتقييم وحفظ التمرين.",
+    "hifzToastClose": "إغلاق",
     "hifzEngineLabel": "محرك التعرف على الكلام",
     "hifzEngineUnavailable": "محرك التعرف على الكلام غير متاح؛ على المدير تهيئة النموذج.",
     "hifzCountsTitle": "نتيجة التمرين",
