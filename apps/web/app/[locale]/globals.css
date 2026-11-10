@@ -2830,12 +2830,32 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
    trims only remove 1.6px of breathing per line side, and the
    freed space returns as inter-line spread at 852px).
    Desktop untouched. */
+/* Sign-in toast (fixed page, 2026-11-10): hidden by default — it
+   only shows in mushaf mode on mobile, where the media query
+   below turns it into a fixed toast above the toolbar. */
+.quran-hifz-study .hifz-signin-toast { display: none; }
 @media (max-width: 768px) {
   .quran-hifz-study.hifz-mode-mushaf {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
     min-height: 100dvh;
+  }
+  /* The scroll lock itself (fixed page, 2026-11-10): the study root
+     is fixed to the viewport, so the document has NO scrollable
+     overflow at all (scrollHeight == viewport height) — no gesture
+     and no script can scroll it. (body/html overflow: clip alone
+     was measured NOT to stop window.scrollTo in the sandbox
+     Chromium — it only blocks user gestures — and the mimicked
+     bare-html page behaved the same, so the lock cannot rest on
+     overflow at all. The clip rules below stay as a second layer.)
+     The root keeps its flex column + 100dvh height (inset:0 pins
+     it to the viewport). When the wall renders (hifz-has-wall) the
+     root returns to normal flow and the page scrolls again, so the
+     wall stays reachable. */
+  .quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall) {
+    position: fixed;
+    inset: 0;
   }
   .quran-hifz-study.hifz-mode-mushaf .hifz-line-page {
     flex: 1 0 auto;
@@ -2844,33 +2864,51 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
     justify-content: space-between;
     padding-top: 0.5rem;
     padding-bottom: 0.5rem;
-    /* Round 2 (2026-11-10, user shot p582): the flex:1 stretch above
-       only works while the root's total content is <= 100dvh — ANY
-       extra content below/above the page (live pills, resume banner,
-       practice note, wall) pushes the root past 100dvh, free space
-       drops to zero, and the page falls back to its natural packed
-       height (measured: footer at 657 at scroll 0 in the tall state
-       vs 718 stretched — 133px gap at 875, ~190px once the user had
-       scrolled ~66px). Pin the page's OWN height instead: 100dvh
-       minus the 57px sticky header (measured at 393px) minus the
-       104px toolbar clearance (the root's padding-bottom). The
-       footer then lands ~28px above the toolbar at scroll 0 in
-       every root state. min-height, not height, so a short viewport
-       degrades to the natural page instead of clipping lines. */
+  }
+  /* Round 2 (2026-11-10, user shot p582): the flex:1 stretch above
+     only works while the root's total content is <= 100dvh — ANY
+     extra content below/above the page (live pills, resume banner,
+     practice note, wall) pushes the root past 100dvh, free space
+     drops to zero, and the page falls back to its natural packed
+     height (measured: footer at 657 at scroll 0 in the tall state
+     vs 718 stretched — 133px gap at 875, ~190px once the user had
+     scrolled ~66px). Pin the page's OWN height instead: 100dvh
+     minus the 57px sticky header (measured at 393px) minus the
+     104px toolbar clearance (the root's padding-bottom). The
+     footer then lands ~28px above the toolbar at scroll 0 in
+     every root state. min-height, not height, so a short viewport
+     degrades to the natural page instead of clipping lines.
+     Fixed page (2026-11-10): the pin switches OFF when the wall
+     renders (hifz-has-wall) — the page scrolls again then, so the
+     wall below it stays reachable. */
+  .quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall) .hifz-line-page {
     min-height: calc(100vh - 57px - 104px);
     min-height: calc(100dvh - 57px - 104px);
   }
-  /* Guests only: the sign-in hint below the page (28px + the 16px
-     .hifz-controls margin-top = 44px) would otherwise be pushed
-     behind the fixed toolbar by the pinned page height above. When
-     it is present, shrink the page by exactly that 44px so the hint
-     stays visible above the toolbar (footer gap 72px, as in the
-     PR #123 guest state). Signed-in users have no hint, so the
-     rule does not match and the footer keeps its 28px gap. */
-  .quran-hifz-study.hifz-mode-mushaf:has(.hifz-controls > .hifz-hint) .hifz-line-page {
-    min-height: calc(100vh - 57px - 104px - 44px);
-    min-height: calc(100dvh - 57px - 104px - 44px);
+  /* While the sign-in toast is up it would cover the page-number
+     footer (the toast sits 19px above the toolbar, exactly where
+     the footer lands — measured: toast 725–771, footer 735–762 at
+     393×875). Pin the page SHORTER by the toast's height (46px
+     measured at 393px, one line in all three languages) + its 19px
+     gap, so the footer lands ~28px above the toast instead. This
+     must pin the height, not just the min-height: the page is
+     flex:1, so it grows to fill the root whatever its min-height
+     is — only flex-grow:0 + a fixed height hold it short. When the
+     toast dismisses the element leaves the DOM, the :has stops
+     matching and the page grows back to the toolbar. */
+  .quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall):has(.hifz-signin-toast) .hifz-line-page {
+    flex-grow: 0;
+    height: calc(100vh - 57px - 104px - 65px);
+    height: calc(100dvh - 57px - 104px - 65px);
+    min-height: calc(100vh - 57px - 104px - 65px);
+    min-height: calc(100dvh - 57px - 104px - 65px);
   }
+  /* The guest shrink (44px for the sign-in hint) is GONE in the
+     fixed page: the hint is a floating toast now (no layout space),
+     and the remaining .hifz-hint lines live in the fixed live panel
+     below, out of the document flow — so no hint ever needs room in
+     the page height anymore. Guests and signed-in users share the
+     same 28px footer gap. */
   .quran-hifz-study.hifz-mode-mushaf .hifz-page-footer { margin-top: 0.5rem; }
   /* Fit trims (same fix): the 0.1rem line padding and the
      0.75rem surah-header margins are the remaining slack — a
@@ -2886,6 +2924,155 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
      background (the .quran-reader wrapper is transparent). While
      the study is present the page background is white. */
   body:has(.quran-hifz-study) { background: #ffffff; }
+  /* Fixed page (2026-11-10, user directive: «صفحه باید ثابت باشه
+     نتونیم اسکرول کنیم»): the document must not scroll in mushaf
+     mode on mobile — header + 15-line page + toolbar in one view.
+     overflow: clip (NOT hidden): hidden still lets a script scroll
+     the page (window.scrollTo / scrollIntoView keep working — the
+     sandbox measured scrollY 168 with body overflow hidden, while
+     wheel / PageDown / touch-drag were already blocked at 0), and
+     clip forbids scrolling by ANY means, user or programmatic.
+     body overflow propagates to the viewport, so this one rule
+     locks scrolling; the html rule pins the viewport directly.
+     The page height is already pinned above, and everything that
+     used to sit below the page moves into fixed overlays (live
+     panel, setup, pills, banner, loading note) so nothing
+     reachable is lost. When the wall renders (hifz-has-wall) the
+     lock switches OFF — the wall sits below the page and must stay
+     reachable by scrolling. */
+  html:has(.quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall)) {
+    overflow: clip;
+  }
+  body:has(.quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall)) {
+    overflow: clip;
+    overscroll-behavior: none;
+  }
+  /* The static sign-in hint line is hidden in mushaf mode on
+     mobile — it comes back as the floating toast below. It stays
+     in the DOM (and visible) in nass/translation and on desktop. */
+  .quran-hifz-study.hifz-mode-mushaf .hifz-signin-hint-static { display: none; }
+  /* Sign-in toast (guests, mushaf mode, mobile only): fixed above
+     the toolbar, takes no layout space. */
+  .quran-hifz-study.hifz-mode-mushaf .hifz-signin-toast {
+    display: flex;
+    position: fixed;
+    left: 1rem;
+    right: 1rem;
+    bottom: calc(104px + env(safe-area-inset-bottom));
+    z-index: 60;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: #006b38;
+    color: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 8px 30px rgba(0, 60, 30, 0.35);
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+  .quran-hifz-study.hifz-mode-mushaf .hifz-signin-toast p { margin: 0; flex: 1; }
+  .quran-hifz-study.hifz-mode-mushaf .hifz-signin-toast button {
+    flex: none;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #ffffff;
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  /* Live panel: everything that used to sit below the page in the
+     document flow (practice note, .hifz-controls — pause/resume,
+     freeze-hold resume, live-cancel, live hints, diagnostics —
+     and the liveError/error alerts) now lives in one fixed panel
+     above the toolbar, with its own internal scroll. Hidden when
+     it has no element children (the controls div is always in the
+     DOM, so the :has checks its children, not its presence).
+     Tradeoff: while a live session is active the panel covers the
+     page footer and possibly the last line's bottom edge; when
+     live is idle the panel is hidden and the footer is visible. */
+  .quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall) .hifz-live-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(104px + env(safe-area-inset-bottom));
+    z-index: 54;
+    max-height: 40dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0.75rem 1rem;
+    background: #ffffff;
+    border-top: 1px solid #e5e0d5;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.15);
+  }
+  .quran-hifz-study.hifz-mode-mushaf .hifz-live-panel:not(:has(.hifz-controls > :not(.hifz-signin-hint-static))):not(:has(.hifz-practice-note)):not(:has(.hifz-error)) { display: none; }
+  /* The :not(.hifz-signin-hint-static) above is load-bearing: the
+     static hint <p> is display:none in mushaf-mobile but still an
+     element child of .hifz-controls, so the plain `> *` check always
+     matched for guests and the panel showed as an empty white strip
+     over the footer. Only a non-hint child counts now. */
+  .quran-hifz-study.hifz-mode-mushaf .hifz-live-panel .hifz-controls { margin-top: 0; padding-inline: 0; }
+  .quran-hifz-study.hifz-mode-mushaf .hifz-live-panel .hifz-practice-note { margin: 0; }
+  .quran-hifz-study.hifz-mode-mushaf .hifz-live-panel .hifz-error { margin: 0.5rem 0 0; }
+  /* Setup panel (hamburger): a fixed overlay with its own scroll,
+     top below the header so the hamburger (its only toggle) stays
+     visible to close it. Covers the toolbar while open — the user
+     is configuring, not reciting (same as the other sheets). */
+  .quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall) .hifz-setup.is-open {
+    position: fixed;
+    top: 57px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 70;
+    margin: 0;
+    padding: 1rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: #ffffff;
+    border: 0;
+    border-radius: 0;
+  }
+  /* Resume banner, live pills row and loading note: fixed below
+     the header in mushaf mode (they are transient, and in-flow
+     they would push the page down and break the fixed geometry).
+     They never co-occur with each other (banner = on load with a
+     resumable session, pills = during a live session, loading =
+     while the page loads), so they share one slot. */
+  .quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall) .hifz-resume-banner {
+    position: fixed;
+    top: 57px;
+    left: 0;
+    right: 0;
+    z-index: 65;
+    margin: 0;
+    border: 0;
+    border-bottom: 1px solid rgba(46, 125, 50, 0.35);
+    border-radius: 0;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+  }
+  .quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall) .hifz-pills {
+    position: fixed;
+    top: 57px;
+    left: 0;
+    right: 0;
+    z-index: 60;
+    margin-bottom: 0;
+    padding: 0.5rem 1rem;
+    background: #ffffff;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  }
+  .quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall) .hifz-line-loading {
+    position: fixed;
+    top: 57px;
+    left: 0;
+    right: 0;
+    z-index: 60;
+    margin: 0;
+    background: #ffffff;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  }
 }
 /* Basmalah line — THIS RULE MUST STAY AFTER the mobile media query
    above (Wave 1 fix, 2026-11-09, research §6.3). Same specificity
@@ -3340,6 +3527,17 @@ body:has(.quran-hifz-study .recitation-toolbar) .site-footer {
   min-height: 0;
 }
 .quran-hifz-study .recitation-toolbar .mic-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.85;
+  filter: saturate(0.75);
+}
+/* Fixed page (2026-11-10): the mic is ENABLED for guests so a tap
+   reaches micOnClick (a disabled button swallows the tap entirely)
+   and shows the sign-in toast — the dimmed look is kept via
+   aria-disabled instead of :disabled. Recording still never starts
+   for guests (micOnClick guards on authed) and long-press never
+   switches them to listen (onMicPointerDown guards). */
+.quran-hifz-study .recitation-toolbar .mic-button[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.85;
   filter: saturate(0.75);

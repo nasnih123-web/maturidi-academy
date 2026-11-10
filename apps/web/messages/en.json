@@ -314,6 +314,7 @@
     "hifzDispute": "This was correct",
     "hifzDisputed": "Dispute recorded",
     "hifzSignInHint": "Sign in to grade and save your practice.",
+    "hifzToastClose": "Close",
     "hifzEngineLabel": "Speech recognition engine",
     "hifzEngineUnavailable": "The speech recognition engine is unavailable; an admin must configure the model.",
     "hifzCountsTitle": "Practice result",

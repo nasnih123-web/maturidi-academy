@@ -313,6 +313,7 @@ export default async function SurahPage({
             dispute: t('hifzDispute'),
             disputed: t('hifzDisputed'),
             signInHint: t('hifzSignInHint'),
+            toastClose: t('hifzToastClose'),
             engineUnavailable: t('hifzEngineUnavailable'),
             selectAyahHint: t('hifzSelectAyahHint'),
             svgFailedNote: t('hifzSvgFailedNote'),

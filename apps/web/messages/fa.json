@@ -314,6 +314,7 @@
     "hifzDispute": "این درست بود",
     "hifzDisputed": "اعتراض ثبت شد",
     "hifzSignInHint": "برای نمره‌دهی و ذخیرهٔ تمرین، وارد حساب خود شوید.",
+    "hifzToastClose": "بستن",
     "hifzEngineLabel": "موتور تشخیص گفتار",
     "hifzEngineUnavailable": "موتور تشخیص گفتار در دسترس نیست؛ مدیر باید مدل را پیکربندی کند.",
     "hifzCountsTitle": "نتیجهٔ تمرین",

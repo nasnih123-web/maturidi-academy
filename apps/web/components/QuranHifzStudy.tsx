@@ -559,6 +559,29 @@ export function QuranHifzStudy({
       .catch(() => {});
   }, []);
 
+  // Fixed study page (2026-11-10, user directive): the guest
+  // sign-in hint is no longer a line in the page flow — it is a
+  // floating toast. Show once on load for guests (auth is read
+  // synchronously from the stored token, the same source as the
+  // authed effect above, so signed-in users never see a flash),
+  // auto-dismiss after ~6s, re-show when a guest taps the mic.
+  const [signInToastVisible, setSignInToastVisible] = useState(false);
+  const signInToastKeyRef = useRef(0);
+  const [signInToastKey, setSignInToastKey] = useState(0);
+  const showSignInToast = useCallback(() => {
+    signInToastKeyRef.current += 1;
+    setSignInToastKey(signInToastKeyRef.current);
+    setSignInToastVisible(true);
+  }, []);
+  useEffect(() => {
+    if (!getAccessToken()) showSignInToast();
+  }, [showSignInToast]);
+  useEffect(() => {
+    if (!signInToastVisible) return;
+    const t = window.setTimeout(() => setSignInToastVisible(false), 6000);
+    return () => window.clearTimeout(t);
+  }, [signInToastVisible, signInToastKey]);
+
   // Phase 4 — per-user settings: authed users load them from the
   // server (and keep a local copy for guests); a guest keeps only
   // the local copy. A failed server load keeps the local values —
@@ -1232,6 +1255,16 @@ export function QuranHifzStudy({
     () => wallAyahs.filter((g) => !placedAyahs.has(g.ayah)),
     [wallAyahs, placedAyahs],
   );
+
+  // Fixed study page (2026-11-10): when the wall renders (a failed
+  // page or unplaced ayahs) the page CANNOT be locked — the wall
+  // sits below the page and must stay reachable by scrolling. The
+  // root carries hifz-has-wall in that state and the scroll lock +
+  // fixed overlays switch off (same condition as the wall section
+  // below, so the class and the section can never disagree).
+  const wallVisible =
+    displayMode === 'mushaf' &&
+    (pageFailed || (pageReady && textsSettled && unplacedGroups.length > 0));
 
   // Next unwritten word, scanning from the selected ayah onward.
   const peekTarget = useMemo(() => {
@@ -2713,9 +2746,11 @@ export function QuranHifzStudy({
   // Long-press on the green mic button switches practice → listen
   // (spec §6 — the gesture was only seen as banner text, never
   // performed in the videos; 600ms is the academy's own threshold).
-  // A short tap still starts/stops the mic. The button is disabled
-  // for guests (sign-in is required to record), so guests switch
-  // with the mode-toggle buttons instead.
+  // A short tap still starts/stops the mic. The button is ENABLED
+  // for guests (a disabled button swallows the tap entirely, so the
+  // sign-in toast could never show) but dimmed via aria-disabled; a
+  // guest tap shows the toast and a guest long-press does nothing —
+  // guests have no listen path.
   const micLongPressTimerRef = useRef<number | null>(null);
   const micLongPressFiredRef = useRef(false);
   const clearMicLongPress = useCallback(() => {
@@ -2728,6 +2763,10 @@ export function QuranHifzStudy({
   // switchToListen() after the page is gone.
   useEffect(() => clearMicLongPress, [clearMicLongPress]);
   const onMicPointerDown = useCallback(() => {
+    // Guests: the mic is enabled so a tap shows the sign-in toast,
+    // but a long-press must NOT switch them to listen mode (guests
+    // have no listen path) — the timer never starts for them.
+    if (!authed) return;
     clearMicLongPress();
     micLongPressTimerRef.current = window.setTimeout(() => {
       micLongPressFiredRef.current = true;
@@ -2736,11 +2775,18 @@ export function QuranHifzStudy({
       if (studyMode === 'listen') switchToPractice();
       else switchToListen();
     }, HIFZ_LISTEN_LONG_PRESS_MS);
-  }, [clearMicLongPress, switchToListen, switchToPractice, studyMode]);
+  }, [authed, clearMicLongPress, switchToListen, switchToPractice, studyMode]);
 
   const micOnClick = (): void => {
     if (micLongPressFiredRef.current) {
       micLongPressFiredRef.current = false;
+      return;
+    }
+    // Guests: the mic is enabled so a tap reaches here (a disabled
+    // button swallows the tap entirely) — show the sign-in toast
+    // instead of starting a recording.
+    if (studyMode === 'practice' && !authed) {
+      showSignInToast();
       return;
     }
     // Listen mode: the bottom-bar mic is the play/pause control
@@ -3094,7 +3140,7 @@ export function QuranHifzStudy({
 
   return (
     <div
-      className={`quran-hifz-study${hifzSettings.hideAyahMarkers ? ' hifz-hide-markers' : ''}${displayMode === 'mushaf' ? ' hifz-mode-mushaf' : ''}`}
+      className={`quran-hifz-study${hifzSettings.hideAyahMarkers ? ' hifz-hide-markers' : ''}${displayMode === 'mushaf' ? ' hifz-mode-mushaf' : ''}${wallVisible ? ' hifz-has-wall' : ''}`}
       dir={locale === 'fa' || locale === 'ar' ? 'rtl' : 'ltr'}
     >
       {/* Header: Tarteel top bar, row 1 (hamburger + surah card +
@@ -3553,8 +3599,7 @@ export function QuranHifzStudy({
           load, the wall stays hidden: placement is undecided until
           they arrive, and showing the whole surah below would repeat
           the silent fallback. */}
-      {displayMode === 'mushaf' &&
-        (pageFailed || (pageReady && textsSettled && unplacedGroups.length > 0)) && (
+      {wallVisible && (
       <section className="hifz-wall" aria-label={labels.title}>
         {pageFailed && <p className="hifz-line-failed-note">{labels.svgFailedNote}</p>}
         {(pageFailed ? wallAyahs : unplacedGroups).length === 0 ? (
@@ -3658,15 +3703,6 @@ export function QuranHifzStudy({
       </section>
       )}
 
-      {practiceWord !== null && (
-        <p className="hifz-practice-note">
-          {labels.practiceWord}: {practiceWord.text}{' '}
-          <button type="button" onClick={() => setPracticeWord(null)}>
-            {labels.clearPractice}
-          </button>
-        </p>
-      )}
-
       {/* Recitation toolbar (user design, 2026-11-10): the old
           Tarteel bottom bar is replaced by the user's green
           toolbar, EXACTLY as designed — dir="ltr" so the visual
@@ -3754,7 +3790,8 @@ export function QuranHifzStudy({
                   : labels.listenPlay
                 : micLabel
             }
-            disabled={studyMode === 'practice' && (!authed || micBusy || modelUnavailable)}
+            disabled={studyMode === 'practice' && (micBusy || modelUnavailable)}
+            aria-disabled={studyMode === 'practice' && !authed}
             onClick={micOnClick}
             onPointerDown={onMicPointerDown}
             onPointerUp={clearMicLongPress}
@@ -3843,6 +3880,26 @@ export function QuranHifzStudy({
           </svg>
         </div>
       </div>
+
+      {/* Fixed study page (2026-11-10): the live panel — everything
+          that used to sit below the page in the document flow (the
+          practice note, .hifz-controls with pause/resume, freeze-hold
+          resume, live-cancel, live hints and diagnostics, and the
+          liveError/error alerts) now lives in one fixed panel above
+          the toolbar in mushaf mode on mobile, with its own internal
+          scroll. The panel is a plain in-flow div everywhere else
+          (no CSS there), so nass/translation and desktop keep their
+          exact order: note, controls, errors. Children keep their
+          original indentation on purpose — minimal diff. */}
+      <div className="hifz-live-panel">
+      {practiceWord !== null && (
+        <p className="hifz-practice-note">
+          {labels.practiceWord}: {practiceWord.text}{' '}
+          <button type="button" onClick={() => setPracticeWord(null)}>
+            {labels.clearPractice}
+          </button>
+        </p>
+      )}
 
       <div className="hifz-controls">
         {/* Phase 4 — freeze hold: the capture paused on a wrong word
@@ -3944,7 +4001,9 @@ export function QuranHifzStudy({
         )}
         {isWhisper && <p className="hifz-hint">{labels.liveOnlyZipformer}</p>}
         {isWhisper && recState === 'recording' && <p className="hifz-hint">{labels.recording}</p>}
-        {!authed && <p className="hifz-hint">{labels.signInHint}</p>}
+        {/* The static line is hidden in mushaf mode on mobile (it is
+            a floating toast there) and kept everywhere else. */}
+        {!authed && <p className="hifz-hint hifz-signin-hint-static">{labels.signInHint}</p>}
       </div>
       {/* Tarteel (2026-11-08): the mic moved INTO the fixed bottom
           bar (see above) — no floating layer anymore. In practice
@@ -3959,6 +4018,7 @@ export function QuranHifzStudy({
           {error}
         </p>
       )}
+      </div>
 
       <HifzSettingsSheet
         open={settingsOpen}
@@ -4021,6 +4081,19 @@ export function QuranHifzStudy({
         onDelete={deleteMistake}
         onClose={() => setErrorSheetOpen(false)}
       />
+
+      {/* Fixed study page (2026-11-10): the guest sign-in hint as a
+          floating toast — fixed above the toolbar, no layout space.
+          Mushaf mode only (the static line stays in nass/translation
+          and on desktop); shown only on mobile via CSS. */}
+      {displayMode === 'mushaf' && !authed && signInToastVisible && (
+        <div className="hifz-signin-toast" role="status">
+          <p>{labels.signInHint}</p>
+          <button type="button" onClick={() => setSignInToastVisible(false)} aria-label={labels.toastClose}>
+            ×
+          </button>
+        </div>
+      )}
 
     </div>
   );
