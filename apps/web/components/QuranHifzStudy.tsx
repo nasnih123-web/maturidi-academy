@@ -133,12 +133,11 @@ import {
   type ListenRepeatMode,
   type ListenRepeatRange,
 } from '@/lib/hifz-player';
-import { HifzRosette, MicIcon } from './hifz-study/HifzRosette';
+import { HifzRosette } from './hifz-study/HifzRosette';
 import { HifzSettingsSheet } from './hifz-study/HifzSettingsSheet';
 import { HifzErrorSheet } from './hifz-study/HifzErrorSheet';
-import { ErrorsHeadIcon } from './hifz-study/HifzErrorsIcon';
 import { HifzDisplaySheet, type HifzDisplayMode } from './hifz-study/HifzDisplaySheet';
-import { EyeIcon, EyeOffIcon, HifzStudyHeader } from './hifz-study/HifzStudyHeader';
+import { HifzStudyHeader } from './hifz-study/HifzStudyHeader';
 import { HifzSearchSheet } from './hifz-study/HifzSearchSheet';
 import { QuranPickerSheet } from './QuranPickerSheet';
 import type { QuranSearchLabels } from './QuranSearchBox';
@@ -169,7 +168,6 @@ import {
 } from '@/lib/quran-mushaf-font';
 import {
   ARABIC_INDIC,
-  formatArabicIndicDecimal,
   formatArabicIndicDuration,
   toArabicIndic,
 } from '@/lib/quran-print-lines';
@@ -232,6 +230,17 @@ function renderTajweedText(text: string) {
       seg.text
     ),
   );
+}
+
+/** Latin digits for the recitation-toolbar pill ONLY (user decision
+    2026-11-10 ~11:12: the pill shows «100% | 0» in English
+    digits). Same one-decimal precision as formatArabicIndicDecimal
+    (whole numbers get no separator, 99.5 stays «99.5»), but
+    Western digits with '.'. Everything else in the app keeps
+    Eastern Arabic digits. */
+function formatLatinDecimal(value: number, fractionDigits = 1): string {
+  const fixed = value.toFixed(fractionDigits);
+  return fixed.includes('.') ? fixed.replace(/0+$/, '').replace(/\.$/, '') : fixed;
 }
 
 
@@ -3658,21 +3667,86 @@ export function QuranHifzStudy({
         </p>
       )}
 
-      {/* Bottom bar (Tarteel, 2026-11-08): EXACTLY five items,
-          fixed to the viewport bottom (not in the page flow). In
-          RTL the first DOM child renders at the right, like
-          Tarteel: mic (far right) — display sheet — errors —
-          show-whole-ayah (») — show-next-word (›). The eye
-          (hide/show script) and the settings gear moved to the top
-          bar; prev/next ayah live in the setup panel; prev/next
-          page are the swipe gesture (goToPage). The mic is the
-          record control in practice mode and play/pause in listen
-          mode (the mini player is gone). */}
-      <div className="hifz-bottom-bar" role="group" aria-label={labels.displayMode}>
+      {/* Recitation toolbar (user design, 2026-11-10): the old
+          Tarteel bottom bar is replaced by the user's green
+          toolbar, EXACTLY as designed — dir="ltr" so the visual
+          order matches the user's screenshot (chevrons + pill
+          left, mic centre, eye + grid right). Every old control
+          is wired in, nothing dropped: mic (record / play-pause
+          + long-press mode switch), «<» = peek next word,
+          «<<» = peek whole ayah, pill = accuracy + errors (tap
+          opens the errors sheet), eye = hide/show script,
+          grid = display sheet. The old errors-icon button is
+          gone — its function moved to the pill tap. The pill is
+          practice-only, as before. */}
+      <div className="recitation-toolbar" dir="ltr" role="group" aria-label={labels.displayMode}>
+        <div className="toolbar-decor toolbar-decor-left" aria-hidden="true">
+          <svg viewBox="0 0 220 130" aria-hidden="true">
+            <g fill="currentColor">
+              <path d="M0 130 V80 Q15 68 25 80 V130Z" />
+              <path d="M15 83 Q20 50 28 83Z" />
+              <path d="M26 130 V95 Q45 67 64 95 V130Z" />
+              <path d="M35 95 Q45 63 55 95Z" />
+              <path d="M55 130 V100 Q78 72 100 100 V130Z" />
+              <path d="M76 99 Q88 65 101 99Z" />
+              <path d="M100 130 V105 Q120 83 140 105 V130Z" />
+              <path d="M140 130 V95 Q165 65 190 95 V130Z" />
+              <path d="M165 95 Q178 58 190 95Z" />
+            </g>
+          </svg>
+        </div>
+        <div className="toolbar-left">
+          <button
+            type="button"
+            className="tool-button"
+            disabled={!peekTarget}
+            onClick={() => void peekNext()}
+            aria-label={labels.peekWord}
+            title={labels.peekWordHint}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 5 L8 12 L15 19" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="tool-button"
+            disabled={!peekTarget}
+            onClick={() => void peekAyah()}
+            aria-label={labels.peekAyah}
+            title={labels.peekAyahHint}
+          >
+            <svg viewBox="0 0 28 24" aria-hidden="true">
+              <path d="M13 4 L6 12 L13 20" />
+              <path d="M24 4 L17 12 L24 20" />
+            </svg>
+          </button>
+          <span className="toolbar-divider" aria-hidden="true" />
+          {studyMode === 'practice' && (
+            <button
+              type="button"
+              className={`progress-pill ${accuracyPillClass(accuracyTone)}`}
+              onClick={() => setErrorSheetOpen(true)}
+              aria-label={`${labels.pillAccuracy} ${formatLatinDecimal(pillStats.accuracy)}٪، ${labels.pillErrors} ${pillStats.errors}، ${labels.errorsOpen}`}
+              title={labels.errorsTitle}
+            >
+              <svg className="waveform" viewBox="0 0 40 30" aria-hidden="true">
+                <path d="M3 12v6 M9 6v18 M15 10v10 M21 2v26 M27 9v12 M33 5v20 M38 11v8" />
+              </svg>
+              <span>
+                <span className="hifz-pill-label">{labels.pillAccuracy}: </span>
+                {formatLatinDecimal(pillStats.accuracy)}٪
+                <span aria-hidden="true"> | </span>
+                <span className="hifz-pill-label">{labels.pillErrors}: </span>
+                {pillStats.errors}
+              </span>
+            </button>
+          )}
+        </div>
         {(isZipformer || isWhisper) && (
           <button
             type="button"
-            className={`hifz-mic-3d${micActive ? ' is-live' : ''}`}
+            className="mic-button"
             aria-label={
               studyMode === 'listen'
                 ? listen.isPlaying
@@ -3689,89 +3763,85 @@ export function QuranHifzStudy({
             onContextMenu={(e) => e.preventDefault()}
             title={labels.listenLongPressSwitch}
           >
-            {studyMode === 'listen' ? (
-              listen.isPlaying ? (
-                <span className="hifz-mic-pause" aria-hidden="true" />
+            <span className="mic-outer-ring">
+              {studyMode === 'listen' ? (
+                listen.isPlaying ? (
+                  <span className="hifz-mic-pause" aria-hidden="true" />
+                ) : (
+                  <span className="hifz-mic-play" aria-hidden="true" />
+                )
+              ) : micActive ? (
+                <span className="hifz-mic-stop" aria-hidden="true" />
               ) : (
-                <span className="hifz-mic-play" aria-hidden="true" />
-              )
-            ) : micActive ? (
-              <span className="hifz-mic-stop" aria-hidden="true" />
-            ) : (
-              <MicIcon />
-            )}
+                <svg viewBox="0 0 48 56" aria-hidden="true">
+                  <rect x="18" y="3" width="12" height="31" rx="6" />
+                  <path d="M9 25v3a15 15 0 0 0 30 0v-3" />
+                  <path d="M24 43v8 M15 51h18" />
+                </svg>
+              )}
+            </span>
           </button>
         )}
-        <button
-          type="button"
-          className="hifz-bottom-btn"
-          onClick={() => setDisplaySheetOpen(true)}
-          aria-label={labels.displaySheetTitle}
-          title={labels.displaySheetTitle}
-        >
-          <span aria-hidden="true">▦</span>
-        </button>
-        {/* Hide/show-script eye (moved here from the old top-bar
-            row 2, 2026-11-08, user order: eye only at the bottom). */}
-        <button
-          type="button"
-          className="hifz-bottom-btn"
-          aria-pressed={scriptHidden}
-          aria-label={scriptHidden ? labels.showScript : labels.hideScript}
-          title={scriptHidden ? labels.showScript : labels.hideScript}
-          onClick={() => {
-            setScriptHidden((v) => !v);
-            setRevealedWords(new Set());
-          }}
-        >
-          {scriptHidden ? <EyeOffIcon /> : <EyeIcon />}
-        </button>
-        <button
-          type="button"
-          className="hifz-bottom-btn"
-          onClick={() => setErrorSheetOpen(true)}
-          aria-label={labels.errorsOpen}
-          title={labels.errorsTitle}
-        >
-          <ErrorsHeadIcon className="hifz-bottom-btn-icon" />
-        </button>
-        {/* Accuracy pill (2026-11-08, user order — Tarteel image 2):
-            live accuracy % + error count next to the errors button.
-            Unlike the pills row's provisional count rule, this always
-            shows the percent (the user's reference shows 100%); it
-            is visible in practice mode only, idle 100% | 0. */}
-        {studyMode === 'practice' && (
-          <span
-            className={`hifz-pill hifz-bottom-pill ${accuracyPillClass(accuracyTone)}`}
-            aria-label={`${labels.pillAccuracy} ${formatArabicIndicDecimal(pillStats.accuracy)}٪، ${labels.pillErrors} ${toArabicIndic(pillStats.errors)}`}
+        <div className="toolbar-right">
+          <span className="toolbar-divider" aria-hidden="true" />
+          <button
+            type="button"
+            className="tool-button"
+            aria-pressed={scriptHidden}
+            aria-label={scriptHidden ? labels.showScript : labels.hideScript}
+            title={scriptHidden ? labels.showScript : labels.hideScript}
+            onClick={() => {
+              setScriptHidden((v) => !v);
+              setRevealedWords(new Set());
+            }}
           >
-            <span className="hifz-pill-label">{labels.pillAccuracy}: </span>
-            {formatArabicIndicDecimal(pillStats.accuracy)}٪
-            <span aria-hidden="true"> | </span>
-            <span className="hifz-pill-label">{labels.pillErrors}: </span>
-            {toArabicIndic(pillStats.errors)}
-          </span>
-        )}
-        <button
-          type="button"
-          className="hifz-bottom-btn hifz-bottom-btn-peek"
-          disabled={!peekTarget}
-          onClick={() => void peekAyah()}
-          aria-label={labels.peekAyah}
-          title={labels.peekAyahHint}
-        >
-          <span aria-hidden="true">»</span>
-        </button>
-        <button
-          type="button"
-          className="hifz-bottom-btn hifz-bottom-btn-peek"
-          disabled={!peekTarget}
-          onClick={() => void peekNext()}
-          aria-label={labels.peekWord}
-          title={labels.peekWordHint}
-        >
-          <span aria-hidden="true">›</span>
-        </button>
+            <svg viewBox="0 0 32 24" aria-hidden="true">
+              <path d="M2 12 Q16 -5 30 12 Q16 29 2 12Z" />
+              <circle cx="16" cy="12" r="5" />
+              {scriptHidden && <line x1="5" y1="3" x2="27" y2="21" />}
+            </svg>
+          </button>
+          <span className="toolbar-divider" aria-hidden="true" />
+          <button
+            type="button"
+            className="tool-button grid-button"
+            onClick={() => setDisplaySheetOpen(true)}
+            aria-label={labels.displaySheetTitle}
+            title={labels.displaySheetTitle}
+          >
+            <svg viewBox="0 0 30 30" aria-hidden="true">
+              <g fill="currentColor" stroke="none">
+                <circle cx="5" cy="5" r="2.5" />
+                <circle cx="15" cy="5" r="2.5" />
+                <circle cx="25" cy="5" r="2.5" />
+                <circle cx="5" cy="15" r="2.5" />
+                <circle cx="15" cy="15" r="2.5" />
+                <circle cx="25" cy="15" r="2.5" />
+                <circle cx="5" cy="25" r="2.5" />
+                <circle cx="15" cy="25" r="2.5" />
+                <circle cx="25" cy="25" r="2.5" />
+              </g>
+            </svg>
+          </button>
+        </div>
+        <div className="toolbar-decor toolbar-decor-right" aria-hidden="true">
+          <svg viewBox="0 0 220 150" aria-hidden="true">
+            <g fill="currentColor">
+              <path d="M0 150 V112 Q25 80 50 112 V150Z" />
+              <path d="M20 112 Q35 72 50 112Z" />
+              <path d="M53 150 V103 Q80 65 107 103 V150Z" />
+              <path d="M67 105 Q80 55 94 105Z" />
+              <path d="M100 150 V65 H116 V150Z" />
+              <path d="M96 65 L108 39 L120 65Z" />
+              <path d="M106 40 V20 M103 28 H111" />
+              <path d="M137 150 V110 Q161 80 185 110 V150Z" />
+              <path d="M148 110 Q161 65 175 110Z" />
+              <path d="M179 150 V70 H193 V150Z" />
+              <path d="M176 70 L186 45 L196 70Z" />
+              <path d="M186 45 V28" />
+            </g>
+          </svg>
+        </div>
       </div>
 
       <div className="hifz-controls">
