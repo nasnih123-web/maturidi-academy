@@ -2805,6 +2805,62 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
   .quran-hifz-study .hifz-line:not(.hifz-line-header):not(.hifz-line-basmala) { text-align: justify; text-align-last: justify; }
   .quran-hifz-study .hifz-header { padding-bottom: 0; }
 }
+/* Fill the screen between the sticky top bar and the fixed
+   recitation toolbar (user complaint 2026-11-10 "از نوار پایین
+   کل صفحات اینقدر فاصله دارن اینو درست کن"). Root cause,
+   measured at 393x790 (POCO X5 Chrome, URL bar visible): the
+   15-line page is 21px too tall, so the page number sits UNDER
+   the fixed toolbar at scroll 0 and the user has to scroll;
+   once scrolled, the white container ends and the dark body
+   background shows through the transparent .quran-reader
+   wrapper — 214px of void below the page number at scroll 235
+   (169px white + 45px dark; 252px at max scroll). Short pages
+   never fill the screen at all (p1: 323px void at 393x852).
+   Fix (mobile, mushaf mode only): the study root is a flex
+   column at least one dynamic viewport tall, the line page
+   flexes to fill it, and its lines spread with space-between —
+   the page number lands just above the toolbar on every page.
+   The 104px bottom padding (toolbar clearance) is UNTOUCHED:
+   at max scroll the last line still clears the toolbar. The
+   section chrome is trimmed (padding-bottom 20 -> 8, footer
+   margin 16 -> 8, line padding 0.1rem -> 0, surah-header margins
+   0.75rem -> 0.25rem) so the 15-line page fits a 790px viewport
+   at scroll 0 — the 16.5px font and 2.1 leading are NOT touched
+   (the 2026-11-08 fit work rejected denser leading; the padding
+   trims only remove 1.6px of breathing per line side, and the
+   freed space returns as inter-line spread at 852px).
+   Desktop untouched. */
+@media (max-width: 768px) {
+  .quran-hifz-study.hifz-mode-mushaf {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  .quran-hifz-study.hifz-mode-mushaf .hifz-line-page {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+  .quran-hifz-study.hifz-mode-mushaf .hifz-page-footer { margin-top: 0.5rem; }
+  /* Fit trims (same fix): the 0.1rem line padding and the
+     0.75rem surah-header margins are the remaining slack — a
+     15-line page is 14px too tall on p50 and 53px on p604 at
+     790px without them. */
+  .quran-hifz-study.hifz-mode-mushaf .hifz-line { padding-top: 0; padding-bottom: 0; }
+  .quran-hifz-study.hifz-mode-mushaf .hifz-line-header,
+  .quran-hifz-study.hifz-mode-mushaf .hifz-line-header--svg {
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+  /* The void below the white container showed the dark body
+     background (the .quran-reader wrapper is transparent). While
+     the study is present the page background is white. */
+  body:has(.quran-hifz-study) { background: #ffffff; }
+}
 /* Basmalah line — THIS RULE MUST STAY AFTER the mobile media query
    above (Wave 1 fix, 2026-11-09, research §6.3). Same specificity
    as .hifz-line, so file order decides: the mobile rule's

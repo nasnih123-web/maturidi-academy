@@ -3094,7 +3094,7 @@ export function QuranHifzStudy({
 
   return (
     <div
-      className={`quran-hifz-study${hifzSettings.hideAyahMarkers ? ' hifz-hide-markers' : ''}`}
+      className={`quran-hifz-study${hifzSettings.hideAyahMarkers ? ' hifz-hide-markers' : ''}${displayMode === 'mushaf' ? ' hifz-mode-mushaf' : ''}`}
       dir={locale === 'fa' || locale === 'ar' ? 'rtl' : 'ltr'}
     >
       {/* Header: Tarteel top bar, row 1 (hamburger + surah card +
