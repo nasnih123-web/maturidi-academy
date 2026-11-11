@@ -362,12 +362,23 @@ export function QuranHifzStudy({
       A live session cannot start or survive without a connection, so
       the page says so plainly instead of failing with a generic
       error. The ref mirrors it for the socket callbacks, which close
-      over the state at start time. */
-  const [isOffline, setIsOffline] = useState(
-    () => typeof navigator !== 'undefined' && !navigator.onLine,
-  );
+      over the state at start time.
+      REGRESSION FIX (2026-11-11, React #418 on every fresh load):
+      the old initializer read navigator.onLine during render. Node
+      24 (the SSR runtime) has a global `navigator` whose `onLine`
+      is `undefined`, so the server rendered isOffline=true and the
+      SSR HTML contained the offline note, while the browser's first
+      render (navigator.onLine === true) omitted it — a hydration
+      text mismatch on every fresh load, forcing React to discard
+      and client-re-render the boundary. The first render now
+      assumes online on both sides; the mount effect below syncs
+      the real value, so a genuinely offline browser still gets
+      the note (as an update, never a mismatch). */
+  const [isOffline, setIsOffline] = useState(false);
   const offlineRef = useRef(isOffline);
   useEffect(() => {
+    setIsOffline(!window.navigator.onLine);
+    offlineRef.current = !window.navigator.onLine;
     const onOnline = () => {
       offlineRef.current = false;
       setIsOffline(false);
