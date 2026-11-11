@@ -37,8 +37,7 @@ jobs:
             sleep 60
           done
           echo "apt failed after 4 attempts"
-          exit 1
-  
+          exit 1  
       - name: Lint (ruff baseline)
         # ruff در requirements.txt پین شده (0.17.1) — شمارش خطاها به نسخه
         # حساس است و نصبِ بدون پین هر بار عدد متفاوتی می‌داد (ریشهٔ اختلاف
