@@ -548,4 +548,38 @@ describe('Fixed hifz study page + sign-in toast (user 2026-11-10)', () => {
     assert.match(study, /wallVisible \? ' hifz-has-wall' : ''/);
     assert.match(study, /const wallVisible =\s*displayMode === 'mushaf' &&/);
   });
+
+  it('nass mode wraps inside the viewport + the persisted display mode never mismatches SSR (regression 2026-11-11)', () => {
+    const css = readCss();
+    // Nass wrap (live p359 after PR #126): each ayah paragraph is
+    // a run of adjacent inline word spans with NO whitespace between
+    // them, so there is no line-break opportunity at all — a long
+    // ayah was one ~2770px unbreakable line (docScrollW 2792 in a
+    // 393px viewport; the layout viewport expanded to 1572 and the
+    // page rendered at quarter scale on a real phone). The wrap rule
+    // lets the browser break between the spans (measured after the
+    // fix: docScrollW 393, 0 offenders).
+    assert.match(css, /\.quran-hifz-study \.hifz-nass p \{ overflow-wrap: anywhere; \}/);
+    const study = readStudy();
+    // Display-mode hydration (same #418 class as the isOffline fix
+    // in PR #126): SSR always renders mushaf (no localStorage on
+    // the server), so the first client render must assume mushaf
+    // too; the stored mode syncs in a mount effect, never during
+    // render — a stored nass/translation choice otherwise mismatches
+    // SSR on every fresh load.
+    assert.match(study, /const \[displayMode, setDisplayMode\] = useState<DisplayMode>\('mushaf'\);/);
+    assert.match(study, /useEffect\(\(\) => \{\s*const stored = readDisplayMode\(\);\s*if \(stored !== 'mushaf'\) setDisplayMode\(stored\);\s*\}, \[\]\);/);
+    // Tanzil credit hidden in mushaf mode only (user decision
+    // 2026-11-11 «پنهان کن»): in mushaf mode the credit <p> paints
+    // over mushaf line 2 (measured y=148–168 on p106) because the
+    // fixed study root is out of flow; in nass/translation it sits
+    // at the end of the surah and stays visible.
+    assert.match(css, /\.page-wrap:has\(\.quran-hifz-study\.hifz-mode-mushaf\) \.quran-text-credit \{ display: none; \}/);
+    const page = readFirst([
+      'apps/web/app/[locale]/quran/[surah]/page.tsx',
+      'app/[locale]/quran/[surah]/page.tsx',
+    ]);
+    assert.ok(page, 'quran/[surah]/page.tsx not found');
+    assert.match(page, /<p className="quran-text-credit"/);
+  });
 });
