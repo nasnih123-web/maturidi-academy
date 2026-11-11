@@ -481,7 +481,22 @@ export function QuranHifzStudy({
   const [errorSheetOpen, setErrorSheetOpen] = useState(false);
   // Page display mode: page-flip (one page), scrolling (all pages
   // of the surah), or card (framed mushaf card). Persisted.
-  const [displayMode, setDisplayMode] = useState<DisplayMode>(() => readDisplayMode());
+  // REGRESSION FIX (2026-11-11, React #418 on every fresh nass /
+  // translation load): the old initializer read the persisted mode
+  // from localStorage during render. The server has no localStorage,
+  // so SSR always rendered mushaf, while the browser's first render
+  // showed the stored mode (nass/translation) — a hydration text
+  // mismatch on every fresh load, forcing React to discard and
+  // client-re-render the boundary (same class as the isOffline
+  // #418 fixed in PR #126). The first render now always assumes
+  // mushaf on both sides; the mount effect below syncs the stored
+  // mode, so a stored nass/translation choice still applies (as an
+  // update, never a mismatch).
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('mushaf');
+  useEffect(() => {
+    const stored = readDisplayMode();
+    if (stored !== 'mushaf') setDisplayMode(stored);
+  }, []);
   // Study mode: practice (recite, Tarteel hifz) or listen (follow
   // the reciter's audio with word-by-word highlight).
   const [studyMode, setStudyMode] = useState<'practice' | 'listen'>('practice');

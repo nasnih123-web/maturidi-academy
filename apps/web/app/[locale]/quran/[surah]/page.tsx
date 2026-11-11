@@ -608,7 +608,7 @@ export default async function SurahPage({
         }}
       />
       {providers?.providersByType?.text === 'self_hosted' && (
-        <p style={{ textAlign: 'center', fontSize: '0.7rem', opacity: 0.6, marginTop: '2rem' }}>
+        <p className="quran-text-credit" style={{ textAlign: 'center', fontSize: '0.7rem', opacity: 0.6, marginTop: '2rem' }}>
           <a href="https://tanzil.net" target="_blank" rel="noreferrer">
             {t('textCredit')}
           </a>

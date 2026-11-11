@@ -3568,6 +3568,30 @@ body:has(.quran-hifz-study .recitation-toolbar) .site-footer {
    ayah per row, rosette at the end; same font as the page lines. */
 .quran-hifz-study .hifz-nass { padding: 0 1rem 1rem; }
 .quran-hifz-study .hifz-nass-ayah { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: clamp(1.25rem, 4.2vw, 2.1rem); line-height: 2.1; text-align: justify; text-align-last: justify; margin: 0; padding: 0.15rem 0; border-bottom: 1px solid rgba(0,0,0,0.10); }
+/* Nass-mode regression fix (2026-11-11, live p359 after PR #126):
+   each ayah paragraph is a run of adjacent inline word spans with
+   NO whitespace between them, so there is no line-break opportunity
+   at all — a long ayah is one ~2770px unbreakable line (measured:
+   docScrollW 2792 in a 393px viewport; the layout viewport expanded
+   to 1572 and the page rendered at quarter scale on a real phone —
+   the same shrink-to-fit class as the PR #126 mushaf regression).
+   In RTL the line extends left from the paragraph's right edge
+   (measured: far word at x=-1215 while its paragraph sits at
+   x=1195). overflow-wrap lets the browser break between the spans,
+   so the ayahs wrap inside the viewport (measured after the fix:
+   docScrollW 393, 0 offenders, header + toolbar full-width). The
+   word spacing is unchanged (the 0.25em word margins stay); mushaf
+   lines are unaffected (they are not inside .hifz-nass). */
+.quran-hifz-study .hifz-nass p { overflow-wrap: anywhere; }
+/* Tanzil text credit — hidden in hifz mushaf mode only (user decision
+   2026-11-11 «پنهان کن»): in mushaf mode the credit <p> (a sibling
+   after QuranReader in page.tsx) paints over mushaf line 2 (measured
+   y=148–168 on p106; line 3 on the user's p359 phone shot) because
+   the fixed study root is out of flow. In nass/translation it sits
+   correctly at the end of the surah, and in the umum reader it is
+   the text attribution — so it stays visible there. The :has() guard
+   keys on the mushaf-only root class, so no other mode is affected. */
+.page-wrap:has(.quran-hifz-study.hifz-mode-mushaf) .quran-text-credit { display: none; }
 /* Tarteel display sheet — translation mode: read-only scrolling
    translation, one block per ayah, one paragraph per edition. */
 .quran-hifz-study .hifz-translation { padding: 0 1rem 1rem; }
