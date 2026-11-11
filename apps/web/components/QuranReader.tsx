@@ -700,26 +700,31 @@ function QuranUmumReader({
 
   // ---- Round 4: display prefs (CRM defaults, per-device localStorage
   // overrides win when present; the toolbar works standalone either
-  // way). The initializer reads storage synchronously so the first
-  // paint already uses the reader's own choice (SSR: window absent →
-  // CRM defaults, then the mount effect applies storage).
-  const [prefs, setPrefs] = useState<DisplayPrefs>(() => {
-    const crm: DisplayPrefs = {
-      ...DEFAULT_DISPLAY_PREFS,
-      font: parseDisplayFont(settings.displayFont),
-      fontSize: parseDisplayFontSize(
-        fontSizeDefault ?? DEFAULT_DISPLAY_PREFS.fontSize,
-        DEFAULT_DISPLAY_PREFS.fontSize,
-      ),
-      theme: parseDisplayTheme(settings.displayTheme),
-      repeat:
-        settings.repeatDefault === 'ayah' || settings.repeatDefault === 'surah'
-          ? settings.repeatDefault
-          : 'off',
-    };
-    if (typeof window === 'undefined') return crm;
-    return { ...crm, ...(loadDisplayPrefs() ?? {}) };
-  });
+  // way). The initializer returns CRM defaults on BOTH server and
+  // client — reading storage during render would make the first
+  // client render differ from SSR HTML (React #418) whenever a saved
+  // pref differs from the CRM default. The saved prefs are applied
+  // in the mount effect below instead (one extra render after
+  // hydration; the reader's own choice is preserved).
+  const [prefs, setPrefs] = useState<DisplayPrefs>(() => ({
+    ...DEFAULT_DISPLAY_PREFS,
+    font: parseDisplayFont(settings.displayFont),
+    fontSize: parseDisplayFontSize(
+      fontSizeDefault ?? DEFAULT_DISPLAY_PREFS.fontSize,
+      DEFAULT_DISPLAY_PREFS.fontSize,
+    ),
+    theme: parseDisplayTheme(settings.displayTheme),
+    repeat:
+      settings.repeatDefault === 'ayah' || settings.repeatDefault === 'surah'
+        ? settings.repeatDefault
+        : 'off',
+  }));
+  // Mount only: apply the per-device saved prefs (if any) AFTER
+  // hydration, so the first client render matches SSR HTML (#418).
+  useEffect(() => {
+    const saved = loadDisplayPrefs();
+    if (saved) setPrefs((prev) => ({ ...prev, ...saved }));
+  }, []);
   const updatePrefs = (patch: Partial<DisplayPrefs>): void => {
     setPrefs((prev) => {
       const next = { ...prev, ...patch };
