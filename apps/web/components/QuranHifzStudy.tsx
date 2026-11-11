@@ -550,6 +550,32 @@ export function QuranHifzStudy({
   // user hides them here on purpose.
   const [scriptHidden, setScriptHidden] = useState(false);
   const [revealedWords, setRevealedWords] = useState<Set<string>>(new Set());
+  // Eye scope (user 2026-11-12): the eye's show / hide applies to
+  // the unit of the FIRST selection — a page (that page only), a
+  // surah (the whole surah), a juz (the whole juz), a hizb (the
+  // whole hizb). A new selection becomes the new scope; turning
+  // pages inside the unit keeps the eye state, turning outside it
+  // leaves the page on the plain practice behaviour. The initial
+  // scope mirrors the deep link: a ?view=page&target=N link (with
+  // no ?ayah=) is a page selection, anything else opens a surah.
+  type EyeScope =
+    | { kind: 'page'; target: number }
+    | { kind: 'surah'; target: number }
+    | { kind: 'juz'; target: number }
+    | { kind: 'hizb'; target: number };
+  const [eyeScope, setEyeScope] = useState<EyeScope>(() =>
+    initialPageTarget !== null &&
+    initialPageTarget !== undefined &&
+    initialAyah === null
+      ? { kind: 'page', target: initialPageTarget }
+      : { kind: 'surah', target: initialSurah },
+  );
+  // The eye's own hidden state (user 2026-11-12): DEFAULT HIDDEN —
+  // the slashed eye. scriptHidden keeps its old default (false)
+  // for listen mode, nass / translation and the wall, where the eye
+  // never changes anything; the eye button toggles eyeHidden in
+  // mushaf practice and scriptHidden everywhere else.
+  const [eyeHidden, setEyeHidden] = useState(true);
   // Practice range + repetition (one surah; null end = surah end).
   const [rangeStart, setRangeStart] = useState<number | null>(null);
   const [rangeEnd, setRangeEnd] = useState<number | null>(null);
@@ -2425,6 +2451,26 @@ export function QuranHifzStudy({
     };
   }, [v2Index]);
 
+  // The eye's juz / hizb scope needs the boundaries table, which the
+  // header-fallback effect above only loads when V2 failed outright —
+  // on a healthy load it stays null and a juz / hizb eye scope would
+  // silently cover nothing. Load it lazily the moment a juz or hizb
+  // eye scope is chosen: the picker sheet already fetched the same
+  // file to list its rows, so this is a cache hit in practice, and a
+  // failed fetch just leaves the plain practice behaviour (the
+  // boundaries-null guard in eyeCoversWord).
+  useEffect(() => {
+    if (eyeScope.kind !== 'juz' && eyeScope.kind !== 'hizb') return;
+    if (boundaries !== null) return;
+    let cancelled = false;
+    loadBoundaries().then((b) => {
+      if (!cancelled) setBoundaries(b);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [eyeScope, boundaries]);
+
   const isZipformer = engineStatus?.engine === 'zipformer';
   const isWhisper = engineStatus?.engine === 'whisper_quran';
 
@@ -2455,6 +2501,30 @@ export function QuranHifzStudy({
   const renderV4Glyph = (slot: LineWordSlot) => (
     <span style={{ fontFamily: v4FontFamily ?? undefined }}>{slot.glyph}</span>
   );
+  // The eye's unit show / hide applies only in mushaf practice
+  // mode. Listen mode keeps its own hide (scriptHidden), and nass /
+  // translation keep theirs — the eye never changes them.
+  const eyeApplies = displayMode === 'mushaf' && studyMode === 'practice';
+  // The eye's icon follows the mode it controls: the unit hide in
+  // mushaf practice, the old script-hide everywhere else.
+  const eyeHiddenNow = eyeApplies ? eyeHidden : scriptHidden;
+  // Is one (surah, ayah) inside the eye's scope? Surah scope is the
+  // word's own surah; juz / hizb scope is the word's own juz / hizb
+  // (rangeContaining: an ayah belongs wholly to the juz / hizb it
+  // starts in — juz and hizb boundaries always fall on ayah starts);
+  // page scope is the page on screen (an ayah may span pages, so the
+  // page's own number decides, not the ayah's start page). While the
+  // boundaries still load, juz / hizb words are out of scope and the
+  // plain practice behaviour stays.
+  const eyeCoversWord = (wordSurah: number, wordAyah: number): boolean => {
+    if (eyeScope.kind === 'surah') return wordSurah === eyeScope.target;
+    if (eyeScope.kind === 'page') return (headerMeta?.page ?? null) === eyeScope.target;
+    if (!boundaries) return false;
+    const containing = rangeContaining(boundaries, wordSurah, wordAyah);
+    return eyeScope.kind === 'juz'
+      ? containing.juz === eyeScope.target
+      : containing.hizb === eyeScope.target;
+  };
   const renderLineWord = (slot: LineWordSlot, key: string) => {
     // Listen mode: the word the reciter is currently on.
     const isListenNow =
@@ -2562,6 +2632,57 @@ export function QuranHifzStudy({
           </span>
         );
       }
+      // The eye (mushaf practice only): inside the selected unit the
+      // eye SHOWS unwritten words too — plain visible text, never
+      // graded — and while hidden every word of the unit is the same
+      // dotted, tappable placeholder as a hidden written word, so
+      // the whole unit reads as hidden and one tap reveals one word.
+      // Outside the unit the plain practice hiding stays. Spacers
+      // (index -1) have no word to show, so they stay hidden spans.
+      if (eyeApplies && slot.index >= 0 && eyeCoversWord(slot.surah, slot.ayah)) {
+        const eyeKey = `${slot.surah}:${slot.ayah}:${slot.index}`;
+        if (eyeHidden && !revealedWords.has(eyeKey)) {
+          return (
+            <button
+              type="button"
+              key={key}
+              className="hifz-line-word hifz-line-word-concealed"
+              onClick={() => {
+                if (wordTapSuppressed()) return;
+                setRevealedWords((prev) => new Set(prev).add(eyeKey));
+              }}
+              aria-label={labels.showScript}
+              data-word-key={eyeKey}
+              data-qul-id={slot.qulId}
+            >
+              <span aria-hidden="true">{renderTajweedText(slot.text)}</span>
+            </button>
+          );
+        }
+        const useGlyphShown =
+          v4FontLoaded === true &&
+          shouldUseV4Glyph(slot.glyph, {
+            concealed: false,
+            newestLive: false,
+            status: null,
+            listenNow: false,
+          });
+        return (
+          <span
+            key={key}
+            className={['hifz-line-word', useGlyphShown ? 'hifz-line-word-glyph' : ''].join(' ')}
+            data-word-key={eyeKey}
+            data-qul-id={slot.qulId}
+          >
+            {useGlyphShown ? renderV4Glyph(slot) : renderTajweedText(slot.text)}
+            {slot.pauseAfter ? (
+              <span className="hifz-word-pause" aria-hidden="true">
+                {slot.pauseAfter}
+              </span>
+            ) : null}
+          </span>
+        );
+      }
       // Hidden (unwritten/spacer) words: visibility:hidden hides a
       // COLR glyph element-level, so these MAY stay glyphs — the
       // layout is identical either way, and the glyph keeps the
@@ -2601,7 +2722,24 @@ export function QuranHifzStudy({
     // them is the same «hide the script» gesture.
     const wordKey =
       slot.index >= 0 ? `${slot.surah}:${slot.ayah}:${slot.index}` : null;
-    if (scriptHidden && wordKey !== null && !revealedWords.has(wordKey)) {
+    // The eye (mushaf practice only): inside the selected unit the
+    // hidden eye conceals every word — written and unwritten alike
+    // (the unwritten half is the branch above) — except a word the
+    // user peeked: the peek is the memoriser's lifeline while the
+    // text is hidden, and re-hiding it would make peek do nothing
+    // visible. Outside the unit the plain practice behaviour stays.
+    // Everywhere else (listen, nass, translation) the old
+    // script-hide keeps its exact meaning.
+    const eyeConcealsWritten =
+      eyeApplies &&
+      eyeHidden &&
+      w.status !== 'peeked' &&
+      wordKey !== null &&
+      eyeCoversWord(slot.surah, slot.ayah) &&
+      !revealedWords.has(wordKey);
+    const scriptConcealsWritten =
+      !eyeApplies && scriptHidden && wordKey !== null && !revealedWords.has(wordKey);
+    if (eyeConcealsWritten || scriptConcealsWritten) {
       return (
         <button
           type="button"
@@ -2879,12 +3017,13 @@ export function QuranHifzStudy({
   // carries every one of the 604 pages; boundaries.page starts are
   // the fallback). A range in another surah moves the surah too,
   // via resumeAyahRef — the same pattern the resume button and the
-  // deep-link effect use. The kind/target are the sheet's own
-  // (firstPage already encodes them); if neither source is loaded
-  // yet the sheet stays open instead of a silent no-op jump — both
-  // load on mount, so this is a load race only.
+  // deep-link effect use. If neither source is loaded yet the sheet
+  // stays open instead of a silent no-op jump — both load on mount,
+  // so this is a load race only. The range is also the eye's new
+  // scope (user 2026-11-12): the eye shows / hides that whole
+  // range, starting hidden again.
   const jumpToPickerRange = useCallback(
-    (_kind: RangeKind, _target: number, firstPage: number): void => {
+    (kind: RangeKind, target: number, firstPage: number): void => {
       let first: { surah: number; ayah: number } | null = null;
       if (v2Index !== undefined && v2Index !== null) {
         const entry = v2Index.pageFirstAyahs.find(([, , p]) => p === firstPage);
@@ -2895,6 +3034,9 @@ export function QuranHifzStudy({
       }
       if (!first) return; // index still loading — sheet stays open
       setPickerOpen(false);
+      setEyeScope({ kind, target });
+      setEyeHidden(true);
+      setRevealedWords(new Set());
       if (first.surah !== surah) {
         resumeAyahRef.current = first.ayah;
         setSurah(first.surah);
@@ -3047,17 +3189,30 @@ export function QuranHifzStudy({
             practiceWord.ayah === 1 &&
             practiceWord.index >= 0 &&
             practiceWord.index < 4;
+          // The eye and the Basmalah SVG: the SVG branch bypasses
+          // renderLineWord, so without this the eye could never show
+          // or hide the Basmalah — on the first page of every surah
+          // it would stay invisible while shown, or stay visible
+          // while hidden. The Basmalah belongs to the surah's first
+          // ayah, so its scope follows the first slot.
+          const basmalaInScope =
+            eyeApplies &&
+            line.slots.length > 0 &&
+            line.slots[0] !== undefined &&
+            eyeCoversWord(line.slots[0].surah, line.slots[0].ayah);
+          const basmalaEyeShown = basmalaInScope && !eyeHidden;
           if (
             studyMode !== 'listen' &&
             !scriptHidden &&
             !basmalaPracticeSelected &&
+            !(basmalaInScope && eyeHidden) &&
             (basmalaAllHidden || basmalaAllPlain)
           ) {
             return (
               <p key={line.key} className="hifz-line hifz-line-basmala" dir="rtl">
                 <img
                   className={
-                    basmalaAllHidden
+                    basmalaAllHidden && !basmalaEyeShown
                       ? 'hifz-basmala-svg hifz-line-word-hidden'
                       : 'hifz-basmala-svg'
                   }
@@ -3239,7 +3394,15 @@ export function QuranHifzStudy({
           {labels.surahLabel}
           <select
             value={surah}
-            onChange={(e) => setSurah(Number(e.target.value))}
+            onChange={(e) => {
+              // A surah picked here is a surah selection: the eye's
+              // new scope is the whole surah, starting hidden.
+              const n = Number(e.target.value);
+              setSurah(n);
+              setEyeScope({ kind: 'surah', target: n });
+              setEyeHidden(true);
+              setRevealedWords(new Set());
+            }}
             aria-label={labels.surahLabel}
           >
             {surahList.map((s) => (
@@ -3643,11 +3806,22 @@ export function QuranHifzStudy({
                   // just that word (same gradual reveal as the page;
                   // applies in both modes, like the line page).
                   const wallKey = `${surah}:${group.ayah}:${word.index}`;
-                  if (
+                  // The eye (mushaf practice only): the wall is the
+                  // current page's fallback, so it follows the eye
+                  // like the page does; everywhere else the old
+                  // script-hide keeps its exact meaning.
+                  const wallEyeConcealed =
+                    eyeApplies &&
+                    eyeHidden &&
+                    word.status !== 'peeked' &&
+                    eyeCoversWord(surah, group.ayah) &&
+                    !revealedWords.has(wallKey);
+                  const wallScriptConcealed =
+                    !eyeApplies &&
                     scriptHidden &&
                     word.status !== 'peeked' &&
-                    !revealedWords.has(wallKey)
-                  ) {
+                    !revealedWords.has(wallKey);
+                  if (wallEyeConcealed || wallScriptConcealed) {
                     return (
                       <button
                         type="button"
@@ -3850,18 +4024,23 @@ export function QuranHifzStudy({
           <button
             type="button"
             className="tool-button"
-            aria-pressed={scriptHidden}
-            aria-label={scriptHidden ? labels.showScript : labels.hideScript}
-            title={scriptHidden ? labels.showScript : labels.hideScript}
+            aria-pressed={eyeHiddenNow}
+            aria-label={eyeHiddenNow ? labels.showScript : labels.hideScript}
+            title={eyeHiddenNow ? labels.showScript : labels.hideScript}
             onClick={() => {
-              setScriptHidden((v) => !v);
+              // One button, one state per mode: in mushaf practice
+              // it toggles the unit show / hide (eyeHidden, default
+              // hidden); everywhere else it toggles the old
+              // script-hide, exactly as before.
+              if (eyeApplies) setEyeHidden((v) => !v);
+              else setScriptHidden((v) => !v);
               setRevealedWords(new Set());
             }}
           >
             <svg viewBox="0 0 32 24" aria-hidden="true">
               <path d="M2 12 Q16 -5 30 12 Q16 29 2 12Z" />
               <circle cx="16" cy="12" r="5" />
-              {scriptHidden && <line x1="5" y1="3" x2="27" y2="21" />}
+              {eyeHiddenNow && <line x1="5" y1="3" x2="27" y2="21" />}
             </svg>
           </button>
           <span className="toolbar-divider" aria-hidden="true" />
