@@ -514,7 +514,12 @@ describe('Fixed hifz study page + sign-in toast (user 2026-11-10)', () => {
     const css = readCss();
     // The study root itself is fixed to the viewport (the lock):
     // the document then has no scrollable overflow at all.
-    assert.match(css, /\.quran-hifz-study\.hifz-mode-mushaf:not\(\.hifz-has-wall\) \{\s*position: fixed;\s*inset: 0;\s*\}/);
+    // margin: 0 (regression fix 2026-11-11): the base rule carries
+    // `margin: 0 calc(-1 * clamp(1rem, 3vw, 2rem))`, which made the
+    // fixed root 425px wide at x=-16 on a 393px viewport — the
+    // horizontal overflow real mobile Chrome expands the layout
+    // viewport for. A fixed root IS the viewport: no margin.
+    assert.match(css, /\.quran-hifz-study\.hifz-mode-mushaf:not\(\.hifz-has-wall\) \{\s*position: fixed;\s*inset: 0;\s*margin: 0;\s*\}/);
     // Second layer: overflow clip on html + body (hidden alone was
     // measured NOT to stop window.scrollTo in the sandbox Chromium).
     assert.match(css, /html:has\(\.quran-hifz-study\.hifz-mode-mushaf:not\(\.hifz-has-wall\)\) \{\s*overflow: clip;/);

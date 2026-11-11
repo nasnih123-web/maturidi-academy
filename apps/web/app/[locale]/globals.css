@@ -2852,10 +2852,24 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
      The root keeps its flex column + 100dvh height (inset:0 pins
      it to the viewport). When the wall renders (hifz-has-wall) the
      root returns to normal flow and the page scrolls again, so the
-     wall stays reachable. */
+     wall stays reachable.
+     REGRESSION FIX (2026-11-11, live p106 after PR #125): the base
+     rule for .quran-hifz-study carries `margin: 0 calc(-1 *
+     clamp(1rem, 3vw, 2rem))` — in normal flow that negative margin
+     bleeds the study into the reader container's padding and is
+     harmless. Once the root is fixed, the same margin makes it
+     425px wide at x=-16 on a 393px viewport (measured: root, header
+     and page all 425; topbar-row 401) — 16px of horizontal overflow
+     on both sides, on EVERY page. The sandbox Chromium does not
+     expand the layout viewport for it (innerWidth stays 393), but
+     real mobile Chrome treats overflowing fixed content as a reason
+     to expand the layout viewport (shrink-to-fit), which renders
+     the page shrunken and displaced — exactly the user's live
+     report. A fixed root IS the viewport, so it takes no margin. */
   .quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall) {
     position: fixed;
     inset: 0;
+    margin: 0;
   }
   .quran-hifz-study.hifz-mode-mushaf .hifz-line-page {
     flex: 1 0 auto;
