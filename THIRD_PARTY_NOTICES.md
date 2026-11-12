@@ -585,6 +585,23 @@ sources.
   texts). Source footnotes are not carried (the reader has no
   footnote UI).
 
+## QPC V2 layout / glyph script / page fonts — precise licence status (step 6, 2026-11-12)
+
+- **Layout data (QUL mushaf-layout/10): CLEAR.** Verified first-hand
+  in this PR: in TarteelAI/quranic-universal-library issue #596 the
+  QUL maintainer (@naveed-ahmad) states all layouts including
+  Madinah V2 are free for personal and commercial use, may be
+  bundled offline, modified and transformed; attribution optional
+  ("Data provided by QUL" appreciated and kept in product).
+- **Glyph script (word-by-word QPC V2) and the QCF2001–QCF2604
+  per-page fonts: UNCLEAR.** No licence section exists on their QUL
+  resource pages and none inside the fonts (no nameID 13; internal
+  name "Test Font, KFGQPC"); issue #596 covers layouts only. They
+  remain in the product as the fallback renderer with this risk
+  explicitly flagged; the primary renderer is Digital Khatt
+  (OFL-1.1, step 1). Full per-asset record:
+  `docs/quran/hifz-parity-agent2/QPC-V2-LICENCE-STATUS.md`.
+
 ## Persian tafsirs Mokhtasar + Saadi (QUL) — Tarteel-parity step 5 (DATA NOT YET INSTALLED)
 
 - **Works:** «تفسیر مختصر» and «تفسیر سعدی» in Persian, from the
