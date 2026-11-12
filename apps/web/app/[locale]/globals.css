@@ -2614,6 +2614,26 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
 .quran-hifz-study .hifz-line-word-concealed { border-bottom: 2px dotted #8a8378; cursor: pointer; background: transparent; }
 .quran-hifz-study .hifz-line-word-concealed,
 .quran-hifz-study .hifz-line-word-concealed * { color: transparent !important; }
+/* Round 2 (user 2026-11-12 «کادرهای نقطه‌چین را حذف کن»): the
+   eye's hidden words are INVISIBLE placeholders — no dotted box,
+   no dotted line — but still tappable (one tap reveals one word).
+   The native button face draws a 1px border on three sides
+   (measured computed: 1px solid rgba(0,0,0,0.3)) and the old rule
+   only overrode the bottom to dotted, so the full rounded box
+   appeared. border: 0 + appearance: none removes it — but the
+   border also contributed 2px of width per word, so removing it
+   shifted every word ~2px (measured: same line breaks, same right
+   edge, width -2). A TRANSPARENT border of the old widths (1px
+   sides, 2px bottom) keeps the geometry byte-identical while
+   staying invisible. display stays
+   inline-block for mushaf words (their current computed display),
+   so the layout is unchanged; the wall button keeps its own
+   inline-flex (it has no .hifz-line-word). The old dotted class
+   stays for the script-hide paths (listen mode). */
+.quran-hifz-study .hifz-line-word-eye-hidden { border: 1px solid transparent; border-bottom-width: 2px; background: transparent; cursor: pointer; appearance: none; -webkit-appearance: none; }
+.quran-hifz-study .hifz-line-word.hifz-line-word-eye-hidden { display: inline-block; }
+.quran-hifz-study .hifz-line-word-eye-hidden,
+.quran-hifz-study .hifz-line-word-eye-hidden * { color: transparent !important; }
 .quran-hifz-study.hifz-hide-markers .hifz-line-marker { visibility: hidden; }
 /* Phase 4 — range picker, resume banner, settings rows, error cards. */
 .quran-hifz-study .hifz-range { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; margin: 0.5rem 0 1rem; padding: 0 1rem; }
@@ -3599,6 +3619,11 @@ body:has(.quran-hifz-study .recitation-toolbar) .site-footer {
 .quran-hifz-study .hifz-translation-ref { font-family: system-ui, sans-serif; font-size: 0.85rem; color: #6b655a; margin: 0 0 0.5rem; text-align: center; }
 .quran-hifz-study .hifz-translation-edition-name { font-family: system-ui, sans-serif; font-size: 0.85rem; font-weight: 700; color: #1c1710; margin: 0 0 0.25rem; }
 .quran-hifz-study .hifz-translation-edition p:last-child { margin: 0 0 0.5rem; line-height: 1.9; }
+/* Round 2 (user 2026-11-12): the eye hides the translation text of
+   the unit's ayahs too — invisible but layout-stable; the ref line
+   and edition name stay visible, like the rosette markers on the
+   mushaf page. */
+.quran-hifz-study .hifz-translation-concealed { visibility: hidden; }
 /* Listen mode: the page's words are visible for following along;
    the current word gets the Segment builder highlight (solid green
    #188653 + white text, rounded). Tajweed letters inside it go white. */

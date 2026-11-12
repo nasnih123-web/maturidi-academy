@@ -572,9 +572,10 @@ export function QuranHifzStudy({
   );
   // The eye's own hidden state (user 2026-11-12): DEFAULT HIDDEN —
   // the slashed eye. scriptHidden keeps its old default (false)
-  // for listen mode, nass / translation and the wall, where the eye
-  // never changes anything; the eye button toggles eyeHidden in
-  // mushaf practice and scriptHidden everywhere else.
+  // for listen mode and the wall, where the eye never changes
+  // anything; the eye button toggles eyeHidden in practice mode
+  // (round 2: mushaf, nass and translation) and scriptHidden in
+  // listen mode.
   const [eyeHidden, setEyeHidden] = useState(true);
   // Practice range + repetition (one surah; null end = surah end).
   const [rangeStart, setRangeStart] = useState<number | null>(null);
@@ -2458,9 +2459,13 @@ export function QuranHifzStudy({
   // eye scope is chosen: the picker sheet already fetched the same
   // file to list its rows, so this is a cache hit in practice, and a
   // failed fetch just leaves the plain practice behaviour (the
-  // boundaries-null guard in eyeCoversWord).
+  // boundaries-null guard in eyeCoversWord). Round 2: a page scope
+  // in nass / translation needs the boundaries too (the ayah's start
+  // page decides coverage there — see eyeCoversWord), while a page
+  // scope in mushaf still needs nothing (the page on screen decides).
   useEffect(() => {
-    if (eyeScope.kind !== 'juz' && eyeScope.kind !== 'hizb') return;
+    if (eyeScope.kind === 'surah') return;
+    if (eyeScope.kind === 'page' && displayMode === 'mushaf') return;
     if (boundaries !== null) return;
     let cancelled = false;
     loadBoundaries().then((b) => {
@@ -2469,7 +2474,7 @@ export function QuranHifzStudy({
     return () => {
       cancelled = true;
     };
-  }, [eyeScope, boundaries]);
+  }, [eyeScope, boundaries, displayMode]);
 
   const isZipformer = engineStatus?.engine === 'zipformer';
   const isWhisper = engineStatus?.engine === 'whisper_quran';
@@ -2501,24 +2506,31 @@ export function QuranHifzStudy({
   const renderV4Glyph = (slot: LineWordSlot) => (
     <span style={{ fontFamily: v4FontFamily ?? undefined }}>{slot.glyph}</span>
   );
-  // The eye's unit show / hide applies only in mushaf practice
-  // mode. Listen mode keeps its own hide (scriptHidden), and nass /
-  // translation keep theirs — the eye never changes them.
-  const eyeApplies = displayMode === 'mushaf' && studyMode === 'practice';
+  // The eye's unit show / hide applies in practice mode in every
+  // display mode (round 2, user 2026-11-12: mushaf, nass and
+  // translation — the same scope, the same default hidden). Listen
+  // mode keeps its own hide (scriptHidden); the eye never changes it.
+  const eyeApplies = studyMode === 'practice';
   // The eye's icon follows the mode it controls: the unit hide in
-  // mushaf practice, the old script-hide everywhere else.
+  // practice, the old script-hide in listen mode.
   const eyeHiddenNow = eyeApplies ? eyeHidden : scriptHidden;
   // Is one (surah, ayah) inside the eye's scope? Surah scope is the
   // word's own surah; juz / hizb scope is the word's own juz / hizb
   // (rangeContaining: an ayah belongs wholly to the juz / hizb it
   // starts in — juz and hizb boundaries always fall on ayah starts);
-  // page scope is the page on screen (an ayah may span pages, so the
-  // page's own number decides, not the ayah's start page). While the
-  // boundaries still load, juz / hizb words are out of scope and the
-  // plain practice behaviour stays.
+  // page scope is the page on screen in mushaf (an ayah may span
+  // pages, so the page's own number decides, not the ayah's start
+  // page) and the ayah's own start page in nass / translation, where
+  // the whole surah is on screen at once. While the boundaries
+  // still load, juz / hizb / page-in-nass words are out of scope and
+  // the plain practice behaviour stays.
   const eyeCoversWord = (wordSurah: number, wordAyah: number): boolean => {
     if (eyeScope.kind === 'surah') return wordSurah === eyeScope.target;
-    if (eyeScope.kind === 'page') return (headerMeta?.page ?? null) === eyeScope.target;
+    if (eyeScope.kind === 'page') {
+      if (displayMode === 'mushaf') return (headerMeta?.page ?? null) === eyeScope.target;
+      if (!boundaries) return false;
+      return rangeContaining(boundaries, wordSurah, wordAyah).page === eyeScope.target;
+    }
     if (!boundaries) return false;
     const containing = rangeContaining(boundaries, wordSurah, wordAyah);
     return eyeScope.kind === 'juz'
@@ -2632,13 +2644,14 @@ export function QuranHifzStudy({
           </span>
         );
       }
-      // The eye (mushaf practice only): inside the selected unit the
-      // eye SHOWS unwritten words too — plain visible text, never
-      // graded — and while hidden every word of the unit is the same
-      // dotted, tappable placeholder as a hidden written word, so
-      // the whole unit reads as hidden and one tap reveals one word.
-      // Outside the unit the plain practice hiding stays. Spacers
-      // (index -1) have no word to show, so they stay hidden spans.
+      // The eye (practice, every display mode): inside the selected
+      // unit the eye SHOWS unwritten words too — plain visible text,
+      // never graded — and while hidden every word of the unit is the
+      // same invisible, tappable placeholder as a hidden written
+      // word, so the whole unit reads as hidden and one tap reveals
+      // one word. Outside the unit the plain practice hiding stays.
+      // Spacers (index -1) have no word to show, so they stay hidden
+      // spans.
       if (eyeApplies && slot.index >= 0 && eyeCoversWord(slot.surah, slot.ayah)) {
         const eyeKey = `${slot.surah}:${slot.ayah}:${slot.index}`;
         if (eyeHidden && !revealedWords.has(eyeKey)) {
@@ -2646,7 +2659,7 @@ export function QuranHifzStudy({
             <button
               type="button"
               key={key}
-              className="hifz-line-word hifz-line-word-concealed"
+              className="hifz-line-word hifz-line-word-eye-hidden"
               onClick={() => {
                 if (wordTapSuppressed()) return;
                 setRevealedWords((prev) => new Set(prev).add(eyeKey));
@@ -2714,22 +2727,24 @@ export function QuranHifzStudy({
     }
     const w = slot.written;
     // Phase 4 — Hide the script (crossed-eye): a written word
-    // becomes a dotted, clickable placeholder; tapping it reveals
-    // just that word (gradual reveal). Unwritten words are hidden
-    // already (the branch above); this only conceals words the user
-    // has already read. It applies in both modes: in listen mode the
-    // words become written as the reciter reads them, and hiding
-    // them is the same «hide the script» gesture.
+    // becomes a clickable placeholder; tapping it reveals just that
+    // word (gradual reveal). Unwritten words are hidden already (the
+    // branch above); this only conceals words the user has already
+    // read. It applies in both modes: in listen mode the words
+    // become written as the reciter reads them, and hiding them is
+    // the same «hide the script» gesture. The eye's placeholder is
+    // INVISIBLE (round 2 — no dotted box); the old script-hide
+    // placeholder keeps its dotted line (listen mode).
     const wordKey =
       slot.index >= 0 ? `${slot.surah}:${slot.ayah}:${slot.index}` : null;
-    // The eye (mushaf practice only): inside the selected unit the
-    // hidden eye conceals every word — written and unwritten alike
-    // (the unwritten half is the branch above) — except a word the
-    // user peeked: the peek is the memoriser's lifeline while the
+    // The eye (practice, every display mode): inside the selected
+    // unit the hidden eye conceals every word — written and unwritten
+    // alike (the unwritten half is the branch above) — except a word
+    // the user peeked: the peek is the memoriser's lifeline while the
     // text is hidden, and re-hiding it would make peek do nothing
     // visible. Outside the unit the plain practice behaviour stays.
-    // Everywhere else (listen, nass, translation) the old
-    // script-hide keeps its exact meaning.
+    // Everywhere else (listen mode) the old script-hide keeps its
+    // exact meaning.
     const eyeConcealsWritten =
       eyeApplies &&
       eyeHidden &&
@@ -2744,7 +2759,11 @@ export function QuranHifzStudy({
         <button
           type="button"
           key={key}
-          className="hifz-line-word hifz-line-word-concealed"
+          className={
+            eyeConcealsWritten
+              ? 'hifz-line-word hifz-line-word-eye-hidden'
+              : 'hifz-line-word hifz-line-word-concealed'
+          }
           onClick={() => {
             if (wordTapSuppressed()) return;
             setRevealedWords((prev) => new Set(prev).add(wordKey));
@@ -3737,12 +3756,25 @@ export function QuranHifzStudy({
                 {activeTranslationEditions.map((ed) => {
                   const tr = translationsByKey[`${surah}:${ed}`]?.[a];
                   if (!tr) return null;
+                  // Round 2: the eye hides the translation text of
+                  // the unit's ayahs too (same scope, same default
+                  // hidden — page scope is the ayah's start page
+                  // here, see eyeCoversWord). The ref line and the
+                  // edition name stay visible, like the rosette
+                  // markers on the mushaf page. The eye toggle is
+                  // the reveal control (no per-ayah tap).
+                  const trConcealed =
+                    eyeApplies && eyeHidden && eyeCoversWord(surah, a);
                   return (
                     <div key={ed} className="hifz-translation-edition">
                       <p className="hifz-translation-edition-name">
                         {editionDisplayName(ed, locale) ?? ed}
                       </p>
-                      <p dir={ed.startsWith('en') ? 'ltr' : 'rtl'} lang={ed.split('.')[0]}>
+                      <p
+                        dir={ed.startsWith('en') ? 'ltr' : 'rtl'}
+                        lang={ed.split('.')[0]}
+                        className={trConcealed ? 'hifz-translation-concealed' : undefined}
+                      >
                         {tr}
                       </p>
                     </div>
@@ -3802,14 +3834,16 @@ export function QuranHifzStudy({
               <div className="hifz-wall-words" dir="rtl">
                 {group.words.map((word) => {
                   // Phase 4 — Hide the script: a written wall word
-                  // becomes a dotted placeholder; tapping it reveals
-                  // just that word (same gradual reveal as the page;
-                  // applies in both modes, like the line page).
+                  // becomes a clickable placeholder; tapping it
+                  // reveals just that word (same gradual reveal as
+                  // the page; applies in both modes, like the line
+                  // page). The eye's placeholder is invisible (round
+                  // 2); the old script-hide keeps its dotted line.
                   const wallKey = `${surah}:${group.ayah}:${word.index}`;
-                  // The eye (mushaf practice only): the wall is the
-                  // current page's fallback, so it follows the eye
-                  // like the page does; everywhere else the old
-                  // script-hide keeps its exact meaning.
+                  // The eye (practice): the wall is the current
+                  // page's fallback, so it follows the eye like the
+                  // page does; everywhere else the old script-hide
+                  // keeps its exact meaning.
                   const wallEyeConcealed =
                     eyeApplies &&
                     eyeHidden &&
@@ -3826,7 +3860,11 @@ export function QuranHifzStudy({
                       <button
                         type="button"
                         key={word.index}
-                        className="hifz-word hifz-line-word-concealed"
+                        className={
+                          wallEyeConcealed
+                            ? 'hifz-word hifz-line-word-eye-hidden'
+                            : 'hifz-word hifz-line-word-concealed'
+                        }
                         onClick={() =>
                           setRevealedWords((prev) => new Set(prev).add(wallKey))
                         }
@@ -4028,10 +4066,10 @@ export function QuranHifzStudy({
             aria-label={eyeHiddenNow ? labels.showScript : labels.hideScript}
             title={eyeHiddenNow ? labels.showScript : labels.hideScript}
             onClick={() => {
-              // One button, one state per mode: in mushaf practice
-              // it toggles the unit show / hide (eyeHidden, default
-              // hidden); everywhere else it toggles the old
-              // script-hide, exactly as before.
+              // One button, one state per mode: in practice it
+              // toggles the unit show / hide (eyeHidden, default
+              // hidden) in every display mode; in listen mode it
+              // toggles the old script-hide, exactly as before.
               if (eyeApplies) setEyeHidden((v) => !v);
               else setScriptHidden((v) => !v);
               setRevealedWords(new Set());
