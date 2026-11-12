@@ -38,7 +38,12 @@ import {
   type V2Page,
   type V2PageGlyphs,
 } from '@/lib/quran-mushaf-v2';
+import { BASMALA_QCF_TEXT } from '@/lib/quran-basmala';
 import { QuranMushafV2Page } from './QuranMushafV2Page';
+import { QuranMushafDKPage } from './QuranMushafDKPage';
+import { loadDKPage, type DKPage } from '@/lib/quran-mushaf-dk';
+import { loadV4LayoutPage, loadV4QpcPageGlyphs } from '@/lib/quran-mushaf-v4';
+import { qcfV4Provider } from '@/lib/quran-mushaf-font';
 import {
   DEFAULT_SVG_MUSHAF,
   type SvgMushafKey,
@@ -159,6 +164,7 @@ export function QuranMushafPage({
   onPlayAyah,
   onPlayLine,
   hideText,
+  pageRenderer,
   svgPage,
   onSelectAyah,
   svgFallbackNote,
@@ -205,6 +211,16 @@ export function QuranMushafPage({
       honours it — the exact-line / SVG fallback paths render the
       text as before. */
   hideText?: boolean;
+  /**
+   * Step 1b (Tarteel parity): 'digital-khatt' renders the page as
+   * real Unicode text in the Digital Khatt variable font on the
+   * KFGQPC V2 1421H print layout (justified per line via the
+   * font's SCLX axis — see QuranMushafDKPage). It implies the Hafs
+   * mushaf and takes precedence over the SVG/V2/exact-line paths
+   * while its data loads; a failed DK data load falls back to the
+   * standard paths, never to a fabricated page.
+   */
+  pageRenderer?: 'standard' | 'digital-khatt' | 'digital-khatt-indopak' | 'qpc-v4';
   /**
    * Round 6: true when this view shows the REAL printed page as
    * inline SVG (page view, ayah view's page, reading view). False
@@ -290,13 +306,53 @@ export function QuranMushafPage({
       cancelled = true;
     };
   }, [mushaf, pageNumber]);
+  // Step 2: the QPC V4 (1441) layout page + its QUL-id glyph map
+  // for this page number. undefined = loading, null = unavailable
+  // (fall back to the standard paths).
+  const [v4Page, setV4Page] = useState<V2Page | null | undefined>(undefined);
+  const [v4Glyphs, setV4Glyphs] = useState<V2PageGlyphs | null | undefined>(undefined);
+  useEffect(() => {
+    if (pageRenderer !== 'qpc-v4' || mushaf !== DEFAULT_SVG_MUSHAF) return;
+    let cancelled = false;
+    loadV4LayoutPage(pageNumber).then((pg) => {
+      if (!cancelled) setV4Page(pg);
+    });
+    loadV4QpcPageGlyphs(pageNumber).then((g) => {
+      if (!cancelled) setV4Glyphs(g);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pageRenderer, mushaf, pageNumber]);
+  // Step 1b: the Digital Khatt page for this page number (Madani
+  // variant — DK implies Hafs semantics). undefined = loading,
+  // null = load failed (fall back to the standard paths).
+  const [dkPage, setDkPage] = useState<DKPage | null | undefined>(undefined);
+  const dkVariant = pageRenderer === 'digital-khatt-indopak' ? 'indopak' : 'madani';
+  useEffect(() => {
+    if (
+      (pageRenderer !== 'digital-khatt' && pageRenderer !== 'digital-khatt-indopak') ||
+      mushaf !== DEFAULT_SVG_MUSHAF
+    )
+      return;
+    let cancelled = false;
+    loadDKPage(dkVariant, pageNumber).then((pg) => {
+      if (!cancelled) setDkPage(pg);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pageRenderer, dkVariant, mushaf, pageNumber]);
   useEffect(() => {
     setSvgFailed(false);
     setSvgAyahs(null);
     setV2SelectedWord(null);
     setV2Glyphs(undefined);
     setV2Page(undefined);
-  }, [pageNumber, svgPage, mushaf]);
+    setDkPage(undefined);
+    setV4Page(undefined);
+    setV4Glyphs(undefined);
+  }, [pageNumber, svgPage, mushaf, pageRenderer]);
   const showSvg = svgPage === true && !svgFailed;
   const nonHafsFallback = svgPage === true && svgFailed && mushaf !== DEFAULT_SVG_MUSHAF;
   // Word tokens for the V2 expansion, from this page's own ayah
@@ -311,8 +367,10 @@ export function QuranMushafPage({
   // from the label when no card carries it. Only the COUNTS are
   // verified by the strict expansion; the Basmalah words render in
   // the reader's own label spelling, as they do elsewhere.
-  const v2Expansion: V2Expansion | null = useMemo(() => {
-    if (mushaf !== DEFAULT_SVG_MUSHAF || !v2Index || !v2Page || showSvg) return null;
+  // Step 2: the reader-relative Tanzil tokens, shared by the V2
+  // and the QPC V4 expansions (the token model is layout-
+  // independent; only the layout pages differ between prints).
+  const v2Tokens = useMemo(() => {
     const bismillahTokens = bismillah.split(/\s+/).filter(Boolean);
     const tokens = new Map<string, readonly string[]>();
     for (const group of groups) {
@@ -327,8 +385,118 @@ export function QuranMushafPage({
         tokens.set('1:1', bismillahTokens);
       }
     }
-    return expandV2Page(v2Index, v2Page, tokens, v2Glyphs ?? undefined);
-  }, [mushaf, v2Index, v2Page, showSvg, pageNumber, groups, bismillah, v2Glyphs]);
+    return tokens;
+  }, [groups, bismillah]);
+  const v2Expansion: V2Expansion | null = useMemo(() => {
+    if (mushaf !== DEFAULT_SVG_MUSHAF || !v2Index || !v2Page || showSvg) return null;
+    return expandV2Page(v2Index, v2Page, v2Tokens, v2Glyphs ?? undefined);
+  }, [mushaf, v2Index, v2Page, showSvg, pageNumber, v2Tokens, v2Glyphs]);
+  // Step 2: the QPC V4 (1441) expansion — the print's own layout
+  // (loadV4LayoutPage) through the same strict pipeline, with the
+  // V4 glyph maps re-keyed by QUL id. Fail-closed like V2: a
+  // failed expansion falls through to the standard renderers.
+  const v4Expansion: V2Expansion | null = useMemo(() => {
+    if (pageRenderer !== 'qpc-v4' || mushaf !== DEFAULT_SVG_MUSHAF || !v2Index || !v4Page)
+      return null;
+    return expandV2Page(v2Index, v4Page, v2Tokens, v4Glyphs ?? undefined);
+  }, [pageRenderer, mushaf, v2Index, v4Page, v2Tokens, v4Glyphs]);
+  // Step 2: QPC V4 (1441) takes precedence while requested and
+  // its strict expansion passes; otherwise fall through.
+  if (pageRenderer === 'qpc-v4' && mushaf === DEFAULT_SVG_MUSHAF) {
+    if (v4Expansion?.ok && v4Page) {
+      return (
+        <QuranMushafV2Page
+          page={v4Page}
+          expansion={v4Expansion}
+          bismillah={bismillah}
+          pageCurrent={pageCurrent}
+          juzCurrent={juzCurrent}
+          hizbCurrent={hizbCurrent}
+          headerSurahTemplate={headerSurahTemplate}
+          resolveSurahName={resolveSurahName}
+          hideText={hideText}
+          selectedAyah={highlightKey ?? null}
+          selectedWord={v2SelectedWord}
+          onSelectWord={setV2SelectedWord}
+          onSelectAyah={onSelectAyah}
+          onPlayLine={onPlayLine}
+          linesClickable={linesClickable}
+          onNavigate={onNavigatePage}
+          showNav={onNavigatePage !== undefined}
+          hideMeta={hideMeta}
+          fontProvider={qcfV4Provider}
+        />
+      );
+    }
+    if (v4Page === undefined) {
+      return (
+        <div className="mushaf-page mushaf-v2" aria-busy="true">
+          {hideMeta ? null : <p className="mushaf-page-meta">{'\u00a0'}</p>}
+          <div className="mushaf-frame mushaf-v2-frame">
+            <div lang="ar" dir="rtl">
+              {Array.from({ length: 15 }, (_, i) => (
+                <div key={i} className="mushaf-v2-line" aria-hidden="true">
+                  {'\u00a0'}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    // Load failed or expansion failed: fall through to the
+    // standard renderers (honest fallback, never a wrong page).
+  }
+  // Step 1b/2: Digital Khatt takes precedence while requested.
+  if (
+    (pageRenderer === 'digital-khatt' || pageRenderer === 'digital-khatt-indopak') &&
+    mushaf === DEFAULT_SVG_MUSHAF
+  ) {
+    if (dkPage) {
+      return (
+        <QuranMushafDKPage
+          page={dkPage}
+          variant={dkVariant}
+          bismillahLabel={bismillah}
+          pageCurrent={pageCurrent}
+          juzCurrent={juzCurrent}
+          hizbCurrent={hizbCurrent}
+          headerSurahTemplate={headerSurahTemplate}
+          resolveSurahName={resolveSurahName}
+          hideText={hideText}
+          selectedAyah={highlightKey ?? null}
+          selectedWord={v2SelectedWord}
+          onSelectWord={setV2SelectedWord}
+          onSelectAyah={onSelectAyah}
+          onPlayLine={onPlayLine}
+          linesClickable={linesClickable}
+          onNavigate={onNavigatePage}
+          showNav={onNavigatePage !== undefined}
+          hideMeta={hideMeta}
+        />
+      );
+    }
+    if (dkPage === undefined) {
+      // Loading shell with the printed page's proportions — the DK
+      // component swaps in as soon as its data (and font) arrive.
+      return (
+        <div className="mushaf-page mushaf-dk" aria-busy="true">
+          {hideMeta ? null : <p className="mushaf-page-meta">{'\u00a0'}</p>}
+          <div className="mushaf-frame mushaf-dk-frame">
+            <div lang="ar" dir="rtl">
+              {Array.from({ length: 15 }, (_, i) => (
+                <div key={i} className="mushaf-dk-line mushaf-dk-placeholder-line" aria-hidden="true">
+                  {'\u00a0'}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    // dkPage === null: the DK data failed to load — fall through
+    // to the standard renderers below (honest fallback).
+  }
   if (v2Expansion?.ok && v2Page) {
     return (
       <QuranMushafV2Page
@@ -408,9 +576,17 @@ export function QuranMushafPage({
               );
             }
             if (line.t === 'basmala') {
+              // Step 1a: dedicated QCF BSML calligraphy rendering
+              // (see lib/quran-basmala.ts), same as the V2 page.
               return (
-                <p key={i} className="mushaf-bismillah" lang="ar" dir="rtl">
-                  {bismillah}
+                <p
+                  key={i}
+                  className="mushaf-bismillah"
+                  lang="ar"
+                  dir="rtl"
+                  aria-label={bismillah}
+                >
+                  {BASMALA_QCF_TEXT}
                 </p>
               );
             }
@@ -454,8 +630,8 @@ export function QuranMushafPage({
               </div>
             ) : null}
             {group.bismillahHeader ? (
-              <p className="mushaf-bismillah" lang="ar" dir="rtl">
-                {bismillah}
+              <p className="mushaf-bismillah" lang="ar" dir="rtl" aria-label={bismillah}>
+                {BASMALA_QCF_TEXT}
               </p>
             ) : null}
             <p className="mushaf-text" lang="ar" dir="rtl">

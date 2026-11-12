@@ -141,6 +141,17 @@ class AlignedWord:
     # تصمیم قطعی نیست و بازبینی می‌خواهد. فقط سیگنالِ خروجی است؛
     # ذخیره نمی‌شود (ستونی ندارد) و در شمارندهٔ وضعیت‌ها اثری ندارد.
     needs_review: bool = False
+    # بازهٔ واجیِ این کلمه در رشتهٔ واجیِ ورودیِ `align_phonemes`
+    # (آفست نویسه، نیم‌باز [start, end)) — فقط همان تابع پرش می‌کند؛
+    # کلمهٔ جاافتاده (واجی مصرف نکرده) None می‌ماند. مبنای
+    # زمان‌بندیِ کلمه‌ایِ ترازِ واجی است (گام ۹ برابری، ایراد ۷).
+    phoneme_start: int | None = None
+    phoneme_end: int | None = None
+    # جایگاهِ کلمهٔ شنیده‌شدهٔ متناظر در فهرستِ ورودیِ `align_words`
+    # (فقط همان تابع پرش می‌کند؛ جاافتاده None می‌ماند) — مبنای
+    # نگاشتِ زمان‌بندیِ DTW (آخرین راهِ جایگزینِ گام ۹) روی کلمهٔ
+    # موردانتظار است.
+    heard_index: int | None = None
 
 
 def _status_for_prob(prob: float, green: float, amber: float) -> str:
@@ -188,7 +199,8 @@ def align_words(
                 # Only diacritics differ.
                 p = PROB_CLOSE
                 aligned.append(
-                    AlignedWord(e_idx, exp, "close", p, hrd, "wrong_tashkeel")
+                    AlignedWord(e_idx, exp, "close", p, hrd, "wrong_tashkeel",
+                                heard_index=h_idx)
                 )
                 return
             if exp == hrd:
@@ -199,12 +211,14 @@ def align_words(
                     AlignedWord(
                         e_idx, exp, status, p, hrd, None,
                         needs_review=(status == "close"),
+                        heard_index=h_idx,
                     )
                 )
                 return
             # Letter-form variant only (hamza/yeh folding).
             aligned.append(
-                AlignedWord(e_idx, exp, "close", PROB_CLOSE, hrd, "wrong_word")
+                AlignedWord(e_idx, exp, "close", PROB_CLOSE, hrd, "wrong_word",
+                            heard_index=h_idx)
             )
             return
         # Different letters: near miss or wrong, by edit distance.
@@ -217,6 +231,7 @@ def align_words(
                     _status_for_prob(PROB_CLOSE, green, amber),
                     PROB_CLOSE, hrd, "wrong_word",
                     needs_review=(dist == NEAR_MISS_MAX_DISTANCE),
+                    heard_index=h_idx,
                 )
             )
         else:
@@ -225,6 +240,7 @@ def align_words(
                     e_idx, exp,
                     _status_for_prob(PROB_WRONG, green, amber),
                     PROB_WRONG, hrd, "wrong_word",
+                    heard_index=h_idx,
                 )
             )
 
@@ -264,7 +280,8 @@ def align_words(
             # خوانده‌شده (قرمز) دو کلمهٔ متفاوت‌اند.
             aligned.append(
                 AlignedWord(
-                    ei1, expected[ei1], "wrong", PROB_WRONG, heard[j1], "transposed"
+                    ei1, expected[ei1], "wrong", PROB_WRONG, heard[j1], "transposed",
+                    heard_index=j1,
                 )
             )
             aligned.append(
@@ -275,6 +292,7 @@ def align_words(
                     PROB_WRONG,
                     heard[ej1],
                     "transposed",
+                    heard_index=ej1,
                 )
             )
             oi += 3
@@ -298,12 +316,14 @@ def align_words(
             # equal، کلمهٔ درج‌شده.
             aligned.append(
                 AlignedWord(
-                    ei1, expected[ei1], "wrong", PROB_WRONG, heard[ins_start], "transposed"
+                    ei1, expected[ei1], "wrong", PROB_WRONG, heard[ins_start], "transposed",
+                    heard_index=ins_start,
                 )
             )
             aligned.append(
                 AlignedWord(
-                    i1, expected[i1], "wrong", PROB_WRONG, heard[ej1], "transposed"
+                    i1, expected[i1], "wrong", PROB_WRONG, heard[ej1], "transposed",
+                    heard_index=ej1,
                 )
             )
             oi += 3
@@ -347,6 +367,7 @@ def align_words(
                                 PROB_WRONG,
                                 heard[h_idx],
                                 "transposed",
+                                heard_index=h_idx,
                             )
                         )
                         swapped.add(k + off)
@@ -390,10 +411,17 @@ def align_phonemes(
     never presented as words.
 
     Returns (aligned, extra) in the same shape as `align_words`.
+    Every consumed unit also records its phoneme-string span
+    (`phoneme_start`/`phoneme_end` on each AlignedWord); a skipped
+    unit records None — the span is what the timed-phoneme post-pass
+    (step 9) turns into word start/end times.
     """
     aligned: list[AlignedWord] = []
     extra: list[str] = []
     buf = phoneme_text
+    # نویسه‌های مصرف‌شده از ابتدای رشتهٔ واجی (بافر همیشه پسوندِ
+    # رشتهٔ اصلی است)؛ مبنای بازهٔ واجیِ هر کلمه برای زمان‌بندی.
+    consumed = 0
     i = 0
     while i < len(units):
         widxs, phon = units[i]
@@ -406,6 +434,7 @@ def align_phonemes(
             i += 1
             continue
         if buf.startswith(phon):
+            span = (consumed, consumed + len(phon))
             for wi in widxs:
                 exp = expected[wi] if wi < len(expected) else ""
                 aligned.append(
@@ -413,15 +442,18 @@ def align_phonemes(
                         wi, exp,
                         _status_for_prob(PROB_CORRECT, green, amber),
                         PROB_CORRECT, exp, None,
+                        phoneme_start=span[0], phoneme_end=span[1],
                     )
                 )
             buf = buf[len(phon):]
+            consumed += len(phon)
             i += 1
             continue
         near_dist: int | None = None
         if len(buf) >= len(phon) and len(phon) > 3:
             near_dist = levenshtein(buf[: len(phon)], phon)
         if near_dist is not None and near_dist <= NEAR_MISS_MAX_DISTANCE:
+            span = (consumed, consumed + len(phon))
             for wi in widxs:
                 exp = expected[wi] if wi < len(expected) else ""
                 aligned.append(
@@ -432,9 +464,11 @@ def align_phonemes(
                         needs_review=(
                             near_dist == NEAR_MISS_MAX_DISTANCE
                         ),
+                        phoneme_start=span[0], phoneme_end=span[1],
                     )
                 )
             buf = buf[len(phon):]
+            consumed += len(phon)
             i += 1
             continue
         found = None
@@ -486,6 +520,7 @@ def align_phonemes(
                 i += 1
             break
         chunk = buf[: len(phon)]
+        span = (consumed, consumed + len(phon))
         for wi in widxs:
             exp = expected[wi] if wi < len(expected) else ""
             aligned.append(
@@ -493,9 +528,11 @@ def align_phonemes(
                     wi, exp,
                     _status_for_prob(PROB_WRONG, green, amber),
                     PROB_WRONG, chunk or None, "wrong_word",
+                    phoneme_start=span[0], phoneme_end=span[1],
                 )
             )
         buf = buf[len(phon):]
+        consumed += len(phon)
         i += 1
     if buf:
         extra.append(buf)

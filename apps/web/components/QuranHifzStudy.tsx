@@ -142,6 +142,7 @@ import { HifzSearchSheet } from './hifz-study/HifzSearchSheet';
 import { QuranPickerSheet } from './QuranPickerSheet';
 import type { QuranSearchLabels } from './QuranSearchBox';
 import { loadBookmarks, pageBookmarkId, saveBookmarks } from '@/lib/quran-bookmarks';
+import { initQuranReadingSync } from '@/lib/quran-sync';
 import { DEFAULT_SVG_MUSHAF } from '@/lib/quran-svg-page';
 import { HifzLivePills } from './hifz-study/HifzLivePills';
 import { HifzNumericInput } from './HifzNumericInput';
@@ -307,6 +308,11 @@ export function QuranHifzStudy({
   useEffect(() => {
     ayahRef.current = ayah;
   }, [ayah]);
+  // Parity step 8 (defect 11): this page toggles page bookmarks in
+  // the shared store — start the account sync so they push/pull too.
+  useEffect(() => {
+    initQuranReadingSync();
+  }, []);
   const [ayahCount, setAyahCount] = useState(0);
   const [textsBySurah, setTextsBySurah] = useState<Record<number, Record<number, string>>>(
     () =>
@@ -1767,7 +1773,13 @@ export function QuranHifzStudy({
       liveWsRef.current = ws;
       ws.onopen = () => {
         if (!isCurrent()) return;
-        ws.send(JSON.stringify(buildStartMessage(surah, ayah)));
+        ws.send(
+          JSON.stringify(
+            buildStartMessage(surah, ayah, {
+              holdOnWrong: hifzSettings.freezeOnError,
+            }),
+          ),
+        );
       };
       ws.onmessage = (ev: MessageEvent) => {
         let msg: HifzLiveEvent;
@@ -1985,6 +1997,7 @@ export function QuranHifzStudy({
     labels,
     surah,
     ayah,
+    hifzSettings.freezeOnError,
     refreshDetail,
     cleanupLiveMic,
     cancelLive,

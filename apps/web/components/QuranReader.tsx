@@ -82,6 +82,10 @@ import {
   type LastRead,
 } from '@/lib/quran-bookmarks';
 import {
+  QURAN_STATE_SYNCED_EVENT,
+  initQuranReadingSync,
+} from '@/lib/quran-sync';
+import {
   ARABIC_TAFSIRS,
   editionOptions,
   PERSIAN_TRANSLATIONS,
@@ -366,6 +370,10 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   listSortDesc: string;
   /* ---- Round 5: reading view + picker + mushaf ---- */
   readingLabel: string;
+  /** Step 6: two-page spread toggle + side-panel + keyboard hint. */
+  readingSpread: string;
+  readingPanel: string;
+  readingKeysHint: string;
   exitReadingLabel: string;
   pickerLabel: string;
   pickerTitle: string;
@@ -385,6 +393,12 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   mushafWarshMargins: string;
   mushafQalunMargins: string;
   mushafMadina: string;
+  /** Step 1b: the Digital Khatt (Madina 1421) picker row label. */
+  mushafDigitalKhatt: string;
+  /** Step 2: the Digital Khatt IndoPak picker row label. */
+  mushafDigitalKhattIndoPak: string;
+  /** Step 2: the QPC V4 (1441) picker row label. */
+  mushafQpcV4: string;
   mushafTajweed: string;
   mushafCurrent: string;
   mushafSoon: string;
@@ -793,13 +807,20 @@ function QuranUmumReader({
     return () => window.removeEventListener('keydown', onKey);
   }, [settingsSheetOpen, playerExpanded]);
 
-  // ---- Round 4: bookmarks + last-read (localStorage only). ----
+  // ---- Round 4: bookmarks + last-read (localStorage cache; since
+  // parity step 8 the same state syncs to the account — defect 11).
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
   const [lastRead, setLastRead] = useState<LastRead | null>(null);
   useEffect(() => {
-    setBookmarks(loadBookmarks());
-    setLastRead(loadLastRead());
+    const reload = (): void => {
+      setBookmarks(loadBookmarks());
+      setLastRead(loadLastRead());
+    };
+    reload();
+    initQuranReadingSync();
+    window.addEventListener(QURAN_STATE_SYNCED_EVENT, reload);
+    return () => window.removeEventListener(QURAN_STATE_SYNCED_EVENT, reload);
   }, []);
   const bookmarkIds = useMemo(() => new Set(bookmarks.map((b) => b.id)), [bookmarks]);
   const toggleBookmark = (b: Bookmark): void => {
@@ -840,6 +861,12 @@ function QuranUmumReader({
   const [mushafKey, setMushafKey] = useState<SvgMushafKey>(
     initialMushaf ?? DEFAULT_SVG_MUSHAF,
   );
+  // Step 1b: the page renderer. 'digital-khatt' shows the Madina
+  // mushaf as real Digital Khatt text (Hafs numbering — the mushaf
+  // key stays 'hafs/kfqc'); picking any printed mushaf resets it.
+  const [pageRenderer, setPageRenderer] = useState<
+    'standard' | 'digital-khatt' | 'digital-khatt-indopak' | 'qpc-v4'
+  >('standard');
   const mushafLabelFor = (k: SvgMushafKey): string =>
     k === 'warsh/kfqc'
       ? labels.mushafWarsh
@@ -1433,6 +1460,42 @@ function QuranUmumReader({
   const selectMushaf = (key: SvgMushafKey): void => {
     const target = displayPage ?? rangeTarget ?? 1;
     setMushafKey(key);
+    setPageRenderer('standard');
+    setViewMode('page');
+    setRangeTarget(target);
+    if (readingOpen) setReadingPage(target);
+    setSheet(null);
+  };
+  // Step 1b: the Digital Khatt (Madina 1421) mushaf — a renderer of
+  // the Hafs mushaf, so the key goes back to Hafs and the page
+  // number carries over unchanged.
+  const selectDigitalKhatt = (): void => {
+    const target = displayPage ?? rangeTarget ?? 1;
+    setMushafKey(DEFAULT_SVG_MUSHAF);
+    setPageRenderer('digital-khatt');
+    setViewMode('page');
+    setRangeTarget(target);
+    if (readingOpen) setReadingPage(target);
+    setSheet(null);
+  };
+  // Step 2: the QPC V4 (1441) mushaf — same Hafs numbering and
+  // page boundaries, its own typesetting and layout.
+  const selectQpcV4 = (): void => {
+    const target = displayPage ?? rangeTarget ?? 1;
+    setMushafKey(DEFAULT_SVG_MUSHAF);
+    setPageRenderer('qpc-v4');
+    setViewMode('page');
+    setRangeTarget(target);
+    if (readingOpen) setReadingPage(target);
+    setSheet(null);
+  };
+  // Step 2: the IndoPak mushaf — its own 610-page layout; the page
+  // number carries over clamped to the IndoPak page count (the DK
+  // page's own nav covers 1..610 from there).
+  const selectDigitalKhattIndoPak = (): void => {
+    const target = Math.min(displayPage ?? rangeTarget ?? 1, 610);
+    setMushafKey(DEFAULT_SVG_MUSHAF);
+    setPageRenderer('digital-khatt-indopak');
     setViewMode('page');
     setRangeTarget(target);
     if (readingOpen) setReadingPage(target);
@@ -1529,6 +1592,146 @@ function QuranUmumReader({
       cancelled = true;
     };
   }, [readingOpen, readingPage]);
+  // Step 6: two-page spread + collapsible translation panel. On wide
+  // screens the reading view shows the facing page (N+1) beside N,
+  // like an open mushaf; the facing page runs the SAME
+  // span/fetch/groups/lines pipeline as the main page (duplicated
+  // deliberately — the main pipeline above stays untouched). Any
+  // facing failure degrades to the single page, never an error.
+  const [spreadWide, setSpreadWide] = useState(false);
+  const [spreadOverride, setSpreadOverride] = useState<boolean | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(min-width: 1280px)');
+    const apply = () => setSpreadWide(mq.matches);
+    apply();
+    mq.addEventListener?.('change', apply);
+    return () => mq.removeEventListener?.('change', apply);
+  }, []);
+  const spreadOn = spreadOverride ?? spreadWide;
+  const pageStep = spreadOn ? 2 : 1;
+  const facingPage =
+    spreadOn && readingPage !== null && readingPage < RANGE_COUNTS.page
+      ? readingPage + 1
+      : null;
+  const facingSpan = useMemo(
+    () =>
+      facingPage !== null && boundaries ? rangeSpan(boundaries, 'page', facingPage) : null,
+    [facingPage, boundaries],
+  );
+  const [facingSurahs, setFacingSurahs] = useState<RangeSurahData[] | null>(null);
+  useEffect(() => {
+    if (!readingOpen || !facingSpan) {
+      setFacingSurahs(null);
+      return;
+    }
+    let cancelled = false;
+    const jobs = facingSpan.surahs.map(async (n): Promise<RangeSurahData> => {
+      if (n === surah.number) return { surah, ayahs };
+      const view = await fetchSurahClient(n, {
+        translation: settings.defaultTranslation,
+        tafsir: settings.defaultTafsir,
+        reciter: reciterId,
+      });
+      return { surah: view.surah, ayahs: view.ayahs };
+    });
+    Promise.all(jobs)
+      .then((rows) => {
+        if (!cancelled) setFacingSurahs(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setFacingSurahs(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    readingOpen,
+    facingSpan,
+    surah,
+    ayahs,
+    settings.defaultTranslation,
+    settings.defaultTafsir,
+    reciterId,
+  ]);
+  const facingGroups = useMemo(
+    () =>
+      facingSpan && facingSurahs
+        ? buildMushafGroups(facingSpan, facingSurahs, madhhab)
+        : null,
+    [facingSpan, facingSurahs, madhhab],
+  );
+  const [facingLines, setFacingLines] = useState<MushafExactLine[] | null>(null);
+  useEffect(() => {
+    if (!readingOpen || facingPage === null) {
+      setFacingLines(null);
+      return;
+    }
+    let cancelled = false;
+    loadMushafLines().then((pages) => {
+      if (cancelled) return;
+      setFacingLines(
+        pages && facingPage >= 1 && facingPage <= pages.length
+          ? pages[facingPage - 1]
+          : null,
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [readingOpen, facingPage]);
+  const facingLastRef =
+    facingGroups && facingGroups.length > 0
+      ? (() => {
+          const g = facingGroups[facingGroups.length - 1];
+          const d = g.items[g.items.length - 1];
+          return d ? { surah: g.surahNumber, ayah: d.standardNumber } : null;
+        })()
+      : null;
+  const facingMeta =
+    facingPage !== null && facingSpan && boundaries
+      ? rangeContaining(
+          boundaries,
+          (facingLastRef ?? facingSpan.start).surah,
+          (facingLastRef ?? facingSpan.start).ayah,
+        )
+      : { juz: null, hizb: null, page: null };
+  const facingHizb = toDisplayHizb(facingMeta.hizb);
+  const facingSurahName =
+    facingGroups && facingGroups.length > 0
+      ? facingGroups[facingGroups.length - 1].surahNameAr
+      : '';
+  // Step 6: keyboard page turns in the reading view — ArrowLeft is
+  // "next" in RTL locales (book direction), ArrowRight in LTR; keys
+  // typed into a field never navigate.
+  useEffect(() => {
+    if (!readingOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === 'INPUT' ||
+          t.tagName === 'TEXTAREA' ||
+          t.tagName === 'SELECT' ||
+          t.isContentEditable)
+      ) {
+        return;
+      }
+      if (readingPage === null) return;
+      const rtl = locale === 'fa' || locale === 'ar';
+      const forward = rtl ? e.key === 'ArrowLeft' : e.key === 'ArrowRight';
+      e.preventDefault();
+      setReadingPage(
+        forward
+          ? Math.min(RANGE_COUNTS.page, readingPage + pageStep)
+          : Math.max(1, readingPage - pageStep),
+      );
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [readingOpen, readingPage, pageStep, locale]);
   // Reading page meta (last-ayah rule, same as the main page header).
   const readingLastRef =
     readingGroups && readingGroups.length > 0
@@ -1556,7 +1759,6 @@ function QuranUmumReader({
     readingGroups && readingGroups.length > 0
       ? readingGroups[readingGroups.length - 1].surahNameAr
       : '';
-
   const openReading = (): void => {
     setReadingPage(displayPage);
     setSheet(null);
@@ -1663,6 +1865,9 @@ function QuranUmumReader({
     warshMargins: labels.mushafWarshMargins,
     qalunMargins: labels.mushafQalunMargins,
     madina: labels.mushafMadina,
+    digitalKhatt: labels.mushafDigitalKhatt,
+    digitalKhattIndoPak: labels.mushafDigitalKhattIndoPak,
+    qpcV4: labels.mushafQpcV4,
     tajweed: labels.mushafTajweed,
     current: labels.mushafCurrent,
     soon: labels.mushafSoon,
@@ -1693,6 +1898,61 @@ function QuranUmumReader({
     const s = surahList.find((x) => x.number === n);
     return s ? s.nameAr : String(n);
   };
+
+  // Step 6: the reading page elements, defined once so the
+  // single-page layout and the two-page spread share them verbatim.
+  // (Props identical to the pre-step-6 inline element; the facing
+  // element mirrors them with the facing pipeline's data.)
+  const sharedReadingPageProps = {
+    headerSurahTemplate: labels.mushafHeaderSurah,
+    pageCurrent: labels.pageCurrent,
+    juzCurrent: labels.juzCurrent,
+    hizbCurrent: labels.hizbCurrent,
+    bismillah: labels.bismillah,
+    scriptClass,
+    playingKey,
+    linesClickable: false,
+    hideMeta: true,
+    hideText,
+    onPlayAyah: () => {},
+    svgPage: true,
+    mushafKey,
+    resolveSurahName: surahNameAr,
+    highlightKey: mushafKey === DEFAULT_SVG_MUSHAF ? playingKey : svgSelectedKey,
+    onSelectAyah: (sn: number, an: number) => {
+      if (mushafKey !== DEFAULT_SVG_MUSHAF) {
+        setSvgSelectedKey(`${sn}:${an}`);
+        return;
+      }
+      const idx = playMap.get(`${sn}:${an}`);
+      if (idx !== undefined) playIndex(idx);
+    },
+    svgFallbackNote: labels.svgFallbackNote,
+    svgUnavailableNote: labels.svgUnavailableNote,
+  };
+  const readingPageElement = readingGroups ? (
+    <QuranMushafPage
+      groups={readingGroups}
+      exactLines={readingLines}
+      pageNumber={readingPage ?? 1}
+      juz={readingMeta.juz}
+      hizb={readingHizb}
+      headerSurah={readingSurahName}
+      {...sharedReadingPageProps}
+    />
+  ) : null;
+  const facingPageElement =
+    facingGroups && facingPage !== null ? (
+      <QuranMushafPage
+        groups={facingGroups}
+        exactLines={facingLines}
+        pageNumber={facingPage}
+        juz={facingMeta.juz}
+        hizb={facingHizb}
+        headerSurah={facingSurahName}
+        {...sharedReadingPageProps}
+      />
+    ) : null;
 
   // Range list rows (boundaries loaded lazily on first range view).
   const listEntries = boundaries && rangeKind ? boundaries[rangeKind] : null;
@@ -1879,6 +2139,10 @@ function QuranUmumReader({
           labels={mushafLabels}
           currentMushaf={mushafKey}
           onSelect={selectMushaf}
+          currentRenderer={pageRenderer}
+          onSelectDigitalKhatt={selectDigitalKhatt}
+          onSelectDigitalKhattIndoPak={selectDigitalKhattIndoPak}
+          onSelectQpcV4={selectQpcV4}
         />
       ) : null}
       {sheet === 'settings' ? (
@@ -2776,6 +3040,7 @@ function QuranUmumReader({
                 hideText={hideText}
                 onPlayAyah={() => {}}
                 svgPage
+                pageRenderer={pageRenderer}
                 mushafKey={mushafKey}
                 resolveSurahName={surahNameAr}
                 onSelectAyah={handleNonHafsTap}
@@ -2894,6 +3159,7 @@ function QuranUmumReader({
                 // pages at once; the juz/hizb views page through
                 // one SVG at a time, exactly like page view).
                 svgPage
+                pageRenderer={pageRenderer}
                 mushafKey={mushafKey}
                 // Phase 3 (hifz redesign): the V2 text page's own
                 // prev/next/jump row navigates by page number, so it
@@ -3390,7 +3656,12 @@ function QuranUmumReader({
               <div className="quran-reading-top">
                 <span className="quran-reading-top-page" lang="ar" dir="rtl">
                   {readingPage !== null
-                    ? labels.pageCurrent.replace('%n%', toArabicIndicDigits(readingPage))
+                    ? labels.pageCurrent.replace(
+                        '%n%',
+                        facingPage !== null
+                          ? `${toArabicIndicDigits(readingPage)}–${toArabicIndicDigits(facingPage)}`
+                          : toArabicIndicDigits(readingPage),
+                      )
                     : ''}
                 </span>
                 <span className="quran-reading-top-surah" lang="ar" dir="rtl">
@@ -3424,7 +3695,8 @@ function QuranUmumReader({
                   <button
                     type="button"
                     onClick={() =>
-                      readingPage !== null && setReadingPage(Math.max(1, readingPage - 1))
+                      readingPage !== null &&
+                      setReadingPage(Math.max(1, readingPage - pageStep))
                     }
                     disabled={readingPage === null || readingPage <= 1}
                     aria-label={labels.prevPage}
@@ -3434,10 +3706,32 @@ function QuranUmumReader({
                   <span>
                     {readingPage !== null
                       ? labels.readingPageOf
-                          .replace('%current%', toArabicIndicDigits(readingPage))
+                          .replace(
+                            '%current%',
+                            facingPage !== null
+                              ? `${toArabicIndicDigits(readingPage)}–${toArabicIndicDigits(facingPage)}`
+                              : toArabicIndicDigits(readingPage),
+                          )
                           .replace('%total%', toArabicIndicDigits(RANGE_COUNTS.page))
                       : ''}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => setSpreadOverride(!spreadOn)}
+                    aria-pressed={spreadOn}
+                    aria-label={labels.readingSpread}
+                  >
+                    {labels.readingSpread}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPanelOpen((v) => !v)}
+                    aria-pressed={panelOpen}
+                    aria-label={labels.readingPanel}
+                  >
+                    {labels.readingPanel}
+                  </button>
+                  <span className="quran-reading-keys-hint">{labels.readingKeysHint}</span>
                   <button
                     type="button"
                     className="quran-reading-bookmark"
@@ -3474,7 +3768,7 @@ function QuranUmumReader({
                     type="button"
                     onClick={() =>
                       readingPage !== null &&
-                      setReadingPage(Math.min(RANGE_COUNTS.page, readingPage + 1))
+                      setReadingPage(Math.min(RANGE_COUNTS.page, readingPage + pageStep))
                     }
                     disabled={readingPage === null || readingPage >= RANGE_COUNTS.page}
                     aria-label={labels.nextPage}
@@ -3487,44 +3781,41 @@ function QuranUmumReader({
                     {readingError ? labels.rangeFailed : labels.rangeLoading}
                   </p>
                 ) : (
-                  <QuranMushafPage
-                    groups={readingGroups}
-                    exactLines={readingLines}
-                    pageNumber={readingPage ?? 1}
-                    juz={readingMeta.juz}
-                    hizb={readingHizb}
-                    headerSurah={readingSurahName}
-                    headerSurahTemplate={labels.mushafHeaderSurah}
-                    pageCurrent={labels.pageCurrent}
-                    juzCurrent={labels.juzCurrent}
-                    hizbCurrent={labels.hizbCurrent}
-                    bismillah={labels.bismillah}
-                    scriptClass={scriptClass}
-                    playingKey={playingKey}
-                    linesClickable={false}
-                    hideMeta
-                    hideText={hideText}
-                    onPlayAyah={() => {}}
-                    // Round 6: the reading view shows the real printed
-                    // SVG page of the CURRENT mushaf; tapping a
-                    // polygon plays that ayah for Hafs, and only
-                    // highlights it otherwise (no Hafs audio under
-                    // another key).
-                    svgPage
-                    mushafKey={mushafKey}
-                    resolveSurahName={surahNameAr}
-                    highlightKey={mushafKey === DEFAULT_SVG_MUSHAF ? playingKey : svgSelectedKey}
-                    onSelectAyah={(sn, an) => {
-                      if (mushafKey !== DEFAULT_SVG_MUSHAF) {
-                        setSvgSelectedKey(`${sn}:${an}`);
-                        return;
-                      }
-                      const idx = playMap.get(`${sn}:${an}`);
-                      if (idx !== undefined) playIndex(idx);
-                    }}
-                    svgFallbackNote={labels.svgFallbackNote}
-                    svgUnavailableNote={labels.svgUnavailableNote}
-                  />
+                  <div className="quran-reading-body">
+                    <div className="quran-reading-main">
+                      {facingPageElement ? (
+                        <div className="quran-reading-spread">
+                          {readingPageElement}
+                          {facingPageElement}
+                        </div>
+                      ) : (
+                        readingPageElement
+                      )}
+                    </div>
+                    {panelOpen ? (
+                      <aside
+                        className="quran-reading-panel"
+                        aria-label={labels.readingPanel}
+                      >
+                        <h4>{labels.readingPanel}</h4>
+                        {readingGroups.flatMap((g) =>
+                          g.items.map((d) =>
+                            d.ayah.translation ? (
+                              <p
+                                key={`${g.surahNumber}:${d.standardNumber}`}
+                                className="quran-reading-panel-ayah"
+                              >
+                                <span className="quran-reading-panel-ref">
+                                  {g.surahNumber}:{d.standardNumber}{' '}
+                                </span>
+                                {d.ayah.translation}
+                              </p>
+                            ) : null,
+                          ),
+                        )}
+                      </aside>
+                    ) : null}
+                  </div>
                 )}
               </div>
               <div className="quran-reading-bottom" role="toolbar" aria-label={labels.readingLabel}>

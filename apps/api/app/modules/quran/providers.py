@@ -17,6 +17,7 @@ provider پیش‌فرض: AlQuranCloud (`https://api.alquran.cloud/v1`).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -128,6 +129,18 @@ def _cache_get(key: str) -> dict | None:
 def _cache_put(key: str, value: dict) -> None:
     with _cache_lock:
         _cache[key] = (time.monotonic(), value)
+
+
+def _cache_get_stale(key: str) -> dict | None:
+    """مقدار کش بدون توجه به TTL — فقط پشتیبانِ هنگام خطای upstream.
+
+    گام ۵: وابستگی زندهٔ ترجمه/تفسیر نباید با اولین قطعی AlQuran
+    Cloud کل صفحه را ۵۰۳ کند؛ اگر نسخه‌ای از همین پاسخ قبلاً گرفته
+    شده، همان (با لاگ هشدار) سرو می‌شود تا upstream برگردد.
+    """
+    with _cache_lock:
+        entry = _cache.get(key)
+    return entry[1] if entry is not None else None
 
 
 def clear_quran_cache() -> None:
@@ -259,9 +272,26 @@ class AlQuranCloudProvider:
             text_edition, translation_edition, tafsir_edition, reciter_edition
         )
         cache_key = f"surah:{self.id}:{number}:{','.join(ids)}"
+        # پشتیبانِ stale را قبل از _cache_get بردار — آن تابع مقدارِ
+        # منقضی را از کش حذف می‌کند و پشتیبان باید قبلش ذخیره شده باشد.
+        stale = _cache_get_stale(cache_key)
         cached = _cache_get(cache_key)
         if cached is not None:
             return cached
+        try:
+            return await self._fetch_surah_live(number, ids, cache_key)
+        except QuranProviderError:
+            if stale is not None:
+                logger.warning(
+                    "provider %s failed for surah %s; serving stale cache",
+                    self.id, number,
+                )
+                return stale
+            raise
+
+    async def _fetch_surah_live(
+        self, number: int, ids: list[str], cache_key: str
+    ) -> dict:
         data = await self._get(f"/surah/{number}/editions/{','.join(ids)}")
         if not isinstance(data, list):
             raise QuranProviderError(
@@ -298,9 +328,24 @@ class AlQuranCloudProvider:
             text_edition, translation_edition, tafsir_edition, reciter_edition
         )
         cache_key = f"ayah:{self.id}:{surah}:{ayah}:{','.join(ids)}"
+        stale = _cache_get_stale(cache_key)
         cached = _cache_get(cache_key)
         if cached is not None:
             return cached
+        try:
+            return await self._fetch_ayah_live(surah, ayah, ids, cache_key)
+        except QuranProviderError:
+            if stale is not None:
+                logger.warning(
+                    "provider %s failed for ayah %s:%s; serving stale cache",
+                    self.id, surah, ayah,
+                )
+                return stale
+            raise
+
+    async def _fetch_ayah_live(
+        self, surah: int, ayah: int, ids: list[str], cache_key: str
+    ) -> dict:
         data = await self._get(f"/ayah/{surah}:{ayah}/editions/{','.join(ids)}")
         if not isinstance(data, list):
             raise QuranProviderError(
@@ -492,6 +537,181 @@ class SelfHostedProvider:
         return {"editions": {text_edition: AyahEditionText(text=text)}}
 
 
+# ---------------------------------------------------------------------------
+# provider باندل‌شده (گام ۵ برابری با ترتیل) — دادهٔ سمت سرور، بدون
+# هیچ فراخوانی زنده. ترجمه‌های فارسیِ خود ترتیل (رواد/تاجی) دادهٔ
+# داخل ریپو دارند؛ تفسیرهای فارسی QUL (مختصر/سعدی) فقط وقتی فعال‌اند
+# که فایل داده‌شان با importer در data/tafsir/ گذاشته شده باشد —
+# نبود فایل یعنی خطای صادقانه، نه ردیف مرده در انتخاب‌گر.
+# ---------------------------------------------------------------------------
+
+_BUNDLED_DATA_DIR = Path(__file__).resolve().parent / "data"
+_BUNDLED_TRANSLATION_FILES: dict[str, str] = {
+    "fa.rowwad": "fa_rowwad.json",
+    "fa.taji": "fa_taji.json",
+}
+_BUNDLED_TAFSIR_EDITIONS: tuple[str, ...] = ("fa.mokhtasar", "fa.saadi")
+
+_bundled_lock = threading.Lock()
+_bundled_cache: dict[str, dict[str, str]] = {}
+
+
+def _bundled_path(edition: str) -> Path | None:
+    if edition in _BUNDLED_TRANSLATION_FILES:
+        return _BUNDLED_DATA_DIR / _BUNDLED_TRANSLATION_FILES[edition]
+    if edition in _BUNDLED_TAFSIR_EDITIONS:
+        return _BUNDLED_DATA_DIR / "tafsir" / f"{edition}.json"
+    return None
+
+
+def bundled_available() -> dict[str, list[str]]:
+    """editionهای باندل‌شده‌ای که فایل داده‌شان واقعاً روی دیسک هست."""
+    available: dict[str, list[str]] = {"translation": [], "tafsir": []}
+    for edition, filename in _BUNDLED_TRANSLATION_FILES.items():
+        if (_BUNDLED_DATA_DIR / filename).is_file():
+            available["translation"].append(edition)
+    for edition in _BUNDLED_TAFSIR_EDITIONS:
+        path = _BUNDLED_DATA_DIR / "tafsir" / f"{edition}.json"
+        if path.is_file():
+            available["tafsir"].append(edition)
+    return available
+
+
+def _load_bundled(edition: str) -> dict[str, str]:
+    """بارگذاری تنبل + اعتبارسنجی سخت‌گیرانهٔ یک edition باندل‌شده."""
+    if edition in _bundled_cache:
+        return _bundled_cache[edition]
+    with _bundled_lock:
+        if edition in _bundled_cache:
+            return _bundled_cache[edition]
+        path = _bundled_path(edition)
+        if path is None:
+            raise QuranProviderError(
+                f"unknown bundled edition: {edition}", provider_id="bundled"
+            )
+        if not path.is_file():
+            raise QuranProviderError(
+                f"bundled edition data is not installed: {edition}",
+                provider_id="bundled",
+            )
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise QuranProviderError(
+                f"bundled edition data is unreadable: {edition}: {exc}",
+                provider_id="bundled",
+            ) from exc
+        if (
+            not isinstance(raw, dict)
+            or len(raw) < 6000
+            or not all(
+                isinstance(k, str) and isinstance(v, str) and v.strip()
+                for k, v in raw.items()
+            )
+        ):
+            raise QuranProviderError(
+                f"bundled edition data is incomplete: {edition}",
+                provider_id="bundled",
+            )
+        _bundled_cache[edition] = raw
+        return raw
+
+
+class BundledEditionsProvider:
+    """ترجمه/تفسیر از فایل‌های دادهٔ سمت سرور (قرارداد QuranProvider)."""
+
+    id = "bundled"
+    name = "Bundled (server-side data)"
+    base_url = ""
+
+    def _requested(
+        self,
+        text_edition: str | None,
+        translation_edition: str | None,
+        tafsir_edition: str | None,
+        reciter_edition: str | None,
+    ) -> list[str]:
+        if text_edition or reciter_edition:
+            raise QuranProviderError(
+                "bundled serves translation/tafsir only", provider_id=self.id
+            )
+        requested = [e for e in (translation_edition, tafsir_edition) if e]
+        if not requested:
+            raise QuranProviderError(
+                "bundled requires a translation or tafsir edition",
+                provider_id=self.id,
+            )
+        return requested
+
+    async def fetch_surah(
+        self,
+        number: int,
+        *,
+        text_edition: str | None = None,
+        translation_edition: str | None = None,
+        tafsir_edition: str | None = None,
+        reciter_edition: str | None = None,
+    ) -> dict:
+        requested = self._requested(
+            text_edition, translation_edition, tafsir_edition, reciter_edition
+        )
+        merged: dict[int, dict] = {}
+        for edition in requested:
+            data = _load_bundled(edition)
+            for key, text in data.items():
+                surah_s, ayah_s = key.split(":", 1)
+                if int(surah_s) == number:
+                    merged.setdefault(int(ayah_s), {})[edition] = (
+                        AyahEditionText(text=text)
+                    )
+        if not merged:
+            raise QuranProviderError(
+                f"no bundled ayahs for surah {number}", provider_id=self.id
+            )
+        return {
+            "ayahs": [
+                {"number_in_surah": n, "editions": merged[n]}
+                for n in sorted(merged)
+            ],
+            "edition_ids": requested,
+        }
+
+    async def fetch_ayah(
+        self,
+        surah: int,
+        ayah: int,
+        *,
+        text_edition: str | None = None,
+        translation_edition: str | None = None,
+        tafsir_edition: str | None = None,
+        reciter_edition: str | None = None,
+    ) -> dict:
+        requested = self._requested(
+            text_edition, translation_edition, tafsir_edition, reciter_edition
+        )
+        editions: dict[str, AyahEditionText] = {}
+        for edition in requested:
+            text = _load_bundled(edition).get(f"{surah}:{ayah}")
+            if text is None:
+                raise QuranProviderError(
+                    f"bundled edition {edition} has no ayah {surah}:{ayah}",
+                    provider_id=self.id,
+                )
+            editions[edition] = AyahEditionText(text=text)
+        return {"editions": editions, "edition_ids": requested}
+
+
+#: مسیریابی به‌ازای edition (گام ۵): این editionها همیشه از provider
+#: باندل‌شده می‌آیند، هر providerای که برای نوعشان انتخاب شده باشد —
+#: چون منبعشان AlQuran Cloud نیست و آن‌جا وجود ندارند.
+EDITION_PROVIDER_OVERRIDES: dict[str, str] = {
+    "fa.rowwad": "bundled",
+    "fa.taji": "bundled",
+    "fa.mokhtasar": "bundled",
+    "fa.saadi": "bundled",
+}
+
+
 #: کاتالوگ providerهای شناخته‌شده ولی هنوز متصل‌نشده — فقط فراداده و
 #: پیکربندی؛ هیچ‌کدام تا وقتی fetcher نداشته باشند قابل انتخاب نیستند.
 #: EveryAyah یک CDN فایل صوتی است و fawazahmed0 دادهٔ ایستای JSON با
@@ -665,6 +885,7 @@ def resolve_provider(
 PROVIDERS: dict[str, QuranProvider] = {
     AlQuranCloudProvider.id: AlQuranCloudProvider(),
     SelfHostedProvider.id: SelfHostedProvider(),
+    BundledEditionsProvider.id: BundledEditionsProvider(),
 }
 
 

@@ -24,6 +24,7 @@ from app.models.models import (
     SyncTombstone,
     User,
     UserAyahNote,
+    UserReadingState,
 )
 from app.modules.sync.service import record_entity_change
 
@@ -249,12 +250,15 @@ def _group_editions_by_provider(
         groups.setdefault(pid, {}).update(kwargs)
 
     add(by_type["text"], text_edition=sel["text_edition"])
+    # گام ۵: مسیریابی به‌ازای edition — editionهای باندل‌شده (رواد/تاجی/
+    # تفسیرهای فارسی QUL) از provider خودشان می‌آیند، نه از provider نوع.
+    overrides = quran_providers.EDITION_PROVIDER_OVERRIDES
     tr = translation or sel["translation_edition"]
     if tr:
-        add(by_type["translation"], translation_edition=tr)
+        add(overrides.get(tr, by_type["translation"]), translation_edition=tr)
     tf = tafsir or sel["tafsir_edition"]
     if tf:
-        add(by_type["tafsir"], tafsir_edition=tf)
+        add(overrides.get(tf, by_type["tafsir"]), tafsir_edition=tf)
     if sel["reciter_edition"]:
         add(by_type["audio"], reciter_edition=sel["reciter_edition"])
     return list(groups.items())
@@ -379,6 +383,8 @@ async def get_providers_config(db: AsyncSession) -> dict:
             entry_types = ["audio", "text", "translation", "tafsir"]
         elif pid == "self_hosted":
             entry_types = ["text"]
+        elif pid == "bundled":
+            entry_types = ["translation", "tafsir"]
         else:
             entry_types = [next(c["type"] for c in custom if c["id"] == pid)]
         providers.append(
@@ -417,6 +423,10 @@ async def get_providers_config(db: AsyncSession) -> dict:
         "text_edition": "quran-uthmani",
         "translations": await _quran_setting(db, "quran.translations"),
         "tafsirs": await _quran_setting(db, "quran.tafsirs"),
+        # گام ۵: editionهای باندل‌شده‌ای که داده‌شان واقعاً نصب است —
+        # ریدر فقط همین‌ها را به فهرست انتخاب اضافه می‌کند.
+        "bundled_translations": quran_providers.bundled_available()["translation"],
+        "bundled_tafsirs": quran_providers.bundled_available()["tafsir"],
         "reciters": await _quran_setting(db, "quran.reciters"),
         "reciter_photos": _clean_photo_map(await _quran_setting(db, "quran.reciter_photos")),
         "active_languages": await _quran_setting(db, "quran.active_languages"),
@@ -494,6 +504,52 @@ def _note_out(note: UserAyahNote) -> dict:
         "is_private": note.is_private,
         "created_at": _utc_iso(note.created_at),
     }
+
+
+# --- وضعیت خواندن: همگام‌سازی نشان‌ها + آخرین موقعیت (گام ۸ — ایراد ۱۱) ---
+# قانون تعارض (مستند در مدل و README sync وب): تازه‌ترین updated_at
+# (ساعت منطقیِ خودِ وضعیت، میلی‌ثانیه) برنده است. PUT با ساعت قدیمی‌تر
+# از ذخیره‌شده اعمال نمی‌شود و وضعیت ذخیره‌شده برمی‌گردد تا کلاینت
+# همان را بگیرد؛ ساعت برابر یعنی «همین حالا هم‌گام‌اند» و موفق است.
+
+
+def _reading_state_out(row: UserReadingState | None) -> dict:
+    if row is None:
+        return {"bookmarks": [], "last_read": None, "updated_at": 0}
+    return {
+        "bookmarks": row.bookmarks or [],
+        "last_read": row.last_read,
+        "updated_at": row.state_updated_at or 0,
+    }
+
+
+async def get_reading_state(db: AsyncSession, user: User) -> dict:
+    """وضعیت خواندن خودِ کاربر؛ نبود ردیف یعنی وضعیت خالی (نه خطا)."""
+    row = await db.get(UserReadingState, user.id)
+    return _reading_state_out(row)
+
+
+async def put_reading_state(
+    db: AsyncSession, user: User, *, bookmarks: list, last_read: dict | None,
+    updated_at: int,
+) -> tuple[dict, bool]:
+    """ذخیرهٔ وضعیت با قانون «تازه‌ترین برنده است».
+
+    برمی‌گرداند (وضعیت جاری، اعمال شد؟) — applied=False یعنی نسخهٔ
+    ذخیره‌شده تازه‌تر بود و ورودی کنار گذاشته شد.
+    """
+    row = await db.get(UserReadingState, user.id)
+    if row is not None and updated_at < (row.state_updated_at or 0):
+        return _reading_state_out(row), False
+    if row is None:
+        row = UserReadingState(user_id=user.id)
+        db.add(row)
+    row.bookmarks = bookmarks
+    row.last_read = last_read
+    row.state_updated_at = updated_at
+    await db.commit()
+    await db.refresh(row)
+    return _reading_state_out(row), True
 
 
 async def create_note(

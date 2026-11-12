@@ -26,11 +26,19 @@
 سگمنت‌های ناقص (تک‌عضوی، مثل `[1]`) نادیده گرفته می‌شوند؛ `duration`
 منفی در بعضی پاسخ‌ها دیده شده و به آن اعتماد نمی‌شود
 (`to - from` حساب می‌شود).
+
+منبع دوم (گام ۱۰ برابری): زمان‌بندی **تولیدشده با تراز واجی** برای
+editionهای عربیِ محصول، از صوت آیه‌به‌آیهٔ EveryAyah — دادهٔ
+باندل‌شده در `data/timings/` با مانیفست پیشرفت؛ قرارداد و مسیرش
+جداست (`get_generated_timing`) چون صوتش فایلِ خودِ آیه است، نه
+فایل سوره. جزئیات و پوشش در مانیفست همان پوشه است.
 """
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+from pathlib import Path
 
 import httpx
 
@@ -231,3 +239,111 @@ async def get_recitation_timing(reciter: str, surah: int) -> dict:
     raise RecitationTimingError(
         f"quran.com unreachable after {_RETRY_ATTEMPTS + 1} attempts: {last_exc}"
     )
+
+
+# ---------------------------------------------------------------------------
+# زمان‌بندی تولیدشده با تراز واجی اجباری (گام ۱۰ برابری، ایراد ۱۰) —
+# دادهٔ باندل‌شده‌ای که scripts/generate_reciter_timings.py از صوت
+# آیه‌به‌آیهٔ EveryAyah با همان خط لولهٔ واجی گام ۹ تولید می‌کند.
+# قراردادش با منبع Quran.com فرق دارد و قاطی نمی‌شود: صوت این‌جا
+# فایلِ خودِ آیه است و زمانِ کلمه‌ها نسبت به ابتدای همان فایل است؛
+# پس خروجی به‌ازای هر آیه audio_url خودش را دارد و from/to سوره‌ای
+# ندارد. کلمه‌ای که تراز برایش بازه نداده (جاافتاده) سگمنت ندارد —
+# زمان ساختگی هرگز ساخته نمی‌شود.
+# ---------------------------------------------------------------------------
+
+_GENERATED_DIR = Path(__file__).resolve().parent / "data" / "timings"
+
+
+def _generated_manifest() -> dict:
+    try:
+        body = json.loads(
+            (_GENERATED_DIR / "manifest.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+def generated_available() -> dict[str, int]:
+    """edition → شمار سوره‌های کاملِ تولیدشده (از مانیفست پیشرفت).
+
+    ویرایش‌های ‎-2‎ در مانیفست به‌عنوان شریکِ قاری پایه ثبت شده‌اند
+    و پوشش پایه را گزارش می‌کنند.
+    """
+    manifest = _generated_manifest()
+    out: dict[str, int] = {}
+    for edition, entry in (manifest.get("editions") or {}).items():
+        if isinstance(entry, dict):
+            done = len(entry.get("surahs_done") or [])
+            if done:
+                out[edition] = done
+    for alias, base in (manifest.get("shared") or {}).items():
+        if base in out:
+            out[alias] = out[base]
+    return out
+
+
+def get_generated_timing(edition: str, surah: int) -> dict:
+    """زمان‌بندی تولیدشدهٔ یک سوره برای یک edition (دادهٔ محلی).
+
+    نبود داده → RecitationTimingError (روتر ۵۰۳ صادقانه می‌دهد)؛
+    این مسیر هرگز به درون‌یابی یا منبع زنده نمی‌افتد.
+    """
+    if not 1 <= surah <= 114:
+        raise RecitationTimingError(f"invalid surah: {surah}")
+    manifest = _generated_manifest()
+    base = (manifest.get("shared") or {}).get(edition, edition)
+    entry = (manifest.get("editions") or {}).get(base) or {}
+    if surah not in (entry.get("surahs_done") or []):
+        # فایل نیمه‌تمامِ در حال تولید سرو نمی‌شود؛ فقط سورهٔ کامل.
+        raise RecitationTimingError(
+            f"no generated timing for {edition} surah {surah}"
+        )
+    path = _GENERATED_DIR / base / f"{surah:03d}.json"
+    if not path.is_file():
+        raise RecitationTimingError(
+            f"no generated timing for {edition} surah {surah}"
+        )
+    try:
+        body = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RecitationTimingError(
+            f"generated timing unreadable for {edition} surah {surah}: {exc}"
+        ) from exc
+    ayahs = []
+    try:
+        for entry in body.get("ayahs") or []:
+            words = [
+                {
+                    "word": int(w["word"]),
+                    "start_ms": int(w["start_ms"]),
+                    "end_ms": int(w["end_ms"]),
+                }
+                for w in entry.get("words") or []
+                if int(w["end_ms"]) > int(w["start_ms"])
+            ]
+            words.sort(key=lambda w: w["start_ms"])
+            ayahs.append(
+                {
+                    "ayah": int(entry["ayah"]),
+                    "audio_url": entry.get("audio_url"),
+                    "duration_ms": int(entry.get("duration_ms") or 0),
+                    "words": words,
+                }
+            )
+    except (ValueError, KeyError, TypeError) as exc:
+        raise RecitationTimingError(
+            f"generated timing malformed for {edition} surah {surah}: {exc}"
+        ) from exc
+    if not ayahs:
+        raise RecitationTimingError(
+            f"generated timing empty for {edition} surah {surah}"
+        )
+    ayahs.sort(key=lambda a: a["ayah"])
+    return {
+        "reciter": edition,
+        "surah": surah,
+        "source": "phoneme_alignment",
+        "ayahs": ayahs,
+    }

@@ -407,10 +407,10 @@ async def test_engine_failure_is_honest_503_without_fallback(tc, monkeypatch):
 
     monkeypatch.setattr(hifz_service.hifz_engines, "resolve_engine_id", _resolve)
 
-    def _fail(_self, _wav: bytes):
+    def _fail(_self, _wav: bytes, *args):
         raise hifz_engines.EngineError("engine_load_failed", "model missing")
 
-    def _must_not_run(_self, _wav: bytes):
+    def _must_not_run(_self, _wav: bytes, *args):
         raise AssertionError("silent fallback to the other engine happened")
 
     monkeypatch.setattr(hifz_engines.WhisperQuranEngine, "transcribe", _fail)

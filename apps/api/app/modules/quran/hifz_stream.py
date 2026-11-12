@@ -106,6 +106,16 @@ _PROB_CORRECT = 0.95
 _PROB_CLOSE = 0.65
 _PROB_WRONG = 0.30
 
+# هم‌ترازیِ دوباره (ایراد ۱۴): اگر خردهٔ دورریخته دست‌کم این‌قدر
+# واج باشد و ادامهٔ بافر با واحدی جلوتر بخواند، کاربر به‌جای واحدِ
+# جاری چیز دیگری خوانده است — واحد «غلط» می‌خورد، نه اینکه خرده
+# بی‌صدا دور ریخته شود و واحد «جاافتاده» شود. خردهٔ کوتاه‌تر از
+# این (نویز/شروعِ ناتمام) همان دورریختنِ خاموشِ پیشین است.
+_RESYNC_WRONG_MIN_CHARS = 4
+# وقتی نشست در حالتِ «تا اصلاحِ خطا جلو نرو» نگه داشته شده، واجِ
+# نامربوطِ انباشته سقف دارد تا بافر بی‌نهایت رشد نکند.
+_HOLD_BUFFER_MAX_CHARS = 300
+
 # کمترین طولِ واجی برای یافتنِ آیه: کمتر از این، جست‌وجو مبهم است
 # (چند حرفِ واجی در چند آیه تکرار می‌شود).
 _LOCATE_MIN_CHARS = 24
@@ -142,6 +152,22 @@ _FINALITY_BY_EVENT_TYPE = {
 }
 
 
+def _basmala_phoneme_string(mapping) -> str:
+    """رشتهٔ واجیِ بسمله از خودِ نگاشت (آیهٔ ۱:۱ خودِ بسمله است).
+
+    نگاشتِ بدونِ مدخل ۱:۱ (مثل نگاشت مصنوعیِ تست‌ها) رشتهٔ خالی
+    می‌دهد و همهٔ منطقِ بسملهٔ پایین‌دست خاموش می‌ماند.
+    """
+    if mapping is None:
+        return ""
+    segs = mapping.segments_for(1, 1)
+    if not segs:
+        return ""
+    return "".join(
+        collapse_phoneme_runs(s.phoneme) for s in segs if s.phoneme is not None
+    )
+
+
 def _locate_pass(
     mapping, surah, buf, hint_ayah, allow_backward, required_len,
     buf_offset,
@@ -155,6 +181,7 @@ def _locate_pass(
     با کفِ اثباتِ `required_len` (یا تمامِ رشتهٔ آیهٔ کوتاه).
     """
     probe = buf[buf_offset:buf_offset + _LOCATE_PROBE_CHARS]
+    basmala = _basmala_phoneme_string(mapping)
     meta = quran_service.get_surah(surah)
     best_len = 0
     best: list[tuple[int, int, int, int]] = []
@@ -162,6 +189,35 @@ def _locate_pass(
         if not allow_backward and hint_ayah is not None and ayah <= hint_ayah:
             continue
         segs = mapping.segments_for(surah, ayah)
+        if not segs:
+            continue
+        # بسمله مدرکِ یافتن نیست (ایراد ۱۴): قطعه‌های بسملهٔ ابتدای
+        # آیهٔ ۱ (جز سورهٔ ۱ که آیه‌اش خودِ بسمله است) از رشتهٔ
+        # موردانتظار کنار گذاشته می‌شوند — وگرنه بسملهٔ آغازِ هر
+        # نشست (که ربطی به آیهٔ انتخابی ندارد) به‌تنهایی آیهٔ ۱ را
+        # «اثبات» می‌کرد و نشست روی آیهٔ ۱ لنگر می‌انداخت و دیوار،
+        # آیه‌های نخوانده را یکی‌یکی می‌نوشت (راستی‌آزمایی با صدای
+        # واقعی مالک: نشستِ آیهٔ ۱۲ اعراف روی آیهٔ ۱ لنگر انداخت و
+        # تا آیهٔ ۱۰ خاکستری نوشت). `drop` در unit_pos جبران می‌شود
+        # تا اندیس با فهرستِ کاملِ قطعه‌ها بخواند.
+        drop = 0
+        if ayah == 1 and surah != 1 and basmala:
+            acc = ""
+            for s in segs:
+                if acc == basmala:
+                    break
+                if s.phoneme is None:
+                    drop += 1
+                    continue
+                cand = acc + collapse_phoneme_runs(s.phoneme)
+                if not basmala.startswith(cand):
+                    break
+                acc = cand
+                drop += 1
+            if acc == basmala:
+                segs = segs[drop:]
+            else:
+                drop = 0
         if not segs:
             continue
         expected = "".join(
@@ -191,7 +247,8 @@ def _locate_pass(
         # کفِ اثبات: کمتر از این، آیه نامزد نیست.
         if found_len < min(required_len, len(expected)):
             continue
-        # واحدی که تطابق از آن شروع می‌شود.
+        # واحدی که تطابق از آن شروع می‌شود (با جبرانِ قطعه‌های
+        # بسملهٔ کنارگذاشته‌شده تا اندیس روی فهرستِ کامل باشد).
         unit_pos = len(segs) - 1
         acc = 0
         for j, s in enumerate(segs):
@@ -202,6 +259,7 @@ def _locate_pass(
                 unit_pos = j
                 break
             acc += plen
+        unit_pos += drop
         if found_len > best_len:
             best_len = found_len
             best = [(ayah, found_off, unit_pos, buf_offset)]
@@ -217,7 +275,8 @@ def _locate_ayah_full(
     """یافتنِ آیه با جابه‌جاییِ سرِ بافر؛ برمی‌گرداند
     `(ayah, unit_pos, best_len, buf_offset)` یا None.
 
-    گذرِ اول دقیقاً از سرِ بافر می‌کاود (رفتارِ پیشین، بی‌تغییر).
+    گذرِ اول از سرِ بافر می‌کاود — یا، اگر بافر با بسمله شروع
+    شود، از بعدِ بسمله (بسمله مدرکِ موقعیت نیست؛ ایراد ۱۴).
     گذرِ دوم — فقط وقتی گذرِ اول هیچ نامزدی نیافت — تطابق را چند
     حرف جلوتر هم می‌آزماید: سرِ بافر ممکن است خردهٔ باقی‌ماندهٔ
     واحدِ پیشین باشد (اتصالِ واحدِ جاری، همزهٔ سرگردانِ آیهٔ
@@ -240,16 +299,49 @@ def _locate_ayah_full(
     پیش‌فرض False است تا بقیهٔ فراخوان‌ها (یافتنِ جلو، لنگر) همان
     قانونِ سخت‌گیرانهٔ ابهام را نگه دارند.
     """
-    if mapping is None or len(buf) < (min_len if min_len is not None else _LOCATE_MIN_CHARS):
+    if mapping is None:
         return None
     required_len = min_len if min_len is not None else _LOCATE_MIN_CHARS
+    # بسملهٔ سرِ بافر مدرکِ موقعیت نیست (ایراد ۱۴): خواننده تقریباً
+    # همیشه نشست را با بسمله شروع می‌کند، پس کاوش از بعدِ بسمله
+    # آغاز می‌شود. شاهدِ بسمله، پیشوندِ ۲۴حرفی است (دمِ بسمله در
+    # بازشناسی ممکن است چند حرف فرق کند) و جابه‌جاییِ گذرِ دوم
+    # دورِ همین نقطه هم می‌گردد تا خطای چندحرفیِ طولِ بسمله جبران
+    # شود. `buf_offset` برگشتی همچنان مطلق است (مصرفِ فراخوان‌ها
+    # دست نمی‌خورد).
+    basmala = _basmala_phoneme_string(mapping)
+    base_off = 0
+    if (
+        basmala
+        and len(buf) > len(basmala)
+        and buf.startswith(basmala[:_LOCATE_MIN_CHARS])
+    ):
+        base_off = len(basmala)
+    # کفِ ورود روی کلِ بافر است (قانونِ فاز ۶: بافرِ کوتاه — حتی
+    # برابرِ تمامِ یک آیهٔ کوتاه — مدرکِ یافتن نیست)؛ بسملهٔ سرِ
+    # بافر جزو این کف حساب نمی‌شود ولی از آن کم هم نمی‌کند: بافرِ
+    # «بسمله + آیهٔ کوتاه» از کف می‌گذرد و کفِ هر آیه در
+    # `_locate_pass` است (minِ required_len و طولِ خودِ آیه).
+    # پس از برداشتنِ بسمله هم دست‌کم یک تطابقِ حداقلی باید بماند.
+    if len(buf) < required_len:
+        return None
+    if len(buf) - base_off < _LOCATE_MIN_MATCH:
+        return None
     best_len, best = _locate_pass(
-        mapping, surah, buf, hint_ayah, allow_backward, required_len, 0
+        mapping, surah, buf, hint_ayah, allow_backward, required_len, base_off
     )
     if not best:
         by_ayah: dict[int, tuple[int, tuple[int, int, int, int]]] = {}
         max_off = min(_REVISIT_MAX_JUNCTION, len(buf) - _LOCATE_MIN_MATCH)
-        for off in range(1, max_off + 1):
+        offsets = set(range(1, max_off + 1))
+        if base_off:
+            offsets |= {
+                base_off + d
+                for d in range(-2, _REVISIT_MAX_JUNCTION + 1)
+                if 0 <= base_off + d <= len(buf) - _LOCATE_MIN_MATCH
+            }
+            offsets.discard(base_off)
+        for off in sorted(offsets):
             bl, bb = _locate_pass(
                 mapping, surah, buf, hint_ayah, allow_backward,
                 required_len, off,
@@ -609,6 +701,13 @@ class LiveSession:
     amber: float
     sender: Callable[[dict], None] | None
     mapping: PhonemeMapping | None = None
+    # گزینهٔ ترتیل (ایراد ۱۴): «تا اصلاحِ خطا جلو نرو» — وقتی روشن
+    # است، واحدِ «غلط» اشاره‌گر را نگه می‌دارد تا همان واحد درست
+    # خوانده شود؛ اصلاح با رویدادِ correction همان خانه را درست
+    # می‌کند. پیش‌فرض خاموش است (رفتارِ پیشین: علامت + ادامه).
+    hold_on_wrong: bool = False
+    _held: bool = False
+    _basmala_cache: str | None = None
 
     # وضعیت داخلی — با اشاره‌گرِ یکنواخت روی کلمه‌های موردانتظار.
     _ayah: int = 0
@@ -642,6 +741,10 @@ class LiveSession:
     # نخستین تطابقِ درست/نزدیک، یا یافتنِ موفق، پایین می‌آید.
     _locate_failed: bool = False
     _assigned: dict = field(default_factory=dict)  # (ayah, idx) -> (heard, prob)
+    # وضعیتِ فعلیِ هر خانه (برای تشخیصِ «بازخوانیِ اصلاحی» از
+    # «تکرار» — ایراد ۱۴): خانه‌ای که غلط خورده و دوباره خوانده
+    # می‌شود، اصلاح است نه تکرار.
+    _cell_status: dict = field(default_factory=dict)  # (ayah, idx) -> status
     _touched_ayahs: list = field(default_factory=list)
     _extras: list = field(default_factory=list)
     _events: list = field(default_factory=list)
@@ -857,6 +960,7 @@ class LiveSession:
         `correction` است که `corrects_event_id` آن را می‌گوید.
         """
         key = (ayah, index)
+        self._cell_status[key] = status
         if key in self._emitted_event_ids:
             self._assigned[key] = (heard, prob)
             self._touch(ayah)
@@ -1041,6 +1145,13 @@ class LiveSession:
                 self._ayah, wi, expected, status, prob, h, reason,
                 needs_review,
             )
+        if status == "wrong" and self.hold_on_wrong:
+            # «تا اصلاحِ خطا جلو نرو» (ایراد ۱۴): اشاره‌گر روی همین
+            # واحد می‌ایستد (جلو نمی‌رود) تا درست خوانده شود؛
+            # `_try_release_hold` در حلقه، اصلاح را با همان خانه
+            # (رویدادِ correction) ثبت می‌کند.
+            self._held = True
+            return
         if word_indices:
             self._index = max(word_indices) + 1
         self._unit_pos += 1
@@ -1222,6 +1333,19 @@ class LiveSession:
         buf = self._phoneme_buffer
         if not buf:
             return False
+        if self._locating and self.start_ayah != 1:
+            # بسملهٔ آغازِ نشست جزو آیهٔ انتخابی نیست (ایراد ۱۴):
+            # مصرفش کن تا لنگرِ سریع روی واحدِ اولِ همان آیه
+            # بنشیند، نه اینکه یافتن با کاوشِ بسمله‌دار به آیهٔ ۱
+            # پرتاب شود. (آیهٔ ۱ مستثناست: بسمله آن‌جا خودِ متن
+            # است و قطعه‌اش در نگاشت هست.)
+            basmala = self._session_basmala()
+            if basmala and buf.startswith(basmala):
+                self._phoneme_buffer = buf[len(basmala):]
+                self._resync_dropped += len(basmala)
+                buf = self._phoneme_buffer
+                if not buf:
+                    return False
         await self._ensure_units()
         assert self._units is not None
         phon = None
@@ -1256,6 +1380,14 @@ class LiveSession:
                 self._locating = False
                 self._relocate_pending = False
                 return True
+        basmala = self._session_basmala()
+        if basmala and len(buf) <= len(basmala) and basmala.startswith(buf):
+            # بسمله هنوز در حال گفته‌شدن است (بافر پیشوندِ بسمله
+            # است): یافتن روی بسملهٔ ناتمام «یافتنِ ناموفق» و
+            # آبشارِ غلط می‌سازد — بسملهٔ این نگاشت ۲۶ حرف است و
+            # کفِ یافتن ۲۴، پس واج‌ها دقیقاً وسطِ بسمله به کف
+            # می‌رسند (راستی‌آزمایی با صدای واقعی مالک، اعراف ۱۲).
+            return False
         if len(buf) < _LOCATE_MIN_CHARS:
             return False
         # یافتن: در شروعِ نشست هر آیه‌ای مجاز است؛ در یافتنِ دوبارهٔ
@@ -1285,6 +1417,12 @@ class LiveSession:
         self._relocate_pending = False
         self._locate_failed = True
         return True
+
+    def _session_basmala(self) -> str:
+        """رشتهٔ واجیِ بسمله از نگاشتِ همین نشست (کش‌شده)."""
+        if self._basmala_cache is None:
+            self._basmala_cache = _basmala_phoneme_string(self.mapping)
+        return self._basmala_cache
 
     async def feed_phonemes(self, phonemes: list[str]) -> None:
         """واج‌های Zipformer را با نگاشت قطعه‌ای به کلمه تبدیل کن.
@@ -1624,9 +1762,63 @@ class LiveSession:
             }
         )
 
+    async def _try_release_hold(self) -> bool:
+        """آیا واحدِ نگه‌داشته‌شده (غلط) حالا درست خوانده شد؟
+
+        فقط وقتی نشست با گزینهٔ «تا اصلاحِ خطا جلو نرو» نگه داشته
+        شده صدا زده می‌شود. بازخوانیِ درستِ همان واحد (دقیق، وصل،
+        یا نزدیکِ لنگردار) در بافر جست‌وجو می‌شود؛ هرچه پیش از آن
+        آمده نادیده گرفته می‌شود (معنای نگه‌داشتن همین است: تا
+        اصلاح نشود، هیچ‌چیز شمرده نمی‌شود). اصلاح با `_emit_unit`
+        روی همان خانه می‌نشیند و رویدادِ correction می‌سازد.
+        برمی‌گرداند True یعنی آزاد شد و حلقه ادامه دهد؛ False یعنی
+        هنوز اصلاح نشده و باید منتظرِ واجِ بیشتر ماند.
+        """
+        await self._ensure_units()
+        if self._units is None or self._unit_pos >= len(self._units):
+            self._held = False
+            return True
+        unit = self._units[self._unit_pos]
+        phon = unit.phoneme
+        if phon is None:
+            self._held = False
+            return True
+        buf = self._phoneme_buffer
+        for form in _waslah_forms(phon):
+            idx = buf.find(form)
+            if idx >= 0:
+                self._phoneme_buffer = buf[idx + len(form):]
+                self._held = False
+                self._emit_unit(unit.word_indices, "correct", _PROB_CORRECT)
+                return True
+        if len(buf) >= len(phon) and len(phon) > 3:
+            dist = alignment.levenshtein(buf[: len(phon)], phon)
+            if dist <= _NEAR_MISS_MAX_DISTANCE:
+                anchored = self._anchor_close(buf, phon)
+                if anchored is not None:
+                    self._phoneme_buffer = buf[anchored:]
+                    self._held = False
+                    self._emit_unit(
+                        unit.word_indices, "close", _PROB_CLOSE, distance=dist
+                    )
+                    return True
+        if phon.startswith(buf):
+            return False  # وسطِ بازخوانیِ واحد است؛ صبر کن.
+        if len(buf) > _HOLD_BUFFER_MAX_CHARS:
+            drop = len(buf) - _HOLD_BUFFER_MAX_CHARS
+            self._phoneme_buffer = buf[drop:]
+            self._resync_dropped += drop
+        return False
+
     async def _feed_phonemes_loop(self) -> None:
         """حلقهٔ تطابق واج‌به‌کلمه (بدنهٔ پیشینِ `feed_phonemes`)."""
         while self._phoneme_buffer:
+            if self._held:
+                # «تا اصلاحِ خطا جلو نرو»: هیچ منطقِ دیگری تا اصلاحِ
+                # واحدِ غلط اجرا نمی‌شود.
+                if not await self._try_release_hold():
+                    return
+                continue
             if not await self._ensure_position():
                 self._phoneme_buffer = ""
                 return
@@ -1650,6 +1842,17 @@ class LiveSession:
                     self._phoneme_buffer = ""
                     return
                 continue
+            if self._unit_pos == 0 and self._ayah != 1:
+                # بسملهٔ آغازِ آیهٔ تازه (ایراد ۱۴): خواننده سرِ هر
+                # آیه بسمله می‌گوید ولی بسمله جزو متنِ این آیه
+                # نیست؛ سرِ بافر بماند، واحدِ اول را می‌شکند و
+                # هم‌ترازی/شاخهٔ غلط آن را خطای کاربر حساب می‌کند.
+                basmala = self._session_basmala()
+                if basmala and self._phoneme_buffer.startswith(basmala):
+                    self._phoneme_buffer = self._phoneme_buffer[len(basmala):]
+                    self._resync_dropped += len(basmala)
+                    if not self._phoneme_buffer:
+                        return
             unit = self._units[self._unit_pos]
             word_indices, phon = unit.word_indices, unit.phoneme
             if phon is None:
@@ -1741,6 +1944,28 @@ class LiveSession:
             if repeat is not None:
                 repeat_pos, phon_len = repeat
                 repeat_unit = self._units[repeat_pos]
+                if any(
+                    self._cell_status.get((self._ayah, wi)) == "wrong"
+                    for wi in repeat_unit.word_indices
+                ):
+                    # بازخوانیِ واحدی که «غلط» خورده تکرار نیست —
+                    # اصلاح است (ایراد ۱۴): کاربر همان کلمه را این
+                    # بار درست خوانده؛ خانه‌ها با correction درست
+                    # می‌شوند و اشاره‌گر سرِ جایش می‌ماند. پیش‌تر
+                    # این بازخوانی «تکرار» شمرده و دور ریخته می‌شد
+                    # و غلطِ کاذب (مثلاً واج‌های بسملهٔ آغازِ نشست
+                    # که به‌حسابِ کلمه‌های اول رفته بود) دائمی
+                    # می‌ماند.
+                    self._phoneme_buffer = buf[phon_len:]
+                    for wi in repeat_unit.word_indices:
+                        expected = (
+                            self._words[wi] if wi < len(self._words) else ""
+                        )
+                        self._emit_word(
+                            self._ayah, wi, expected, "correct",
+                            _PROB_CORRECT, None,
+                        )
+                    continue
                 first_index = (
                     repeat_unit.word_indices[0]
                     if repeat_unit.word_indices
@@ -1798,18 +2023,37 @@ class LiveSession:
                 resynced = False
                 for d in range(1, min(cap, len(buf)) + 1):
                     rest = buf[d:]
-                    if (
-                        rest.startswith(phon)
-                        or (
-                            len(rest) >= len(phon)
-                            and len(phon) > 3
-                            and alignment.levenshtein(rest[: len(phon)], phon)
-                            <= _NEAR_MISS_MAX_DISTANCE
-                        )
-                        or self._find_ahead_unit(rest) is not None
+                    if rest.startswith(phon) or (
+                        len(rest) >= len(phon)
+                        and len(phon) > 3
+                        and alignment.levenshtein(rest[: len(phon)], phon)
+                        <= _NEAR_MISS_MAX_DISTANCE
                     ):
+                        # ادامه با خودِ واحدِ جاری می‌خواند: خرده،
+                        # نویز/شروعِ ناتمام بود — دورریختنِ خاموش.
                         self._phoneme_buffer = rest
                         self._resync_dropped += d
+                        resynced = True
+                        break
+                    if self._find_ahead_unit(rest) is not None:
+                        if d >= _RESYNC_WRONG_MIN_CHARS:
+                            # ایراد ۱۴: کاربر به‌جای این واحد چیز
+                            # دیگری خوانده و جلو رفته است. پیش‌تر
+                            # خرده بی‌صدا دور ریخته می‌شد و واحد
+                            # «جاافتاده» می‌خورد — یعنی سیستم خطا
+                            # را نمی‌دید و درستِ خودش را می‌نوشت.
+                            # حالا واحد «غلط» است و شنیده‌شده همان
+                            # خردهٔ واقعی است؛ ادامه با واحدِ جلوتر
+                            # در دورِ بعد هم‌تراز می‌شود.
+                            chunk = buf[: len(phon)]
+                            self._phoneme_buffer = rest
+                            self._emit_unit(
+                                word_indices, "wrong", _PROB_WRONG,
+                                heard=chunk,
+                            )
+                        else:
+                            self._phoneme_buffer = rest
+                            self._resync_dropped += d
                         resynced = True
                         break
                 if resynced:
@@ -1929,8 +2173,12 @@ class LiveSession:
                 self._emitting_final = True
                 try:
                     while self._index < len(self._words):
-                        expected = self._words[self._index]
-                        self._emit_word(self._ayah, self._index, expected, "skipped", 0.0, None)
+                        # خانهٔ ازپیش‌صادرشده (مثلاً واحدِ غلطِ
+                        # نگه‌داشته‌شده در حالتِ hold) دست نمی‌خورد:
+                        # «جاافتاده» نباید روی «غلط» اصلاحیه بفرستد.
+                        if (self._ayah, self._index) not in self._emitted_event_ids:
+                            expected = self._words[self._index]
+                            self._emit_word(self._ayah, self._index, expected, "skipped", 0.0, None)
                         self._index += 1
                 finally:
                     self._emitting_final = False
@@ -1974,6 +2222,7 @@ async def start_live_session(
     ayah: int,
     sender,
     mapping=None,
+    hold_on_wrong: bool | None = None,
 ) -> LiveSession:
     """نشست زنده را بساز: مالکیت + موتور + (برای Zipformer) نگاشت.
 
@@ -2004,6 +2253,11 @@ async def start_live_session(
     if mapping is None:
         mapping = require_phoneme_mapping()
     green, amber = await hifz_service.get_thresholds(db)
+    if hold_on_wrong is None:
+        # پیام start نگفته: تنظیمِ ذخیرهٔ کاربر (`freeze_on_error`)
+        # حاکم است — همان سوییچِ رابط که از فاز ۴ هست.
+        settings = await hifz_service.get_user_settings(db, user)
+        hold_on_wrong = bool(settings.get("freeze_on_error"))
     session = LiveSession(
         db=db,
         attempt=attempt,
@@ -2013,6 +2267,7 @@ async def start_live_session(
         amber=amber,
         sender=sender,
         mapping=mapping,
+        hold_on_wrong=hold_on_wrong,
     )
     session._ayah = ayah
     session._words = await session._load_ayah(ayah)

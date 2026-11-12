@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -32,6 +32,7 @@ from app.models.models import (
     HifzPlanItem,
     HifzReview,
     HifzTasmiSession,
+    HifzUserSettings,
     HifzWordScore,
     User,
 )
@@ -365,6 +366,199 @@ async def due_reviews(db: AsyncSession, user: User, limit: int = 100) -> list[di
 
 
 # ---------------------------------------------------------------------------
+# فعالیت روزانه، رکورد پیوستگی و هدف روزانه (گام ۴ برابری با ترتیل)
+# ---------------------------------------------------------------------------
+# روزها بر مبنای UTC شمرده می‌شوند — همان مبنای daily_series داشبورد.
+# «روز فعال»: دست‌کم یک نشست، یا یک کلمهٔ نمره‌گرفته، یا یک مرور SRS.
+# «آیه‌های فعالِ روز» (واحد هدف روزانه): اجتماع آیه‌هایی که آن روز
+# کلمه‌ای ازشان نمره گرفته (بر مبنای آخرین زمان نمره‌دهی ردیف) یا
+# مرورشده‌اند. همه‌چیز از ردیف‌های واقعی ساخته می‌شود؛ روز بی‌داده
+# صفر است و رکورد روی کل تاریخچه حساب می‌شود، نه فقط بازهٔ نمایش.
+
+_WORD_DAY = func.date(
+    func.coalesce(HifzWordScore.updated_at, HifzWordScore.created_at)
+)
+_WORD_TS = func.coalesce(HifzWordScore.updated_at, HifzWordScore.created_at)
+
+
+def _day_key(value: Any) -> str:
+    return str(value)[:10]
+
+
+async def _active_dates(db: AsyncSession, user: User) -> set[date]:
+    """همهٔ روزهای فعالِ کاربر در کل تاریخچه (برای رکورد پیوستگی)."""
+    found: set[date] = set()
+    statements = [
+        select(_WORD_DAY)
+        .join(HifzAttempt, HifzWordScore.attempt_id == HifzAttempt.id)
+        .where(HifzAttempt.user_id == user.id)
+        .distinct(),
+        select(func.date(HifzReview.last_reviewed_at))
+        .where(
+            HifzReview.user_id == user.id,
+            HifzReview.last_reviewed_at.isnot(None),
+        )
+        .distinct(),
+        select(func.date(HifzAttempt.created_at))
+        .where(HifzAttempt.user_id == user.id)
+        .distinct(),
+    ]
+    for stmt in statements:
+        rows = await db.execute(stmt)
+        for (value,) in rows.all():
+            if value is not None:
+                found.add(date.fromisoformat(_day_key(value)))
+    return found
+
+
+def _streaks(active: set[date], today: date) -> tuple[int, int]:
+    """(رکورد جاری، بهترین رکورد) روی مجموعهٔ روزهای فعال.
+
+    رکورد جاری از امروز شمرده می‌شود؛ اگر امروز هنوز فعالیتی نشده،
+    از دیروز — یعنی رکورد تا پایان امروز فرصت دارد نشکند.
+    """
+    best = 0
+    run = 0
+    prev: date | None = None
+    for day in sorted(active):
+        run = run + 1 if prev is not None and (day - prev).days == 1 else 1
+        best = max(best, run)
+        prev = day
+    current = 0
+    cursor = today if today in active else today - timedelta(days=1)
+    while cursor in active:
+        current += 1
+        cursor -= timedelta(days=1)
+    return current, best
+
+
+async def _day_ayahs(db: AsyncSession, user: User, day: date) -> int:
+    """تعداد آیه‌های متمایزِ فعال در یک روز (بازهٔ زمانی UTC)."""
+    start = datetime(day.year, day.month, day.day, tzinfo=UTC)
+    end = start + timedelta(days=1)
+    keys: set[tuple[int, int]] = set()
+    words = await db.execute(
+        select(HifzWordScore.surah, HifzWordScore.ayah)
+        .join(HifzAttempt, HifzWordScore.attempt_id == HifzAttempt.id)
+        .where(
+            HifzAttempt.user_id == user.id,
+            _WORD_TS >= start,
+            _WORD_TS < end,
+        )
+        .distinct()
+    )
+    keys.update((int(s), int(a)) for s, a in words.all())
+    reviews = await db.execute(
+        select(HifzReview.surah, HifzReview.ayah)
+        .where(
+            HifzReview.user_id == user.id,
+            HifzReview.last_reviewed_at >= start,
+            HifzReview.last_reviewed_at < end,
+        )
+        .distinct()
+    )
+    keys.update((int(s), int(a)) for s, a in reviews.all())
+    return len(keys)
+
+
+async def _goal_ayahs(db: AsyncSession, user: User) -> int:
+    row = await db.get(HifzUserSettings, user.id)
+    return int(row.daily_goal_ayahs) if row is not None else 0
+
+
+async def activity(db: AsyncSession, user: User, *, days: int = 371) -> dict:
+    """سری روزانهٔ فعالیت + رکوردها + پیشرفت هدف امروز (فقط دادهٔ واقعی)."""
+    today = _utcnow().date()
+    since = _utcnow() - timedelta(days=days)
+
+    async def _counts(stmt: Any) -> dict[str, int]:
+        rows = await db.execute(stmt)
+        return {_day_key(d): int(n) for d, n in rows.all()}
+
+    attempts_by_day = await _counts(
+        select(func.date(HifzAttempt.created_at), func.count())
+        .where(
+            HifzAttempt.user_id == user.id,
+            HifzAttempt.created_at >= since,
+        )
+        .group_by(func.date(HifzAttempt.created_at))
+    )
+    words_by_day = await _counts(
+        select(_WORD_DAY, func.count())
+        .join(HifzAttempt, HifzWordScore.attempt_id == HifzAttempt.id)
+        .where(HifzAttempt.user_id == user.id, _WORD_TS >= since)
+        .group_by(_WORD_DAY)
+    )
+    reviews_by_day = await _counts(
+        select(func.date(HifzReview.last_reviewed_at), func.count())
+        .where(
+            HifzReview.user_id == user.id,
+            HifzReview.last_reviewed_at.isnot(None),
+            HifzReview.last_reviewed_at >= since,
+        )
+        .group_by(func.date(HifzReview.last_reviewed_at))
+    )
+    # آیه‌های متمایزِ هر روز: اجتماع نمره‌ها و مرورها.
+    ayah_keys: dict[str, set[tuple[int, int]]] = {}
+
+    def _collect(rows: Any) -> None:
+        for d, s, a in rows:
+            if d is not None:
+                ayah_keys.setdefault(_day_key(d), set()).add((int(s), int(a)))
+
+    word_ayahs = await db.execute(
+        select(_WORD_DAY, HifzWordScore.surah, HifzWordScore.ayah)
+        .join(HifzAttempt, HifzWordScore.attempt_id == HifzAttempt.id)
+        .where(HifzAttempt.user_id == user.id, _WORD_TS >= since)
+        .group_by(_WORD_DAY, HifzWordScore.surah, HifzWordScore.ayah)
+    )
+    _collect(word_ayahs.all())
+    review_ayahs = await db.execute(
+        select(
+            func.date(HifzReview.last_reviewed_at),
+            HifzReview.surah,
+            HifzReview.ayah,
+        )
+        .where(
+            HifzReview.user_id == user.id,
+            HifzReview.last_reviewed_at.isnot(None),
+            HifzReview.last_reviewed_at >= since,
+        )
+        .group_by(
+            func.date(HifzReview.last_reviewed_at),
+            HifzReview.surah,
+            HifzReview.ayah,
+        )
+    )
+    _collect(review_ayahs.all())
+
+    series: list[dict] = []
+    for i in range(days):
+        day = today - timedelta(days=days - 1 - i)
+        key = str(day)
+        series.append(
+            {
+                "date": key,
+                "attempts": attempts_by_day.get(key, 0),
+                "graded_words": words_by_day.get(key, 0),
+                "reviews": reviews_by_day.get(key, 0),
+                "ayahs": len(ayah_keys.get(key, set())),
+            }
+        )
+    streak_current, streak_best = _streaks(await _active_dates(db, user), today)
+    goal = await _goal_ayahs(db, user)
+    today_ayahs = series[-1]["ayahs"] if series else 0
+    return {
+        "days": series,
+        "streak_current": streak_current,
+        "streak_best": streak_best,
+        "goal_ayahs": goal,
+        "today_ayahs": today_ayahs,
+        "goal_met": goal > 0 and today_ayahs >= goal,
+    }
+
+
+# ---------------------------------------------------------------------------
 # داشبورد (فقط آمار واقعی)
 # ---------------------------------------------------------------------------
 
@@ -432,6 +626,13 @@ async def dashboard(db: AsyncSession, user: User) -> dict:
         )
     due = await due_reviews(db, user, limit=100)
     plans = await list_plans(db, user)
+    # گام ۴: رکورد پیوستگی و پیشرفت هدف امروز، از همان فعالیت واقعی.
+    today = _utcnow().date()
+    streak_current, streak_best = _streaks(
+        await _active_dates(db, user), today
+    )
+    goal = await _goal_ayahs(db, user)
+    goal_today = await _day_ayahs(db, user, today)
     # پرخطاترین آیه‌ها (۵ آیهٔ اول) — فقط از خطاهای واقعی.
     worst = await db.execute(
         select(
@@ -448,6 +649,11 @@ async def dashboard(db: AsyncSession, user: User) -> dict:
         "counts": counts,
         "errors_by_type": errors_by_type,
         "daily_series": days,
+        "streak_current": streak_current,
+        "streak_best": streak_best,
+        "goal_ayahs": goal,
+        "goal_today_ayahs": goal_today,
+        "goal_met": goal > 0 and goal_today >= goal,
         "due_count": len(due),
         "due_ayahs": due[:10],
         "plans": plans,
