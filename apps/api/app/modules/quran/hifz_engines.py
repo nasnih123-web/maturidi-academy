@@ -42,20 +42,42 @@ Verified 2026-11-04 (page-text verification only; no download executed):
   needs a CTranslate2 directory — use the third-party conversion
   hkhan0327/faster-whisper-base-ar-quran (pinned source commit
   5c3c53f...) or convert locally; the transformers repo itself is
-  not directly loadable by faster-whisper. Word timestamps via
-  faster-whisper are DTW estimates, not phoneme-accurate alignment.
-  License Apache-2.0 is corroborated by secondary pages only — the
-  official card shows no license field, so confirm it on the live HF
-  page before commercial use. Output is Arabic TEXT (not phonemes).
+  not directly loadable by faster-whisper. Output is Arabic TEXT
+  (not phonemes). Word timestamps from faster-whisper are DTW
+  estimates, not phoneme-accurate alignment — since parity step 9
+  they are OFF by default and only a clearly-labeled last-resort
+  fallback (`timing_source: "dtw_fallback"`) when the Zipformer
+  phoneme post-pass is unavailable; word timings otherwise come
+  from the phoneme forced alignment. License Apache-2.0 is
+  corroborated by secondary pages only — the official card shows
+  no license field, so confirm it on the live HF page before
+  commercial use.
+- ZIPFORMER DECODE (step 9 fix): `ZipformerEngine.transcribe` used
+  `sherpa_onnx.read_wave` + `stream.result`, neither of which
+  exists in sherpa-onnx 2.0.1 (only `write_wave`; the official
+  result API is `get_result_as_json_string`, as the live path
+  already uses) — the recorded Zipformer path 503'd on any real
+  call. It now decodes exactly like the live `SherpaPhonemeStream`
+  (stdlib `wave` + `accept_waveform` + JSON result), and
+  `transcribe_timed_phonemes` exposes the same decode with
+  per-token timestamps for the forced-alignment post-pass.
+- WHISPER INPUT (step 9 fix): faster-whisper 1.2.1 + av 19.0.2
+  crash in `decode_audio` (`av.open(metadata_errors=...)`), so
+  the adapter now decodes the (already service-validated 16 kHz
+  mono) WAV in-process and passes float32 PCM to faster-whisper
+  instead of a temp-file path.
 """
 
 from __future__ import annotations
 
 import glob
 import importlib.util
+import io
+import json
 import logging
 import os
-import tempfile
+import struct
+import wave
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -65,6 +87,7 @@ __all__ = [
     "ENGINE_IDS",
     "EngineError",
     "HeardWord",
+    "TimedPhoneme",
     "Transcription",
     "get_engine",
     "resolve_engine_id",
@@ -91,12 +114,33 @@ class EngineError(Exception):
 class HeardWord:
     text: str
     prob: float | None = None
+    # DTW word timings (Whisper only, only when the caller asked for
+    # them — step 9: last-resort fallback, never the default).
+    start: float | None = None
+    end: float | None = None
+
+
+@dataclass
+class TimedPhoneme:
+    """One Zipformer phoneme token with its sherpa timestamp (seconds).
+
+    `start` is the token's frame time from the recognizer result —
+    the token's approximate start, same convention the live path's
+    chunked decode relies on. A word's end is the start of the first
+    token after its span (see hifz_service._spans_to_timings).
+    """
+
+    text: str
+    start: float
 
 
 @dataclass
 class Transcription:
     text: str
     words: list[HeardWord] = field(default_factory=list)
+    # Timed phonemes, populated only by the Zipformer engine (same
+    # decode as `words`); None for word-level engines and mocks.
+    timed_phonemes: list[TimedPhoneme] | None = None
 
 
 def _find_spec(name: str) -> bool:
@@ -139,6 +183,9 @@ class BaseEngine:
     # contract directly; "phoneme" (Zipformer) does NOT — the service
     # refuses to word-grade phoneme output rather than fake word scores.
     output_level: str = "word"
+    # Whether transcribe() accepts word_timestamps=True (Whisper DTW).
+    # Step 9: DTW is a last-resort fallback only, never the default.
+    supports_dtw_timestamps: bool = False
 
     def is_configured(self) -> tuple[bool, str]:
         """Cheap probe: env dir + runtime importable. Never loads a model."""
@@ -151,20 +198,6 @@ class BaseEngine:
 
     def transcribe(self, wav_bytes: bytes) -> Transcription:
         raise NotImplementedError
-
-
-def _temp_wav_path(wav_bytes: bytes) -> str:
-    fd, path = tempfile.mkstemp(suffix=".wav", prefix="hifz-grade-")
-    try:
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(wav_bytes)
-    except Exception:
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
-        raise
-    return path
 
 
 class ZipformerEngine(BaseEngine):
@@ -246,32 +279,43 @@ class ZipformerEngine(BaseEngine):
         self._recognizer = recognizer
         return recognizer
 
-    def transcribe(self, wav_bytes: bytes) -> Transcription:
-        """Phoneme transcription (NOT words — see output_level)."""
-        ok, reason = self.is_configured()
-        if not ok:
-            raise EngineError("engine_not_configured", reason)
+    def _decode(self, wav_bytes: bytes) -> tuple[list[str], list[float]]:
+        """Single-shot Zipformer decode: (tokens, per-token timestamps).
+
+        The SAME decode the live path uses (SherpaPhonemeStream):
+        stdlib `wave` in, `accept_waveform` + `decode_stream`, result
+        from the official `get_result_as_json_string` API. sherpa-onnx
+        2.0.1 has no `read_wave` and `OnlineStream` has no `result`
+        (the previous code used both and 503'd on any real call).
+        Raises EngineError on bad WAV or undecodable audio.
+        """
+        try:
+            with wave.open(io.BytesIO(wav_bytes), "rb") as wav:
+                channels = wav.getnchannels()
+                rate = wav.getframerate()
+                width = wav.getsampwidth()
+                frames = wav.readframes(wav.getnframes())
+        except (wave.Error, EOFError, ValueError) as exc:
+            raise EngineError(
+                "engine_transcription_failed", "رونویسی Zipformer ناموفق بود"
+            ) from exc
+        if channels != 1 or rate != 16000 or width != 2:
+            raise EngineError(
+                "engine_transcription_failed",
+                "رونویسی Zipformer ناموفق بود",
+            )
+        samples = struct.unpack(f"<{len(frames) // 2}h", frames)
+        floats = [s / 32768.0 for s in samples]
         try:
             recognizer = self._load()
-            import sherpa_onnx
-
-            path = _temp_wav_path(wav_bytes)
-            try:
-                samples, sr = sherpa_onnx.read_wave(path)
-            finally:
-                try:
-                    os.unlink(path)
-                except OSError:
-                    pass
-            # Single-shot decode through the stream object is sherpa's
-            # file pattern; the stream carries the CTC cache state.
-            # (Live-mic chunked feeding is a later feature, not Phase 3.)
             stream = recognizer.create_stream()
-            stream.accept_waveform(sr, samples)
-            recognizer.decode_stream(stream)
-            result = stream.result
-            tokens = [str(t) for t in (result.tokens or []) if str(t)]
-            text = " ".join(tokens)
+            stream.accept_waveform(16000, floats)
+            stream.input_finished()
+            while recognizer.is_ready(stream):
+                recognizer.decode_stream(stream)
+            data = json.loads(
+                recognizer.get_result_as_json_string(stream)
+            )
         except EngineError:
             raise
         except Exception as exc:
@@ -279,11 +323,63 @@ class ZipformerEngine(BaseEngine):
             raise EngineError(
                 "engine_transcription_failed", "رونویسی Zipformer ناموفق بود"
             ) from exc
+        tokens = data.get("tokens") if isinstance(data, dict) else None
+        stamps = data.get("timestamps") if isinstance(data, dict) else None
+        if not isinstance(tokens, list):
+            raise EngineError(
+                "engine_transcription_failed", "رونویسی Zipformer ناموفق بود"
+            )
+        tokens = [str(t) for t in tokens if str(t)]
+        if not isinstance(stamps, list) or len(stamps) != len(tokens):
+            # Timestamps are essential for the timed decode; the plain
+            # decode can still serve tokens without them.
+            return tokens, []
+        return tokens, [float(x) for x in stamps]
+
+    def transcribe(self, wav_bytes: bytes) -> Transcription:
+        """Phoneme transcription (NOT words — see output_level).
+
+        Also carries the same decode's per-token timestamps
+        (`timed_phonemes`) so the service can turn phoneme spans
+        into word timings without a second decode.
+        """
+        ok, reason = self.is_configured()
+        if not ok:
+            raise EngineError("engine_not_configured", reason)
+        tokens, stamps = self._decode(wav_bytes)
         # Phoneme tokens, deliberately NOT words: per-phoneme confidence
         # is not in the sherpa result (it lives in the repo's separate
         # decode_with_confidence.py), so prob stays None.
-        words = [HeardWord(t) for t in tokens]
-        return Transcription(text=text, words=words)
+        words = [HeardWord(t) for t in tokens if t != "<blank>"]
+        timed = (
+            [TimedPhoneme(t, s) for t, s in zip(tokens, stamps) if t != "<blank>"]
+            if stamps
+            else None
+        )
+        return Transcription(text=" ".join(tokens), words=words, timed_phonemes=timed)
+
+    def transcribe_timed_phonemes(self, wav_bytes: bytes) -> list[TimedPhoneme]:
+        """Timed phoneme decode of the same audio — the forced-alignment
+        post-pass input for the Whisper path (parity step 9).
+
+        Same model, assets and decode as the live path and as
+        `transcribe`; only the timestamps are kept. Raises
+        EngineError when the engine is not configured or sherpa
+        returns no usable timestamps (the caller then falls back to
+        DTW, labeled as such — never a silent substitution).
+        """
+        ok, reason = self.is_configured()
+        if not ok:
+            raise EngineError("engine_not_configured", reason)
+        tokens, stamps = self._decode(wav_bytes)
+        if not stamps:
+            raise EngineError(
+                "engine_transcription_failed",
+                "رونویسی Zipformer ناموفق بود",
+            )
+        return [
+            TimedPhoneme(t, s) for t, s in zip(tokens, stamps) if t != "<blank>"
+        ]
 
 
 class WhisperQuranEngine(BaseEngine):
@@ -294,17 +390,19 @@ class WhisperQuranEngine(BaseEngine):
     use the third-party conversion hkhan0327/faster-whisper-base-ar-quran
     (pinned source commit 5c3c53f...) or convert locally. No download
     at runtime: an unset or missing dir is an honest
-    engine_not_configured, never a silent fetch. Output is Arabic TEXT
-    with DTW-estimated word timestamps (not phoneme-accurate alignment).
-    License note: Apache-2.0 is corroborated by secondary pages only —
-    the official card shows no license field; confirm on the live HF
-    page before commercial use.
+    engine_not_configured, never a silent fetch. Output is Arabic TEXT.
+    Word timestamps are DTW estimates (not phoneme-accurate) and are
+    OFF unless the caller explicitly asks (`word_timestamps=True`,
+    step 9 last-resort fallback only). License note: Apache-2.0 is
+    corroborated by secondary pages only — the official card shows
+    no license field; confirm on the live HF page before commercial use.
     """
 
     engine_id = "whisper_quran"
     display_name = "Whisper-quran (tarteel-ai)"
     env_var = _WHISPER_ENV
     runtime_module = "faster_whisper"
+    supports_dtw_timestamps = True
 
     _model: Any | None = None
 
@@ -329,30 +427,73 @@ class WhisperQuranEngine(BaseEngine):
         self._model = model
         return model
 
-    def transcribe(self, wav_bytes: bytes) -> Transcription:
+    @staticmethod
+    def _decode_pcm(wav_bytes: bytes):
+        """WAV 16 kHz mono → float32 PCM for faster-whisper.
+
+        In-process decode (stdlib `wave` + numpy) instead of a
+        temp-file path: faster-whisper 1.2.1 + av 19.0.2 crash in
+        `decode_audio` (`av.open(metadata_errors=...)`), and the
+        service already validates 16 kHz mono before calling.
+        """
+        try:
+            import numpy as np
+        except ImportError as exc:
+            raise EngineError(
+                "engine_not_configured", f"numpy is not installed: {exc}"
+            ) from exc
+        try:
+            with wave.open(io.BytesIO(wav_bytes), "rb") as wav:
+                channels = wav.getnchannels()
+                rate = wav.getframerate()
+                width = wav.getsampwidth()
+                frames = wav.readframes(wav.getnframes())
+        except (wave.Error, EOFError, ValueError) as exc:
+            raise EngineError(
+                "engine_transcription_failed", "رونویسی Whisper ناموفق بود"
+            ) from exc
+        if channels != 1 or rate != 16000 or width != 2:
+            raise EngineError(
+                "engine_transcription_failed", "رونویسی Whisper ناموفق بود"
+            )
+        pcm = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+        return pcm
+
+    def transcribe(
+        self, wav_bytes: bytes, word_timestamps: bool = False
+    ) -> Transcription:
+        """Arabic-text transcription.
+
+        `word_timestamps` (DTW estimates, NOT phoneme-accurate) is
+        OFF by default since parity step 9: the service asks for it
+        only as a clearly-labeled last-resort fallback when the
+        Zipformer phoneme post-pass is unavailable. When on, each
+        word carries its DTW start/end; otherwise start/end stay None.
+        """
         ok, reason = self.is_configured()
         if not ok:
             raise EngineError("engine_not_configured", reason)
         try:
             model = self._load()
-            path = _temp_wav_path(wav_bytes)
-            try:
-                segments, _info = model.transcribe(
-                    path, language="ar", word_timestamps=True
-                )
-                words: list[HeardWord] = []
-                texts: list[str] = []
-                for seg in segments:
-                    texts.append(seg.text or "")
-                    for w in seg.words or []:
-                        word = (w.word or "").strip()
-                        if word:
-                            words.append(HeardWord(word, w.probability))
-            finally:
-                try:
-                    os.unlink(path)
-                except OSError:
-                    pass
+            pcm = self._decode_pcm(wav_bytes)
+            segments, _info = model.transcribe(
+                pcm, language="ar", word_timestamps=word_timestamps
+            )
+            words: list[HeardWord] = []
+            texts: list[str] = []
+            for seg in segments:
+                texts.append(seg.text or "")
+                for w in seg.words or []:
+                    word = (w.word or "").strip()
+                    if word:
+                        words.append(
+                            HeardWord(
+                                word,
+                                w.probability,
+                                start=float(w.start) if word_timestamps else None,
+                                end=float(w.end) if word_timestamps else None,
+                            )
+                        )
         except EngineError:
             raise
         except Exception as exc:

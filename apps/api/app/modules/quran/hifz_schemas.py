@@ -87,6 +87,11 @@ class HifzGradeWordOut(BaseModel):
     prob: float
     heard: str | None = None
     mistake_type: str | None = None
+    # Word timing in seconds within the graded audio (step 9): from the
+    # phoneme forced alignment when available, else None. The source
+    # is reported once per response as HifzGradeOut.timing_source.
+    start: float | None = None
+    end: float | None = None
 
 
 class HifzGradeOut(BaseModel):
@@ -96,6 +101,10 @@ class HifzGradeOut(BaseModel):
     word_index: int | None = None
     engine_used: str
     thresholds: dict[str, float] = {"green": 0.8, "amber": 0.5}
+    # Where the words' start/end timings came from (step 9):
+    # "phoneme" (Zipformer forced alignment), "dtw_fallback"
+    # (Whisper DTW estimates, last resort only) or "none".
+    timing_source: str = "none"
     words: list[HifzGradeWordOut] = []
     counts: HifzAttemptCounts = HifzAttemptCounts()
     extra_words: list[str] = []
