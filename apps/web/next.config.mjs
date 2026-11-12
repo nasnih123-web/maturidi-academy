@@ -66,6 +66,75 @@ const nextConfig = {
           },
         ],
       },
+      // Step 1b (Digital Khatt): same caching contract as the V2
+      // page data — per-page chunks are small JSON derived from a
+      // fixed dataset; the full files are the fallback path.
+      {
+        source: '/quran-mushaf-dk.json',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=604800',
+          },
+        ],
+      },
+      {
+        source: '/quran-mushaf-dk-pages/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=604800',
+          },
+        ],
+      },
+      {
+        source: '/quran-mushaf-dk-indopak.json',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=604800',
+          },
+        ],
+      },
+      {
+        source: '/quran-mushaf-dk-indopak-pages/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=604800',
+          },
+        ],
+      },
+      // Step 2 (QPC V4 / 1441): same contract as the V2 page data;
+      // the re-keyed glyph maps are immutable by name like the V2
+      // glyph files.
+      {
+        source: '/quran-mushaf-v4.json',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=604800',
+          },
+        ],
+      },
+      {
+        source: '/quran-mushaf-v4-pages/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=604800',
+          },
+        ],
+      },
+      {
+        source: '/quran-mushaf-v4qpc-glyphs/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
       // Round 2 §8 — fonts + glyph data are immutable by name, so
       // repeat visits must not spend a round-trip revalidating them:
       // the font files carry their version in the name

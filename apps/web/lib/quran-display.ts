@@ -10,14 +10,14 @@
  *     when no CRM value exists, and a reader's choice survives a
  *     reload on their own device without touching any account.
  *
- * Fonts are OFL font-family STACKS only (Amiri, Scheherazade New —
- * both SIL Open Font License; see the CSS classes in globals.css).
- * No font file is bundled and none is fetched from the Bayan APKs
- * (clean-room rule): a name in the stack simply resolves when the
- * reader's device already has the font, and falls back gracefully
- * otherwise. The indopak script switch (Nastaliq) is orthogonal and
- * keeps working: the font choice is a typeface preference applied
- * on top of it.
+ * Fonts are OFL typefaces (Amiri, Scheherazade New — both SIL Open
+ * Font License). Since step 6 (Tarteel-parity PR, defect 12) both
+ * are BUNDLED as WOFF2 under public/fonts/quran-display/ with
+ * @font-face rules in globals.css — before that they were name-only
+ * stacks that silently fell back on devices without the fonts.
+ * Nothing is fetched from the Bayan APKs (clean-room rule). The
+ * indopak script switch (Nastaliq) is orthogonal and keeps working:
+ * the font choice is a typeface preference applied on top of it.
  */
 
 export type DisplayFontId = 'system' | 'amiri' | 'scheherazade';

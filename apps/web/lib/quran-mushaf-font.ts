@@ -132,6 +132,43 @@ export const qcfV4Provider: MushafFontProvider = {
   },
 };
 
+/** Digital Khatt V2 — ONE variable font for every page (real
+    Unicode text, no per-page families). Family name is the CSS
+    name used by the DK renderer; the font's internal name is
+    "DigitalKhatt New Madina". Licence: SIL OFL 1.1, embedded in
+    the file (see public/fonts/digital-khatt/README.md + OFL.txt).
+    Like V4, this provider is NEVER registered globally — the DK
+    renderer loads it through ensureMushafFontFor /
+    useMushafFontReadyFor with the shared secondary cache. */
+export const DIGITAL_KHATT_FONT: MushafFontSource = {
+  family: 'DigitalKhatt V2',
+  sources:
+    'url("/fonts/digital-khatt/DigitalKhattV2.woff2") format("woff2"), ' +
+    'url("/fonts/digital-khatt/DigitalKhattV2.otf") format("opentype")',
+};
+
+export const digitalKhattProvider: MushafFontProvider = {
+  id: 'digital-khatt',
+  familyForPage: () => DIGITAL_KHATT_FONT,
+};
+
+/** Digital Khatt IndoPak — the same parametric design for the
+    IndoPak script (step 2). SIL OFL 1.1 embedded in the file,
+    verified the same way as the Madani font (SHA-256
+    6a048ce983ad95b5291a233873236b14d14cc51f490a859dade067e2a016a0b5,
+    4,833,016 bytes; WOFF2 is the lossless container conversion). */
+export const DIGITAL_KHATT_INDOPAK_FONT: MushafFontSource = {
+  family: 'DigitalKhatt IndoPak',
+  sources:
+    'url("/fonts/digital-khatt/DigitalKhattIndoPak.woff2") format("woff2"), ' +
+    'url("/fonts/digital-khatt/DigitalKhattIndoPak.otf") format("opentype")',
+};
+
+export const digitalKhattIndoPakProvider: MushafFontProvider = {
+  id: 'digital-khatt-indopak',
+  familyForPage: () => DIGITAL_KHATT_INDOPAK_FONT,
+};
+
 let provider: MushafFontProvider = qcfV2Provider;
 
 /** Replace the font provider (e.g. with licensed per-page fonts).

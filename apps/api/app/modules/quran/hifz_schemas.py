@@ -87,6 +87,11 @@ class HifzGradeWordOut(BaseModel):
     prob: float
     heard: str | None = None
     mistake_type: str | None = None
+    # Word timing in seconds within the graded audio (step 9): from the
+    # phoneme forced alignment when available, else None. The source
+    # is reported once per response as HifzGradeOut.timing_source.
+    start: float | None = None
+    end: float | None = None
 
 
 class HifzGradeOut(BaseModel):
@@ -96,6 +101,10 @@ class HifzGradeOut(BaseModel):
     word_index: int | None = None
     engine_used: str
     thresholds: dict[str, float] = {"green": 0.8, "amber": 0.5}
+    # Where the words' start/end timings came from (step 9):
+    # "phoneme" (Zipformer forced alignment), "dtw_fallback"
+    # (Whisper DTW estimates, last resort only) or "none".
+    timing_source: str = "none"
     words: list[HifzGradeWordOut] = []
     counts: HifzAttemptCounts = HifzAttemptCounts()
     extra_words: list[str] = []
@@ -388,6 +397,12 @@ class HifzDashboardOut(BaseModel):
     counts: HifzAttemptCounts = HifzAttemptCounts()
     errors_by_type: dict[str, int] = {}
     daily_series: list[dict] = []
+    # گام ۴ برابری: رکورد پیوستگی و هدف روزانه (از فعالیت واقعی).
+    streak_current: int = 0
+    streak_best: int = 0
+    goal_ayahs: int = 0
+    goal_today_ayahs: int = 0
+    goal_met: bool = False
     due_count: int = 0
     due_ayahs: list[dict] = []
     plans: list[HifzPlanOut] = []
@@ -455,6 +470,8 @@ class HifzUserSettingsIn(BaseModel):
     tashkeel_detection: bool | None = None
     resumable_sessions: bool | None = None
     hide_ayah_markers: bool | None = None
+    # هدف روزانه به واحد آیه؛ ۰ یعنی هدفی تنظیم نشده (گام ۴).
+    daily_goal_ayahs: int | None = Field(default=None, ge=0, le=6236)
 
 
 class HifzUserSettingsOut(BaseModel):
@@ -463,7 +480,33 @@ class HifzUserSettingsOut(BaseModel):
     tashkeel_detection: bool = True
     resumable_sessions: bool = False
     hide_ayah_markers: bool = False
+    daily_goal_ayahs: int = 0
     updated_at: datetime | None = None
+
+
+class HifzActivityDayOut(BaseModel):
+    """یک روز فعالیت واقعی (مبنای UTC، مثل daily_series داشبورد)."""
+
+    date: str
+    attempts: int = 0
+    graded_words: int = 0
+    reviews: int = 0
+    ayahs: int = 0
+
+
+class HifzActivityOut(BaseModel):
+    """فعالیت روزانه + رکورد پیوستگی + پیشرفت هدف (گام ۴ برابری).
+
+    days فقط روزهای بازهٔ خواسته‌شده را دارد؛ رکوردها روی کل
+    تاریخچهٔ فعالیت کاربر حساب می‌شوند، نه فقط بازهٔ نمایشی.
+    """
+
+    days: list[HifzActivityDayOut] = []
+    streak_current: int = 0
+    streak_best: int = 0
+    goal_ayahs: int = 0
+    today_ayahs: int = 0
+    goal_met: bool = False
 
 
 class HifzPositionIn(BaseModel):
