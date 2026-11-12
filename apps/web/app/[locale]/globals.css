@@ -3964,3 +3964,17 @@ button.mushaf-dk-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
 .mushaf-dk--hide-text .mushaf-dk-line { box-shadow: inset 0 -1px 0 rgba(38, 34, 28, 0.10); }
 .mushaf-dk .mushaf-surah-ornament { border-top-color: #26221c; border-bottom-color: #26221c; background: transparent; }
 .mushaf-dk .mushaf-surah-ornament::before, .mushaf-dk .mushaf-surah-ornament::after { color: #26221c; }
+
+/* Hifz dashboard — step 4 (Tarteel parity): daily-goal bar + activity
+   heatmap. Colors follow the existing hifz green (resume banner);
+   the step-6 design tokens will absorb these. */
+.hifz-goal-bar { block-size: 0.6rem; background: rgba(46, 125, 50, 0.15); border-radius: 999px; overflow: hidden; max-inline-size: 26rem; margin-block: 0.5rem; }
+.hifz-goal-bar > span { display: block; block-size: 100%; background: #2e7d32; border-radius: 999px; }
+.hifz-heatmap { display: flex; gap: 3px; overflow-x: auto; padding-block: 0.25rem; }
+.hifz-heat-week { display: flex; flex-direction: column; gap: 3px; }
+.hifz-heat-cell { inline-size: 11px; block-size: 11px; border-radius: 2px; background: rgba(46, 125, 50, 0.10); flex: none; }
+.hifz-heat-pad { background: transparent; }
+.hifz-heat-l1 { background: rgba(46, 125, 50, 0.30); }
+.hifz-heat-l2 { background: rgba(46, 125, 50, 0.52); }
+.hifz-heat-l3 { background: rgba(46, 125, 50, 0.75); }
+.hifz-heat-l4 { background: #2e7d32; }

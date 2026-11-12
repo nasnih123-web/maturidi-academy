@@ -72,6 +72,7 @@ from .hifz_listen_sync import (
     HifzListenPositionSaveOut,
 )
 from .hifz_schemas import (
+    HifzActivityOut,
     HifzAdminAttemptOut,
     HifzAttemptDetailOut,
     HifzAttemptIn,
@@ -786,6 +787,22 @@ async def get_dashboard(
 ):
     """داشبورد حفظ — فقط آمار واقعی و قابل‌ردیابی (جریان جداگانه)."""
     return HifzDashboardOut(**await hifz_plan_service.dashboard(db, user))
+
+
+@hifz_router.get("/activity", response_model=HifzActivityOut)
+async def get_activity(
+    days: int = Query(default=371, ge=7, le=371),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """فعالیت روزانه (نقشهٔ مرور)، رکورد پیوستگی و هدف روزانه — گام ۴.
+
+    روزها UTC شمرده می‌شوند (همان مبنای daily_series داشبورد) و
+    رکوردها روی کل تاریخچه حساب می‌شوند، نه فقط بازهٔ نمایشی.
+    """
+    return HifzActivityOut(
+        **await hifz_plan_service.activity(db, user, days=days)
+    )
 
 
 @hifz_router.get("/suggested", response_model=HifzSuggestedOut)

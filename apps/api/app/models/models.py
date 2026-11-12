@@ -2524,6 +2524,9 @@ class HifzUserSettings(Base):
       = هر بار جلسهٔ تازه (مطابق کلید خاموش در ویدیو).
     - hide_ayah_markers: «Hide Ayah Markers» — پنهان‌کردن نشان‌های
       پایان آیه (روزت) روی صفحهٔ مطالعه.
+    - daily_goal_ayahs: هدف روزانهٔ کاربر به واحد آیه (۰ = هدفی
+      تنظیم نشده) — مبنای پیشرفت روزانه و رکورد پیوستگی در داشبورد
+      (گام ۴ برابری با ترتیل، PR ایجنت دوم).
     """
 
     __tablename__ = "hifz_user_settings"
@@ -2536,6 +2539,7 @@ class HifzUserSettings(Base):
     tashkeel_detection: Mapped[bool] = mapped_column(Boolean, default=True)
     resumable_sessions: Mapped[bool] = mapped_column(Boolean, default=False)
     hide_ayah_markers: Mapped[bool] = mapped_column(Boolean, default=False)
+    daily_goal_ayahs: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=True

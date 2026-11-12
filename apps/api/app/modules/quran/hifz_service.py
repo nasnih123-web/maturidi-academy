@@ -158,7 +158,11 @@ _SETTINGS_DEFAULTS = {
     "tashkeel_detection": True,
     "resumable_sessions": False,
     "hide_ayah_markers": False,
+    "daily_goal_ayahs": 0,
 }
+
+# کلیدهای عددی تنظیم‌ها (بقیه بولی‌اند و با bool() نرمال می‌شوند).
+_SETTINGS_INT_KEYS = {"daily_goal_ayahs"}
 
 
 def _settings_out(row: HifzUserSettings | None) -> dict:
@@ -170,6 +174,7 @@ def _settings_out(row: HifzUserSettings | None) -> dict:
         "tashkeel_detection": row.tashkeel_detection,
         "resumable_sessions": row.resumable_sessions,
         "hide_ayah_markers": row.hide_ayah_markers,
+        "daily_goal_ayahs": row.daily_goal_ayahs,
         "updated_at": row.updated_at,
     }
 
@@ -180,7 +185,7 @@ async def get_user_settings(db: AsyncSession, user: User) -> dict:
 
 
 async def update_user_settings(
-    db: AsyncSession, user: User, patch: dict[str, bool | None]
+    db: AsyncSession, user: User, patch: dict[str, bool | int | None]
 ) -> dict:
     row = await db.get(HifzUserSettings, user.id)
     if row is None:
@@ -188,7 +193,10 @@ async def update_user_settings(
         db.add(row)
     for key, value in patch.items():
         if value is not None and key in _SETTINGS_DEFAULTS:
-            setattr(row, key, bool(value))
+            if key in _SETTINGS_INT_KEYS:
+                setattr(row, key, int(value))
+            else:
+                setattr(row, key, bool(value))
     row.updated_at = _utcnow()
     await db.commit()
     await db.refresh(row)
