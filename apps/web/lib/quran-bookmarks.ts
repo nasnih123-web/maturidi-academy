@@ -3,14 +3,9 @@
  * storage).
  *
  * Bayan itself stores bookmarks on-device (Room); the web equivalent
- * is localStorage. Since parity step 8 (defect 11) localStorage is
- * the OFFLINE CACHE of an account-synced state: `quran-sync.ts`
- * mirrors this store to `GET/PUT /api/v1/quran/reading-state` for
- * signed-in users (conflict rule: newest updated_at wins). Signed
- * out or offline, everything here keeps working per-device exactly
- * as before. The save functions below notify subscribers on every
- * local mutation so the sync layer can push; `applyReadingState`
- * writes a pulled state WITHOUT notifying (no push echo).
+ * is localStorage — NOT a shortcut, and deliberately NOT a server
+ * user-account feature in this round (no account scope, no sync).
+ * Everything here is per-device and never leaves the browser.
  */
 
 import {
@@ -59,36 +54,6 @@ export interface LastRead {
 
 const BOOKMARKS_KEY = 'quran-bookmarks-v1';
 const LAST_READ_KEY = 'quran-last-read-v1';
-const SYNC_META_KEY = 'quran-reading-state-meta-v1';
-
-/** Local-mutation subscribers (the sync layer's push trigger). */
-type ReadingStateListener = () => void;
-const listeners = new Set<ReadingStateListener>();
-
-export function subscribeReadingState(l: ReadingStateListener): () => void {
-  listeners.add(l);
-  return () => listeners.delete(l);
-}
-
-function readSyncMeta(): { localUpdatedAt: number } {
-  const raw = readJson<Record<string, unknown>>(SYNC_META_KEY);
-  return {
-    localUpdatedAt:
-      raw && typeof raw.localUpdatedAt === 'number' ? raw.localUpdatedAt : 0,
-  };
-}
-
-/** Stamp a local mutation: bump the state's logical clock + notify. */
-function touchLocalState(): void {
-  writeJson(SYNC_META_KEY, { localUpdatedAt: Date.now() });
-  listeners.forEach((l) => {
-    try {
-      l();
-    } catch {
-      /* a broken subscriber must never break saving */
-    }
-  });
-}
 
 function readJson<T>(key: string): T | null {
   try {
@@ -136,7 +101,6 @@ export function loadBookmarks(): Bookmark[] {
 
 export function saveBookmarks(items: Bookmark[]): void {
   writeJson(BOOKMARKS_KEY, items);
-  touchLocalState();
 }
 
 export function ayahBookmarkId(
@@ -184,56 +148,6 @@ export function loadLastRead(): LastRead | null {
 
 export function saveLastRead(value: LastRead): void {
   writeJson(LAST_READ_KEY, value);
-  touchLocalState();
-}
-
-/** The wire shape of the synced reading state (API: reading-state). */
-export interface ReadingState {
-  bookmarks: Bookmark[];
-  lastRead: LastRead | null;
-  /** Logical clock of the state (ms epoch) — newest wins. */
-  updatedAt: number;
-}
-
-/**
- * The state's logical timestamp: the mutation stamp when present,
- * else derived from the data itself (pre-sync local data has no
- * stamp; its newest content time is the honest clock).
- */
-export function readingStateUpdatedAt(): number {
-  const meta = readSyncMeta().localUpdatedAt;
-  if (meta > 0) return meta;
-  const lr = loadLastRead();
-  let t = lr ? lr.savedAt : 0;
-  for (const b of loadBookmarks()) t = Math.max(t, b.createdAt);
-  return t;
-}
-
-export function readingStateSnapshot(): ReadingState {
-  return {
-    bookmarks: loadBookmarks(),
-    lastRead: loadLastRead(),
-    updatedAt: readingStateUpdatedAt(),
-  };
-}
-
-/**
- * Write a pulled (server) state into the local cache. Deliberately
- * bypasses saveBookmarks/saveLastRead: no mutation stamp, no
- * subscriber notify — the sync layer dispatches its own UI event.
- * The local clock adopts the state's updatedAt verbatim.
- */
-export function applyReadingState(state: ReadingState): void {
-  writeJson(BOOKMARKS_KEY, state.bookmarks);
-  if (state.lastRead) writeJson(LAST_READ_KEY, state.lastRead);
-  else {
-    try {
-      window.localStorage.removeItem(LAST_READ_KEY);
-    } catch {
-      /* blocked storage */
-    }
-  }
-  writeJson(SYNC_META_KEY, { localUpdatedAt: state.updatedAt });
 }
 
 /** Deep link that restores the last-read position (mushaf key carried). */

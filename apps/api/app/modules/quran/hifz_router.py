@@ -72,7 +72,6 @@ from .hifz_listen_sync import (
     HifzListenPositionSaveOut,
 )
 from .hifz_schemas import (
-    HifzActivityOut,
     HifzAdminAttemptOut,
     HifzAttemptDetailOut,
     HifzAttemptIn,
@@ -789,22 +788,6 @@ async def get_dashboard(
     return HifzDashboardOut(**await hifz_plan_service.dashboard(db, user))
 
 
-@hifz_router.get("/activity", response_model=HifzActivityOut)
-async def get_activity(
-    days: int = Query(default=371, ge=7, le=371),
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """فعالیت روزانه (نقشهٔ مرور)، رکورد پیوستگی و هدف روزانه — گام ۴.
-
-    روزها UTC شمرده می‌شوند (همان مبنای daily_series داشبورد) و
-    رکوردها روی کل تاریخچه حساب می‌شوند، نه فقط بازهٔ نمایشی.
-    """
-    return HifzActivityOut(
-        **await hifz_plan_service.activity(db, user, days=days)
-    )
-
-
 @hifz_router.get("/suggested", response_model=HifzSuggestedOut)
 async def get_suggested(
     user: User = Depends(get_current_user),
@@ -1068,8 +1051,7 @@ async def stream_attempt(
             mapping = hifz_stream.require_phoneme_mapping()
             _t_mapping = time.perf_counter()
             session = await hifz_stream.start_live_session(
-                db, user, attempt_id, surah, ayah, queue.put_nowait, mapping,
-                hold_on_wrong=start["hold_on_wrong"],
+                db, user, attempt_id, surah, ayah, queue.put_nowait, mapping
             )
             # شماره‌گذارِ مشترک: خطاهای پیش از نشست و رویدادهای نشست،
             # یک رشتهٔ sequence_no دارند.

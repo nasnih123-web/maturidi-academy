@@ -18,11 +18,9 @@
  * the ayah number sits inside the marker glyph. Surah headers use
  * the licensed CC BY 4.0 header SVGs (public/quran/surah-headers/);
  * surah 1 has no SVG in that set, so it falls back to the existing
- * code-drawn ornament with the surah name. The Basmalah line (the
- * layout gives the 'b' line no segments, so no glyph ids exist for
- * it) renders the fixed Uthmani constant in KFGQPC's dedicated
- * Basmala calligraphy font QCF_BSML — Tarteel-parity step 1a; see
- * lib/quran-basmala.ts.
+ * code-drawn ornament with the surah name. The Basmalah line still
+ * renders the Tanzil Basmalah text (the layout gives the 'b' line
+ * no segments, so no glyph ids exist for it).
  *
  * Phase 4 hooks (built here, behaviours in Phase 4): per-word
  * reveal/hide and colour states via `wordViews`, ayah visibility
@@ -34,25 +32,9 @@
  * count and line-height, so the page never shifts layout when the
  * font arrives. Zoom and page width are local controls on the page.
  */
-import {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from 'react';
-
-/** Isomorphic layout effect: the real one in the browser (measure
-    before paint), plain useEffect during SSR (no DOM to measure). */
-const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+import { useMemo, useState, type CSSProperties } from 'react';
 import type { V2Expansion, V2Page, MushafWordViews } from '@/lib/quran-mushaf-v2';
-import { BASMALA_QCF_TEXT } from '@/lib/quran-basmala';
-import {
-  getMushafFontProvider,
-  useMushafFontReadyFor,
-  type MushafFontProvider,
-} from '@/lib/quran-mushaf-font';
+import { getMushafFontProvider, useMushafFontReady } from '@/lib/quran-mushaf-font';
 import { toArabicIndic } from '@/lib/quran-print-lines';
 import { colorizeTajweedWord } from '@/lib/quran-tajweed';
 
@@ -138,7 +120,6 @@ export function QuranMushafV2Page({
   onNavigate,
   showNav = true,
   hideMeta = false,
-  fontProvider,
   navLabels,
   expansionFailedNote,
 }: {
@@ -182,22 +163,15 @@ export function QuranMushafV2Page({
   hideMeta?: boolean;
   navLabels?: Partial<MushafV2NavLabels>;
   expansionFailedNote?: string;
-  /** Step 2 (Tarteel parity): render this page with a different
-      per-page font provider — the QPC V4 (1441) pages carry the
-      same V2Page/expansion shape but their glyph codes belong to
-      the QCF V4 page fonts. Default: the global QPC V2 provider,
-      i.e. the existing behaviour, unchanged. */
-  fontProvider?: MushafFontProvider;
 }) {
   const labels: MushafV2NavLabels = { ...DEFAULT_NAV_LABELS, ...navLabels };
-  const activeProvider = fontProvider ?? getMushafFontProvider();
-  const fontReady = useMushafFontReadyFor(activeProvider, page.n);
+  const fontReady = useMushafFontReady(page.n);
   // Glyph mode: this page's own QCF2NNN family. Glyph codes are
   // page-relative — a page's glyph string must never render in
   // another page's family. In Tanzil fallback mode this is null and
   // the CSS KFGQPC stack applies instead.
   const pageFontFamily = expansion.glyph
-    ? (activeProvider.familyForPage(page.n)?.family ?? null)
+    ? (getMushafFontProvider().familyForPage(page.n)?.family ?? null)
     : null;
   // Tajweed letter colours only exist for readable Arabic text.
   // In glyph mode the words are PUA glyph strings rendered solid
@@ -208,110 +182,6 @@ export function QuranMushafV2Page({
   const [width, setWidth] = useState<'narrow' | 'standard' | 'wide'>('standard');
   const [jumpValue, setJumpValue] = useState('');
   const [failedHeaders, setFailedHeaders] = useState<ReadonlySet<number>>(new Set());
-
-  // ── Tarteel-parity step 1a (agent-2 PR): Mihrab-style per-line
-  // space solving. The documented defect (globals.css, above
-  // .mushaf-v2-line): with frozen per-word glyphs the browser's CSS
-  // justification drops ALL of a line's slack (~33% of the line)
-  // into the inter-word gaps, uncontrolled. Following Mihrab's
-  // proven QCF recipe instead: the page measure is the widest
-  // line's natural width; each line's inter-word space is SOLVED so
-  // the line fills exactly that measure, and the solved width is
-  // applied as an explicit `word-spacing` with the browser's own
-  // justification switched off (.mushaf-v2-line--solved). A line
-  // whose solved added space per gap would exceed the fidelity
-  // band (MAX_ADDED_SPACE_EM) is NOT stretched — it is centred at
-  // natural width, exactly as the printed mushaf treats lines that
-  // cannot reach the measure (e.g. surah-final lines). Measurement
-  // sums the rendered word boxes (inline-block children), so word
-  // padding, rosettes and pause/rub marks are all counted; it runs
-  // only after the font gate opens, and hidden words keep their
-  // boxes (visibility), so hide mode does not change the solution.
-  const linesRef = useRef<HTMLDivElement | null>(null);
-  const [lineSolve, setLineSolve] = useState<
-    ReadonlyMap<number, number | 'center'>
-  >(new Map());
-
-  useIsoLayoutEffect(() => {
-    if (!fontReady || !expansion.ok) {
-      setLineSolve((prev) => (prev.size ? new Map() : prev));
-      return;
-    }
-    const root = linesRef.current;
-    if (!root) return;
-    let cancelled = false;
-    const MAX_ADDED_SPACE_EM = 0.45;
-    const solve = () => {
-      if (cancelled) return;
-      const els = root.querySelectorAll<HTMLElement>('[data-v2-textline]');
-      if (!els.length) return;
-      const items: {
-        li: number;
-        natural: number;
-        gaps: number;
-        fontPx: number;
-        centered: boolean;
-      }[] = [];
-      let measure = 0;
-      els.forEach((el) => {
-        const li = Number(el.dataset.v2Textline);
-        const line = expansion.lines[li];
-        if (!line || line.kind !== 'text') return;
-        let natural = 0;
-        for (const child of Array.from(el.children)) {
-          natural += (child as HTMLElement).offsetWidth;
-        }
-        items.push({
-          li,
-          natural,
-          gaps: Math.max(0, line.words.length - 1),
-          fontPx: parseFloat(getComputedStyle(el).fontSize) || 0,
-          centered: line.centered,
-        });
-        if (natural > measure) measure = natural;
-      });
-      if (!measure) return;
-      const next = new Map<number, number | 'center'>();
-      for (const it of items) {
-        if (it.centered || it.gaps === 0) continue;
-        const extra = measure - it.natural;
-        if (extra <= 0.5) {
-          next.set(it.li, 0);
-        } else if (it.fontPx > 0 && extra / it.gaps / it.fontPx <= MAX_ADDED_SPACE_EM) {
-          next.set(it.li, extra / it.gaps);
-        } else {
-          next.set(it.li, 'center');
-        }
-      }
-      setLineSolve((prev) => {
-        if (prev.size === next.size) {
-          let same = true;
-          for (const [k, v] of next) {
-            if (prev.get(k) !== v) {
-              same = false;
-              break;
-            }
-          }
-          if (same) return prev;
-        }
-        return next;
-      });
-    };
-    solve();
-    let ro: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(() => solve());
-      ro.observe(root);
-    }
-    const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
-    const onFonts = () => solve();
-    fonts?.addEventListener?.('loadingdone', onFonts);
-    return () => {
-      cancelled = true;
-      ro?.disconnect();
-      fonts?.removeEventListener?.('loadingdone', onFonts);
-    };
-  }, [fontReady, expansion, page.n]);
 
   const lastAyah = useMemo(() => {
     for (let i = page.lines.length - 1; i >= 0; i -= 1) {
@@ -381,7 +251,7 @@ export function QuranMushafV2Page({
             ))}
           </div>
         ) : (
-          <div lang="ar" dir="rtl" ref={linesRef}>
+          <div lang="ar" dir="rtl">
             {expansion.lines.map((line, li) => {
               if (line.kind === 'header') {
                 const padded = String(line.surah).padStart(3, '0');
@@ -405,20 +275,9 @@ export function QuranMushafV2Page({
                 );
               }
               if (line.kind === 'basmala') {
-                // Step 1a: the Basmala renders as the fixed Uthmani
-                // constant in the dedicated QCF BSML calligraphy
-                // font (see lib/quran-basmala.ts) — no longer the
-                // locale string in a text font. The `bismillah`
-                // prop stays as the accessible name.
                 return (
-                  <p
-                    key={li}
-                    className="mushaf-bismillah"
-                    lang="ar"
-                    dir="rtl"
-                    aria-label={bismillah}
-                  >
-                    {BASMALA_QCF_TEXT}
+                  <p key={li} className="mushaf-bismillah" lang="ar" dir="rtl">
+                    {bismillah}
                   </p>
                 );
               }
@@ -519,25 +378,12 @@ export function QuranMushafV2Page({
                   })}
                 </>
               );
-              // Step 1a solver output for this line: a number is the
-              // solved added space per gap in px (applied as
-              // word-spacing, browser justification off); 'center'
-              // means the line fell outside the fidelity band and is
-              // centred at natural width like the print.
-              const solveVal = lineSolve.get(li);
-              const solvedPx = typeof solveVal === 'number' ? solveVal : null;
-              const centeredLine = line.centered || solveVal === 'center';
-              const solveCls = `${centeredLine ? ' mushaf-v2-line--centered' : ''}${solvedPx !== null ? ' mushaf-v2-line--solved' : ''}`;
-              const solveStyle: CSSProperties | undefined =
-                solvedPx !== null ? { wordSpacing: `${solvedPx}px` } : undefined;
               if (lineIsButton && first) {
                 return (
                   <button
                     key={li}
                     type="button"
-                    data-v2-textline={li}
-                    className={`mushaf-line-btn mushaf-v2-line${solveCls}`}
-                    style={solveStyle}
+                    className={`mushaf-line-btn mushaf-v2-line${line.centered ? ' mushaf-v2-line--centered' : ''}`}
                     onClick={() => onPlayLine?.(first.surah, first.ayah)}
                     aria-label={`${first.surah}:${first.ayah}`}
                   >
@@ -548,9 +394,7 @@ export function QuranMushafV2Page({
               return (
                 <div
                   key={li}
-                  data-v2-textline={li}
-                  className={`mushaf-line mushaf-v2-line${solveCls}`}
-                  style={solveStyle}
+                  className={`mushaf-line mushaf-v2-line${line.centered ? ' mushaf-v2-line--centered' : ''}`}
                 >
                   {lineContent}
                 </div>

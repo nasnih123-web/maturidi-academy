@@ -16,16 +16,6 @@
  * CRM-enabled lists and this catalog, so a reader can pick a
  * verified edition even before the CRM admin enables it; unknown
  * ids still fall back to the raw id (never an invented name).
- *
- * Step 5 (Tarteel parity) additions: Tarteel's own two Persian
- * translations — Rowwad and Dr. Hussain Taji — are NOT on AlQuran
- * Cloud; the API serves them from bundled server-side data
- * (QuranEnc: persian_ih / persian_tagi), so they are listed in
- * PERSIAN_TRANSLATIONS like the rest. The two Persian QUL tafsirs
- * (Mokhtasar, Saadi) are NAMES-ONLY here: they enter the selector
- * only when the API reports their data installed
- * (`bundled_tafsirs` in GET /providers, merged into tafsirEditions)
- * — never as dead rows.
  */
 
 export interface EditionNames {
@@ -56,19 +46,6 @@ export const PERSIAN_TRANSLATIONS: EditionEntry[] = [
   { id: 'fa.gharaati', names: { fa: 'قرائتی', ar: 'قرائتی', en: 'Mohsen Gharaati' } },
   { id: 'fa.sadeqi', names: { fa: 'صادقی تهرانی', ar: 'صادقی تهرانی', en: 'Mohammad Sadeqi Tehrani' } },
   { id: 'fa.safavi', names: { fa: 'صفوی', ar: 'صفوی', en: 'Mohammad Reza Safavi' } },
-  // Step 5 — Tarteel's Persian translations, served bundled (QuranEnc).
-  { id: 'fa.rowwad', names: { fa: 'رواد', ar: 'رواد', en: 'Rowwad Translation Center' } },
-  { id: 'fa.taji', names: { fa: 'حسین تاجی', ar: 'حسين تاجي', en: 'Dr. Hussain Taji' } },
-];
-
-/**
- * Persian tafsirs in the QUL catalog (Tarteel's source) — names only.
- * These become selectable solely via the API's `bundled_tafsirs`
- * report (data installed on the server); see the header note.
- */
-export const PERSIAN_TAFSIRS: EditionEntry[] = [
-  { id: 'fa.mokhtasar', names: { fa: 'تفسیر مختصر', ar: 'التفسير المختصر', en: 'Tafsir Mokhtasar' } },
-  { id: 'fa.saadi', names: { fa: 'تفسیر سعدی', ar: 'تفسير السعدي', en: 'Tafsir Al-Saadi' } },
 ];
 
 /** All Arabic text tafsirs on AlQuran Cloud (6, live 2026-11-01). */
@@ -88,9 +65,7 @@ export const ARABIC_TAFSIRS: EditionEntry[] = [
  */
 export function editionDisplayName(id: string, locale: string): string | null {
   const entry =
-    PERSIAN_TRANSLATIONS.find((e) => e.id === id) ??
-    ARABIC_TAFSIRS.find((e) => e.id === id) ??
-    PERSIAN_TAFSIRS.find((e) => e.id === id);
+    PERSIAN_TRANSLATIONS.find((e) => e.id === id) ?? ARABIC_TAFSIRS.find((e) => e.id === id);
   if (!entry) return null;
   if (locale === 'fa') return entry.names.fa;
   if (locale === 'ar') return entry.names.ar;

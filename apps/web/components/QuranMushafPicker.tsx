@@ -6,25 +6,9 @@
  * The five printed mushafs from quran-ws/quran-svg render through the
  * SAME SVG path, only the data folder changes — so all five rows are
  * real, selectable buttons. The current row is a non-interactive row
- * with a ✓ marker (not a control). The margins variants and Tajweed
- * rows stay disabled AND labeled «به‌زودی»: they need their own
- * sources and are never faked with another mushaf's pages.
- *
- * Step 1b (Tarteel parity): the Madina mushaf is REAL now — as the
- * Digital Khatt text renderer (real Unicode text in the Digital
- * Khatt V2 variable font on the KFGQPC V2 1421H print layout), not
- * as an SVG facsimile. Its row renders when the reader passes
- * onSelectDigitalKhatt; it is a renderer of the Hafs mushaf, so it
- * shares the Hafs page numbering.
- *
- * Step 2: the IndoPak mushaf is REAL too — Digital Khatt IndoPak
- * on its own 610-page × 15-line layout (onSelectDigitalKhattIndoPak)
- * — and the «به‌زودی» list is GONE: the margins variants have no
- * source anywhere, and "Tajweed" is a colouring of the text
- * renderers / the V4 study fonts, not a separate print with its
- * own data. Rows that cannot be real are removed, not promised.
- * (The margins/tajweed/soon label fields stay in the labels type
- * for schema compatibility; nothing renders them any more.)
+ * with a ✓ marker (not a control). The margins variants, Madina and
+ * Tajweed rows stay disabled AND labeled «به‌زودی»: they need their
+ * own sources and are never faked with another mushaf's pages.
  *
  * HONESTY HARD RULE (unchanged): a row that cannot show its own
  * mushaf's pages is disabled + labeled, never a working option that
@@ -50,12 +34,6 @@ export interface MushafPickerLabels {
   warshMargins: string;
   qalunMargins: string;
   madina: string;
-  /** Step 1b: label of the real Digital Khatt (Madina) row. */
-  digitalKhatt: string;
-  /** Step 2: label of the real Digital Khatt IndoPak row. */
-  digitalKhattIndoPak: string;
-  /** Step 2: label of the real QPC V4 (1441) row. */
-  qpcV4: string;
   tajweed: string;
   current: string;
   soon: string;
@@ -70,36 +48,32 @@ const REAL_ROWS: { key: SvgMushafKey; label: (l: MushafPickerLabels) => string }
   { key: 'shubah/kfqc', label: (l) => l.shubah },
 ];
 
+const SOON_ROWS = (labels: MushafPickerLabels): { id: string; label: string }[] => [
+  { id: 'hafs-margins', label: labels.hafsMargins },
+  { id: 'warsh-margins', label: labels.warshMargins },
+  { id: 'qalun-margins', label: labels.qalunMargins },
+  { id: 'madina', label: labels.madina },
+  { id: 'tajweed', label: labels.tajweed },
+];
+
 export function QuranMushafPicker({
   onClose,
   labels,
   currentMushaf,
   onSelect,
-  currentRenderer,
-  onSelectDigitalKhatt,
-  onSelectDigitalKhattIndoPak,
-  onSelectQpcV4,
 }: {
   onClose: () => void;
   labels: MushafPickerLabels;
   currentMushaf: SvgMushafKey;
   /** Picking a mushaf lands the reader on that mushaf's page view. */
   onSelect: (mushaf: SvgMushafKey) => void;
-  /** Step 1b/2: which renderer the reader currently shows. */
-  currentRenderer?: 'standard' | 'digital-khatt' | 'digital-khatt-indopak' | 'qpc-v4';
-  /** Step 1b: present → the Digital Khatt (Madina) row is real. */
-  onSelectDigitalKhatt?: () => void;
-  /** Step 2: present → the Digital Khatt IndoPak row is real. */
-  onSelectDigitalKhattIndoPak?: () => void;
-  /** Step 2: present → the QPC V4 (1441) row is real. */
-  onSelectQpcV4?: () => void;
 }) {
   return (
     <QuranSheetShell title={labels.title} closeLabel={labels.closeLabel} onClose={onClose}>
       <ul className="quran-mushaf-list">
         {REAL_ROWS.map((row) => {
           const label = row.label(labels);
-          if (row.key === currentMushaf && currentRenderer !== 'digital-khatt') {
+          if (row.key === currentMushaf) {
             return (
               <li key={row.key} className="quran-mushaf-row quran-mushaf-row-current" aria-current="true">
                 <span className="quran-mushaf-check" aria-hidden="true">
@@ -126,81 +100,16 @@ export function QuranMushafPicker({
             </li>
           );
         })}
-        {onSelectDigitalKhatt ? (
-          currentRenderer === 'digital-khatt' ? (
-            <li className="quran-mushaf-row quran-mushaf-row-current" aria-current="true">
-              <span className="quran-mushaf-check" aria-hidden="true">
-                ✓
-              </span>
+        {SOON_ROWS(labels).map((row) => (
+          <li key={row.id} className="quran-mushaf-row">
+            <button type="button" className="quran-mushaf-btn" disabled aria-disabled="true">
               <span className="quran-mushaf-name" lang="ar" dir="rtl">
-                {labels.digitalKhatt}
+                {row.label}
               </span>
-              <span className="quran-mushaf-badge">{labels.current}</span>
-            </li>
-          ) : (
-            <li className="quran-mushaf-row">
-              <button
-                type="button"
-                className="quran-mushaf-btn"
-                onClick={() => onSelectDigitalKhatt()}
-              >
-                <span className="quran-mushaf-name" lang="ar" dir="rtl">
-                  {labels.digitalKhatt}
-                </span>
-              </button>
-            </li>
-          )
-        ) : null}
-        {onSelectQpcV4 ? (
-          currentRenderer === 'qpc-v4' ? (
-            <li className="quran-mushaf-row quran-mushaf-row-current" aria-current="true">
-              <span className="quran-mushaf-check" aria-hidden="true">
-                ✓
-              </span>
-              <span className="quran-mushaf-name" lang="ar" dir="rtl">
-                {labels.qpcV4}
-              </span>
-              <span className="quran-mushaf-badge">{labels.current}</span>
-            </li>
-          ) : (
-            <li className="quran-mushaf-row">
-              <button
-                type="button"
-                className="quran-mushaf-btn"
-                onClick={() => onSelectQpcV4()}
-              >
-                <span className="quran-mushaf-name" lang="ar" dir="rtl">
-                  {labels.qpcV4}
-                </span>
-              </button>
-            </li>
-          )
-        ) : null}
-        {onSelectDigitalKhattIndoPak ? (
-          currentRenderer === 'digital-khatt-indopak' ? (
-            <li className="quran-mushaf-row quran-mushaf-row-current" aria-current="true">
-              <span className="quran-mushaf-check" aria-hidden="true">
-                ✓
-              </span>
-              <span className="quran-mushaf-name" lang="ar" dir="rtl">
-                {labels.digitalKhattIndoPak}
-              </span>
-              <span className="quran-mushaf-badge">{labels.current}</span>
-            </li>
-          ) : (
-            <li className="quran-mushaf-row">
-              <button
-                type="button"
-                className="quran-mushaf-btn"
-                onClick={() => onSelectDigitalKhattIndoPak()}
-              >
-                <span className="quran-mushaf-name" lang="ar" dir="rtl">
-                  {labels.digitalKhattIndoPak}
-                </span>
-              </button>
-            </li>
-          )
-        ) : null}
+              <span className="quran-mushaf-badge quran-mushaf-badge-soon">{labels.soon}</span>
+            </button>
+          </li>
+        ))}
       </ul>
       <p className="quran-mushaf-note">{labels.note}</p>
     </QuranSheetShell>

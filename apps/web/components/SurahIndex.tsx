@@ -11,10 +11,6 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { lastReadHref, loadLastRead, type LastRead } from '@/lib/quran-bookmarks';
-import {
-  QURAN_STATE_SYNCED_EVENT,
-  initQuranReadingSync,
-} from '@/lib/quran-sync';
 import type { SurahSummary } from '@/lib/quran';
 import { QuranSearchBox, type QuranSearchLabels } from './QuranSearchBox';
 
@@ -41,16 +37,11 @@ export function SurahIndex({
   labels: SurahIndexLabels;
   searchLabels: QuranSearchLabels;
 }) {
-  // Round 4: last-read resume (localStorage cache — Bayan-style
-  // on-device history; since parity step 8 it also syncs to the
-  // signed-in account, defect 11).
+  // Round 4: last-read resume (localStorage only — Bayan-style
+  // on-device history; nothing is fetched or synced).
   const [lastRead, setLastRead] = useState<LastRead | null>(null);
   useEffect(() => {
-    const reload = (): void => setLastRead(loadLastRead());
-    reload();
-    initQuranReadingSync();
-    window.addEventListener(QURAN_STATE_SYNCED_EVENT, reload);
-    return () => window.removeEventListener(QURAN_STATE_SYNCED_EVENT, reload);
+    setLastRead(loadLastRead());
   }, []);
   return (
     <div className="surah-index">

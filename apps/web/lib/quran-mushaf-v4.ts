@@ -46,12 +46,7 @@
  * fine, so hidden words may stay glyphs.
  */
 import type { WallWord } from './hifz-study-types';
-import {
-  MUSHAF_PAUSE_SIGNS,
-  MUSHAF_SAJDA_MARK,
-  type V2Page,
-  type V2PageGlyphs,
-} from './quran-mushaf-v2';
+import { MUSHAF_PAUSE_SIGNS, MUSHAF_SAJDA_MARK } from './quran-mushaf-v2';
 
 /** Per-page V4 data: "surah:ayah:word" (word 1-based) → glyph string. */
 export type V4PageGlyphs = ReadonlyMap<string, string>;
@@ -251,82 +246,4 @@ export function v4TarteelPaletteRule(family: string): string {
     `@font-palette-values ${V4_TARTEEL_PALETTE_NAME} { ` +
     `font-family: ${family}; base-palette: 0; override-colors: ${overrides}; }`
   );
-}
-
-// ─── Step 2 (Tarteel parity): the QPC V4 (1441) READER pages ───
-// The study module above uses V4 glyphs on V2 layout lines. The
-// reader's 1441 mushaf instead uses the print's OWN layout: the
-// pages in public/quran-mushaf-v4-pages/ are generated from the
-// QUL qpc_v4_layout dataset (scripts/generate-quran-mushaf-v4.py)
-// in the exact V2Page shape, and the glyph maps in
-// public/quran-mushaf-v4qpc-glyphs/ are this file's study maps
-// re-keyed by QUL id — the keying expandV2Page consumes. The
-// generator fail-hard-validates the whole corpus (segment token
-// accounting, glyph coverage of all 83,668 ids, and the token
-// index formula against all 17,110 segment starts of the repo's
-// V2 pages); the pages then still pass through the same strict,
-// fail-closed expansion at runtime.
-
-const v4LayoutPromises = new Map<number, Promise<V2Page | null>>();
-const v4QpcGlyphPromises = new Map<number, Promise<V2PageGlyphs | null>>();
-let v4LayoutFullPromise: Promise<V2Page[] | null> | null = null;
-
-function loadV4LayoutFull(): Promise<V2Page[] | null> {
-  if (!v4LayoutFullPromise) {
-    v4LayoutFullPromise = fetch('/quran-mushaf-v4.json')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { pages?: V2Page[] } | null) =>
-        data && Array.isArray(data.pages) ? data.pages : null,
-      )
-      .catch(() => null);
-  }
-  return v4LayoutFullPromise;
-}
-
-/** One QPC V4 layout page (per-page chunk, full-file fallback),
-    or null when unavailable — the caller falls back to the
-    standard renderers, never to a fabricated page. */
-export function loadV4LayoutPage(page: number): Promise<V2Page | null> {
-  if (!Number.isInteger(page) || page < 1 || page > 604) {
-    return Promise.resolve(null);
-  }
-  let p = v4LayoutPromises.get(page);
-  if (!p) {
-    p = fetch(`/quran-mushaf-v4-pages/p${page}.json`)
-      .then((r) => (r.ok ? (r.json() as Promise<V2Page>) : null))
-      .catch(() => null)
-      .then((pg) => {
-        if (pg && pg.n === page && Array.isArray(pg.lines)) return pg;
-        return loadV4LayoutFull().then(
-          (pages) => pages?.find((x) => x.n === page) ?? null,
-        );
-      });
-    v4LayoutPromises.set(page, p);
-  }
-  return p;
-}
-
-/** One page's V4 glyph map keyed by QUL id (the expansion's
-    keying), or null when the file is missing — the expansion then
-    renders the whole page in Tanzil text, its honest fallback. */
-export function loadV4QpcPageGlyphs(
-  page: number,
-): Promise<V2PageGlyphs | null> {
-  if (!Number.isInteger(page) || page < 1 || page > 604) {
-    return Promise.resolve(null);
-  }
-  let p = v4QpcGlyphPromises.get(page);
-  if (!p) {
-    p = fetch(`/quran-mushaf-v4qpc-glyphs/p${page}.json`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((obj: Record<string, string> | null) => {
-        if (!obj) return null;
-        const map = new Map<number, string>();
-        for (const [k, v] of Object.entries(obj)) map.set(Number(k), v);
-        return map as V2PageGlyphs;
-      })
-      .catch(() => null);
-    v4QpcGlyphPromises.set(page, p);
-  }
-  return p;
 }

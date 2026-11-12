@@ -536,34 +536,6 @@ class UserAyahNote(Base):
     )
 
 
-class UserReadingState(Base):
-    """وضعیت خواندن قرآنِ هر کاربر برای همگام‌سازی بین دستگاه‌ها
-    (گام ۸ توسعهٔ برابری با ترتیل — ایراد ۱۱).
-
-    نشان‌ها و آخرین موقعیت خواندن تا این گام فقط در localStorage
-    مرورگر بودند و با عوض‌کردن دستگاه از دست می‌رفتند. این ردیف
-    (یک ردیف به‌ازای هر کاربر) همان دو ساختار را عیناً نگه می‌دارد:
-    - bookmarks: فهرست نشان‌ها با همان شکل کلاینت وب (id/key مصحف‌محور).
-    - last_read: آخرین موقعیت (سوره/نما/هدف/آیه/مصحف) یا null.
-    - state_updated_at: ساعت منطقیِ خود وضعیت (میلی‌ثانیهٔ epoch از
-      کلاینت) — قانون تعارضِ sync: تازه‌ترین updated_at برنده است؛
-      PUT با ساعت قدیمی‌تر رد می‌شود (۴۰۹) و وضعیت ذخیره‌شده برمی‌گردد.
-    """
-
-    __tablename__ = "user_reading_states"
-
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("users.id"), primary_key=True
-    )
-    bookmarks: Mapped[list] = mapped_column(JSONB, default=list)
-    last_read: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    state_updated_at: Mapped[int] = mapped_column(BigInteger, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-    updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=True
-    )
-
-
 class DhikrSession(Base):
     """نشست تسبیح دیجیتال — شمارش ذکر در یک بازهٔ زمانی."""
 
@@ -2552,9 +2524,6 @@ class HifzUserSettings(Base):
       = هر بار جلسهٔ تازه (مطابق کلید خاموش در ویدیو).
     - hide_ayah_markers: «Hide Ayah Markers» — پنهان‌کردن نشان‌های
       پایان آیه (روزت) روی صفحهٔ مطالعه.
-    - daily_goal_ayahs: هدف روزانهٔ کاربر به واحد آیه (۰ = هدفی
-      تنظیم نشده) — مبنای پیشرفت روزانه و رکورد پیوستگی در داشبورد
-      (گام ۴ برابری با ترتیل، PR ایجنت دوم).
     """
 
     __tablename__ = "hifz_user_settings"
@@ -2567,7 +2536,6 @@ class HifzUserSettings(Base):
     tashkeel_detection: Mapped[bool] = mapped_column(Boolean, default=True)
     resumable_sessions: Mapped[bool] = mapped_column(Boolean, default=False)
     hide_ayah_markers: Mapped[bool] = mapped_column(Boolean, default=False)
-    daily_goal_ayahs: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=True

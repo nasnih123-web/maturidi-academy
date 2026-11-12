@@ -573,14 +573,8 @@ async def test_feed_phonemes_repeat_unit_waslah_form(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_feed_phonemes_resync_after_misread_word(monkeypatch):
-    """یک کلمهٔ غلط‌خوانده‌شده در ابتدا، بقیه را مسموم نمی‌کند —
-    ولی خودش «غلط» علامت می‌خورد، نه «جاافتاده» (ایراد ۱۴).
-
-    رفتارِ پیشین همین‌جا «جاافتاده» می‌زد و ۴ واج را بی‌صدا دور
-    می‌ریخت؛ همان چیزی بود که مالک زنده گزارش کرد («اشتباه
-    می‌خوانم، خودش درست را می‌نویسد و ادامه می‌دهد»). حالا خردهٔ
-    به‌اندازهٔ کلمه که با واحدِ جلوتر ادامه پیدا می‌کند، واحدِ
-    جاری را غلط می‌کند و بقیهٔ کلمه‌ها هم‌تراز می‌مانند."""
+    """یک کلمهٔ غلط‌خوانده‌شده در ابتدا، بقیه را مسموم نمی‌کند:
+    واج‌های اضافی دور ریخته می‌شوند و کلمه‌های بعد هم‌تراز می‌شوند."""
     events = []
     session, _ = _session(monkeypatch, events, mapping=_fake_mapping())
     # واج‌های یک کلمهٔ غلط (zzzz) + واج‌های درستِ هُوَ، اللَّهُ، أَحَدٌ.
@@ -592,12 +586,12 @@ async def test_feed_phonemes_resync_after_misread_word(monkeypatch):
     )
     words = _word_events(events)
     assert [(w["expected"], w["status"]) for w in words] == [
-        ("قُلْ", "wrong"),
+        ("قُلْ", "skipped"),
         ("هُوَ", "correct"),
         ("اللَّهُ", "correct"),
         ("أَحَدٌ", "correct"),
     ]
-    assert session.live_counts()["resync_dropped"] == 0
+    assert session.live_counts()["resync_dropped"] == 4
 
 
 @pytest.mark.asyncio

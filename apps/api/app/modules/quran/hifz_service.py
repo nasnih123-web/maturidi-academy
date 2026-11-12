@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import io
-import logging
 import wave
 from datetime import UTC, datetime
 from uuid import UUID
@@ -36,8 +35,6 @@ from app.models.models import (
 
 from . import alignment, hifz_engines, hifz_mapping
 from . import service as quran_service
-
-logger = logging.getLogger(__name__)
 
 MAX_AUDIO_BYTES = 32 * 1024 * 1024  # ~۱۵ دقیقه WAV تک‌کانالهٔ ۱۶ کیلوهرتز
 DEFAULT_GREEN = 0.8
@@ -161,11 +158,7 @@ _SETTINGS_DEFAULTS = {
     "tashkeel_detection": True,
     "resumable_sessions": False,
     "hide_ayah_markers": False,
-    "daily_goal_ayahs": 0,
 }
-
-# کلیدهای عددی تنظیم‌ها (بقیه بولی‌اند و با bool() نرمال می‌شوند).
-_SETTINGS_INT_KEYS = {"daily_goal_ayahs"}
 
 
 def _settings_out(row: HifzUserSettings | None) -> dict:
@@ -177,7 +170,6 @@ def _settings_out(row: HifzUserSettings | None) -> dict:
         "tashkeel_detection": row.tashkeel_detection,
         "resumable_sessions": row.resumable_sessions,
         "hide_ayah_markers": row.hide_ayah_markers,
-        "daily_goal_ayahs": row.daily_goal_ayahs,
         "updated_at": row.updated_at,
     }
 
@@ -188,7 +180,7 @@ async def get_user_settings(db: AsyncSession, user: User) -> dict:
 
 
 async def update_user_settings(
-    db: AsyncSession, user: User, patch: dict[str, bool | int | None]
+    db: AsyncSession, user: User, patch: dict[str, bool | None]
 ) -> dict:
     row = await db.get(HifzUserSettings, user.id)
     if row is None:
@@ -196,10 +188,7 @@ async def update_user_settings(
         db.add(row)
     for key, value in patch.items():
         if value is not None and key in _SETTINGS_DEFAULTS:
-            if key in _SETTINGS_INT_KEYS:
-                setattr(row, key, int(value))
-            else:
-                setattr(row, key, bool(value))
+            setattr(row, key, bool(value))
     row.updated_at = _utcnow()
     await db.commit()
     await db.refresh(row)
@@ -415,277 +404,14 @@ def _phoneme_units(surah: int, ayah: int) -> list[tuple[tuple[int, ...], str | N
     return [(s.word_indices, s.phoneme) for s in segs]
 
 
-# ---------------------------------------------------------------------------
-# گام ۹ برابری (ایراد ۷) — ترازِ واجیِ اجباری برای مسیرِ دسته‌ای/Whisper.
-#
-# مسیرِ Whisper تا پیش از این گام زمان‌بندیِ کلمه‌ای نداشت (زمان‌های DTW
-# faster-whisper محاسبه و دور ریخته می‌شدند) و ترازِ متنیِ آن
-# (align_words) هیچ اتکایی به صدا نداشت. حالا پس از رونویسیِ Whisper،
-# همان صوت با خطِ لولهٔ واجیِ Zipformer (همان مدل و دارایی‌های مسیرِ
-# زنده) دیکد می‌شود و کلمه‌های موردانتظار با align_phonemes روی رشتهٔ
-# واجی تراز می‌شوند؛ زمانِ هر کلمه از بازهٔ واجی‌اش می‌آید، نه از DTW.
-# DTW فقط وقتی به کار می‌رود که پس‌پردازشِ واجی در دسترس نباشد و
-# همیشه با برچسبِ `dtw_fallback` گزارش می‌شود.
-# ---------------------------------------------------------------------------
-
-
-def _basmala_phoneme_string() -> str:
-    """رشتهٔ واجیِ فروپاشیدهٔ بسمله (۱:۱) — همان قاعدهٔ مسیرِ زنده."""
-    try:
-        mapping = hifz_mapping.load_phoneme_mapping()
-    except APIError:
-        return ""
-    segs = mapping.segments_for(1, 1)
-    if not segs:
-        return ""
-    return "".join(
-        hifz_mapping.collapse_phoneme_runs(s.phoneme)
-        for s in segs
-        if s.phoneme is not None
-    )
-
-
-def _collapse_with_token_map(
-    timed: list[hifz_engines.TimedPhoneme],
-) -> tuple[str, list[int]]:
-    """فروپاشیِ رشتهٔ واجیِ شنیده‌شده با ردِ توکنِ هر نویسه.
-
-    دقیقاً همان قاعدهٔ `collapse_phoneme_runs` (فقط نشانه‌های کششِ
-    مد فرومی‌پاشند؛ تشدید دست نمی‌خورد) روی رشتهٔ به‌هم‌چسبیدهٔ
-    توکن‌ها، با این اضافه که برای هر نویسهٔ باقی‌مانده شمارهٔ توکنِ
-    مبدأش ثبت می‌شود تا بازهٔ واجی به زمان برگردد.
-    """
-    chars: list[str] = []
-    token_of_char: list[int] = []
-    prev: str | None = None
-    for ti, ph in enumerate(timed):
-        for ch in ph.text:
-            if ch == prev and ch in hifz_mapping.PHONEME_LENGTH_MARKERS:
-                continue
-            chars.append(ch)
-            token_of_char.append(ti)
-            prev = ch
-    return "".join(chars), token_of_char
-
-
-def _prepare_phoneme_alignment(
-    units: list[tuple[tuple[int, ...], str | None]],
-    timed: list[hifz_engines.TimedPhoneme],
-) -> tuple[list[tuple[tuple[int, ...], str | None]], str, list[int]]:
-    """آماده‌سازیِ ورودی‌های ترازِ واجی، دقیقاً مثل مسیرِ زنده.
-
-    - هر دو سو فرومی‌پاشند: تکرارِ نشانه‌های کشش در رشتهٔ شنیده‌شده
-      با صوت تغییر می‌کند ولی در نگاشت ثابت است؛ ترازِ خام‌به‌خام
-      شکننده است و مسیرِ زنده از اول هر دو سو را فرومی‌پاشید.
-    - بسملهٔ آغازینِ شنیده‌شده مصرف می‌شود وقتی قطعه‌های آیه با
-      بسمله شروع نمی‌شوند (بسملهٔ آغازِ تلاوت جزو آیه نیست؛ ر.ک.
-      ایراد ۱۴)؛ برای آیه‌هایی که قطعه‌هایشان با بسمله شروع می‌شوند
-      (۱:۱ و ۷:۱ و مانندشان) نگه داشته می‌شود.
-    برمی‌گرداند: (قطعه‌های فروپاشیده، رشتهٔ شنیده‌شدهٔ فروپاشیده،
-    نقشهٔ نویسه→توکن).
-    """
-    collapsed_units = [
-        (
-            widxs,
-            hifz_mapping.collapse_phoneme_runs(phon)
-            if phon is not None
-            else None,
-        )
-        for (widxs, phon) in units
-    ]
-    heard, char_token = _collapse_with_token_map(timed)
-    basmala = _basmala_phoneme_string()
-    if basmala and heard.startswith(basmala):
-        first_phon = next(
-            (phon for (_w, phon) in collapsed_units if phon is not None),
-            None,
-        )
-        units_begin_with_basmala = first_phon is not None and (
-            basmala.startswith(first_phon) or first_phon.startswith(basmala)
-        )
-        if not units_begin_with_basmala:
-            heard = heard[len(basmala):]
-            char_token = char_token[len(basmala):]
-    return collapsed_units, heard, char_token
-
-
-def _spans_to_timings(
-    aligned: list[alignment.AlignedWord],
-    timed: list[hifz_engines.TimedPhoneme],
-    char_token: list[int],
-) -> dict[int, tuple[float, float]]:
-    """بازه‌های واجیِ `align_phonemes` را به زمانِ (شروع، پایان) برگردان.
-
-    قرارداد: کلمه از زمانِ نخستین توکنِ واجیِ بازه‌اش شروع می‌شود و
-    تا زمانِ شروعِ نخستین توکنِ پس از بازه ادامه دارد؛ دمِ آخرین توکن،
-    میانهٔ فاصله‌های بین توکنیِ همین دیکد است. کلمهٔ جاافتاده (بدون
-    بازه) زمان ندارد. قطعه‌ای که چند کلمه را می‌پوشاند، یک بازه دارد
-    و همهٔ کلمه‌هایش همان زمان را می‌گیرند.
-    """
-    if not timed or not char_token:
-        return {}
-    starts = [float(p.start) for p in timed]
-    gaps = sorted(b - a for a, b in zip(starts, starts[1:]) if b > a)
-    tail = gaps[len(gaps) // 2] if gaps else 0.16
-    out: dict[int, tuple[float, float]] = {}
-    for w in aligned:
-        if w.phoneme_start is None or w.phoneme_end is None:
-            continue
-        s, e = w.phoneme_start, w.phoneme_end
-        if s < 0 or e <= s or e > len(char_token):
-            continue
-        first_tok = char_token[s]
-        last_tok = char_token[e - 1]
-        end = (
-            starts[last_tok + 1]
-            if last_tok + 1 < len(starts)
-            else starts[last_tok] + tail
-        )
-        out[w.word_index] = (round(starts[first_tok], 3), round(end, 3))
-    return out
-
-
-def _phoneme_post_pass_possible(
-    phoneme_engine: object | None = None,
-) -> bool:
-    """کاوشِ ارزان (بدون بارگذاریِ مدل) برای تصمیمِ پیش از رونویسی:
-    آیا پس‌پردازشِ واجی در دسترس است؟ فقط برای این تصمیم است؛
-    در دسترس نبودنش به‌معنای درخواستِ DTW از Whisper است."""
-    try:
-        engine = phoneme_engine
-        if engine is None:
-            engine = hifz_engines.get_engine("zipformer")
-        return bool(engine.is_configured()[0])
-    except Exception:
-        return False
-
-
-async def _phoneme_post_pass(
-    wav_bytes: bytes,
-    expected: list[str],
-    units: list[tuple[tuple[int, ...], str | None]],
-    green: float,
-    amber: float,
-    phoneme_engine: object | None = None,
-) -> dict[int, tuple[float, float]] | None:
-    """پس‌پردازشِ ترازِ واجیِ اجباری برای مسیرِ Whisper (گام ۹).
-
-    همان صوت با خطِ لولهٔ واجیِ Zipformer دیکد می‌شود و کلمه‌های
-    موردانتظار با `align_phonemes` — همان تابعی که مسیرِ ضبطیِ
-    Zipformer استفاده می‌کند — روی رشتهٔ واجی تراز می‌شوند. در صورتِ
-    در دسترس نبودنِ پس‌پردازش به هر دلیل (موتور پیکربندی نشده،
-    دیکد ناموفق، نگاشت در دسترس نیست) None برمی‌گردد تا فراخواننده
-    به DTW بیفتد؛ هرگز برای نبودِ پس‌پردازش خطا نمی‌دهد — نمره‌دهی
-    به آن وابسته نیست.
-    """
-    try:
-        engine = phoneme_engine
-        if engine is None:
-            engine = hifz_engines.get_engine("zipformer")
-        ok, _reason = engine.is_configured()
-        if not ok:
-            return None
-        timed = await asyncio.to_thread(
-            engine.transcribe_timed_phonemes, wav_bytes
-        )
-        prep_units, heard, char_token = _prepare_phoneme_alignment(
-            units, timed
-        )
-        aligned, _extra = alignment.align_phonemes(
-            expected, prep_units, heard, green, amber
-        )
-        return _spans_to_timings(aligned, timed, char_token)
-    except (hifz_engines.EngineError, APIError) as exc:
-        logger.warning("hifz phoneme post-pass unavailable: %s", exc)
-        return None
-
-
-def _dtw_timings_from_aligned(
-    aligned: list[alignment.AlignedWord],
-    transcription: hifz_engines.Transcription,
-) -> dict[int, tuple[float, float]]:
-    """زمان‌های DTW کلمه‌های Whisper، نگاشت‌شده روی کلمهٔ موردانتظار
-    از راهِ `heard_index`.
-
-    فقط آخرین راهِ جایگزین است (گام ۹): وقتی پس‌پردازشِ واجی در
-    دسترس نیست و فراخواننده آن را با برچسبِ `dtw_fallback` گزارش
-    می‌کند. کلمهٔ بدونِ همتای شنیده‌شده (جاافتاده) زمان ندارد.
-    """
-    out: dict[int, tuple[float, float]] = {}
-    words = transcription.words
-    for w in aligned:
-        hi = w.heard_index
-        if hi is None or not 0 <= hi < len(words):
-            continue
-        hw = words[hi]
-        if hw.start is not None and hw.end is not None:
-            out[w.word_index] = (
-                round(float(hw.start), 3),
-                round(float(hw.end), 3),
-            )
-    return out
-
-
-async def _whisper_timings(
-    db: AsyncSession,
-    wav_bytes: bytes,
-    expected: list[str],
-    units: list[tuple[tuple[int, ...], str | None]] | None,
-    aligned: list[alignment.AlignedWord],
-    transcription: hifz_engines.Transcription,
-    green: float,
-    amber: float,
-    transcriber: object | None = None,
-    phoneme_engine: object | None = None,
-) -> tuple[dict[int, tuple[float, float]], str]:
-    """زمان‌بندیِ کلمه‌ای برای مسیرِ Whisper (گام ۹).
-
-    ترتیب: (۱) ترازِ واجیِ اجباری — همان خطِ لولهٔ Zipformerِ مسیرِ
-    زنده (وقتی `units` هست)؛ (۲) DTWِ رونویسیِ Whisper، فقط
-    به‌عنوانِ آخرین راهِ جایگزین و با برچسبِ `dtw_fallback`؛
-    (۳) بدونِ زمان (`none`). برچسب همان چیزی است که API با
-    `timing_source` گزارش می‌دهد، پس گیرنده همیشه می‌داند زمان از
-    کجا آمده است.
-    """
-    post = None
-    if units is not None:
-        post = await _phoneme_post_pass(
-            wav_bytes, expected, units, green, amber, phoneme_engine
-        )
-    if post:
-        return post, "phoneme"
-    dtw = _dtw_timings_from_aligned(aligned, transcription)
-    if dtw:
-        return dtw, "dtw_fallback"
-    if transcriber is None:
-        # پس‌پردازش پس از کاوشِ مثبت ناموفق شد: یک رونویسیِ دوباره
-        # با DTW روشن، به‌عنوانِ آخرین راهِ جایگزین.
-        try:
-            _eid, retry, _level = await _transcribe(
-                db, wav_bytes, None, word_timestamps=True
-            )
-        except APIError:
-            return {}, "none"
-        dtw = _dtw_timings_from_aligned(aligned, retry)
-        if dtw:
-            return dtw, "dtw_fallback"
-    return {}, "none"
-
-
 async def _transcribe(
-    db: AsyncSession,
-    wav_bytes: bytes,
-    transcriber: object | None,
-    word_timestamps: bool = False,
+    db: AsyncSession, wav_bytes: bytes, transcriber: object | None
 ) -> tuple[str, hifz_engines.Transcription, str]:
     """رونویسی با موتور انتخاب‌شده؛ خرابی → ۵۰۳ صادقانه، بدون جایگزین.
 
     برمی‌گرداند: (شناسهٔ موتور، رونویسی، سطح خروجی «word» یا «phoneme»).
     خروجی واجی (Zipformer) هرگز به‌عنوان کلمه تراز نمی‌شود؛ نمره‌دهی،
     آن را از مسیر قطعه‌ای (align_phonemes) می‌گذراند.
-    `word_timestamps` فقط برای موتورهایی که DTW می‌دهند معنا دارد
-    (Whisper) و پیش‌فرض خاموش است (گام ۹): DTW فقط آخرین راهِ
-    جایگزینِ زمان‌بندی است، نه پیش‌فرض.
     """
     if transcriber is not None:
         # Test seam: an object with .transcribe(bytes) -> Transcription,
@@ -697,12 +423,7 @@ async def _transcribe(
     try:
         engine_id = await hifz_engines.resolve_engine_id(db)
         engine = hifz_engines.get_engine(engine_id)
-        if word_timestamps and getattr(
-            engine, "supports_dtw_timestamps", False
-        ):
-            result = await asyncio.to_thread(engine.transcribe, wav_bytes, True)
-        else:
-            result = await asyncio.to_thread(engine.transcribe, wav_bytes)
+        result = await asyncio.to_thread(engine.transcribe, wav_bytes)
     except hifz_engines.EngineError as exc:
         raise APIError(503, exc.code, exc.message, {}) from exc
     return engine_id, result, getattr(engine, "output_level", "word")
@@ -810,67 +531,27 @@ async def grade_ayah(
     ayah: int,
     wav_bytes: bytes,
     transcriber: object | None = None,
-    phoneme_engine: object | None = None,
 ) -> dict:
-    """نمره‌دهی یک آیهٔ کامل.
-
-    `phoneme_engine` درزِ تستِ پس‌پردازشِ واجی است (شیئی با
-    `is_configured()` و `transcribe_timed_phonemes(bytes)`)؛ در
-    محصول None می‌ماند و موتورِ واقعیِ Zipformer استفاده می‌شود.
-    پاسخ هر کلمه `start`/`end` (ثانیه، یا None) و سطحِ پاسخ
-    `timing_source` دارد: `phoneme` (ترازِ واجی)، `dtw_fallback`
-    (DTWِ Whisper، آخرین راهِ جایگزین) یا `none`.
-    """
+    """نمره‌دهی یک آیهٔ کامل."""
     attempt = await _attempt_or_404(db, user, attempt_id)
     validate_wav_16k_mono(wav_bytes)
     expected = await _ayah_words(db, surah, ayah)
     green, amber = await get_thresholds(db)
-    # تصمیمِ DTW پیش از رونویسی (گام ۹): فقط وقتی پس‌پردازشِ واجی
-    # از اساس در دسترس نیست، از Whisper زمانِ DTW خواسته می‌شود.
-    want_dtw = not _phoneme_post_pass_possible(phoneme_engine)
-    engine_id, transcription, level = await _transcribe(
-        db, wav_bytes, transcriber, word_timestamps=want_dtw
-    )
+    engine_id, transcription, level = await _transcribe(db, wav_bytes, transcriber)
     if level == "phoneme":
         # مسیر واجی Zipformer: رشتهٔ واجی روی قطعه‌های نگاشت تراز
         # می‌شود؛ واجِ اضافهٔ پایانی، «مادهٔ واجیِ تجزیه‌نشده» است، نه کلمه.
-        # (گام ۹: آماده‌سازیِ مسیرِ زنده — فروپاشیِ هر دو سو + مصرفِ
-        # بسملهٔ آغازین — تا تراز روی صدای واقعی هم درست بماند؛
-        # زمان‌بندی هم از همان تراز می‌آید، نه از دیکدِ دوم.)
         units = _phoneme_units(surah, ayah)
-        timed = getattr(transcription, "timed_phonemes", None)
-        if timed:
-            prep_units, phoneme_text, char_token = _prepare_phoneme_alignment(
-                units, timed
-            )
-            aligned, extra = alignment.align_phonemes(
-                expected, prep_units, phoneme_text, green, amber
-            )
-            timings = _spans_to_timings(aligned, timed, char_token)
-            timing_source = "phoneme" if timings else "none"
-        else:
-            phoneme_text = "".join(
-                w.text for w in transcription.words if w.text != "<blank>"
-            )
-            aligned, extra = alignment.align_phonemes(
-                expected, units, phoneme_text, green, amber
-            )
-            timings, timing_source = {}, "none"
+        phoneme_text = "".join(
+            w.text for w in transcription.words if w.text != "<blank>"
+        )
+        aligned, extra = alignment.align_phonemes(
+            expected, units, phoneme_text, green, amber
+        )
     else:
         heard = [w.text for w in transcription.words]
         probs = [w.prob for w in transcription.words]
         aligned, extra = alignment.align_words(expected, heard, probs, green, amber)
-        # نگاشتِ واجی برای پس‌پردازش لازم است، ولی نبودنش نمره‌دهیِ
-        # متنیِ Whisper را نمی‌شکند — فقط پس‌پردازش رد می‌شود و
-        # زمان‌بندی به DTW می‌افتد (برچسب‌دار).
-        try:
-            units = _phoneme_units(surah, ayah)
-        except APIError:
-            units = None
-        timings, timing_source = await _whisper_timings(
-            db, wav_bytes, expected, units, aligned, transcription,
-            green, amber, transcriber=transcriber, phoneme_engine=phoneme_engine,
-        )
     stored = await _store_grade(db, attempt, surah, ayah, aligned, extra)
     counts = _counts_for(stored)
     return {
@@ -880,7 +561,6 @@ async def grade_ayah(
         "word_index": None,
         "engine_used": engine_id,
         "thresholds": {"green": green, "amber": amber},
-        "timing_source": timing_source,
         "words": [
             {
                 "word_index": w.word_index,
@@ -890,8 +570,6 @@ async def grade_ayah(
                 "heard": w.heard,
                 "mistake_type": w.mistake_type,
                 "needs_review": w.needs_review,
-                "start": timings.get(w.word_index, (None, None))[0],
-                "end": timings.get(w.word_index, (None, None))[1],
             }
             for w in aligned
         ],
@@ -909,7 +587,6 @@ async def grade_word(
     word_index: int,
     wav_bytes: bytes,
     transcriber: object | None = None,
-    phoneme_engine: object | None = None,
 ) -> dict:
     """تمرین تک‌کلمه: فقط همان یک کلمه نمره می‌گیرد."""
     attempt = await _attempt_or_404(db, user, attempt_id)
@@ -919,10 +596,7 @@ async def grade_word(
         raise APIError(422, "hifz_word_index", "شمارهٔ کلمه خارج از آیه است")
     expected = [words[word_index]]
     green, amber = await get_thresholds(db)
-    want_dtw = not _phoneme_post_pass_possible(phoneme_engine)
-    engine_id, transcription, level = await _transcribe(
-        db, wav_bytes, transcriber, word_timestamps=want_dtw
-    )
+    engine_id, transcription, level = await _transcribe(db, wav_bytes, transcriber)
     if level == "phoneme":
         units = _phoneme_units(surah, ayah)
         covering = [u for u in units if word_index in u[0]]
@@ -938,43 +612,16 @@ async def grade_word(
                 {},
             )
         single_units = [((0,), phon) for (widxs, phon) in covering]
-        timed = getattr(transcription, "timed_phonemes", None)
-        if timed:
-            prep_units, phoneme_text, char_token = _prepare_phoneme_alignment(
-                single_units, timed
-            )
-            aligned, extra = alignment.align_phonemes(
-                expected, prep_units, phoneme_text, green, amber
-            )
-            timings = _spans_to_timings(aligned, timed, char_token)
-            timing_source = "phoneme" if timings else "none"
-        else:
-            phoneme_text = "".join(
-                w.text for w in transcription.words if w.text != "<blank>"
-            )
-            aligned, extra = alignment.align_phonemes(
-                expected, single_units, phoneme_text, green, amber
-            )
-            timings, timing_source = {}, "none"
+        phoneme_text = "".join(
+            w.text for w in transcription.words if w.text != "<blank>"
+        )
+        aligned, extra = alignment.align_phonemes(
+            expected, single_units, phoneme_text, green, amber
+        )
     else:
         heard = [w.text for w in transcription.words]
         probs = [w.prob for w in transcription.words]
         aligned, extra = alignment.align_words(expected, heard, probs, green, amber)
-        try:
-            units = _phoneme_units(surah, ayah)
-            covering = [u for u in units if word_index in u[0]]
-            single_units = (
-                [((0,), phon) for (widxs, phon) in covering] if covering else None
-            )
-        except APIError:
-            single_units = None
-        timings, timing_source = await _whisper_timings(
-            db, wav_bytes, expected, single_units, aligned, transcription,
-            green, amber, transcriber=transcriber, phoneme_engine=phoneme_engine,
-        )
-    # The single aligned word is indexed 0 in the alignment above;
-    # its timing is keyed by that index (re-indexed below for storage).
-    timing = timings.get(0, (None, None))
     # Re-index the single result back to the ayah-level word position.
     for w in aligned:
         w.word_index = word_index
@@ -987,7 +634,6 @@ async def grade_word(
         "word_index": word_index,
         "engine_used": engine_id,
         "thresholds": {"green": green, "amber": amber},
-        "timing_source": timing_source,
         "words": [
             {
                 "word_index": word_index,
@@ -997,8 +643,6 @@ async def grade_word(
                 "heard": aligned[0].heard if aligned else None,
                 "mistake_type": aligned[0].mistake_type if aligned else "skipped",
                 "needs_review": aligned[0].needs_review if aligned else False,
-                "start": timing[0],
-                "end": timing[1],
             }
         ],
         "counts": counts,

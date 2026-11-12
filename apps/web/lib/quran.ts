@@ -380,16 +380,6 @@ export async function getQuranProviders(): Promise<QuranDisplayConfig | null> {
     Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length > 0) : [];
   const translations = strList(body.translations);
   const tafsirs = strList(body.tafsirs);
-  // Step 5 — bundled editions whose data is installed server-side join
-  // the selectable lists (Persian tafsirs appear only when installed).
-  const bundledTranslations = strList(body.bundled_translations);
-  const bundledTafsirs = strList(body.bundled_tafsirs);
-  for (const id of bundledTranslations) {
-    if (!translations.includes(id)) translations.push(id);
-  }
-  for (const id of bundledTafsirs) {
-    if (!tafsirs.includes(id)) tafsirs.push(id);
-  }
   const reciterIds = strList(body.reciters);
   const photosRaw =
     body.reciter_photos && typeof body.reciter_photos === 'object'

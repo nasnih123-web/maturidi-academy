@@ -30,13 +30,8 @@
  *   navigation, same Hafs page numbers, never a dead page.
  *   Reachability of raw.githubusercontent.com from inside Iran is
  *   UNVERIFIED, which is why the fallback is load-bearing, not
- *   decorative.
- * - Step 6 (defect 5): pages are now fetched SAME-ORIGIN first via
- *   the /api/quran-svg proxy route (immutable caching; the server
- *   fetches upstream once), then the raw GitHub URL, then the
- *   caller's text fallback — three rungs, no single point of
- *   failure. The files themselves are NOT vendored into the repo
- *   (722 files per mushaf); the proxy is the local host.
+ *   decorative; same-origin hosting of the current page is a later
+ *   weighing, not assumed here.
  * - Weight: the plain .svg is fetched live (Hafs page 1 is ~196 KB,
  *   page 42 ~618 KB — one page at a time, never the whole mushaf).
  *   Brotli copies exist beside the SVGs (svg-br/, page 1 is ~33 KB),
@@ -112,34 +107,6 @@ export function svgSurahIndexUrl(mushaf: SvgMushafKey): string {
   return `${RAW}/${mushaf}/json/surah.json`;
 }
 
-/** Same-origin proxy URL (step 6) — the FIRST rung of every fetch. */
-export function svgLocalUrl(
-  mushaf: SvgMushafKey,
-  kind: 'svg' | 'json',
-  file: string,
-): string {
-  return `/api/quran-svg/${mushaf}/${kind}/${file}`;
-}
-
-/** Fetch text via the same-origin proxy first, then the raw URL. */
-async function fetchSvgText(
-  mushaf: SvgMushafKey,
-  kind: 'svg' | 'json',
-  file: string,
-  rawUrl: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  try {
-    const res = await fetch(svgLocalUrl(mushaf, kind, file), { signal });
-    if (res.ok) return await res.text();
-  } catch (err) {
-    if (signal?.aborted) throw err;
-  }
-  const res = await fetch(rawUrl, { signal });
-  if (!res.ok) throw new Error(`SVG ${mushaf} ${kind}/${file}: HTTP ${res.status}`);
-  return res.text();
-}
-
 export interface SvgPageAyah {
   surah: number;
   ayah: number;
@@ -163,13 +130,9 @@ export async function fetchSvgPageText(
   page: number,
   signal?: AbortSignal,
 ): Promise<string> {
-  return fetchSvgText(
-    mushaf,
-    'svg',
-    `${pad3(page)}.svg`,
-    svgPageUrl(mushaf, page),
-    signal,
-  );
+  const res = await fetch(svgPageUrl(mushaf, page), { signal });
+  if (!res.ok) throw new Error(`SVG page ${mushaf} ${page}: HTTP ${res.status}`);
+  return res.text();
 }
 
 /**
@@ -182,14 +145,9 @@ export async function fetchSvgPageAyahs(
   page: number,
   signal?: AbortSignal,
 ): Promise<SvgPageAyah[]> {
-  const text = await fetchSvgText(
-    mushaf,
-    'json',
-    `${pad3(page)}.json`,
-    svgPageJsonUrl(mushaf, page),
-    signal,
-  );
-  const data: unknown = JSON.parse(text);
+  const res = await fetch(svgPageJsonUrl(mushaf, page), { signal });
+  if (!res.ok) throw new Error(`SVG page JSON ${mushaf} ${page}: HTTP ${res.status}`);
+  const data: unknown = await res.json();
   if (!Array.isArray(data)) throw new Error(`SVG page JSON ${page}: not an array`);
   return (data as RawPolyEntry[])
     .filter(
@@ -205,9 +163,10 @@ const surahIndexPromises = new Map<SvgMushafKey, Promise<SvgSurahIndexEntry[]>>(
 export function loadSvgSurahIndex(mushaf: SvgMushafKey): Promise<SvgSurahIndexEntry[]> {
   const cached = surahIndexPromises.get(mushaf);
   if (cached) return cached;
-  const p = fetchSvgText(mushaf, 'json', 'surah.json', svgSurahIndexUrl(mushaf))
-    .then(async (text) => {
-      const data: unknown = JSON.parse(text);
+  const p = fetch(svgSurahIndexUrl(mushaf))
+    .then(async (res) => {
+      if (!res.ok) throw new Error(`surah.json ${mushaf}: HTTP ${res.status}`);
+      const data: unknown = await res.json();
       if (!Array.isArray(data) || data.length < 114) {
         throw new Error(`surah.json ${mushaf}: unexpected shape`);
       }
