@@ -1051,7 +1051,8 @@ async def stream_attempt(
             mapping = hifz_stream.require_phoneme_mapping()
             _t_mapping = time.perf_counter()
             session = await hifz_stream.start_live_session(
-                db, user, attempt_id, surah, ayah, queue.put_nowait, mapping
+                db, user, attempt_id, surah, ayah, queue.put_nowait, mapping,
+                hold_on_wrong=start["hold_on_wrong"],
             )
             # شماره‌گذارِ مشترک: خطاهای پیش از نشست و رویدادهای نشست،
             # یک رشتهٔ sequence_no دارند.

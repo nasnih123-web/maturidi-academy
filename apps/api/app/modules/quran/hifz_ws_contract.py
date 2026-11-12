@@ -329,11 +329,24 @@ def parse_start_message(data: object) -> dict:
                 "قاب صوتی باید ۱۶ کیلوهرتز تک‌کانالهٔ Int16LE باشد؛ "
                 "کلاینت نرخ/کانال/قالب دیگری اعلام کرد",
             )
+    # گزینهٔ «تا اصلاحِ خطا جلو نرو» (ایراد ۱۴، رفتار ترتیل):
+    # اختیاری و فقط bool؛ نبودنش None است تا نشست به تنظیمِ ذخیرهٔ
+    # کاربر (`freeze_on_error`) برگردد — همان سوییچی که از فاز ۴
+    # در رابط هست ولی تا امروز فقط سمت کلاینت مکث می‌کرد و
+    # اشاره‌گرِ سرور از خطا رد شده بود.
+    hold_on_wrong = data.get("hold_on_wrong")
+    if hold_on_wrong is not None and not isinstance(hold_on_wrong, bool):
+        raise APIError(
+            400,
+            "hifz_stream_start_required",
+            "hold_on_wrong باید bool باشد",
+        )
     return {
         "protocol_version": version,
         "surah": surah,
         "ayah": ayah,
         "audio": audio if isinstance(audio, dict) else None,
+        "hold_on_wrong": hold_on_wrong,
     }
 
 

@@ -1767,7 +1767,13 @@ export function QuranHifzStudy({
       liveWsRef.current = ws;
       ws.onopen = () => {
         if (!isCurrent()) return;
-        ws.send(JSON.stringify(buildStartMessage(surah, ayah)));
+        ws.send(
+          JSON.stringify(
+            buildStartMessage(surah, ayah, {
+              holdOnWrong: hifzSettings.freezeOnError,
+            }),
+          ),
+        );
       };
       ws.onmessage = (ev: MessageEvent) => {
         let msg: HifzLiveEvent;
@@ -1985,6 +1991,7 @@ export function QuranHifzStudy({
     labels,
     surah,
     ayah,
+    hifzSettings.freezeOnError,
     refreshDetail,
     cleanupLiveMic,
     cancelLive,
