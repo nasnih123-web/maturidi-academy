@@ -48,7 +48,11 @@ import {
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 import type { V2Expansion, V2Page, MushafWordViews } from '@/lib/quran-mushaf-v2';
 import { BASMALA_QCF_TEXT } from '@/lib/quran-basmala';
-import { getMushafFontProvider, useMushafFontReady } from '@/lib/quran-mushaf-font';
+import {
+  getMushafFontProvider,
+  useMushafFontReadyFor,
+  type MushafFontProvider,
+} from '@/lib/quran-mushaf-font';
 import { toArabicIndic } from '@/lib/quran-print-lines';
 import { colorizeTajweedWord } from '@/lib/quran-tajweed';
 
@@ -134,6 +138,7 @@ export function QuranMushafV2Page({
   onNavigate,
   showNav = true,
   hideMeta = false,
+  fontProvider,
   navLabels,
   expansionFailedNote,
 }: {
@@ -177,15 +182,22 @@ export function QuranMushafV2Page({
   hideMeta?: boolean;
   navLabels?: Partial<MushafV2NavLabels>;
   expansionFailedNote?: string;
+  /** Step 2 (Tarteel parity): render this page with a different
+      per-page font provider — the QPC V4 (1441) pages carry the
+      same V2Page/expansion shape but their glyph codes belong to
+      the QCF V4 page fonts. Default: the global QPC V2 provider,
+      i.e. the existing behaviour, unchanged. */
+  fontProvider?: MushafFontProvider;
 }) {
   const labels: MushafV2NavLabels = { ...DEFAULT_NAV_LABELS, ...navLabels };
-  const fontReady = useMushafFontReady(page.n);
+  const activeProvider = fontProvider ?? getMushafFontProvider();
+  const fontReady = useMushafFontReadyFor(activeProvider, page.n);
   // Glyph mode: this page's own QCF2NNN family. Glyph codes are
   // page-relative — a page's glyph string must never render in
   // another page's family. In Tanzil fallback mode this is null and
   // the CSS KFGQPC stack applies instead.
   const pageFontFamily = expansion.glyph
-    ? (getMushafFontProvider().familyForPage(page.n)?.family ?? null)
+    ? (activeProvider.familyForPage(page.n)?.family ?? null)
     : null;
   // Tajweed letter colours only exist for readable Arabic text.
   // In glyph mode the words are PUA glyph strings rendered solid

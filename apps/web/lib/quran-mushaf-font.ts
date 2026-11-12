@@ -152,6 +152,23 @@ export const digitalKhattProvider: MushafFontProvider = {
   familyForPage: () => DIGITAL_KHATT_FONT,
 };
 
+/** Digital Khatt IndoPak — the same parametric design for the
+    IndoPak script (step 2). SIL OFL 1.1 embedded in the file,
+    verified the same way as the Madani font (SHA-256
+    6a048ce983ad95b5291a233873236b14d14cc51f490a859dade067e2a016a0b5,
+    4,833,016 bytes; WOFF2 is the lossless container conversion). */
+export const DIGITAL_KHATT_INDOPAK_FONT: MushafFontSource = {
+  family: 'DigitalKhatt IndoPak',
+  sources:
+    'url("/fonts/digital-khatt/DigitalKhattIndoPak.woff2") format("woff2"), ' +
+    'url("/fonts/digital-khatt/DigitalKhattIndoPak.otf") format("opentype")',
+};
+
+export const digitalKhattIndoPakProvider: MushafFontProvider = {
+  id: 'digital-khatt-indopak',
+  familyForPage: () => DIGITAL_KHATT_INDOPAK_FONT,
+};
+
 let provider: MushafFontProvider = qcfV2Provider;
 
 /** Replace the font provider (e.g. with licensed per-page fonts).

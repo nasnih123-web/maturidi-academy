@@ -387,6 +387,10 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   mushafMadina: string;
   /** Step 1b: the Digital Khatt (Madina 1421) picker row label. */
   mushafDigitalKhatt: string;
+  /** Step 2: the Digital Khatt IndoPak picker row label. */
+  mushafDigitalKhattIndoPak: string;
+  /** Step 2: the QPC V4 (1441) picker row label. */
+  mushafQpcV4: string;
   mushafTajweed: string;
   mushafCurrent: string;
   mushafSoon: string;
@@ -845,9 +849,9 @@ function QuranUmumReader({
   // Step 1b: the page renderer. 'digital-khatt' shows the Madina
   // mushaf as real Digital Khatt text (Hafs numbering — the mushaf
   // key stays 'hafs/kfqc'); picking any printed mushaf resets it.
-  const [pageRenderer, setPageRenderer] = useState<'standard' | 'digital-khatt'>(
-    'standard',
-  );
+  const [pageRenderer, setPageRenderer] = useState<
+    'standard' | 'digital-khatt' | 'digital-khatt-indopak' | 'qpc-v4'
+  >('standard');
   const mushafLabelFor = (k: SvgMushafKey): string =>
     k === 'warsh/kfqc'
       ? labels.mushafWarsh
@@ -1459,6 +1463,29 @@ function QuranUmumReader({
     if (readingOpen) setReadingPage(target);
     setSheet(null);
   };
+  // Step 2: the QPC V4 (1441) mushaf — same Hafs numbering and
+  // page boundaries, its own typesetting and layout.
+  const selectQpcV4 = (): void => {
+    const target = displayPage ?? rangeTarget ?? 1;
+    setMushafKey(DEFAULT_SVG_MUSHAF);
+    setPageRenderer('qpc-v4');
+    setViewMode('page');
+    setRangeTarget(target);
+    if (readingOpen) setReadingPage(target);
+    setSheet(null);
+  };
+  // Step 2: the IndoPak mushaf — its own 610-page layout; the page
+  // number carries over clamped to the IndoPak page count (the DK
+  // page's own nav covers 1..610 from there).
+  const selectDigitalKhattIndoPak = (): void => {
+    const target = Math.min(displayPage ?? rangeTarget ?? 1, 610);
+    setMushafKey(DEFAULT_SVG_MUSHAF);
+    setPageRenderer('digital-khatt-indopak');
+    setViewMode('page');
+    setRangeTarget(target);
+    if (readingOpen) setReadingPage(target);
+    setSheet(null);
+  };
   // Surah mode loads no boundaries on its own; the reading view does.
   useEffect(() => {
     if (!readingOpen || boundaries) return;
@@ -1685,6 +1712,8 @@ function QuranUmumReader({
     qalunMargins: labels.mushafQalunMargins,
     madina: labels.mushafMadina,
     digitalKhatt: labels.mushafDigitalKhatt,
+    digitalKhattIndoPak: labels.mushafDigitalKhattIndoPak,
+    qpcV4: labels.mushafQpcV4,
     tajweed: labels.mushafTajweed,
     current: labels.mushafCurrent,
     soon: labels.mushafSoon,
@@ -1903,6 +1932,8 @@ function QuranUmumReader({
           onSelect={selectMushaf}
           currentRenderer={pageRenderer}
           onSelectDigitalKhatt={selectDigitalKhatt}
+          onSelectDigitalKhattIndoPak={selectDigitalKhattIndoPak}
+          onSelectQpcV4={selectQpcV4}
         />
       ) : null}
       {sheet === 'settings' ? (

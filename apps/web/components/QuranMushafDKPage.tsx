@@ -27,14 +27,16 @@
  * Lines the layout marks centred are never solved. Spaces are
  * never touched.
  *
- * The justification engine the font's project ships for the web
- * (digitalkhatt-js) is the digitalkhatt.org website source, not a
- * consumable library (AGPL-3.0, no published package, depends on a
- * private HarfBuzz fork build), so it is not vendored; the SCLX
- * axis is the font's designed parametric mechanism and is what a
- * layout engine is meant to drive. This trade-off is recorded in
- * docs/quran/hifz-parity-agent2/SCOPE.md's step-1 notes and in the
- * PR.
+ * The justification engines the font's project ships for the web
+ * (digitalkhatt-js, MIT) are not consumable here: there is no
+ * published package, and its engines return per-character OpenType
+ * feature maps for canvas glyph drawing (or a MetaFont WASM that
+ * draws to canvas) — this page needs real DOM text so the app's
+ * word-level interactions (selection, hide/eye, grading states)
+ * keep working. The SCLX axis is the font's designed parametric
+ * mechanism and is what a layout engine is meant to drive. This
+ * trade-off is recorded in docs/quran/hifz-parity-agent2/
+ * SCOPE.md's step-1 notes and in the PR.
  *
  * The Basmala line renders the page's own DK-script Basmala string
  * with the font's dedicated `basm` OpenType feature enabled
@@ -61,6 +63,7 @@ import type { DKPage } from '@/lib/quran-mushaf-dk';
 import { DK_PAGE_COUNTS, type DKMushafVariant } from '@/lib/quran-mushaf-dk';
 import type { MushafWordViews } from '@/lib/quran-mushaf-v2';
 import {
+  digitalKhattIndoPakProvider,
   digitalKhattProvider,
   useMushafFontReadyFor,
 } from '@/lib/quran-mushaf-font';
@@ -90,19 +93,20 @@ const SCLX_MAX = 170;
 let measureCtx: CanvasRenderingContext2D | null = null;
 const measureCache = new Map<string, number>();
 
-/** Natural advance of one word at 100px in the DK font (cached).
-    Arabic words never shape across spaces, so a line's natural
-    width is the sum of its words plus single spaces. */
-function measureWord100(text: string): number {
-  let w = measureCache.get(text);
+/** Natural advance of one word at 100px in a DK font (cached per
+    family). Arabic words never shape across spaces, so a line's
+    natural width is the sum of its words plus single spaces. */
+function measureWord100(family: string, text: string): number {
+  const cacheKey = `${family}|${text}`;
+  let w = measureCache.get(cacheKey);
   if (w !== undefined) return w;
   if (!measureCtx) {
     measureCtx = document.createElement('canvas').getContext('2d');
   }
   if (!measureCtx) return 0;
-  measureCtx.font = '100px "DigitalKhatt V2"';
+  measureCtx.font = `100px "${family}"`;
   w = measureCtx.measureText(text).width;
-  measureCache.set(text, w);
+  measureCache.set(cacheKey, w);
   return w;
 }
 
@@ -168,10 +172,13 @@ export function QuranMushafDKPage({
 }) {
   const labels: MushafV2NavLabels = { ...DEFAULT_NAV_LABELS, ...navLabels };
   const pageCount = DK_PAGE_COUNTS[variant];
+  const isIndoPak = variant === 'indopak';
+  const fontProvider = isIndoPak ? digitalKhattIndoPakProvider : digitalKhattProvider;
+  const fontFamily = isIndoPak ? 'DigitalKhatt IndoPak' : 'DigitalKhatt V2';
   // The hook settles on timeout too; solving additionally re-runs
   // when the FontFaceSet reports loading done, so a late-arriving
   // font re-solves with its own metrics.
-  const fontSettled = useMushafFontReadyFor(digitalKhattProvider, 1);
+  const fontSettled = useMushafFontReadyFor(fontProvider, 1);
   const [scale, setScale] = useState(1);
   const [width, setWidth] = useState<'narrow' | 'standard' | 'wide'>('standard');
   const [jumpValue, setJumpValue] = useState('');
@@ -219,7 +226,7 @@ export function QuranMushafDKPage({
       if (cancelled) return;
       const els = root.querySelectorAll<HTMLElement>('[data-dk-textline]');
       if (!els.length) return;
-      const space100 = measureWord100(' ');
+      const space100 = measureWord100(fontFamily, ' ');
       els.forEach((el) => {
         const li = Number(el.dataset.dkTextline);
         const line = page.lines[li];
@@ -234,7 +241,7 @@ export function QuranMushafDKPage({
         if (!fontPx) return;
         let natural100 = 0;
         line.words.forEach((w, wi) => {
-          natural100 += measureWord100(w.x);
+          natural100 += measureWord100(fontFamily, w.x);
           if (wi < line.words.length - 1) natural100 += space100;
         });
         const target = el.clientWidth;
@@ -274,7 +281,7 @@ export function QuranMushafDKPage({
       ro?.disconnect();
       fonts?.removeEventListener?.('loadingdone', onFonts);
     };
-  }, [fontSettled, page]);
+  }, [fontSettled, page, fontFamily]);
 
   const submitJump = () => {
     const n = Number(jumpValue);
@@ -286,7 +293,7 @@ export function QuranMushafDKPage({
 
   return (
     <div
-      className={`mushaf-page mushaf-dk mushaf-dk--w-${width}${hideText ? ' mushaf-dk--hide-text' : ''}`}
+      className={`mushaf-page mushaf-dk mushaf-dk--w-${width}${isIndoPak ? ' mushaf-dk--indopak' : ''}${hideText ? ' mushaf-dk--hide-text' : ''}`}
       style={{ '--mushaf-dk-scale': String(scale) } as CSSProperties}
     >
       {hideMeta ? null : <p className="mushaf-page-meta">{meta}</p>}

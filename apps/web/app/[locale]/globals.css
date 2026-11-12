@@ -3923,6 +3923,12 @@ button.mushaf-v2-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
   color: #000;
   font-feature-settings: "basm" 1;
 }
+/* IndoPak variant (step 2): same frame and metrics (the font has
+   the same 1500/−700 hhea), its own family. */
+.mushaf-dk--indopak .mushaf-dk-line,
+.mushaf-dk--indopak .mushaf-dk-basmala {
+  font-family: "DigitalKhatt IndoPak", "DigitalKhatt V2", serif;
+}
 .mushaf-dk-word {
   display: inline;
   padding: 0;
