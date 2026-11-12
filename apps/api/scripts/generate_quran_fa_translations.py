@@ -2,7 +2,7 @@
 """مولد دو ترجمهٔ فارسیِ ترتیل (رواد و تاجی) برای provider باندل‌شده.
 
 گام ۵ برابری با ترتیل (PR ایجنت دوم): ترتیل دقیقاً دو ترجمهٔ فارسی
-دارد — «رواد» (مرکز ترجمهٔ رواد، کلید QuranEnc: ‏persian_ih) و
+دارد — «رواد» (مرکز ترجمهٔ رواد، کلید QuranEnc: persian_ih) و
 «دکتر حسین تاجی» (persian_tagi) — و هیچ‌کدام در فهرست ۱۳ ترجمهٔ
 AlQuran Cloud آکادمی نبودند. هر دو از QuranEnc (موسوعة القرآن
 الكريم) گرفته می‌شوند که ناشر عمومی و بدون لاگینِ هر دو است:
@@ -55,7 +55,7 @@ def _validate(data: dict[str, str], counts: dict[int, int], label: str) -> None:
         raise SystemExit(f"{label}: expected 6236 ayahs, got {len(data)}")
     per_surah: dict[int, int] = {}
     for key, text in data.items():
-        surah_s, ayah_s = key.split(":")
+        surah_s, _ = key.split(":")
         per_surah[int(surah_s)] = per_surah.get(int(surah_s), 0) + 1
         if not text.strip():
             raise SystemExit(f"{label}: empty text at {key}")
@@ -65,7 +65,7 @@ def _validate(data: dict[str, str], counts: dict[int, int], label: str) -> None:
 
 def _fetch(url: str) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": "maturidi-generator"})
-    with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310 (نشانی ثابت)
+    with urllib.request.urlopen(req, timeout=120) as resp:
         return resp.read()
 
 

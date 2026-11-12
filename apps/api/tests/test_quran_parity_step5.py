@@ -62,7 +62,7 @@ async def test_bundled_mokhtasar_tafsir_installed_and_serves_persian():
 
     - در bundled_available اعلام می‌شود و پوشش کامل ۶۲۳۶ دارد؛
     - متن ۱:۱ همان متن فارسی مختصر است؛
-    - دو آیهٔ گروهی QUL ‏(۵۶:۵۲ و ۱۰۷:۵) از ردیف گروه پر شده‌اند.
+    - دو آیهٔ گروهی QUL (۵۶:۵۲ و ۱۰۷:۵) از ردیف گروه پر شده‌اند.
     """
     available = qp.bundled_available()
     assert "fa.mokhtasar" in available["tafsir"]

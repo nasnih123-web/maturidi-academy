@@ -10,7 +10,7 @@
   https://quranenc.com/api/v1/translation/sura/persian_saadi/{n}
 
 روند: هر ۱۱۴ سوره از API گرفته می‌شود، در sqliteای با شکل خود
-QuranEnc (جدول translations:‏ sura, aya, translation — همان شکل
+QuranEnc (جدول translations: sura, aya, translation — همان شکل
 دانلودهای sqlite رسمی‌اش) می‌نشیند و بعد دقیقاً از همان مسیر
 import_qul_tafsir.py عبور می‌کند (تشخیص شکل + اعتبارسنجی سخت‌گیرانه)
 تا فقط یک مسیر نصب وجود داشته باشد. پانویس‌های منبع حمل نمی‌شوند
@@ -75,7 +75,7 @@ def _fetch(surah: int) -> list[dict]:
             req = urllib.request.Request(
                 url, headers={"User-Agent": "maturidi-importer"}
             )
-            with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310 (نشانی ثابت)
+            with urllib.request.urlopen(req, timeout=120) as resp:
                 body = json.loads(resp.read())
             rows = body.get("result")
             if not isinstance(rows, list) or not rows:

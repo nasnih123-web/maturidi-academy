@@ -138,7 +138,7 @@ class NoteListOut(BaseModel):
 # شکل درونیِ نشان/موقعیت عیناً قرارداد کلاینت وب است (کلیدهای camelCase
 # مثل createdAt/savedAt همان‌طور که در localStorage ذخیره می‌شوند) تا
 # sync بدون لایهٔ نگاشت رفت‌وبرگردد؛ کلیدهای بیرونی API طبق قرارداد
-# بقیهٔ API ‏snake_case می‌مانند (last_read / updated_at).
+# بقیهٔ API snake_case می‌مانند (last_read / updated_at).
 
 
 class ReadingBookmark(BaseModel):

@@ -19,6 +19,8 @@ import io
 import logging
 import wave
 from datetime import UTC, datetime
+from itertools import pairwise
+from typing import Protocol, cast
 from uuid import UUID
 
 from sqlalchemy import delete, func, select
@@ -525,7 +527,7 @@ def _spans_to_timings(
     if not timed or not char_token:
         return {}
     starts = [float(p.start) for p in timed]
-    gaps = sorted(b - a for a, b in zip(starts, starts[1:]) if b > a)
+    gaps = sorted(b - a for a, b in pairwise(starts) if b > a)
     tail = gaps[len(gaps) // 2] if gaps else 0.16
     out: dict[int, tuple[float, float]] = {}
     for w in aligned:
@@ -545,8 +547,19 @@ def _spans_to_timings(
     return out
 
 
+class PhonemeEngine(Protocol):
+    """درزِ موتورِ واجی: فقط همین دو متد لازم است (پیاده‌سازیِ واقعی
+    ZipformerEngine است؛ در تست، شیءِ هم‌شکل داده می‌شود)."""
+
+    def is_configured(self) -> tuple[bool, str]: ...
+
+    def transcribe_timed_phonemes(
+        self, wav_bytes: bytes
+    ) -> list[hifz_engines.TimedPhoneme]: ...
+
+
 def _phoneme_post_pass_possible(
-    phoneme_engine: object | None = None,
+    phoneme_engine: PhonemeEngine | None = None,
 ) -> bool:
     """کاوشِ ارزان (بدون بارگذاریِ مدل) برای تصمیمِ پیش از رونویسی:
     آیا پس‌پردازشِ واجی در دسترس است؟ فقط برای این تصمیم است؛
@@ -554,9 +567,11 @@ def _phoneme_post_pass_possible(
     try:
         engine = phoneme_engine
         if engine is None:
-            engine = hifz_engines.get_engine("zipformer")
+            engine = cast(
+                PhonemeEngine, hifz_engines.get_engine("zipformer")
+            )
         return bool(engine.is_configured()[0])
-    except Exception:
+    except Exception:  # noqa: BLE001 — پروبِ دسترسی است؛ هر خطا یعنی «در دسترس نیست»
         return False
 
 
@@ -566,7 +581,7 @@ async def _phoneme_post_pass(
     units: list[tuple[tuple[int, ...], str | None]],
     green: float,
     amber: float,
-    phoneme_engine: object | None = None,
+    phoneme_engine: PhonemeEngine | None = None,
 ) -> dict[int, tuple[float, float]] | None:
     """پس‌پردازشِ ترازِ واجیِ اجباری برای مسیرِ Whisper (گام ۹).
 
@@ -581,7 +596,9 @@ async def _phoneme_post_pass(
     try:
         engine = phoneme_engine
         if engine is None:
-            engine = hifz_engines.get_engine("zipformer")
+            engine = cast(
+                PhonemeEngine, hifz_engines.get_engine("zipformer")
+            )
         ok, _reason = engine.is_configured()
         if not ok:
             return None
@@ -636,7 +653,7 @@ async def _whisper_timings(
     green: float,
     amber: float,
     transcriber: object | None = None,
-    phoneme_engine: object | None = None,
+    phoneme_engine: PhonemeEngine | None = None,
 ) -> tuple[dict[int, tuple[float, float]], str]:
     """زمان‌بندیِ کلمه‌ای برای مسیرِ Whisper (گام ۹).
 
@@ -700,7 +717,9 @@ async def _transcribe(
         if word_timestamps and getattr(
             engine, "supports_dtw_timestamps", False
         ):
-            result = await asyncio.to_thread(engine.transcribe, wav_bytes, True)
+            # پرچمِ DTW فقط روی WhisperQuranEngine روشن است.
+            whisper = cast(hifz_engines.WhisperQuranEngine, engine)
+            result = await asyncio.to_thread(whisper.transcribe, wav_bytes, True)
         else:
             result = await asyncio.to_thread(engine.transcribe, wav_bytes)
     except hifz_engines.EngineError as exc:
@@ -810,7 +829,7 @@ async def grade_ayah(
     ayah: int,
     wav_bytes: bytes,
     transcriber: object | None = None,
-    phoneme_engine: object | None = None,
+    phoneme_engine: PhonemeEngine | None = None,
 ) -> dict:
     """نمره‌دهی یک آیهٔ کامل.
 
@@ -909,7 +928,7 @@ async def grade_word(
     word_index: int,
     wav_bytes: bytes,
     transcriber: object | None = None,
-    phoneme_engine: object | None = None,
+    phoneme_engine: PhonemeEngine | None = None,
 ) -> dict:
     """تمرین تک‌کلمه: فقط همان یک کلمه نمره می‌گیرد."""
     attempt = await _attempt_or_404(db, user, attempt_id)
@@ -937,7 +956,9 @@ async def grade_word(
                 "تمرین کنید.",
                 {},
             )
-        single_units = [((0,), phon) for (widxs, phon) in covering]
+        single_units: list[tuple[tuple[int, ...], str | None]] = [
+            ((0,), phon) for (widxs, phon) in covering
+        ]
         timed = getattr(transcription, "timed_phonemes", None)
         if timed:
             prep_units, phoneme_text, char_token = _prepare_phoneme_alignment(
@@ -963,13 +984,13 @@ async def grade_word(
         try:
             units = _phoneme_units(surah, ayah)
             covering = [u for u in units if word_index in u[0]]
-            single_units = (
+            word_units: list[tuple[tuple[int, ...], str | None]] | None = (
                 [((0,), phon) for (widxs, phon) in covering] if covering else None
             )
         except APIError:
-            single_units = None
+            word_units = None
         timings, timing_source = await _whisper_timings(
-            db, wav_bytes, expected, single_units, aligned, transcription,
+            db, wav_bytes, expected, word_units, aligned, transcription,
             green, amber, transcriber=transcriber, phoneme_engine=phoneme_engine,
         )
     # The single aligned word is indexed 0 in the alignment above;

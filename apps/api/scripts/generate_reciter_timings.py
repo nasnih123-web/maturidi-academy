@@ -144,7 +144,7 @@ def _download(url: str, dest: Path) -> None:
             req = urllib.request.Request(
                 url, headers={"User-Agent": "maturidi-timings-generator"}
             )
-            with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310
+            with urllib.request.urlopen(req, timeout=120) as resp:
                 data = resp.read()
             if len(data) < 1024:
                 raise ValueError(f"suspiciously small file: {len(data)} bytes")
@@ -201,6 +201,41 @@ def _existing_ayahs(edition: str, surah: int) -> dict[int, dict]:
     return {int(a["ayah"]): a for a in body.get("ayahs", [])}
 
 
+def _flush(
+    manifest: dict,
+    entry: dict,
+    edition: str,
+    surah: int,
+    folder: str,
+    done: dict,
+    surah_counts: dict[int, int],
+) -> None:
+    """نوشتن فایل سوره + مانیفست با پیشرفت فعلی (ازسرگیری
+    در سطح آیه، نه فقط سوره — برای سوره‌های بلند)."""
+    out = {
+        "edition": edition,
+        "surah": surah,
+        "source": "phoneme_alignment",
+        "folder": folder,
+        "ayahs": [done[a] for a in sorted(done)],
+    }
+    path = _surah_path(edition, surah)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(out, ensure_ascii=False), encoding="utf-8"
+    )
+    if len(done) == surah_counts[surah] and (
+        surah not in entry["surahs_done"]
+    ):
+        entry["surahs_done"].append(surah)
+        entry["surahs_done"].sort()
+    entry["surah_ayah_counts"][str(surah)] = len(done)
+    entry["ayahs_done"] = sum(
+        entry["surah_ayah_counts"].values()
+    )
+    _save_manifest(manifest)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--edition", action="append", default=[])
@@ -214,7 +249,6 @@ def main(argv: list[str] | None = None) -> int:
     if unknown or not editions:
         parser.error(f"unknown or empty editions: {unknown or editions}")
 
-    from app.core.errors import APIError
     from app.modules.quran import alignment, hifz_engines, hifz_service
 
     words = _tanzil()
@@ -254,32 +288,6 @@ def main(argv: list[str] | None = None) -> int:
             t0 = time.time()
             stats = {"timed": 0, "words": 0}
 
-            def _flush() -> None:
-                """نوشتن فایل سوره + مانیفست با پیشرفت فعلی (ازسرگیری
-                در سطح آیه، نه فقط سوره — برای سوره‌های بلند)."""
-                out = {
-                    "edition": edition,
-                    "surah": surah,
-                    "source": "phoneme_alignment",
-                    "folder": folder,
-                    "ayahs": [done[a] for a in sorted(done)],
-                }
-                path = _surah_path(edition, surah)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(
-                    json.dumps(out, ensure_ascii=False), encoding="utf-8"
-                )
-                if len(done) == surah_counts[surah] and (
-                    surah not in entry["surahs_done"]
-                ):
-                    entry["surahs_done"].append(surah)
-                    entry["surahs_done"].sort()
-                entry["surah_ayah_counts"][str(surah)] = len(done)
-                entry["ayahs_done"] = sum(
-                    entry["surah_ayah_counts"].values()
-                )
-                _save_manifest(manifest)
-
             for ayah in todo:
                 key = f"{surah:03d}{ayah:03d}"
                 mp3 = args.cache_dir / folder / f"{key}.mp3"
@@ -312,8 +320,8 @@ def main(argv: list[str] | None = None) -> int:
                     seg_words = [
                         {
                             "word": wi + 1,
-                            "start_ms": int(round(sp[0] * 1000)),
-                            "end_ms": int(round(sp[1] * 1000)),
+                            "start_ms": round(sp[0] * 1000),
+                            "end_ms": round(sp[1] * 1000),
                         }
                         for wi, sp in sorted(spans.items())
                     ]
@@ -342,8 +350,14 @@ def main(argv: list[str] | None = None) -> int:
                     if wav.is_file():
                         wav.unlink()
                 if ayah % 10 == 0:
-                    _flush()
-            _flush()
+                    _flush(
+                        manifest, entry, edition, surah, folder, done,
+                        surah_counts,
+                    )
+            _flush(
+                manifest, entry, edition, surah, folder, done,
+                surah_counts,
+            )
             complete = len(done) == surah_counts[surah]
             dt = time.time() - t0
             grand["seconds"] += dt
