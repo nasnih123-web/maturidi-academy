@@ -100,15 +100,49 @@ async def get_ayah(
 
 @quran_router.get("/recitation/reciters")
 async def list_recitation_reciters():
-    """قاری‌های حالت گوش‌دادن/دنبال‌کردن — زمان‌بندی کلمه‌ای دارند."""
-    from .recitation_timing import RECITER_LABELS
+    """قاری‌های حالت گوش‌دادن/دنبال‌کردن — زمان‌بندی کلمه‌ای دارند.
+
+    `generated_reciters` (گام ۱۰): editionهایی که زمان‌بندی تولیدشده
+    با تراز واجی دارند، با شمار سوره‌های کاملشان از مانیفست تولید.
+    """
+    from .recitation_timing import RECITER_LABELS, generated_available
 
     return {
         "reciters": [
             {"id": rid, "label": RECITER_LABELS[rid]}
             for rid in RECITER_LABELS
-        ]
+        ],
+        "generated_reciters": [
+            {"id": edition, "surahs": count}
+            for edition, count in sorted(generated_available().items())
+        ],
     }
+
+
+@quran_router.get("/recitation/timing/generated")
+async def get_generated_recitation_timing_endpoint(
+    edition: str = Query(description="شناسهٔ edition قاری (مثل ar.husary)"),
+    surah: int = Query(ge=1, le=114, description="شمارهٔ سوره"),
+):
+    """زمان‌بندی کلمه‌ای تولیدشده با تراز واجی (گام ۱۰) برای یک سوره.
+
+    دادهٔ باندل‌شده از صوت آیه‌به‌آیهٔ EveryAyah است؛ زمان هر کلمه
+    نسبت به ابتدای فایلِ همان آیه است و هر آیه audio_url خودش را
+    دارد. نبود داده → ۵۰۳ صادقانه (بدون fallback به درون‌یابی).
+    """
+    from app.core.errors import APIError
+
+    from .recitation_timing import RecitationTimingError, get_generated_timing
+
+    try:
+        return get_generated_timing(edition, surah)
+    except RecitationTimingError as exc:
+        raise APIError(
+            503,
+            "recitation_timing_unavailable",
+            "زمان‌بندی تلاوت در دسترس نیست؛ لطفاً کمی بعد تلاش کنید",
+            {"edition": edition, "surah": surah, "detail": str(exc)},
+        )
 
 
 @quran_router.get("/recitation/timing")
