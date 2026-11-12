@@ -602,19 +602,31 @@ sources.
   (OFL-1.1, step 1). Full per-asset record:
   `docs/quran/hifz-parity-agent2/QPC-V2-LICENCE-STATUS.md`.
 
-## Persian tafsirs Mokhtasar + Saadi (QUL) — Tarteel-parity step 5 (DATA NOT YET INSTALLED)
+## Persian tafsirs Mokhtasar + Saadi (QUL) — Tarteel-parity steps 5+7 (Mokhtasar INSTALLED; Persian Saadi still missing)
 
 - **Works:** «تفسیر مختصر» and «تفسیر سعدی» in Persian, from the
   QUL (Quranic Universal Library, qul.tarteel.ai) catalog — the
   same source Tarteel downloads them from.
-- **Status:** the serving code is in place (bundled provider,
-  per-edition routing, reader gating on the API's
-  `bundled_tafsirs` report, importer
-  `apps/api/scripts/import_qul_tafsir.py`), but **no tafsir text is
-  in this repository**: QUL dataset downloads require an account
-  (HTTP 401 without login, verified 2026-11-12). The project owner
-  downloads the two sqlite files with his own QUL account and runs
-  the importer (see `apps/api/app/modules/quran/data/tafsir/README.md`);
-  until then the editions appear in no selector and answer an
-  honest "data is not installed" error. Nothing about their text
-  is claimed here beyond the catalog names.
+- **Mokhtasar — installed 2026-11-12 (expansion step 7):** the
+  owner delivered QUL's Persian Mokhtasar dataset
+  (`persian-mokhtasar.db.zip`, 768,971 bytes, SHA-256
+  `7bf26af382e749a9a3fd2184bf01f39de5f8ed245d79c6dfe6d41b52d357afcc`)
+  via his Drive folder. Its text was verified as genuine Persian
+  with full 6,236-ayah coverage before import (two QUL grouped
+  rows — 56:51–52 and 107:4–5 — expanded per the source's own
+  `ayah_keys` declaration by the importer). Imported with
+  `apps/api/scripts/import_qul_tafsir.py` to
+  `app/modules/quran/data/tafsir/fa.mokhtasar.json` (SHA-256
+  `7c39e32817fd21915b2a28de805d53c07cc3c732b6fa87743dcb61e1ed290fcc`);
+  it is announced in `bundled_tafsirs` by `GET /quran/providers`
+  and served by the bundled provider with no live call.
+- **Saadi — Persian edition still NOT installed:** of the files
+  the owner uploaded, `sq-saadi.db.zip` proved to be the
+  **Albanian** Saadi (QUL language code `sq`) and
+  `tafsir-as-saadi.db.zip` the **Arabic original** — both verified
+  by reading their text; neither is the Persian translation. The
+  one file still needed is QUL's **Persian** Tafsir al-Saadi
+  dataset (the Persian-language Saadi download on qul.tarteel.ai,
+  analogous to the delivered `persian-mokhtasar`). Until it is
+  delivered and imported, `fa.saadi` appears in no selector and
+  answers an honest "data is not installed" error.

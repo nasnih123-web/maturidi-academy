@@ -57,6 +57,30 @@ async def test_bundled_unknown_and_uninstalled_are_honest_errors():
                 await provider.fetch_ayah(1, 1, tafsir_edition=edition)
 
 
+async def test_bundled_mokhtasar_tafsir_installed_and_serves_persian():
+    """گام ۷: دادهٔ واقعی تفسیر مختصر فارسی (QUL، تحویل مالک) نصب است.
+
+    - در bundled_available اعلام می‌شود و پوشش کامل ۶۲۳۶ دارد؛
+    - متن ۱:۱ همان متن فارسی مختصر است؛
+    - دو آیهٔ گروهی QUL ‏(۵۶:۵۲ و ۱۰۷:۵) از ردیف گروه پر شده‌اند؛
+    - سعدی فارسی هنوز نصب نیست → خطای صادقانه، نه ردیف مرده.
+    """
+    available = qp.bundled_available()
+    assert "fa.mokhtasar" in available["tafsir"]
+    data = qp._load_bundled("fa.mokhtasar")
+    assert len(data) == 6236
+    assert data["1:1"].startswith("قرائت قرآن")
+    # آیات گروهی: متن گروه برای هر دو عضو موجود است.
+    assert data["56:52"] == data["56:51"]
+    assert data["107:5"] == data["107:4"]
+    provider = qp.BundledEditionsProvider()
+    out = await provider.fetch_ayah(2, 255, tafsir_edition="fa.mokhtasar")
+    assert out["editions"]["fa.mokhtasar"].text.startswith("الله همان")
+    if "fa.saadi" not in available["tafsir"]:
+        with pytest.raises(qp.QuranProviderError):
+            await provider.fetch_ayah(1, 1, tafsir_edition="fa.saadi")
+
+
 def test_edition_provider_overrides_route_groups():
     sel = {
         "providers_by_type": {
@@ -98,6 +122,19 @@ def _make_sqlite(path: Path, shape: str) -> None:
             "INSERT INTO tafsir VALUES (?, ?, ?)",
             [(1, 1, "الف"), (1, 2, "ب"), (2, 1, "ج")],
         )
+    elif shape == "grouped":
+        # شکل واقعی QUL: ردیف گروه ayah_keys دارد و ردیف عضو دوم خالی است.
+        con.execute(
+            "CREATE TABLE tafsir (ayah_key TEXT, ayah_keys TEXT, text TEXT)"
+        )
+        con.executemany(
+            "INSERT INTO tafsir VALUES (?, ?, ?)",
+            [
+                ("1:1", "1:1,1:2", "الف"),
+                ("1:2", "1:1,1:2", ""),
+                ("2:1", "2:1", "ج"),
+            ],
+        )
     else:
         con.execute("CREATE TABLE tafsir (ayah_key TEXT, text TEXT)")
         con.executemany(
@@ -128,6 +165,12 @@ def test_importer_reads_both_shapes_and_rejects_incomplete(tmp_path):
         assert data == {"1:1": "الف", "1:2": "ب", "2:1": "ج"}
         with pytest.raises(ValueError):
             module.validate_full(data)  # پوشش کامل ۶۲۳۶ نیست → رد
+
+    # گسترش گروهی: عضو خالی از متنِ گروهِ اعلام‌شده پر می‌شود، نه حدس.
+    db_file = tmp_path / "grouped.sqlite"
+    _make_sqlite(db_file, "grouped")
+    data = module.convert(db_file)
+    assert data == {"1:1": "الف", "1:2": "الف", "2:1": "ج"}
 
 
 async def test_alquran_stale_cache_served_on_upstream_failure(monkeypatch):

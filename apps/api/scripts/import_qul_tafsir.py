@@ -14,6 +14,13 @@ edition در پاسخ /providers ظاهر و در ریدر قابل انتخاب
 - ستون کلید واحد (ayah_key|verse_key|key) با قالب "s:a" + ستون متن.
 هر شکل ناشناخته‌ای = خطای صریح و بدون خروجی.
 
+ردیف‌های گروهی QUL: بعضی دیتاست‌ها (از جمله مختصر فارسی واقعی)
+تفسیرِ چند آیهٔ پیاپی را در یک ردیف می‌گذارند — ردیفِ گروه ستون
+ayah_keys را با فهرست اعضا پر می‌کند و ردیفِ بقیهٔ اعضا خالی است.
+گسترش فقط از همان اعلانِ صریحِ منبع انجام می‌شود: متنِ گروه فقط
+جای خالیِ اعضایش را پر می‌کند و هرگز روی متنِ مستقلِ یک آیه
+نمی‌نشیند؛ تعداد گسترش‌ها هم روی stderr گزارش می‌شود.
+
 اعتبارسنجی: پوشش باید کامل باشد — هر ۶۲۳۶ آیهٔ متن تنزیل، با متن
 غیرخالی. ناقص = رد (تفسیر ناقص هرگز بی‌صدا نصب نمی‌شود).
 
@@ -89,13 +96,45 @@ def convert(db_path: Path) -> dict[str, str]:
                     if t and str(t).strip():
                         data[f"{int(s)}:{int(a)}"] = str(t)
             elif key_col:
-                rows = con.execute(
-                    f'SELECT "{key_col}", "{text_col}" FROM "{table}"'
-                )
-                for k, t in rows:
-                    if t and str(t).strip() and ":" in str(k):
+                group_col = _pick(columns, ("ayah_keys",))
+                if group_col:
+                    rows = con.execute(
+                        f'SELECT "{key_col}", "{text_col}", "{group_col}"'
+                        f' FROM "{table}"'
+                    ).fetchall()
+                else:
+                    rows = [
+                        (k, t, None)
+                        for k, t in con.execute(
+                            f'SELECT "{key_col}", "{text_col}" FROM "{table}"'
+                        )
+                    ]
+                group_fill: dict[str, str] = {}
+                for k, t, members in rows:
+                    if not (t and str(t).strip()):
+                        continue
+                    if k and ":" in str(k):
                         s, a = str(k).split(":", 1)
                         data[f"{int(s)}:{int(a)}"] = str(t)
+                    if members:
+                        for member in str(members).split(","):
+                            member = member.strip()
+                            if ":" in member:
+                                ms, ma = member.split(":", 1)
+                                group_fill.setdefault(
+                                    f"{int(ms)}:{int(ma)}", str(t)
+                                )
+                expanded = 0
+                for k, v in group_fill.items():
+                    if k not in data:
+                        data[k] = v
+                        expanded += 1
+                if expanded:
+                    print(
+                        f"group expansion: {expanded} ayahs filled from "
+                        f"declared ayah_keys groups",
+                        file=sys.stderr,
+                    )
             else:
                 continue
             if len(data) >= 6000:
