@@ -84,7 +84,13 @@ def test_download_skips_existing_and_never_raises(
     assert not (asset_env / "phoneme" / "ordered_quran_phonemes.json").exists()
 
 
-def test_download_all_without_env_is_all_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_download_all_without_env_uses_manifest_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """نصبِ تمیز (گام ۳): بدون هیچ env، مانیفست نسخه‌دار مبدأ است —
+    مسیرهای پیش‌فرض + نشانیِ پیش‌فرض + راستی‌آزماییِ چک‌سام."""
+    import hashlib
+
     for var in (
         "HIFZ_MODEL_URL",
         "HIFZ_TOKENS_URL",
@@ -94,8 +100,120 @@ def test_download_all_without_env_is_all_skipped(monkeypatch: pytest.MonkeyPatch
         "QURAN_PHONEME_MAP_DIR",
     ):
         monkeypatch.delenv(var, raising=False)
+    model_dir = tmp_path / "default-model"
+    map_dir = tmp_path / "default-phoneme"
+    monkeypatch.setattr(hifz_assets, "DEFAULT_MODEL_DIR", model_dir)
+    monkeypatch.setattr(hifz_assets, "DEFAULT_MAP_DIR", map_dir)
+
+    payload = b"fake-asset-bytes"
+    spec = hifz_assets.AssetSpec(
+        key="model/model.int8.onnx",
+        dir_role="model",
+        filename="model.int8.onnx",
+        size=len(payload),
+        sha256=hashlib.sha256(payload).hexdigest(),
+        drive_id="fake-drive-id",
+        url_env="HIFZ_MODEL_URL",
+    )
+    monkeypatch.setattr(hifz_assets, "load_manifest", lambda: [spec])
+
+    calls: list[str] = []
+
+    def fake_urlopen(request: object, timeout: int = 0) -> _FakeResponse:
+        url = request.full_url if hasattr(request, "full_url") else str(request)
+        calls.append(url)
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(hifz_assets.urllib.request, "urlopen", fake_urlopen)
     results = hifz_assets.download_all()
-    assert all(v.startswith("skipped") for v in results.values())
+    assert results == {"model/model.int8.onnx": f"ok ({len(payload)} bytes)"}
+    assert (model_dir / "model.int8.onnx").read_bytes() == payload
+    assert "fake-drive-id" in calls[0]
+
+    # اجرای دوم: فایل سالم است و «verified» رد می‌شود (دانلود تازه نه).
+    calls.clear()
+    results = hifz_assets.download_all()
+    assert results["model/model.int8.onnx"].startswith("ok (verified")
+    assert calls == []
+
+
+def test_manifest_checksum_mismatch_fails_and_leaves_no_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """محتوای ناهم‌خوان با چک‌سامِ مانیفست هرگز روی دیسک نمی‌نشیند."""
+    model_dir = tmp_path / "model"
+    monkeypatch.setenv("HIFZ_ZIPFORMER_MODEL_DIR", str(model_dir))
+    monkeypatch.delenv("HIFZ_MODEL_URL", raising=False)
+    spec = hifz_assets.AssetSpec(
+        key="model/model.int8.onnx",
+        dir_role="model",
+        filename="model.int8.onnx",
+        size=4,
+        sha256="0" * 64,
+        drive_id="fake-drive-id",
+        url_env="HIFZ_MODEL_URL",
+    )
+    monkeypatch.setattr(hifz_assets, "load_manifest", lambda: [spec])
+    monkeypatch.setattr(
+        hifz_assets.urllib.request,
+        "urlopen",
+        lambda *a, **k: _FakeResponse(b"abcd"),
+    )
+    results = hifz_assets.download_all()
+    assert "failed" in results["model/model.int8.onnx"]
+    assert "checksum" in results["model/model.int8.onnx"]
+    assert not (model_dir / "model.int8.onnx").exists()
+
+
+def test_corrupt_existing_asset_is_redownloaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """فایل موجودِ خراب «موجود» حساب نمی‌شود؛ دوباره گرفته می‌شود."""
+    import hashlib
+
+    model_dir = tmp_path / "model"
+    model_dir.mkdir(parents=True)
+    (model_dir / "model.int8.onnx").write_bytes(b"corrupt!")
+    monkeypatch.setenv("HIFZ_ZIPFORMER_MODEL_DIR", str(model_dir))
+    monkeypatch.delenv("HIFZ_MODEL_URL", raising=False)
+    payload = b"good-bytes"
+    spec = hifz_assets.AssetSpec(
+        key="model/model.int8.onnx",
+        dir_role="model",
+        filename="model.int8.onnx",
+        size=len(payload),
+        sha256=hashlib.sha256(payload).hexdigest(),
+        drive_id="fake-drive-id",
+        url_env="HIFZ_MODEL_URL",
+    )
+    monkeypatch.setattr(hifz_assets, "load_manifest", lambda: [spec])
+    monkeypatch.setattr(
+        hifz_assets.urllib.request,
+        "urlopen",
+        lambda *a, **k: _FakeResponse(payload),
+    )
+    results = hifz_assets.download_all()
+    assert results["model/model.int8.onnx"] == f"ok ({len(payload)} bytes)"
+    assert (model_dir / "model.int8.onnx").read_bytes() == payload
+
+
+def test_real_manifest_is_wellformed() -> None:
+    """مانیفستِ واقعیِ ریپو: پنج دارایی، حجم و چک‌سامِ معتبر."""
+    specs = hifz_assets.load_manifest()
+    assert len(specs) == 5
+    keys = {s.key for s in specs}
+    assert keys == {
+        "model/model.int8.onnx",
+        "model/tokens.txt",
+        "phoneme/tokens.txt",
+        "phoneme/ordered_quran_phonemes.json",
+        "phoneme/quran_text2phoneme.json",
+    }
+    for s in specs:
+        assert s.size > 0
+        assert len(s.sha256) == 64
+        assert s.drive_id
+        assert s.default_url.startswith("https://drive.usercontent.google.com/")
 
 
 def test_empty_download_is_failure_and_leaves_no_file(

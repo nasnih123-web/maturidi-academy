@@ -110,6 +110,16 @@ def _model_dir(env_name: str) -> tuple[str | None, str]:
     """Return (dir, reason). reason is "" when the dir is usable."""
     d = os.environ.get(env_name, "").strip()
     if not d:
+        # نصبِ تمیز (گام ۳ برابری): متغیر ست نیست، ولی دارایی‌های
+        # نسخه‌دار شاید در مسیر پیش‌فرضِ مانیفست گرفته شده باشند —
+        # همان‌جا را بخوان تا نصبِ بدون env هم ۵۰۳ ندهد. مسیر
+        # پیش‌فرض فقط وقتی استفاده می‌شود که واقعاً وجود داشته
+        # باشد؛ وگرنه همان دلیلِ صادقانهٔ پیشین برمی‌گردد.
+        if env_name == _ZIPFORMER_ENV:
+            from app.core.hifz_assets import DEFAULT_MODEL_DIR
+
+            if DEFAULT_MODEL_DIR.is_dir():
+                return str(DEFAULT_MODEL_DIR), ""
         return None, f"{env_name} is not set"
     if not os.path.isdir(d):
         # مسیر مطلقِ دیسک در پیام عمومی نمی‌آید (فاز ۱۱: نشت مسیر
