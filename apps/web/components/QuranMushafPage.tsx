@@ -38,6 +38,7 @@ import {
   type V2Page,
   type V2PageGlyphs,
 } from '@/lib/quran-mushaf-v2';
+import { BASMALA_QCF_TEXT } from '@/lib/quran-basmala';
 import { QuranMushafV2Page } from './QuranMushafV2Page';
 import {
   DEFAULT_SVG_MUSHAF,
@@ -408,9 +409,17 @@ export function QuranMushafPage({
               );
             }
             if (line.t === 'basmala') {
+              // Step 1a: dedicated QCF BSML calligraphy rendering
+              // (see lib/quran-basmala.ts), same as the V2 page.
               return (
-                <p key={i} className="mushaf-bismillah" lang="ar" dir="rtl">
-                  {bismillah}
+                <p
+                  key={i}
+                  className="mushaf-bismillah"
+                  lang="ar"
+                  dir="rtl"
+                  aria-label={bismillah}
+                >
+                  {BASMALA_QCF_TEXT}
                 </p>
               );
             }
@@ -454,8 +463,8 @@ export function QuranMushafPage({
               </div>
             ) : null}
             {group.bismillahHeader ? (
-              <p className="mushaf-bismillah" lang="ar" dir="rtl">
-                {bismillah}
+              <p className="mushaf-bismillah" lang="ar" dir="rtl" aria-label={bismillah}>
+                {BASMALA_QCF_TEXT}
               </p>
             ) : null}
             <p className="mushaf-text" lang="ar" dir="rtl">

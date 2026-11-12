@@ -82,6 +82,18 @@
        url("/fonts/UthmanicShubah-v-3.0.ttf") format("truetype");
   font-weight: 400; font-style: normal; font-display: swap;
 }
+/* QCF_BSML — KFGQPC's dedicated Basmala calligraphy font (v5.10),
+   bundled byte-identical in its original TTF format: the KFGQPC
+   terms forbid format conversion/subsetting (see
+   public/fonts/qcf-bsml/README.md + THIRD_PARTY_NOTICES.md).
+   Tarteel-parity step 1a (agent-2 PR): the mushaf Basmala line
+   renders in this font instead of plain text (see .mushaf-bismillah
+   below + lib/quran-basmala.ts). */
+@font-face {
+  font-family: "QCF BSML";
+  src: url("/fonts/qcf-bsml/QCF_BSML.ttf") format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
 
 /* ─── Self-hosted fonts (OFL) ─── */
 @font-face {
@@ -1013,9 +1025,18 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
    Basmalah instead of inheriting it from the .quran-script-uthmani
    ancestor. The script rules are more specific, so they still win
    when a script class applies (e.g. indopak → Nastaliq); this only
-   fills the gap when no script class is present. */
+   fills the gap when no script class is present.
+   Tarteel-parity step 1a (agent-2 PR, 2026-11-12): "QCF BSML"
+   leads the stack — the Basmala line is no longer plain text in a
+   text font; it renders in KFGQPC's dedicated Basmala calligraphy
+   font (bundled at /fonts/qcf-bsml/). The rendered string is the
+   font-native constant in lib/quran-basmala.ts; the KFGQPC Hafs
+   stack remains as the fallback while the font loads or if it
+   fails. The uthmani script rule below re-pins the same stack so
+   the script class cannot demote the Basmala back to a text font;
+   the indopak script rule still wins for the IndoPak hand. */
 .mushaf-bismillah {
-  font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif;
+  font-family: "QCF BSML", "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif;
 }
 .mushaf-text { font-size: 1.55rem; line-height: 2.4; text-align: justify; color: #2b2118; }
 /* Exact Madani lines: one print line per block, justified like the
@@ -1069,6 +1090,10 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .quran-script-uthmani .quran-bismillah,
 .quran-script-uthmani .mushaf-bismillah,
 .quran-script-uthmani .mushaf-surah-ornament { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
+/* Step 1a: under the uthmani script the Basmala keeps the dedicated
+   QCF BSML calligraphy font (this rule ties the group rule above on
+   specificity and comes later, so it wins for .mushaf-bismillah). */
+.quran-script-uthmani .mushaf-bismillah { font-family: "QCF BSML", "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", "Amiri Quran", "Scheherazade New", "Traditional Naskh Arabic", serif; }
 
 /* ---- Round 6: real printed SVG pages ----
    The SVG is transparent (no page background rect), so the parchment
@@ -3728,6 +3753,16 @@ body:has(.quran-hifz-study .recitation-toolbar) .site-footer {
   color: #2b2118;
 }
 .mushaf-v2-line--centered { text-align: center; text-align-last: center; }
+/* Tarteel-parity step 1a (agent-2 PR): Mihrab-style solved lines.
+   QuranMushafV2Page measures each line and solves its inter-word
+   space against the page measure; for a solved line the solved
+   width arrives as an inline `word-spacing` and the browser's own
+   justification is switched OFF here, so the slack can no longer
+   pile up uncontrolled between the words. `nowrap` is the printed
+   page's contract: a mushaf line never wraps. Lines outside the
+   solver's fidelity band get .mushaf-v2-line--centered instead and
+   sit at natural width, as in the print. */
+.mushaf-v2-line--solved { text-align: start; text-align-last: start; text-justify: auto; white-space: nowrap; }
 .mushaf-v2-placeholder-line { visibility: hidden; }
 /* Video spec: surah header = surah-name calligraphy SVG, width
    ~0.98xW, ONLY on the first page of a surah. The file holds ONLY

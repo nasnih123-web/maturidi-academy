@@ -379,9 +379,10 @@ sources.
   page's own QCF2NNN family, solid black, with no tajweed colours on
   PUA text. When a page's glyph file is missing or incomplete, the
   page falls back to Tanzil text in the KFGQPC Uthmanic font for the
-  whole page — never a per-word mix. The Basmalah line still renders
-  Tanzil text (the layout gives it no glyph ids) and the ayah-end
-  marker stays the painted rosette.
+  whole page — never a per-word mix. The Basmalah line (the layout
+  gives it no glyph ids) renders in the dedicated QCF_BSML font
+  since the Tarteel-parity step 1a (2026-11-12 — see the QCF_BSML
+  section below), and the ayah-end marker stays the painted rosette.
 - **EULA placement (PLACED — verified 2026-11-08, round 2 §2):** the full
   EULA text is in the repo at `apps/web/public/fonts/qcf-v2/EULA.txt`
   (committed in `531e197`; 1,267 bytes, KFGQPC 2010 EULA).
@@ -404,6 +405,37 @@ sources.
   recorded here as-is; the user's explicit direction to use these
   files governs the wiring, and no attempt was made to resolve the
   ToS question in this mission.
+
+## QCF_BSML Basmala font — Tarteel-parity step 1a (IN USE, 2026-11-12)
+
+- **Work:** `QCF_BSML.ttf` (internal font name `QCF_BSML`, version
+  5.10, © King Fahad Complex — 574 glyphs, full Unicode cmap) —
+  KFGQPC's dedicated Basmala calligraphy font, bundled at
+  `apps/web/public/fonts/qcf-bsml/QCF_BSML.ttf` (303,644 bytes,
+  SHA-256 `6a6f234ee351be146e46e897f4cd47610df0b078a82888e5ca15f313f813698c`).
+- **Provenance:** downloaded 2026-11-12 from the Quran Foundation's
+  official GitHub repository `quran/quran.com-images`
+  (`res/fonts/QCF_BSML.TTF` — the file that project's image
+  generator uses as its default Basmala font). A second independent
+  copy (`0xzer0x/quran-companion`, `assets/fonts/QCFV1/QCF_BSML.ttf`)
+  was byte-identical (same SHA-256) and served as a cross-check.
+- **License status:** the KFGQPC font terms (see the QPC V2 entry
+  above): copying, distribution and usage free of charge, provided
+  the font is **not sold, modified, altered, translated, reverse
+  engineered, decompiled or disassembled**. Accordingly the file is
+  served **byte-identical in its original TTF format** — no WOFF2
+  conversion, no subsetting, no modification of any kind.
+- **How it is used:** the mushaf reader's Basmala line
+  (`.mushaf-bismillah` in `apps/web/app/[locale]/globals.css`,
+  `@font-face` family `QCF BSML`) renders in this font instead of
+  plain text in a text font — the fix for parity defect 1 (the QPC
+  V2 layout gives the Basmala line no glyph segments). The rendered
+  string is the Tanzil-derived constant in
+  `apps/web/lib/quran-basmala.ts`; its spelling omits exactly one
+  mark (dagger alef, U+0670) that has no glyph in this font's cmap
+  (HarfBuzz-verified: the full Tanzil string yields one missing
+  glyph in this font; the shipped spelling yields none). In-folder
+  record: `apps/web/public/fonts/qcf-bsml/README.md`.
 
 ## Quran Foundation QCF V2 fonts — Path A (NOT IN USE, verified 2026-11-07)
 
