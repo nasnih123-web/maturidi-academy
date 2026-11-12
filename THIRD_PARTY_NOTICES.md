@@ -555,3 +555,49 @@ sources.
 - **How they are used:** kept in the repository under `docs/quran/` as
   evidence for the matching table; never bundled into any app, never
   served to users.
+
+## Persian translations Rowwad + Taji (QuranEnc) — Tarteel-parity step 5 (IN USE, 2026-11-12)
+
+- **Works:** the two Persian Quran translations Tarteel offers —
+  «رواد» (Rowwad Translation Center; QuranEnc key `persian_ih`,
+  version 1.1.3) and «دکتر حسین تاجی» (Dr. Hussain Taji; QuranEnc
+  key `persian_tagi`) — converted to server-side JSON in
+  `apps/api/app/modules/quran/data/fa_rowwad.json` and
+  `fa_taji.json` (6,236 ayahs each; per-surah counts verified equal
+  to the repo's Tanzil text) and served by the API's `bundled`
+  provider with no live calls.
+- **Source:** QuranEnc (quranenc.com, «موسوعة القرآن الكريم») — the
+  public publisher of both works: Rowwad via its official sqlite
+  download (`downloads/sqlite/persian_ih.sqlite`, 1,769,472 bytes,
+  SHA-256 `937cc090d78fd93be80802d2ac7bfe91a6dc179996635eea2e6c6fd0227da365`),
+  Taji via its public per-surah API (no sqlite is published for it).
+  Fetched 2026-11-12 without login through the channels QuranEnc
+  itself offers for app consumption.
+- **License status:** no explicit license text accompanied the
+  downloads; both works are distributed by QuranEnc for use in
+  Quran apps and sites, with the translators' names attached.
+  Attribution is preserved in product (the reader shows the
+  translator names «رواد» / «حسین تاجی») and here. If a rights
+  holder objects, the two data files can be removed without code
+  changes (the provider then reports them uninstalled).
+- **Generator:** `apps/api/scripts/generate_quran_fa_translations.py`
+  re-fetches and re-validates (full 6,236-ayah coverage, non-empty
+  texts). Source footnotes are not carried (the reader has no
+  footnote UI).
+
+## Persian tafsirs Mokhtasar + Saadi (QUL) — Tarteel-parity step 5 (DATA NOT YET INSTALLED)
+
+- **Works:** «تفسیر مختصر» and «تفسیر سعدی» in Persian, from the
+  QUL (Quranic Universal Library, qul.tarteel.ai) catalog — the
+  same source Tarteel downloads them from.
+- **Status:** the serving code is in place (bundled provider,
+  per-edition routing, reader gating on the API's
+  `bundled_tafsirs` report, importer
+  `apps/api/scripts/import_qul_tafsir.py`), but **no tafsir text is
+  in this repository**: QUL dataset downloads require an account
+  (HTTP 401 without login, verified 2026-11-12). The project owner
+  downloads the two sqlite files with his own QUL account and runs
+  the importer (see `apps/api/app/modules/quran/data/tafsir/README.md`);
+  until then the editions appear in no selector and answer an
+  honest "data is not installed" error. Nothing about their text
+  is claimed here beyond the catalog names.

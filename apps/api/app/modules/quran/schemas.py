@@ -76,6 +76,9 @@ class QuranProvidersOut(BaseModel):
     text_edition: str = "quran-uthmani"
     translations: list[str]
     tafsirs: list[str]
+    # گام ۵: editionهای باندل‌شدهٔ نصب‌شده روی سرور (دادهٔ واقعی).
+    bundled_translations: list[str] = []
+    bundled_tafsirs: list[str] = []
     reciters: list[str]
     reciter_photos: dict[str, str] = {}
     active_languages: list[str]
