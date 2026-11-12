@@ -22,7 +22,12 @@ ayah_keys را با فهرست اعضا پر می‌کند و ردیفِ بقی�
 نمی‌نشیند؛ تعداد گسترش‌ها هم روی stderr گزارش می‌شود.
 
 اعتبارسنجی: پوشش باید کامل باشد — هر ۶۲۳۶ آیهٔ متن تنزیل، با متن
-غیرخالی. ناقص = رد (تفسیر ناقص هرگز بی‌صدا نصب نمی‌شود).
+غیرخالی. ناقص = رد (تفسیر ناقص هرگز بی‌صدا نصب نمی‌شود). تنها
+استثنای مستند: سعدیِ فارسی از QuranEnc (مبدلِ
+import_quranenc_tafsir.py) که نسخهٔ رسمی‌اش سه ورودیِ خالیِ مشروع
+دارد (۲:۲۱۲، ۲۸:۱۶، ۵۶:۴۳) — دقیقاً همان سه آیه برای fa.saadi
+استثناست: نه import رد می‌شود، نه متنی برایشان ساخته می‌شود
+(کلیدشان در خروجی نیست و provider برایشان خطای صادقانه می‌دهد).
 
 اجرا:
   python3 scripts/import_qul_tafsir.py mokhtasar.sqlite fa.mokhtasar
@@ -41,6 +46,14 @@ API_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = API_ROOT / "app" / "modules" / "quran" / "data"
 TANZIL_PATH = DATA_DIR / "tanzil_uthmani.txt"
 EDITIONS = ("fa.mokhtasar", "fa.saadi")
+
+# استثناهای پوششِ مستند، به‌ازای edition: آیاتی که نسخهٔ رسمیِ منبع
+# برایشان ورودیِ خالیِ مشروع دارد. فقط fa.saadi از QuranEnc (نسخهٔ
+# رسمی persian_saadi؛ هر سه در ۲۰۲۶-۱۱-۱۲ از خود API راستی‌آزمایی
+# شدند). برای این آیه‌ها متن ساخته نمی‌شود.
+EMPTY_EXEMPTIONS: dict[str, frozenset[str]] = {
+    "fa.saadi": frozenset({"2:212", "28:16", "56:43"}),
+}
 
 _SURAH_COLS = ("sura", "surah")
 _AYAH_COLS = ("aya", "ayah")
@@ -152,13 +165,21 @@ def convert(db_path: Path) -> dict[str, str]:
         con.close()
 
 
-def validate_full(data: dict[str, str]) -> None:
+def validate_full(data: dict[str, str], edition: str = "") -> None:
     expected = _tanzil_keys()
     missing = expected - set(data)
-    if missing:
+    allowed = EMPTY_EXEMPTIONS.get(edition, frozenset())
+    illegal = missing - allowed
+    if illegal:
         raise ValueError(
-            f"incomplete tafsir: {len(missing)} ayahs missing "
-            f"(e.g. {sorted(missing)[:5]})"
+            f"incomplete tafsir: {len(illegal)} ayahs missing "
+            f"(e.g. {sorted(illegal)[:5]})"
+        )
+    if missing:
+        print(
+            f"coverage exemptions applied ({edition}): "
+            f"{sorted(missing)} have no source text (documented)",
+            file=sys.stderr,
         )
     extra = set(data) - expected
     if extra:
@@ -172,7 +193,7 @@ def main(argv: list[str]) -> int:
     src = Path(argv[1])
     edition = argv[2]
     data = convert(src)
-    validate_full(data)
+    validate_full(data, edition)
     out_dir = DATA_DIR / "tafsir"
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"{edition}.json"

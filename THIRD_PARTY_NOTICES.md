@@ -602,11 +602,11 @@ sources.
   (OFL-1.1, step 1). Full per-asset record:
   `docs/quran/hifz-parity-agent2/QPC-V2-LICENCE-STATUS.md`.
 
-## Persian tafsirs Mokhtasar + Saadi (QUL) — Tarteel-parity steps 5+7 (Mokhtasar INSTALLED; Persian Saadi still missing)
+## Persian tafsirs Mokhtasar (QUL) + Saadi (QuranEnc) — Tarteel-parity steps 5+7 (both INSTALLED)
 
-- **Works:** «تفسیر مختصر» and «تفسیر سعدی» in Persian, from the
-  QUL (Quranic Universal Library, qul.tarteel.ai) catalog — the
-  same source Tarteel downloads them from.
+- **Works:** «تفسیر مختصر» (QUL catalog — the same source Tarteel
+  downloads it from) and «تفسیر سعدی» in Persian (QuranEnc — see
+  the source correction in the Saadi bullet).
 - **Mokhtasar — installed 2026-11-12 (expansion step 7):** the
   owner delivered QUL's Persian Mokhtasar dataset
   (`persian-mokhtasar.db.zip`, 768,971 bytes, SHA-256
@@ -620,13 +620,29 @@ sources.
   `7c39e32817fd21915b2a28de805d53c07cc3c732b6fa87743dcb61e1ed290fcc`);
   it is announced in `bundled_tafsirs` by `GET /quran/providers`
   and served by the bundled provider with no live call.
-- **Saadi — Persian edition still NOT installed:** of the files
-  the owner uploaded, `sq-saadi.db.zip` proved to be the
-  **Albanian** Saadi (QUL language code `sq`) and
-  `tafsir-as-saadi.db.zip` the **Arabic original** — both verified
-  by reading their text; neither is the Persian translation. The
-  one file still needed is QUL's **Persian** Tafsir al-Saadi
-  dataset (the Persian-language Saadi download on qul.tarteel.ai,
-  analogous to the delivered `persian-mokhtasar`). Until it is
-  delivered and imported, `fa.saadi` appears in no selector and
-  answers an honest "data is not installed" error.
+- **Saadi — Persian edition INSTALLED 2026-11-12 (step 7
+  completion), source corrected to QuranEnc:** the Persian Saadi
+  is **not** in QUL's downloadable catalog (in the
+  quranlab/quran-tafsir metadata the QUL columns for
+  `tafsir-saadi-fa` are empty). Of the files the owner uploaded,
+  `sq-saadi.db.zip` proved to be the **Albanian** Saadi (QUL
+  language code `sq`), `tafsir-as-saadi.db.zip` the **Arabic
+  original**, and `persian_ih.pdf` QuranEnc's Rowwad Persian
+  translation (already bundled as `fa_rowwad.json`) — all verified
+  by reading their text. The official source is QuranEnc's public
+  API, key `persian_saadi`
+  (`https://quranenc.com/api/v1/translation/sura/persian_saadi/{n}`).
+  Fetched and installed with
+  `apps/api/scripts/import_quranenc_tafsir.py`, which routes the
+  data through the same strict importer
+  (`import_qul_tafsir.py`) to
+  `app/modules/quran/data/tafsir/fa.saadi.json` (SHA-256
+  `58d89d231fb7c5f7cd91cbaadc2bc2027cb0911e1c530999be7841ed2038fec4`).
+  Coverage is 6,233 ayahs: the official QuranEnc version has
+  exactly three legitimately empty entries — **2:212, 28:16,
+  56:43** (each verified empty in the API itself, neighbours
+  full) — which are exempted in the importer for `fa.saadi` only;
+  no text was fabricated for them and the provider answers an
+  honest error for those three ayahs. Source footnotes are not
+  carried (the reader has no footnote UI; same documented choice
+  as the step-5 translation generator).

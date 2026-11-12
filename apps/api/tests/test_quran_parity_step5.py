@@ -62,8 +62,7 @@ async def test_bundled_mokhtasar_tafsir_installed_and_serves_persian():
 
     - در bundled_available اعلام می‌شود و پوشش کامل ۶۲۳۶ دارد؛
     - متن ۱:۱ همان متن فارسی مختصر است؛
-    - دو آیهٔ گروهی QUL ‏(۵۶:۵۲ و ۱۰۷:۵) از ردیف گروه پر شده‌اند؛
-    - سعدی فارسی هنوز نصب نیست → خطای صادقانه، نه ردیف مرده.
+    - دو آیهٔ گروهی QUL ‏(۵۶:۵۲ و ۱۰۷:۵) از ردیف گروه پر شده‌اند.
     """
     available = qp.bundled_available()
     assert "fa.mokhtasar" in available["tafsir"]
@@ -76,9 +75,29 @@ async def test_bundled_mokhtasar_tafsir_installed_and_serves_persian():
     provider = qp.BundledEditionsProvider()
     out = await provider.fetch_ayah(2, 255, tafsir_edition="fa.mokhtasar")
     assert out["editions"]["fa.mokhtasar"].text.startswith("الله همان")
-    if "fa.saadi" not in available["tafsir"]:
-        with pytest.raises(qp.QuranProviderError):
-            await provider.fetch_ayah(1, 1, tafsir_edition="fa.saadi")
+
+
+async def test_bundled_saadi_tafsir_installed_and_serves_persian():
+    """تکمیل گام ۷: سعدیِ فارسی از QuranEnc (کلید persian_saadi) نصب است.
+
+    - در bundled_available اعلام می‌شود و ۶۲۳۳ ورودی دارد؛
+    - متن ۲:۲۵۵ همان تفسیر فارسی سعدی است؛
+    - سه آیهٔ خالیِ مشروعِ نسخهٔ رسمی (۲:۲۱۲، ۲۸:۱۶، ۵۶:۴۳) در داده
+      نیستند و درخواستشان خطای صادقانه می‌دهد، نه متن ساختگی.
+    """
+    available = qp.bundled_available()
+    assert "fa.saadi" in available["tafsir"]
+    data = qp._load_bundled("fa.saadi")
+    assert len(data) == 6233
+    for key in ("2:212", "28:16", "56:43"):
+        assert key not in data
+    provider = qp.BundledEditionsProvider()
+    out = await provider.fetch_ayah(2, 255, tafsir_edition="fa.saadi")
+    assert out["editions"]["fa.saadi"].text.startswith(
+        "پیامبر صلی الله علیه وسلم"
+    )
+    with pytest.raises(qp.QuranProviderError):
+        await provider.fetch_ayah(2, 212, tafsir_edition="fa.saadi")
 
 
 def test_edition_provider_overrides_route_groups():
