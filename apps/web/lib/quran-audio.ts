@@ -337,8 +337,9 @@ export type LiveWordStatus = LiveWordEvent['status'];
 export function buildStartMessage(
   surah: number,
   ayah: number,
+  options?: { holdOnWrong?: boolean },
 ): Record<string, unknown> {
-  return {
+  const message: Record<string, unknown> = {
     type: 'start',
     surah,
     ayah,
@@ -351,6 +352,12 @@ export function buildStartMessage(
       frame_ms: HIFZ_FRAME_MS,
     },
   };
+  // «تا اصلاحِ خطا جلو نرو» (گزینهٔ ترتیل): فقط وقتی روشن است
+  // فرستاده می‌شود تا پیامِ پیش‌فرض عینِ قبل بماند.
+  if (options?.holdOnWrong) {
+    message.hold_on_wrong = true;
+  }
+  return message;
 }
 
 /** خطای رویدادِ سرور، کشنده است یا فقط هشدار (غیرکشنده)؟ */

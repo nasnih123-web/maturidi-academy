@@ -13,12 +13,34 @@ import { HifzNumericInput } from './HifzNumericInput';
 
 const HIFZ_API = '/api/v1/quran/hifz';
 
+export interface HifzActivityDay {
+  date: string;
+  attempts: number;
+  graded_words: number;
+  reviews: number;
+  ayahs: number;
+}
+
+export interface HifzActivityData {
+  days: HifzActivityDay[];
+  streak_current: number;
+  streak_best: number;
+  goal_ayahs: number;
+  today_ayahs: number;
+  goal_met: boolean;
+}
+
 export interface HifzDashboardData {
   attempts: number;
   graded_words: number;
   counts: Record<string, number>;
   errors_by_type: Record<string, number>;
   daily_series: { date: string; attempts: number; graded_words: number }[];
+  streak_current: number;
+  streak_best: number;
+  goal_ayahs: number;
+  goal_today_ayahs: number;
+  goal_met: boolean;
   due_count: number;
   due_ayahs: { surah: number; ayah: number; source: string }[];
   plans: {
@@ -83,6 +105,24 @@ export interface HifzDashboardLabels {
   suggestedWeakest: string;
   noData: string;
   refresh: string;
+  streak: string;
+  streakBest: string;
+  dailyGoal: string;
+  goalProgress: string;
+  goalMet: string;
+  saveGoal: string;
+  heatmap: string;
+  reviews: string;
+}
+
+/** Heat level for one activity day: graded words + reviews. */
+function heatLevel(day: HifzActivityDay): number {
+  const total = day.graded_words + day.reviews;
+  if (total <= 0) return 0;
+  if (total <= 4) return 1;
+  if (total <= 14) return 2;
+  if (total <= 29) return 3;
+  return 4;
 }
 
 const SURAHS = Array.from({ length: 114 }, (_, i) => i + 1);
@@ -103,6 +143,10 @@ export function HifzDashboard({
   onNavigate: (surah: number, ayah: number) => void;
 }) {
   const [data, setData] = useState<HifzDashboardData | null>(null);
+  // Step 4 (Tarteel parity) — activity series for the heatmap; a
+  // failed fetch hides the map but never breaks the dashboard.
+  const [activity, setActivity] = useState<HifzActivityData | null>(null);
+  const [goalInput, setGoalInput] = useState(0);
   const [suggested, setSuggested] = useState<HifzSuggestedData | null>(null);
   // Phase 4 — the latest open session, for the «continue» card.
   const [resume, setResume] = useState<HifzResumeAttempt | null>(null);
@@ -120,7 +164,7 @@ export function HifzDashboard({
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [d, s, r] = await Promise.all([
+      const [d, s, r, a] = await Promise.all([
         authJson<HifzDashboardData>(`${HIFZ_API}/dashboard`),
         authJson<HifzSuggestedData>(`${HIFZ_API}/suggested`),
         // Phase 4 — a missing resumable session is null, never an
@@ -128,14 +172,32 @@ export function HifzDashboard({
         authJson<HifzResumeAttempt | null>(`${HIFZ_API}/attempts/resume`).catch(
           () => null,
         ),
+        authJson<HifzActivityData>(`${HIFZ_API}/activity?days=371`).catch(
+          () => null,
+        ),
       ]);
       setData(d);
       setSuggested(s);
       setResume(r);
+      setActivity(a);
+      setGoalInput(d.goal_ayahs);
     } catch {
       setError(labels.error);
     }
   }, [labels.error]);
+
+  const saveGoal = async () => {
+    try {
+      await authJson(`${HIFZ_API}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ daily_goal_ayahs: goalInput }),
+      });
+      await load();
+    } catch {
+      setError(labels.error);
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -249,7 +311,91 @@ export function HifzDashboard({
           <dt>{labels.dueCount}</dt>
           <dd>{data.due_count}</dd>
         </div>
+        <div>
+          <dt>{labels.streak}</dt>
+          <dd>{data.streak_current}</dd>
+        </div>
+        <div>
+          <dt>{labels.streakBest}</dt>
+          <dd>{data.streak_best}</dd>
+        </div>
       </dl>
+
+      {/* Step 4 — daily goal: today's distinct practiced/reviewed
+          ayahs against the goal stored in the user's settings. */}
+      <h4>{labels.dailyGoal}</h4>
+      <p>
+        {labels.goalProgress}: {data.goal_today_ayahs}
+        {data.goal_ayahs > 0 ? ` / ${data.goal_ayahs}` : ''}
+        {data.goal_met ? ` — ${labels.goalMet}` : ''}
+      </p>
+      {data.goal_ayahs > 0 && (
+        <div
+          className="hifz-goal-bar"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={data.goal_ayahs}
+          aria-valuenow={Math.min(data.goal_today_ayahs, data.goal_ayahs)}
+          aria-label={labels.dailyGoal}
+        >
+          <span
+            style={{
+              width: `${Math.min(100, (data.goal_today_ayahs / data.goal_ayahs) * 100)}%`,
+            }}
+          />
+        </div>
+      )}
+      <div>
+        <label>
+          {labels.dailyGoal}
+          <HifzNumericInput
+            value={goalInput}
+            onChange={(v) => setGoalInput(v ?? 0)}
+            ariaLabel={labels.dailyGoal}
+            min={0}
+            max={6236}
+          />
+        </label>
+        <button type="button" onClick={saveGoal}>
+          {labels.saveGoal}
+        </button>
+      </div>
+
+      {/* Step 4 — review/activity heatmap (last 53 weeks, real days). */}
+      {activity && (
+        <>
+          <h4>{labels.heatmap}</h4>
+          <div className="hifz-heatmap" dir="ltr" role="img" aria-label={labels.heatmap}>
+            {(() => {
+              // Pad the first week so columns align to weekdays.
+              const firstDow = new Date(`${activity.days[0]?.date}T00:00:00Z`).getUTCDay();
+              const cells: (HifzActivityDay | null)[] = [
+                ...Array.from({ length: firstDow }, () => null),
+                ...activity.days,
+              ];
+              const weeks: (HifzActivityDay | null)[][] = [];
+              for (let i = 0; i < cells.length; i += 7) {
+                weeks.push(cells.slice(i, i + 7));
+              }
+              return weeks.map((week, wi) => (
+                <div className="hifz-heat-week" key={wi}>
+                  {week.map((day, di) =>
+                    day === null ? (
+                      <span className="hifz-heat-cell hifz-heat-pad" key={di} />
+                    ) : (
+                      <span
+                        className={`hifz-heat-cell hifz-heat-l${heatLevel(day)}`}
+                        key={di}
+                        title={`${day.date} — ${labels.gradedWords}: ${day.graded_words} · ${labels.reviews}: ${day.reviews}`}
+                      />
+                    ),
+                  )}
+                </div>
+              ));
+            })()}
+          </div>
+        </>
+      )}
 
       <h4>{labels.errorsByType}</h4>
       {Object.keys(data.errors_by_type).length === 0 ? (

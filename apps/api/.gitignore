@@ -1,3 +1,10 @@
 
 # Local storage provider runtime data (test/dev artifacts)
 storage/
+
+# Hifz recognition assets (step 3): binaries are fetched + verified
+# against app/core/hifz_assets_manifest.json at startup; never commit.
+app/modules/quran/data/hifz_model/
+app/modules/quran/data/phoneme/ordered_quran_phonemes.json
+app/modules/quran/data/phoneme/quran_text2phoneme.json
+app/modules/quran/data/phoneme/tokens.txt
