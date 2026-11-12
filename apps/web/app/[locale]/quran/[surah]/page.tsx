@@ -561,6 +561,7 @@ export default async function SurahPage({
           mushafWarshMargins: t('mushafWarshMargins'),
           mushafQalunMargins: t('mushafQalunMargins'),
           mushafMadina: t('mushafMadina'),
+          mushafDigitalKhatt: t('mushafDigitalKhatt'),
           mushafTajweed: t('mushafTajweed'),
           mushafCurrent: t('mushafCurrent'),
           mushafSoon: t('mushafSoon'),

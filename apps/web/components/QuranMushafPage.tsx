@@ -40,6 +40,8 @@ import {
 } from '@/lib/quran-mushaf-v2';
 import { BASMALA_QCF_TEXT } from '@/lib/quran-basmala';
 import { QuranMushafV2Page } from './QuranMushafV2Page';
+import { QuranMushafDKPage } from './QuranMushafDKPage';
+import { loadDKPage, type DKPage } from '@/lib/quran-mushaf-dk';
 import {
   DEFAULT_SVG_MUSHAF,
   type SvgMushafKey,
@@ -160,6 +162,7 @@ export function QuranMushafPage({
   onPlayAyah,
   onPlayLine,
   hideText,
+  pageRenderer,
   svgPage,
   onSelectAyah,
   svgFallbackNote,
@@ -206,6 +209,16 @@ export function QuranMushafPage({
       honours it — the exact-line / SVG fallback paths render the
       text as before. */
   hideText?: boolean;
+  /**
+   * Step 1b (Tarteel parity): 'digital-khatt' renders the page as
+   * real Unicode text in the Digital Khatt variable font on the
+   * KFGQPC V2 1421H print layout (justified per line via the
+   * font's SCLX axis — see QuranMushafDKPage). It implies the Hafs
+   * mushaf and takes precedence over the SVG/V2/exact-line paths
+   * while its data loads; a failed DK data load falls back to the
+   * standard paths, never to a fabricated page.
+   */
+  pageRenderer?: 'standard' | 'digital-khatt';
   /**
    * Round 6: true when this view shows the REAL printed page as
    * inline SVG (page view, ayah view's page, reading view). False
@@ -291,13 +304,28 @@ export function QuranMushafPage({
       cancelled = true;
     };
   }, [mushaf, pageNumber]);
+  // Step 1b: the Digital Khatt page for this page number (Madani
+  // variant — DK implies Hafs semantics). undefined = loading,
+  // null = load failed (fall back to the standard paths).
+  const [dkPage, setDkPage] = useState<DKPage | null | undefined>(undefined);
+  useEffect(() => {
+    if (pageRenderer !== 'digital-khatt' || mushaf !== DEFAULT_SVG_MUSHAF) return;
+    let cancelled = false;
+    loadDKPage('madani', pageNumber).then((pg) => {
+      if (!cancelled) setDkPage(pg);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pageRenderer, mushaf, pageNumber]);
   useEffect(() => {
     setSvgFailed(false);
     setSvgAyahs(null);
     setV2SelectedWord(null);
     setV2Glyphs(undefined);
     setV2Page(undefined);
-  }, [pageNumber, svgPage, mushaf]);
+    setDkPage(undefined);
+  }, [pageNumber, svgPage, mushaf, pageRenderer]);
   const showSvg = svgPage === true && !svgFailed;
   const nonHafsFallback = svgPage === true && svgFailed && mushaf !== DEFAULT_SVG_MUSHAF;
   // Word tokens for the V2 expansion, from this page's own ayah
@@ -330,6 +358,53 @@ export function QuranMushafPage({
     }
     return expandV2Page(v2Index, v2Page, tokens, v2Glyphs ?? undefined);
   }, [mushaf, v2Index, v2Page, showSvg, pageNumber, groups, bismillah, v2Glyphs]);
+  // Step 1b: Digital Khatt takes precedence while requested.
+  if (pageRenderer === 'digital-khatt' && mushaf === DEFAULT_SVG_MUSHAF) {
+    if (dkPage) {
+      return (
+        <QuranMushafDKPage
+          page={dkPage}
+          variant="madani"
+          bismillahLabel={bismillah}
+          pageCurrent={pageCurrent}
+          juzCurrent={juzCurrent}
+          hizbCurrent={hizbCurrent}
+          headerSurahTemplate={headerSurahTemplate}
+          resolveSurahName={resolveSurahName}
+          hideText={hideText}
+          selectedAyah={highlightKey ?? null}
+          selectedWord={v2SelectedWord}
+          onSelectWord={setV2SelectedWord}
+          onSelectAyah={onSelectAyah}
+          onPlayLine={onPlayLine}
+          linesClickable={linesClickable}
+          onNavigate={onNavigatePage}
+          showNav={onNavigatePage !== undefined}
+          hideMeta={hideMeta}
+        />
+      );
+    }
+    if (dkPage === undefined) {
+      // Loading shell with the printed page's proportions — the DK
+      // component swaps in as soon as its data (and font) arrive.
+      return (
+        <div className="mushaf-page mushaf-dk" aria-busy="true">
+          {hideMeta ? null : <p className="mushaf-page-meta">{'\u00a0'}</p>}
+          <div className="mushaf-frame mushaf-dk-frame">
+            <div lang="ar" dir="rtl">
+              {Array.from({ length: 15 }, (_, i) => (
+                <div key={i} className="mushaf-dk-line mushaf-dk-placeholder-line" aria-hidden="true">
+                  {'\u00a0'}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    // dkPage === null: the DK data failed to load — fall through
+    // to the standard renderers below (honest fallback).
+  }
   if (v2Expansion?.ok && v2Page) {
     return (
       <QuranMushafV2Page

@@ -437,6 +437,41 @@ sources.
   glyph in this font; the shipped spelling yields none). In-folder
   record: `apps/web/public/fonts/qcf-bsml/README.md`.
 
+## Digital Khatt fonts + QUL Digital Khatt data — Tarteel-parity step 1b (IN USE, 2026-11-12)
+
+- **Fonts:** `DigitalKhattV2.otf` ("DigitalKhatt New Madina", © Amine
+  Anane / Tarteel Inc. — variable font, parametric `SCLX` width axis)
+  and its WOFF2 derivation, bundled at
+  `apps/web/public/fonts/digital-khatt/` (OTF 5,747,480 bytes,
+  SHA-256 `0a70b87756eb1a96f91858ab8041521291db94deaa1f97f021bbb4393ba0aa8d`;
+  WOFF2 457,252 bytes — a lossless container conversion verified to
+  preserve all glyphs, tables and the `SCLX` axis).
+- **Font license:** SIL Open Font License 1.1 — stated in the font
+  file itself (nameID 13) and shipped beside the font as
+  `apps/web/public/fonts/digital-khatt/OFL.txt`. The OFL permits the
+  WOFF2 conversion and this redistribution.
+- **Data:** the Digital Khatt word script + the KFGQPC V2 1421H and
+  IndoPak 15-line page layouts (Quranic Universal Library — QUL
+  resources: "Digital Khatt Quran script", "Digital Khatt (KFGQPC
+  V2 1421H print) layout", "Digital Khatt IndoPak layout"),
+  converted by `apps/web/scripts/generate-quran-mushaf-dk.py` into
+  `apps/web/public/quran-mushaf-dk*.json` (+ 604 and 610 per-page
+  chunks). The generator cross-checks every page against this
+  repo's independent QPC V2 pipeline (all line-kind and ayah-end
+  sequences identical; 83,668 words placed per dataset).
+- **Provenance — stated honestly:** QUL's own download endpoints
+  require a logged-in account (HTTP 401 verified 2026-11-12), so
+  the datasets and the fonts were taken from the copies distributed
+  inside the Tarteel app (the QUL datasets' reference consumer),
+  provided by the repository owner. Checksums of the font match
+  QUL's published file size exactly; the font's embedded licence
+  text is the authoritative licence copy shipped.
+- **How it is used:** the mushaf reader's "Madina (1421) — Digital
+  Khatt" option (`apps/web/components/QuranMushafDKPage.tsx`)
+  renders real Unicode text justified per line through the font's
+  `SCLX` axis. In-folder record:
+  `apps/web/public/fonts/digital-khatt/README.md`.
+
 ## Quran Foundation QCF V2 fonts — Path A (NOT IN USE, verified 2026-11-07)
 
 - **Work:** the real per-page QPC V2 fonts (QCF2001…QCF2604, 604 files)

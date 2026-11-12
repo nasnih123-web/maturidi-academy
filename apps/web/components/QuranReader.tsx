@@ -385,6 +385,8 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   mushafWarshMargins: string;
   mushafQalunMargins: string;
   mushafMadina: string;
+  /** Step 1b: the Digital Khatt (Madina 1421) picker row label. */
+  mushafDigitalKhatt: string;
   mushafTajweed: string;
   mushafCurrent: string;
   mushafSoon: string;
@@ -839,6 +841,12 @@ function QuranUmumReader({
   // because page numbers are per-mushaf, never interchangeable.
   const [mushafKey, setMushafKey] = useState<SvgMushafKey>(
     initialMushaf ?? DEFAULT_SVG_MUSHAF,
+  );
+  // Step 1b: the page renderer. 'digital-khatt' shows the Madina
+  // mushaf as real Digital Khatt text (Hafs numbering — the mushaf
+  // key stays 'hafs/kfqc'); picking any printed mushaf resets it.
+  const [pageRenderer, setPageRenderer] = useState<'standard' | 'digital-khatt'>(
+    'standard',
   );
   const mushafLabelFor = (k: SvgMushafKey): string =>
     k === 'warsh/kfqc'
@@ -1433,6 +1441,19 @@ function QuranUmumReader({
   const selectMushaf = (key: SvgMushafKey): void => {
     const target = displayPage ?? rangeTarget ?? 1;
     setMushafKey(key);
+    setPageRenderer('standard');
+    setViewMode('page');
+    setRangeTarget(target);
+    if (readingOpen) setReadingPage(target);
+    setSheet(null);
+  };
+  // Step 1b: the Digital Khatt (Madina 1421) mushaf — a renderer of
+  // the Hafs mushaf, so the key goes back to Hafs and the page
+  // number carries over unchanged.
+  const selectDigitalKhatt = (): void => {
+    const target = displayPage ?? rangeTarget ?? 1;
+    setMushafKey(DEFAULT_SVG_MUSHAF);
+    setPageRenderer('digital-khatt');
     setViewMode('page');
     setRangeTarget(target);
     if (readingOpen) setReadingPage(target);
@@ -1663,6 +1684,7 @@ function QuranUmumReader({
     warshMargins: labels.mushafWarshMargins,
     qalunMargins: labels.mushafQalunMargins,
     madina: labels.mushafMadina,
+    digitalKhatt: labels.mushafDigitalKhatt,
     tajweed: labels.mushafTajweed,
     current: labels.mushafCurrent,
     soon: labels.mushafSoon,
@@ -1879,6 +1901,8 @@ function QuranUmumReader({
           labels={mushafLabels}
           currentMushaf={mushafKey}
           onSelect={selectMushaf}
+          currentRenderer={pageRenderer}
+          onSelectDigitalKhatt={selectDigitalKhatt}
         />
       ) : null}
       {sheet === 'settings' ? (
@@ -2776,6 +2800,7 @@ function QuranUmumReader({
                 hideText={hideText}
                 onPlayAyah={() => {}}
                 svgPage
+                pageRenderer={pageRenderer}
                 mushafKey={mushafKey}
                 resolveSurahName={surahNameAr}
                 onSelectAyah={handleNonHafsTap}
@@ -2894,6 +2919,7 @@ function QuranUmumReader({
                 // pages at once; the juz/hizb views page through
                 // one SVG at a time, exactly like page view).
                 svgPage
+                pageRenderer={pageRenderer}
                 mushafKey={mushafKey}
                 // Phase 3 (hifz redesign): the V2 text page's own
                 // prev/next/jump row navigates by page number, so it

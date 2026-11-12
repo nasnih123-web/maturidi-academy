@@ -132,6 +132,26 @@ export const qcfV4Provider: MushafFontProvider = {
   },
 };
 
+/** Digital Khatt V2 — ONE variable font for every page (real
+    Unicode text, no per-page families). Family name is the CSS
+    name used by the DK renderer; the font's internal name is
+    "DigitalKhatt New Madina". Licence: SIL OFL 1.1, embedded in
+    the file (see public/fonts/digital-khatt/README.md + OFL.txt).
+    Like V4, this provider is NEVER registered globally — the DK
+    renderer loads it through ensureMushafFontFor /
+    useMushafFontReadyFor with the shared secondary cache. */
+export const DIGITAL_KHATT_FONT: MushafFontSource = {
+  family: 'DigitalKhatt V2',
+  sources:
+    'url("/fonts/digital-khatt/DigitalKhattV2.woff2") format("woff2"), ' +
+    'url("/fonts/digital-khatt/DigitalKhattV2.otf") format("opentype")',
+};
+
+export const digitalKhattProvider: MushafFontProvider = {
+  id: 'digital-khatt',
+  familyForPage: () => DIGITAL_KHATT_FONT,
+};
+
 let provider: MushafFontProvider = qcfV2Provider;
 
 /** Replace the font provider (e.g. with licensed per-page fonts).

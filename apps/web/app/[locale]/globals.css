@@ -3887,3 +3887,74 @@ button.mushaf-v2-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
 /* Phase 3 (hifz redesign): the pause sign printed after a V2 word
    on the study page (e.g. ۚ ۖ). It rides with its word's colour. */
 .hifz-word-pause { margin-inline-start: 0.05em; }
+
+/* ─── Digital Khatt mushaf (Tarteel-parity step 1b, agent-2 PR) ───
+   Real Unicode text in the DigitalKhatt V2 variable font. The frame
+   repeats the V2 page's printed look (same paper, same thin double
+   rule) so the two renderers read as one product. Lines are NEVER
+   browser-justified and never padded: justification is the
+   component's per-line SCLX solve (font-variation-settings set
+   inline), so spaces stay natural and the stretch happens inside
+   the words — the print's mechanism. Line-height is the font's own
+   ascent+descent (2200/1000 upem = 2.2); its glyphs are taller
+   than the QCF glyphs, so the V2 page's 1.9 would crowd them. */
+.mushaf-dk { contain: layout style; }
+.mushaf-dk--w-narrow { max-width: min(92vw, 480px); }
+.mushaf-dk--w-standard { max-width: min(92vw, 600px); }
+.mushaf-dk--w-wide { max-width: min(96vw, 760px); }
+.mushaf-dk-frame { contain: layout; background: #FCFBF7; padding: 0.6cqw 1.25cqw; border: 1px solid #26221c; outline: 1px solid #26221c; outline-offset: 3px; }
+.mushaf-dk-line {
+  margin: 0;
+  font-family: "DigitalKhatt V2", "KFGQPC HAFS Uthmanic Script", serif;
+  font-size: calc(3.2cqw * var(--mushaf-dk-scale, 1));
+  line-height: 2.2;
+  text-align: start;
+  white-space: nowrap;
+  color: #000;
+}
+.mushaf-dk-line--centered { text-align: center; }
+.mushaf-dk-placeholder-line { visibility: hidden; }
+.mushaf-dk-basmala {
+  margin: 0;
+  text-align: center;
+  font-family: "DigitalKhatt V2", "KFGQPC HAFS Uthmanic Script", serif;
+  font-size: calc(3.2cqw * var(--mushaf-dk-scale, 1));
+  line-height: 2.2;
+  color: #000;
+  font-feature-settings: "basm" 1;
+}
+.mushaf-dk-word {
+  display: inline;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: inherit;
+}
+button.mushaf-dk-word { cursor: pointer; }
+button.mushaf-dk-word:hover { background: rgba(138, 109, 27, 0.12); }
+button.mushaf-dk-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset: 1px; }
+.mushaf-dk-word--hidden { visibility: hidden; }
+.mushaf-dk-word.is-selected { outline: 2px solid #8a6d1b; outline-offset: 1px; background: rgba(138, 109, 27, 0.12); }
+.mushaf-dk-word.is-ayah-selected { background: rgba(138, 109, 27, 0.18); }
+/* Word states — the same palette as the V2/study pages. */
+.mushaf-dk-word--correct { background: transparent; color: #1c1710; }
+.mushaf-dk-word--close { background: #ffe14d; color: #1c1710; text-decoration: underline dotted #1c1710; text-underline-offset: 0.2em; }
+.mushaf-dk-word--wrong { background: transparent; color: #b3261e; text-decoration: underline dashed #b3261e; text-underline-offset: 0.2em; }
+.mushaf-dk-word--skipped { background: transparent; color: #6b655a; }
+.mushaf-dk-word--peek { background: rgba(122, 74, 0, 0.10); outline: 1px dashed #7a4a00; color: #7a4a00; }
+.mushaf-dk-word--recent { color: #1b7a2e; }
+.mushaf-dk-marker { color: #8a6d1b; }
+.mushaf-dk .hifz-tj-darkred { color: #8b0000; }
+.mushaf-dk .hifz-tj-orangered { color: #c2410c; }
+.mushaf-dk .hifz-tj-lightorange { color: #d97706; }
+.mushaf-dk .hifz-tj-yellow { color: #a16207; }
+.mushaf-dk .hifz-tj-green { color: #15803d; }
+.mushaf-dk .hifz-tj-lightblue { color: #0284c7; }
+.mushaf-dk .hifz-tj-darkblue { color: #1d4ed8; }
+.mushaf-dk .hifz-tj-gray { color: #57534e; }
+/* Hidden-text (hifz eye) mode: same guide-rule treatment as V2. */
+.mushaf-dk--hide-text .mushaf-dk-line { box-shadow: inset 0 -1px 0 rgba(38, 34, 28, 0.10); }
+.mushaf-dk .mushaf-surah-ornament { border-top-color: #26221c; border-bottom-color: #26221c; background: transparent; }
+.mushaf-dk .mushaf-surah-ornament::before, .mushaf-dk .mushaf-surah-ornament::after { color: #26221c; }
