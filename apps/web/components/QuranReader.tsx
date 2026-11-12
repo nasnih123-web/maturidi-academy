@@ -82,6 +82,10 @@ import {
   type LastRead,
 } from '@/lib/quran-bookmarks';
 import {
+  QURAN_STATE_SYNCED_EVENT,
+  initQuranReadingSync,
+} from '@/lib/quran-sync';
+import {
   ARABIC_TAFSIRS,
   editionOptions,
   PERSIAN_TRANSLATIONS,
@@ -803,13 +807,20 @@ function QuranUmumReader({
     return () => window.removeEventListener('keydown', onKey);
   }, [settingsSheetOpen, playerExpanded]);
 
-  // ---- Round 4: bookmarks + last-read (localStorage only). ----
+  // ---- Round 4: bookmarks + last-read (localStorage cache; since
+  // parity step 8 the same state syncs to the account — defect 11).
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
   const [lastRead, setLastRead] = useState<LastRead | null>(null);
   useEffect(() => {
-    setBookmarks(loadBookmarks());
-    setLastRead(loadLastRead());
+    const reload = (): void => {
+      setBookmarks(loadBookmarks());
+      setLastRead(loadLastRead());
+    };
+    reload();
+    initQuranReadingSync();
+    window.addEventListener(QURAN_STATE_SYNCED_EVENT, reload);
+    return () => window.removeEventListener(QURAN_STATE_SYNCED_EVENT, reload);
   }, []);
   const bookmarkIds = useMemo(() => new Set(bookmarks.map((b) => b.id)), [bookmarks]);
   const toggleBookmark = (b: Bookmark): void => {

@@ -134,6 +134,46 @@ class NoteListOut(BaseModel):
     next_cursor: str | None = None
 
 
+# --- وضعیت خواندن (همگام‌سازی نشان‌ها + آخرین موقعیت — گام ۸، ایراد ۱۱) ---
+# شکل درونیِ نشان/موقعیت عیناً قرارداد کلاینت وب است (کلیدهای camelCase
+# مثل createdAt/savedAt همان‌طور که در localStorage ذخیره می‌شوند) تا
+# sync بدون لایهٔ نگاشت رفت‌وبرگردد؛ کلیدهای بیرونی API طبق قرارداد
+# بقیهٔ API ‏snake_case می‌مانند (last_read / updated_at).
+
+
+class ReadingBookmark(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    kind: Literal["ayah", "page"]
+    surah: int = Field(ge=1, le=114)
+    ayah: int | None = Field(default=None, ge=1, le=286)
+    page: int | None = Field(default=None, ge=1, le=623)
+    mushaf: str = Field(min_length=1, max_length=64)
+    label: str = Field(max_length=500)
+    favorite: bool = False
+    createdAt: int = Field(ge=0)
+
+
+class ReadingLastRead(BaseModel):
+    surah: int = Field(ge=1, le=114)
+    view: str = Field(min_length=1, max_length=16)
+    target: int | None = Field(default=None, ge=1)
+    ayah: int | None = Field(default=None, ge=1, le=286)
+    mushaf: str = Field(min_length=1, max_length=64)
+    savedAt: int = Field(ge=0)
+
+
+class ReadingStateIn(BaseModel):
+    bookmarks: list[ReadingBookmark] = Field(max_length=5000)
+    last_read: ReadingLastRead | None = None
+    updated_at: int = Field(ge=0)
+
+
+class ReadingStateOut(BaseModel):
+    bookmarks: list[ReadingBookmark]
+    last_read: ReadingLastRead | None = None
+    updated_at: int
+
+
 # --- تسبیح ---
 
 

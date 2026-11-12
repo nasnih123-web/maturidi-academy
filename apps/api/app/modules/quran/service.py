@@ -24,6 +24,7 @@ from app.models.models import (
     SyncTombstone,
     User,
     UserAyahNote,
+    UserReadingState,
 )
 from app.modules.sync.service import record_entity_change
 
@@ -503,6 +504,52 @@ def _note_out(note: UserAyahNote) -> dict:
         "is_private": note.is_private,
         "created_at": _utc_iso(note.created_at),
     }
+
+
+# --- وضعیت خواندن: همگام‌سازی نشان‌ها + آخرین موقعیت (گام ۸ — ایراد ۱۱) ---
+# قانون تعارض (مستند در مدل و README sync وب): تازه‌ترین updated_at
+# (ساعت منطقیِ خودِ وضعیت، میلی‌ثانیه) برنده است. PUT با ساعت قدیمی‌تر
+# از ذخیره‌شده اعمال نمی‌شود و وضعیت ذخیره‌شده برمی‌گردد تا کلاینت
+# همان را بگیرد؛ ساعت برابر یعنی «همین حالا هم‌گام‌اند» و موفق است.
+
+
+def _reading_state_out(row: UserReadingState | None) -> dict:
+    if row is None:
+        return {"bookmarks": [], "last_read": None, "updated_at": 0}
+    return {
+        "bookmarks": row.bookmarks or [],
+        "last_read": row.last_read,
+        "updated_at": row.state_updated_at or 0,
+    }
+
+
+async def get_reading_state(db: AsyncSession, user: User) -> dict:
+    """وضعیت خواندن خودِ کاربر؛ نبود ردیف یعنی وضعیت خالی (نه خطا)."""
+    row = await db.get(UserReadingState, user.id)
+    return _reading_state_out(row)
+
+
+async def put_reading_state(
+    db: AsyncSession, user: User, *, bookmarks: list, last_read: dict | None,
+    updated_at: int,
+) -> tuple[dict, bool]:
+    """ذخیرهٔ وضعیت با قانون «تازه‌ترین برنده است».
+
+    برمی‌گرداند (وضعیت جاری، اعمال شد؟) — applied=False یعنی نسخهٔ
+    ذخیره‌شده تازه‌تر بود و ورودی کنار گذاشته شد.
+    """
+    row = await db.get(UserReadingState, user.id)
+    if row is not None and updated_at < (row.state_updated_at or 0):
+        return _reading_state_out(row), False
+    if row is None:
+        row = UserReadingState(user_id=user.id)
+        db.add(row)
+    row.bookmarks = bookmarks
+    row.last_read = last_read
+    row.state_updated_at = updated_at
+    await db.commit()
+    await db.refresh(row)
+    return _reading_state_out(row), True
 
 
 async def create_note(

@@ -9,6 +9,7 @@ from datetime import UTC, date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -33,6 +34,8 @@ from .schemas import (
     NoteOut,
     NoteUpdate,
     ProviderInfo,
+    ReadingStateIn,
+    ReadingStateOut,
     QuranProvidersOut,
     SurahDetailOut,
     SurahListOut,
@@ -236,6 +239,40 @@ async def delete_note(
 ):
     """حذف یادداشت خودِ کاربر."""
     await service.delete_note(db, user, note_id)
+
+
+# --- وضعیت خواندن: همگام‌سازی نشان‌ها + آخرین موقعیت (auth) ---
+
+
+@quran_router.get("/reading-state", response_model=ReadingStateOut)
+async def get_reading_state(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """وضعیت خواندن خودِ کاربر (نشان‌ها + آخرین موقعیت) برای sync
+    بین دستگاه‌ها؛ نبود داده یعنی وضعیت خالی با updated_at صفر."""
+    return ReadingStateOut(**await service.get_reading_state(db, user))
+
+
+@quran_router.put("/reading-state", response_model=ReadingStateOut)
+async def put_reading_state(
+    body: ReadingStateIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """ذخیرهٔ وضعیت خواندن — قانون تعارض: تازه‌ترین updated_at برنده
+    است. PUT کهنه‌تر → ۴۰۹ با همان بدنهٔ وضعیت ذخیره‌شده تا کلاینت
+    نسخهٔ تازه‌تر را بگیرد (نه خطای گنگ)."""
+    state, applied = await service.put_reading_state(
+        db,
+        user,
+        bookmarks=[b.model_dump() for b in body.bookmarks],
+        last_read=body.last_read.model_dump() if body.last_read else None,
+        updated_at=body.updated_at,
+    )
+    if not applied:
+        return JSONResponse(status_code=409, content=state)
+    return ReadingStateOut(**state)
 
 
 # --- تسبیح (auth) ---
