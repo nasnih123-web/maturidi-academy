@@ -1466,6 +1466,10 @@ export function QuranHifzStudy({
       };
       mediaRef.current = rec;
       rec.start();
+      // Recording is a memory test: hide the text with it (same as
+      // tapping the eye shut — user 2026-11-13).
+      setEyeHidden(true);
+      setRevealedWords(new Set());
       setRecState('recording');
     } catch {
       setError(labels.errorGeneric);
@@ -1589,6 +1593,12 @@ export function QuranHifzStudy({
     // A new session starts blank: the previous session's words,
     // errors and timer are cleared (Tarteel resets the stats to 0
     // when the mic is tapped).
+    // The eye closes with it (user 2026-11-13): recording is a
+    // memory test, so the text hides when the session starts — the
+    // same as tapping the eye shut (peeked words stay visible, the
+    // eye's own rule; per-word reveals are cleared with it).
+    setEyeHidden(true);
+    setRevealedWords(new Set());
     setLiveWords([]);
     setLiveExtraCount(0);
     setLiveExtraWords([]);
