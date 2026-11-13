@@ -2763,15 +2763,22 @@ export function QuranHifzStudy({
     // The eye (practice, every display mode): inside the selected
     // unit the hidden eye conceals every word — written and unwritten
     // alike (the unwritten half is the branch above) — except a word
-    // the user peeked: the peek is the memoriser's lifeline while the
-    // text is hidden, and re-hiding it would make peek do nothing
-    // visible. Outside the unit the plain practice behaviour stays.
-    // Everywhere else (listen mode) the old script-hide keeps its
-    // exact meaning.
+    // the user peeked, and except a word the user just recited: a
+    // live grade (correct / close / wrong) is the feedback, not the
+    // script, so it shows even with the eye closed (user 2026-11-13 —
+    // the page stayed blank while the matcher scored 9/13, and the
+    // panel promises «words are written as you recite»). 'skipped'
+    // stays concealed: it was never recited, and showing it would
+    // leak unread text. Outside the unit the plain practice
+    // behaviour stays. Everywhere else (listen mode) the old
+    // script-hide keeps its exact meaning.
     const eyeConcealsWritten =
       eyeApplies &&
       eyeHidden &&
       w.status !== 'peeked' &&
+      w.status !== 'correct' &&
+      w.status !== 'close' &&
+      w.status !== 'wrong' &&
       wordKey !== null &&
       eyeCoversWord(slot.surah, slot.ayah) &&
       !revealedWords.has(wordKey);
