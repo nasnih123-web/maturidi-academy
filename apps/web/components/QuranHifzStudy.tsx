@@ -3216,22 +3216,30 @@ export function QuranHifzStudy({
               </p>
             );
           }
-          // Wave 1 (2026-11-09): the dedicated Basmalah SVG
-          // (public/quran/surah-headers/basmalah.svg — the printed
-          // surah-header form, composed from the page-1 V4 glyph
-          // outlines, never from Tarteel's bismallah.ttf) — but ONLY
-          // when the line is in a plain state: every slot hidden,
-          // or every slot written with a plain 'correct' grade.
-          // Any grade, live word, listen mode, script-hide, or a
-          // practice-selected Basmalah word falls back to the word
-          // spans below, so grading, peek, listen-now, per-word
-          // reveal and the practice outline keep working exactly as
-          // before. The Fatiha Basmalah (1:1:1-4, real ayah words)
-          // never reaches this branch — it renders as text-line
-          // words — so it stays glyphs/text as before.
-          const basmalaAllHidden = line.slots.every((s) => s.hidden);
-          const basmalaAllPlain = line.slots.every(
-            (s) => s.written !== null && s.written.status === 'correct' && !s.written.live,
+          // (2026-11-14): the Basmalah line is one calligraphic unit —
+          // it renders as the dedicated Basmalah SVG (public/quran/
+          // surah-headers/basmalah.svg — the printed surah-header form,
+          // composed from the page-1 V4 glyph outlines), in EVERY state,
+          // not only when plain. The QCF_BSML font glyph was tried first
+          // and REJECTED: the bundled font's Arabic-letter glyphs are all
+          // the same hollow-rectangle outline (fontTools-verified; the real
+          // calligraphy lives in unmapped glyphs reachable only through
+          // the font's AAT morx table, which Chromium on Android/Linux
+          // does not apply), so the font renders the Basmalah as tofu
+          // boxes in the browser — worse than text. The SVG is the only
+          // rendering that actually draws the calligraphy here. The
+          // Fatiha Basmalah (1:1:1-4, real ayah words) never reaches
+          // this branch — it renders as text-line words — so it stays
+          // glyphs/text as before. Per-word Basmalah grades no longer
+          // colour the line itself (one image has no per-word spans);
+          // they stay visible in the error sheet, the pill and the live
+          // panel.
+          const basmalaAnyWritten = line.slots.some((s) => s.written !== null);
+          const basmalaAnyPeeked = line.slots.some(
+            (s) => s.written !== null && s.written.status === 'peeked',
+          );
+          const basmalaAnyGraded = line.slots.some(
+            (s) => s.written !== null && s.written.status !== 'peeked',
           );
           const basmalaPracticeSelected =
             practiceWord !== null &&
@@ -3243,37 +3251,37 @@ export function QuranHifzStudy({
           // or hide the Basmalah — on the first page of every surah
           // it would stay invisible while shown, or stay visible
           // while hidden. The Basmalah belongs to the surah's first
-          // ayah, so its scope follows the first slot.
+          // ayah, so its scope follows the first slot. A written
+          // (graded/peeked) Basmalah word shows the SVG even with
+          // the eye closed (PR #135 rule: graded words are feedback,
+          // not script).
           const basmalaInScope =
             eyeApplies &&
             line.slots.length > 0 &&
             line.slots[0] !== undefined &&
             eyeCoversWord(line.slots[0].surah, line.slots[0].ayah);
-          const basmalaEyeShown = basmalaInScope && !eyeHidden;
-          if (
-            studyMode !== 'listen' &&
-            !scriptHidden &&
-            !basmalaPracticeSelected &&
-            !(basmalaInScope && eyeHidden) &&
-            (basmalaAllHidden || basmalaAllPlain)
-          ) {
+          const basmalaHideSvg =
+            scriptHidden || (basmalaInScope && eyeHidden && !basmalaAnyWritten);
+          // Practice-selected Basmalah word, or a peek with no grade
+          // yet: keep the word spans, so the practice outline can
+          // wrap the one word being practised and a peek reveals one
+          // word instead of the whole Basmalah.
+          if (basmalaPracticeSelected || (basmalaAnyPeeked && !basmalaAnyGraded)) {
             return (
               <p key={line.key} className="hifz-line hifz-line-basmala" dir="rtl">
-                <img
-                  className={
-                    basmalaAllHidden && !basmalaEyeShown
-                      ? 'hifz-basmala-svg hifz-line-word-hidden'
-                      : 'hifz-basmala-svg'
-                  }
-                  src="/quran/surah-headers/basmalah.svg"
-                  alt={line.slots.map((s) => s.text).join(' ')}
-                />
+                {line.slots.map((slot) => renderLineWord(slot, `${line.key}-${slot.index}`))}
               </p>
             );
           }
           return (
             <p key={line.key} className="hifz-line hifz-line-basmala" dir="rtl">
-              {line.slots.map((slot) => renderLineWord(slot, `${line.key}-${slot.index}`))}
+              <img
+                className={
+                  basmalaHideSvg ? 'hifz-basmala-svg hifz-line-word-hidden' : 'hifz-basmala-svg'
+                }
+                src="/quran/surah-headers/basmalah.svg"
+                alt={line.slots.map((s) => s.text).join(' ')}
+              />
             </p>
           );
         }
