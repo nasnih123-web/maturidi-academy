@@ -605,4 +605,26 @@ describe('Fixed hifz study page + sign-in toast (user 2026-11-10)', () => {
     assert.match(study, /\{labels\.liveListening\}/);
     assert.match(study, /\{labels\.freezeHold\}/);
   });
+
+  it('live boxes are hidden (user 2026-11-14) — pills row and live panel', () => {
+    const css = readCss();
+    const study = readStudy();
+    // Both boxes the user circled on the p596 phone screenshot are
+    // hidden by one CSS rule: the fixed pills row (errors /
+    // progress / timer) and the fixed live panel (pause, listening
+    // hint, freeze-hold, errors). The session keeps running in the
+    // background; only the toolbar stop remains.
+    assert.match(css, /Live boxes HIDDEN 2026-11-14/);
+    assert.match(
+      css,
+      /\.quran-hifz-study \.hifz-pills,\s*\.quran-hifz-study \.hifz-live-panel \{\s*display: none;\s*\}/,
+    );
+    // Hidden, not deleted: the JSX, state and labels stay, so
+    // restoring is one rule — and the panel's controls still exist
+    // for the day the user asks them back.
+    assert.match(study, /<HifzLivePills/);
+    assert.match(study, /className="hifz-live-panel"/);
+    assert.match(study, /onClick=\{pauseLive\}/);
+    assert.match(study, /\{labels\.liveListening\}/);
+  });
 });
