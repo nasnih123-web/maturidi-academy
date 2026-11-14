@@ -3229,6 +3229,21 @@ body:has(.quran-hifz-study .recitation-toolbar) .site-footer {
 }
 .quran-hifz-study .hifz-listen-controls .hifz-listen-resume { min-height: 44px; border-radius: 999px; border: 1px solid #16a34a; background: #f0fdf4; color: #166534; padding: 0 0.9rem; font-size: 0.95rem; cursor: pointer; }
 .quran-hifz-study .hifz-pills { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-start; margin-bottom: 1rem; padding: 0 1rem; }
+/* Live boxes HIDDEN 2026-11-14 at the user's request (phone
+   screenshot, Duha p596): the live pills row (error count /
+   progress / timer, fixed below the header) and the live panel
+   (pause, listening hint, freeze-hold, errors — fixed above the
+   toolbar) are both hidden, everywhere, so the page shows clean
+   while listening. The session keeps running in the background;
+   only the toolbar stop remains. Hidden, not deleted: the JSX,
+   state and labels stay (see QuranHifzStudy.tsx), so restoring
+   is one rule. Side effect, accepted by the user: the guest
+   sign-in hint inside the panel is hidden on desktop/nass too —
+   the floating toast still covers it on mobile mushaf. */
+.quran-hifz-study .hifz-pills,
+.quran-hifz-study .hifz-live-panel {
+  display: none;
+}
 /* Phase 6 — pills are left-aligned, like the Tarteel frames (pills
    sit at the left-bottom, mic at the right). A centred full-width
    row's timer pill slid under the fixed 68px mic on a 393px phone;
