@@ -1,15 +1,25 @@
 {
  "editions": {
   "ar.abdulbasitmurattal": {
-   "ayahs_done": 73,
+   "ayahs_done": 1007,
    "ayahs_failed": {},
    "folder": "Abdul_Basit_Murattal_192kbps",
    "surah_ayah_counts": {
     "1": 7,
-    "2": 66
+    "2": 286,
+    "3": 200,
+    "4": 176,
+    "5": 120,
+    "6": 165,
+    "7": 53
    },
    "surahs_done": [
-    1
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
    ]
   },
   "ar.alafasy": {
@@ -286,6 +296,6 @@
   "ar.muhammadayyoub-2": "ar.muhammadayyoub",
   "ar.muhammadjibreel-2": "ar.muhammadjibreel"
  },
- "updated_at": "2026-11-14T01:13:02.898386+00:00",
+ "updated_at": "2026-11-14T04:53:56.070129+00:00",
  "version": 1
 }
