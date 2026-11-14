@@ -192,7 +192,8 @@ describe('Hifz eye button (user 2026-11-12)', () => {
   it('the Basmalah follows the eye instead of bypassing it through the SVG branch', () => {
     const study = readStudy();
     assert.match(study, /const basmalaInScope =/);
-    assert.match(study, /!\(basmalaInScope && eyeHidden\) &&/);
-    assert.match(study, /basmalaAllHidden && !basmalaEyeShown/);
+    assert.match(study, /const basmalaHideSvg =/);
+    assert.match(study, /scriptHidden \|\| \(basmalaInScope && eyeHidden && !basmalaAnyWritten\)/);
+    assert.match(study, /hifz-basmala-svg hifz-line-word-hidden/);
   });
 });

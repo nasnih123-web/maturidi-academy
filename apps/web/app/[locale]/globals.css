@@ -3188,12 +3188,15 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
   padding-top: 0;
   padding-bottom: 0;
 }
-/* Wave 1 (2026-11-09): the dedicated Basmalah SVG
-   (public/quran/surah-headers/basmalah.svg — printed header form,
-   composed from the page-1 V4 glyph outlines). Centred, ~59% of
-   the line width like the reference shot (measured 528/901px),
-   capped at 212px so it never outgrows the text Basmalah's size
-   on desktop. Height follows the SVG's aspect (~26px at 212px). */
+/* (2026-11-14): the dedicated Basmalah SVG (public/quran/
+   surah-headers/basmalah.svg — printed header form, composed from
+   the page-1 V4 glyph outlines). Centred, ~59% of the line width
+   like the reference shot (measured 528/901px), capped at 212px so
+   it never outgrows the text Basmalah's size on desktop. Height
+   follows the SVG's aspect (~26px at 212px). The QCF_BSML font
+   glyph is NOT used here: that font's Arabic-letter glyphs are all
+   the same hollow-rectangle outline, so it renders tofu in the
+   browser (see QuranHifzStudy). */
 .quran-hifz-study .hifz-line-basmala .hifz-basmala-svg { display: block; width: 212px; max-width: 59%; height: auto; margin: 0 auto; }
 .quran-hifz-study .hifz-listen-controls { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; justify-content: center; margin-bottom: 1rem; padding: 0 1rem; }
 .quran-hifz-study .hifz-listen-controls label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }

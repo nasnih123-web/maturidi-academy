@@ -194,14 +194,15 @@ describe('QuranHifzStudy — Basmalah SVG wiring', () => {
     return src as string;
   }
 
-  it('renders the SVG only in a plain state, with the word-span fallback', () => {
+  it('renders the SVG in every state, with the word-span fallback only for practice/peek', () => {
     const src = readStudy();
     const uses = src.match(/src="\/quran\/surah-headers\/basmalah\.svg"/g) ?? [];
     assert.equal(uses.length, 1, 'the SVG must be rendered exactly once (mushaf page only)');
-    assert.match(src, /basmalaAllHidden \|\| basmalaAllPlain/);
-    assert.match(src, /studyMode !== 'listen'/);
-    assert.match(src, /!scriptHidden/);
+    assert.match(src, /basmalaPracticeSelected \|\| \(basmalaAnyPeeked && !basmalaAnyGraded\)/);
+    assert.match(src, /const basmalaHideSvg =/);
+    assert.match(src, /scriptHidden \|\| \(basmalaInScope && eyeHidden && !basmalaAnyWritten\)/);
     assert.match(src, /hifz-basmala-svg hifz-line-word-hidden/);
+    assert.doesNotMatch(src, /BASMALA_QCF_TEXT/);
   });
 
   it('the nass-mode Basmalah still uses word spans (no SVG there)', () => {
