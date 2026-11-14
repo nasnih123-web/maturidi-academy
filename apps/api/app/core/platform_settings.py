@@ -103,7 +103,7 @@ SETTING_DEFS: dict[str, dict] = {
     "quran.qf_base_url": {"type": "json", "sensitive": False, "label": "نشانی پایه Quran Foundation v4 (فقط پیکربندی)"},
     "quran.qf_client_id": {"type": "json", "sensitive": False, "label": "شناسه کاربری Quran Foundation v4"},
     "quran.qf_client_secret": {"type": "secret", "sensitive": True, "label": "رمز کاربری Quran Foundation v4 (هرگز نمایش داده نمی‌شود)"},
-    "quran.asr_engine": {"type": "json", "sensitive": False, "label": "موتور ASR حفاظ (zipformer|whisper_quran)"},
+    "quran.asr_engine": {"type": "json", "sensitive": False, "label": "موتور ASR حفاظ (zipformer|whisper_quran|whisper_nextayah)"},
     "quran.hifz_thresholds": {"type": "json", "sensitive": False, "label": "آستانه‌های رنگ نمرهٔ حفاظ (green/amber)"},
     "munajat.enabled": {"type": "json", "sensitive": False, "label": "فعال‌بودن مناجات شبانه"},
     "munajat.window": {"type": "json", "sensitive": False, "label": "پنجرهٔ زمانی مناجات"},
@@ -615,8 +615,10 @@ def _validate_json_setting(key: str, value: Any) -> Any:
             raise ValueError("quran.qf_client_id must be a string")
         return value.strip()
     if key == "quran.asr_engine":
-        if value not in ("zipformer", "whisper_quran"):
-            raise ValueError("quran.asr_engine must be one of zipformer|whisper_quran")
+        if value not in ("zipformer", "whisper_quran", "whisper_nextayah"):
+            raise ValueError(
+                "quran.asr_engine must be one of zipformer|whisper_quran|whisper_nextayah"
+            )
         return value
     if key == "quran.hifz_thresholds":
         if not isinstance(value, dict):

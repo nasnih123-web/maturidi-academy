@@ -1,8 +1,10 @@
-"""ASR engine registry for hifz grading — both engines, one default.
+"""ASR engine registry for hifz grading — three engines, one default.
 
 User decision 2026-11-04 (§14): Zipformer (Quran-Lab) is the DEFAULT,
 Whisper-quran (tarteel-ai/whisper-base-ar-quran) is CRM-selectable via
-``quran.asr_engine``. Resolution is server-side from the stored setting.
+``quran.asr_engine``. Whisper-nextayah (numan98/whisper-tiny-nextayah)
+was added as a third CRM-selectable engine 2026-11-14 on the user's
+explicit order. Resolution is server-side from the stored setting.
 
 Honesty rules (non-negotiable):
 - Engines lazy-load ONLY when selected and configured: importing this
@@ -11,8 +13,9 @@ Honesty rules (non-negotiable):
   EngineError (surfaced as HTTP 503). It NEVER silently switches to
   the other engine and NEVER returns fake scores.
 - Model files are local directories configured by environment
-  (HIFZ_ZIPFORMER_MODEL_DIR / HIFZ_WHISPER_MODEL_DIR). No model is
-  downloaded at runtime, and no third-party API is called.
+  (HIFZ_ZIPFORMER_MODEL_DIR / HIFZ_WHISPER_MODEL_DIR /
+  HIFZ_NEXTAYAH_MODEL_DIR). No model is downloaded at runtime, and no
+  third-party API is called.
 - The exact artifact layout / license / runtime for each engine is
   verified from its real source before the adapter is trusted; an
   unverified adapter stays in the "not configured" state with the
@@ -47,6 +50,22 @@ Verified 2026-11-04 (page-text verification only; no download executed):
   License Apache-2.0 is corroborated by secondary pages only — the
   official card shows no license field, so confirm it on the live HF
   page before commercial use. Output is Arabic TEXT (not phonemes).
+
+Verified 2026-11-14 (model downloaded and converted locally):
+- WHISPER-NEXTAYAH (numan98/whisper-tiny-nextayah, HF repo id
+  verified; license Apache-2.0 stated on the model card): a Whisper
+  TINY (37.8M params) fine-tune of tarteel-ai/whisper-tiny-ar-quran,
+  fine-tuned on the synthetic-incorrect-verses dataset
+  (numan98/synth-incorrect-verses — synthetically generated INCORRECT
+  recitations) so the transcript preserves the reciter's mistakes
+  instead of auto-correcting them toward the memorized Quran text.
+  Trainer-reported WER 17.2504 on the synthetic test split — measured
+  on synthetic voices, NOT on real reciters, and NOT comparable to
+  the whisper-quran figure above. Output is Arabic TEXT (not
+  phonemes), like whisper-quran. faster-whisper needs a CTranslate2
+  directory: convert the transformers repo locally with
+  ct2-transformers-converter (conversion executed and load-verified
+  2026-11-14). No download at runtime.
 """
 
 from __future__ import annotations
@@ -71,10 +90,11 @@ __all__ = [
 ]
 
 
-ENGINE_IDS = ("zipformer", "whisper_quran")
+ENGINE_IDS = ("zipformer", "whisper_quran", "whisper_nextayah")
 
 _ZIPFORMER_ENV = "HIFZ_ZIPFORMER_MODEL_DIR"
 _WHISPER_ENV = "HIFZ_WHISPER_MODEL_DIR"
+_NEXTAYAH_ENV = "HIFZ_NEXTAYAH_MODEL_DIR"
 
 
 class EngineError(Exception):
@@ -356,9 +376,94 @@ class WhisperQuranEngine(BaseEngine):
         return Transcription(text=text, words=words)
 
 
+class WhisperNextayahEngine(BaseEngine):
+    """numan98/whisper-tiny-nextayah via faster-whisper.
+
+    A Whisper TINY fine-tune of tarteel-ai/whisper-tiny-ar-quran,
+    fine-tuned on synthetic INCORRECT recitations
+    (numan98/synth-incorrect-verses) so its transcript preserves the
+    reciter's mistakes instead of auto-correcting them toward the
+    memorized Quran text — the failure mode the word-grading contract
+    must not hide. Trainer-reported WER 17.2504 was measured on the
+    synthetic test split, not on real reciters. Model dir: a local
+    faster-whisper (CTranslate2) directory — the transformers repo
+    itself is NOT directly loadable by faster-whisper; convert locally
+    with ct2-transformers-converter. No download at runtime: an unset
+    or missing dir is an honest engine_not_configured, never a silent
+    fetch and never a fallback to another engine. Output is Arabic
+    TEXT with DTW-estimated word timestamps (not phoneme-accurate
+    alignment). License: Apache-2.0 (stated on the HF model card).
+    """
+
+    engine_id = "whisper_nextayah"
+    display_name = "Whisper-nextayah (numan98)"
+    env_var = _NEXTAYAH_ENV
+    runtime_module = "faster_whisper"
+
+    _model: Any | None = None
+
+    def _load(self) -> Any:
+        if self._model is not None:
+            return self._model
+        d, _ = _model_dir(self.env_var)
+        assert d is not None
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError as exc:
+            raise EngineError(
+                "engine_not_configured", f"faster_whisper is not installed: {exc}"
+            ) from exc
+        try:
+            model = WhisperModel(d, device="cpu", compute_type="int8")
+        except Exception as exc:
+            logger.exception("hifz nextayah model failed to load")
+            raise EngineError(
+                "engine_load_failed", "بارگذاری مدل Nextayah ناموفق بود"
+            ) from exc
+        self._model = model
+        return model
+
+    def transcribe(self, wav_bytes: bytes) -> Transcription:
+        ok, reason = self.is_configured()
+        if not ok:
+            raise EngineError("engine_not_configured", reason)
+        try:
+            model = self._load()
+            path = _temp_wav_path(wav_bytes)
+            try:
+                segments, _info = model.transcribe(
+                    path, language="ar", word_timestamps=True
+                )
+                words: list[HeardWord] = []
+                texts: list[str] = []
+                for seg in segments:
+                    texts.append(seg.text or "")
+                    for w in seg.words or []:
+                        word = (w.word or "").strip()
+                        if word:
+                            words.append(HeardWord(word, w.probability))
+            finally:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+        except EngineError:
+            raise
+        except Exception as exc:
+            logger.exception("hifz nextayah transcription failed")
+            raise EngineError(
+                "engine_transcription_failed", "رونویسی Nextayah ناموفق بود"
+            ) from exc
+        text = " ".join(t.strip() for t in texts if t.strip())
+        if not words and text:
+            words = [HeardWord(t) for t in text.split() if t]
+        return Transcription(text=text, words=words)
+
+
 _ADAPTERS: dict[str, type[BaseEngine]] = {
     "zipformer": ZipformerEngine,
     "whisper_quran": WhisperQuranEngine,
+    "whisper_nextayah": WhisperNextayahEngine,
 }
 
 

@@ -489,6 +489,49 @@ def test_zipformer_ctc_discovery(tmp_path):
     assert ZipformerEngine._onnx_path(str(d)).endswith("int8.onnx")
 
 
+def test_nextayah_engine_registry_and_honest_unconfigured(monkeypatch):
+    """موتور Nextayah در رجیستری هست، word-level است و بدون env صادقانه
+    engine_not_configured می‌دهد (نه fallback بی‌صدا به موتور دیگر)."""
+    from app.modules.quran import hifz_engines
+
+    assert "whisper_nextayah" in hifz_engines.ENGINE_IDS
+    engine = hifz_engines.get_engine("whisper_nextayah")
+    assert isinstance(engine, hifz_engines.WhisperNextayahEngine)
+    assert engine.env_var == "HIFZ_NEXTAYAH_MODEL_DIR"
+    assert engine.output_level == "word"
+    monkeypatch.delenv("HIFZ_NEXTAYAH_MODEL_DIR", raising=False)
+    ok, reason = engine.is_configured()
+    assert ok is False
+    assert "HIFZ_NEXTAYAH_MODEL_DIR" in reason
+    with pytest.raises(hifz_engines.EngineError) as excinfo:
+        engine.transcribe(b"not audio")
+    assert excinfo.value.code == "engine_not_configured"
+    with pytest.raises(hifz_engines.EngineError):
+        hifz_engines.get_engine("whisper_nextayah_typo")
+
+
+def test_nextayah_engine_configured_probe(tmp_path, monkeypatch):
+    """با env ست‌شده روی دایرکتوری واقعی، پروب فقط به runtime گره می‌خورد؛
+    دایرکتوری ناموجود صادقانه همان env را نام می‌برد."""
+    import importlib.util
+
+    from app.modules.quran import hifz_engines
+
+    engine = hifz_engines.get_engine("whisper_nextayah")
+    monkeypatch.setenv("HIFZ_NEXTAYAH_MODEL_DIR", str(tmp_path))
+    ok, reason = engine.is_configured()
+    if importlib.util.find_spec("faster_whisper") is None:
+        assert ok is False
+        assert "faster_whisper" in reason
+    else:
+        assert ok is True
+        assert reason == ""
+    monkeypatch.setenv("HIFZ_NEXTAYAH_MODEL_DIR", str(tmp_path / "missing"))
+    ok, reason = engine.is_configured()
+    assert ok is False
+    assert "HIFZ_NEXTAYAH_MODEL_DIR" in reason
+
+
 async def test_grade_rejects_non_wav_and_requires_auth(tc, monkeypatch):
     from app.modules.quran import hifz_service
 
@@ -534,6 +577,7 @@ def test_settings_validators():
     from app.core.platform_settings import _validate_json_setting
 
     assert _validate_json_setting("quran.asr_engine", "whisper_quran") == "whisper_quran"
+    assert _validate_json_setting("quran.asr_engine", "whisper_nextayah") == "whisper_nextayah"
     assert _validate_json_setting("quran.asr_engine", "zipformer") == "zipformer"
     with pytest.raises(ValueError):
         _validate_json_setting("quran.asr_engine", "other")
