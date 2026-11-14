@@ -582,4 +582,27 @@ describe('Fixed hifz study page + sign-in toast (user 2026-11-10)', () => {
     assert.ok(page, 'quran/[surah]/page.tsx not found');
     assert.match(page, /<p className="quran-text-credit"/);
   });
+
+  it('live diagnostics line is hidden (user 2026-11-14) — pause/resume, hints and errors stay', () => {
+    const study = readStudy();
+    // The diagnostics paragraph (sample rate / frames / capture /
+    // socket) no longer renders: the user asked for it hidden — it
+    // covered the page while listening (p596 screenshot, Duha).
+    assert.doesNotMatch(study, /\{labels\.liveDiagSampleRate\}/);
+    assert.doesNotMatch(study, /\{labels\.liveDiagFrames\}/);
+    assert.doesNotMatch(study, /\{labels\.liveDiagCapture\}/);
+    assert.doesNotMatch(study, /\{labels\.liveDiagSocket\}/);
+    assert.doesNotMatch(study, /\{labels\.liveDiagDropped\}/);
+    // The removal is documented where the paragraph used to render.
+    assert.match(study, /Live diagnostics line REMOVED 2026-11-14/);
+    // Tracking stays (the legacy-capture hint still reads it) and
+    // the controls the panel exists for are untouched: pause/resume,
+    // the listening hint, freeze-hold resume.
+    assert.match(study, /const \[liveDiag, setLiveDiag\] = useState/);
+    assert.match(study, /liveDiag\.capture === 'legacy'/);
+    assert.match(study, /onClick=\{pauseLive\}/);
+    assert.match(study, /onClick=\{resumeLive\}/);
+    assert.match(study, /\{labels\.liveListening\}/);
+    assert.match(study, /\{labels\.freezeHold\}/);
+  });
 });

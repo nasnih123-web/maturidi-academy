@@ -429,12 +429,14 @@ export function QuranHifzStudy({
   // connection died mid-recitation and must surface, not hang in
   // "listening" forever (the 02:58 Railway restart did exactly that).
   const liveCloseExpectedRef = useRef(false);
-  // Live diagnostics, shown while a live session runs: the ACTUAL audio
-  // rate (browsers may ignore the requested 16 kHz — the Resampler
-  // corrects it to 16 kHz), how many frames really left the phone, the
-  // capture path (worklet/legacy), and frames dropped before readiness.
-  // The visible count updates ~once a second, not per frame; the
-  // counter itself is exact.
+  // Live diagnostics, tracked while a live session runs (the visible
+  // line was removed from the panel 2026-11-14 at the user's request
+  // — hidden, not deleted): the ACTUAL audio rate (browsers may
+  // ignore the requested 16 kHz — the Resampler corrects it to
+  // 16 kHz), how many frames really left the phone, the capture path
+  // (worklet/legacy), and frames dropped before readiness. The count
+  // updates ~once a second, not per frame; the counter itself is
+  // exact. The legacy-capture hint below still reads liveDiag.capture.
   const liveFramesRef = useRef(0);
   const liveDroppedRef = useRef(0);
   const [liveDiag, setLiveDiag] = useState<{
@@ -4165,13 +4167,16 @@ export function QuranHifzStudy({
       {/* Fixed study page (2026-11-10): the live panel — everything
           that used to sit below the page in the document flow (the
           practice note, .hifz-controls with pause/resume, freeze-hold
-          resume, live-cancel, live hints and diagnostics, and the
+          resume, live-cancel, live hints, and the
           liveError/error alerts) now lives in one fixed panel above
           the toolbar in mushaf mode on mobile, with its own internal
-          scroll. The panel is a plain in-flow div everywhere else
-          (no CSS there), so nass/translation and desktop keep their
-          exact order: note, controls, errors. Children keep their
-          original indentation on purpose — minimal diff. */}
+          scroll. The live diagnostics line was removed from the panel
+          2026-11-14 at the user's request (hidden, not deleted — see
+          the comment where it used to render). The panel is a plain
+          in-flow div everywhere else (no CSS there), so
+          nass/translation and desktop keep their exact order: note,
+          controls, errors. Children keep their original indentation
+          on purpose — minimal diff. */}
       <div className="hifz-live-panel">
       {practiceWord !== null && (
         <p className="hifz-practice-note">
@@ -4250,36 +4255,13 @@ export function QuranHifzStudy({
         {isZipformer && liveWarning !== null && (
           <p className="hifz-hint">{liveWarning}</p>
         )}
-        {isZipformer && liveState !== 'idle' && (
-          <p className="hifz-hint">
-            {labels.liveDiagSampleRate}: {liveDiag.sampleRate ?? '—'} Hz · {labels.liveDiagFrames}:{' '}
-            {liveDiag.frames} · {labels.liveDiagCapture}:{' '}
-            {liveDiag.capture === 'worklet'
-              ? 'AudioWorklet'
-              : liveDiag.capture === 'legacy'
-                ? 'ScriptProcessor'
-                : '—'}
-            {liveDiag.dropped > 0 && (
-              <>
-                {' '}· {labels.liveDiagDropped}: {liveDiag.dropped}
-              </>
-            )}
-            {' '}· {labels.liveDiagSocket}:{' '}
-            {liveState === 'listening'
-              ? labels.liveListening
-              : liveState === 'connecting'
-                ? labels.liveConnecting
-                : liveState === 'requesting_permission'
-                  ? labels.liveRequestingPermission
-                  : liveState === 'engine_loading'
-                    ? labels.liveEngineLoading
-                    : liveState === 'interrupted'
-                      ? labels.liveInterrupted
-                      : liveState === 'stopping'
-                        ? labels.liveStopping
-                        : labels.liveEnded}
-          </p>
-        )}
+        {/* Live diagnostics line REMOVED 2026-11-14 at the user's
+            request: the sample-rate / frames / capture / socket line
+            is hidden from the panel (it used to cover the page while
+            listening). The liveDiag state is still tracked — the
+            legacy-capture hint above reads liveDiag.capture — only
+            this visible paragraph is gone. Pause/resume, hints and
+            errors are untouched. */}
         {isWhisper && <p className="hifz-hint">{labels.liveOnlyZipformer}</p>}
         {isWhisper && recState === 'recording' && <p className="hifz-hint">{labels.recording}</p>}
         {/* The static line is hidden in mushaf mode on mobile (it is
