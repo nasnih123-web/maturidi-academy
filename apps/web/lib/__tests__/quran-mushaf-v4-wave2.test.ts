@@ -273,15 +273,18 @@ describe('QuranHifzStudy — marker glyph, separators, caption removal', () => {
   it('text lines render the marker glyph when present, else the rosette', () => {
     const src = readStudy();
     assert.match(src, /hifz-line-marker-glyph/);
-    assert.match(src, /slot\.glyph !== undefined && v4FontLoaded === true/);
+    // (2026-11-16: the gate takes the section's own page font state;
+    // the flip-mode caller passes nothing and the closure default applies.)
+    assert.match(src, /slot\.glyph !== undefined && \(font\?\.loaded \?\? v4FontLoaded\) === true/);
     assert.match(src, /<HifzRosette key=\{`m\$\{si\}`\} digit=\{slot\.text\} \/>/);
   });
 
   it('text lines interleave a QCF separator space, gated on V4 glyphs', () => {
     const src = readStudy();
     assert.match(src, /hifz-line-sep/);
-    assert.match(src, /fontFamily: v4FontFamily/);
-    assert.match(src, /if \(si === 0 \|\| v4FontLoaded !== true\) return \[node\]/);
+    // (2026-11-16: per-page font state; see the marker-glyph test.)
+    assert.match(src, /fontFamily: \(font\?\.family \?\? v4FontFamily\)/);
+    assert.match(src, /if \(si === 0 \|\| \(font\?\.loaded \?\? v4FontLoaded\) !== true\) return \[node\]/);
   });
 
   it('the caption is gone from the page section and the placeholder (meta lives in the header card + footer)', () => {

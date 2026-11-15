@@ -127,7 +127,15 @@ export function loadV4PageGlyphs(page: number): Promise<V4PageGlyphs | null> {
       if (!obj) return null;
       return new Map(Object.entries(obj)) as V4PageGlyphs;
     })
-    .catch(() => null);
+    .catch(() => null)
+    .then((result) => {
+      // A failed fetch must NOT stick: delete the cached promise
+      // so a later call refetches instead of returning the cached
+      // null forever (2026-11-16: a slow glyph fetch pinned later
+      // pages to Tanzil text after a page turn).
+      if (result === null) glyphPromises.delete(page);
+      return result;
+    });
   glyphPromises.set(page, promise);
   return promise;
 }

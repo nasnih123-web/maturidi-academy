@@ -454,3 +454,55 @@ describe('buildV2PageRender with the V2 index (round 2 §8)', () => {
     );
   });
 });
+
+describe('buildV2PageRender: the nass scroll first pages (surah 23)', () => {
+  it('p341 carries the surah-23 header (last line) and no Basmalah; p342 carries the Basmalah line', (t) => {
+    const v2 = loadV2();
+    const index = loadV2Index();
+    const texts = loadTexts();
+    if (!v2 || !index || !texts) {
+      t.skip('دادهٔ V2 یا ایندکس یا متن تنزیل در دسترس نیست');
+      return;
+    }
+    // Surah 23 is one of the 18 spill surahs: its header is the last
+    // line of p341 while ayah 1 begins on p342, so the scroll must
+    // start one page earlier than the ayah-1 page to show the header.
+    const headerPage = buildV2PageRender(index, v2.pages[340], 23, texts, []);
+    assert.ok(headerPage, 'p341 renders');
+    assert.ok(
+      headerPage.renderLines.some((l) => l.kind === 'header' && l.surah === 23),
+      'p341 carries the surah-23 header frame',
+    );
+    assert.equal(
+      headerPage.renderLines.some((l) => l.kind === 'basmala'),
+      false,
+      'p341 has no Basmalah line: the Basmalah opens p342',
+    );
+    const basmalaPage = buildV2PageRender(index, v2.pages[341], 23, texts, []);
+    assert.ok(basmalaPage, 'p342 renders');
+    const basmala = basmalaPage.renderLines.find((l) => l.kind === 'basmala');
+    assert.ok(basmala, 'p342 opens with the Basmalah line');
+    assert.equal(basmalaPage.renderLines[0].kind, 'basmala');
+    assert.equal(basmala.slots.length, 4, 'the Basmalah line holds its 4 words');
+    assert.equal(
+      basmalaPage.renderLines.some((l) => l.kind === 'header'),
+      false,
+      'p342 has no header: it lives on p341',
+    );
+    // A text word on p342 carries its V4 glyph when the page map is
+    // supplied: the scroll paints glyphs, not Tanzil text.
+    const map = loadV4Page(342);
+    if (!map) {
+      t.skip('quran-mushaf-v4-glyphs/p342.json در دسترس نیست');
+      return;
+    }
+    const withGlyphs = buildV2PageRender(index, v2.pages[341], 23, texts, [], undefined, map);
+    assert.ok(withGlyphs, 'p342 renders with the glyph map');
+    const wordSlots = allWordSlots(withGlyphs.renderLines).filter((s) => s.surah === 23);
+    assert.ok(wordSlots.length > 0, 'p342 has surah-23 word slots');
+    assert.ok(
+      wordSlots.some((s) => s.glyph !== undefined),
+      'at least one word carries a V4 glyph string',
+    );
+  });
+});

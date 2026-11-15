@@ -32,6 +32,7 @@ import {
   loadV2Pages,
   v2PageIndexFor,
   v2PageIndexForAyah,
+  v2SurahPageRange,
   type V2MushafData,
   type V2MushafIndex,
   type V2Page,
@@ -776,5 +777,84 @@ describe('quran-mushaf-v2: per-page chunks (round 2 §8)', () => {
       restore();
     }
     void t;
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* v2SurahPageRange (nass scroll, 2026-11-16): the printed-page      */
+/* range of one surah, from the index alone.                          */
+/* ------------------------------------------------------------------ */
+
+describe('v2SurahPageRange (nass scroll)', () => {
+  it('surah 23 spans pages 342-349 with no neighbour surah on either end', (t) => {
+    const index = loadIndex();
+    if (!index) {
+      t.skip('quran-mushaf-v2-index.json در دسترس نیست');
+      return;
+    }
+    assert.deepEqual(v2SurahPageRange(index, 23, 118), {
+      firstPage: 341,
+      lastPage: 348,
+      prevSurah: false,
+      nextSurah: false,
+    });
+  });
+
+  it('a surah starting mid-page reports the previous surah (surah 5, pages 106-127)', (t) => {
+    const index = loadIndex();
+    if (!index) {
+      t.skip('quran-mushaf-v2-index.json در دسترس نیست');
+      return;
+    }
+    assert.deepEqual(v2SurahPageRange(index, 5, 120), {
+      firstPage: 105,
+      lastPage: 126,
+      prevSurah: true,
+      nextSurah: false,
+    });
+  });
+
+  it('a surah ending mid-page reports the next surah too (surah 11, pages 221-235)', (t) => {
+    const index = loadIndex();
+    if (!index) {
+      t.skip('quran-mushaf-v2-index.json در دسترس نیست');
+      return;
+    }
+    assert.deepEqual(v2SurahPageRange(index, 11, 123), {
+      firstPage: 220,
+      lastPage: 234,
+      prevSurah: true,
+      nextSurah: true,
+    });
+  });
+
+  it('the first surah has no neighbours; the last surah shares its page with earlier surahs', (t) => {
+    const index = loadIndex();
+    if (!index) {
+      t.skip('quran-mushaf-v2-index.json در دسترس نیست');
+      return;
+    }
+    assert.deepEqual(v2SurahPageRange(index, 1, 7), {
+      firstPage: 0,
+      lastPage: 0,
+      prevSurah: false,
+      nextSurah: false,
+    });
+    // p604 opens with surah 112, so surah 114 reports a previous surah.
+    assert.deepEqual(v2SurahPageRange(index, 114, 6), {
+      firstPage: 603,
+      lastPage: 603,
+      prevSurah: true,
+      nextSurah: false,
+    });
+  });
+
+  it('returns null for an empty surah or an unmapped surah', () => {
+    const index = loadIndex();
+    if (index) {
+      assert.equal(v2SurahPageRange(index, 23, 0), null);
+    }
+    const empty = { pageFirstAyahs: [[2, 1, 5]] } as unknown as V2MushafIndex;
+    assert.equal(v2SurahPageRange(empty, 1, 7), null);
   });
 });

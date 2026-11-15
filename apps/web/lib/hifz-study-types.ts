@@ -7,6 +7,17 @@
 import type { PickerSheetLabels } from '@/components/QuranPickerSheet';
 
 
+/** Per-page V4 font state for one rendered page section: whether
+    that page's QCF4NNN_COLOR family really loaded, and the family
+    name itself. Glyph strings are page-relative PUA codes, so a
+    section must only ever paint in ITS OWN page's family — the
+    flip-mode closure values (the active page) are wrong for every
+    other page in a scrolling view. */
+export interface HifzV4PageFont {
+  loaded: boolean | undefined;
+  family: string | null;
+}
+
 /** One rendered word slot on a line page. */
 export interface LineWordSlot {
   kind: 'word';
