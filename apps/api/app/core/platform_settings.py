@@ -159,6 +159,35 @@ SETTING_DEFS: dict[str, dict] = {
     "push.vapid_private_key": {"type": "secret", "sensitive": True, "label": "کلید خصوصی VAPID (web push)"},
 }
 
+# کلیدهایی که مقدار خالی ("" یا null) در به‌روزرسانی تنظیمات برایشان یعنی
+# «پیکربندی‌نشده / بدون تغییر» — نه یک مقدار واقعی. این‌ها پرچم‌های بولی و
+# پیکربندی روش‌های حمایت دستی‌اند که نبودنشان از قبل در مسیر خواندن یعنی
+# «غیرفعال/ناقص» است؛ ذخیرهٔ یک گروه نباید به خاطر خالی‌بودن این فیلدها
+# ۴۰۰ بگیرد و کل ذخیره از دست برود (باگ صفحهٔ تنظیمات CRM: فعال‌کردن
+# فقط کارت‌به‌کارت با بقیهٔ فیلدهای خالی خطا می‌داد). کلیدهای دیگر عمداً
+# بیرون این فهرست‌اند: برای string/uuid مقدار "" یعنی «پاک‌کردن» و برای
+# jsonهایی مثل fonts/hifz_retention مقدار null خودش یک مقدار قانونی است.
+EMPTY_MEANS_UNSET_KEYS = frozenset({
+    # پرچم‌های بولی (اعتبارسنجشان _validate_flag است)
+    "telegram.enabled",
+    "ai.external_research_enabled",
+    "quran.show_translation",
+    "quran.show_tafsir",
+    "quran.player_show_photo",
+    "munajat.enabled",
+    "payment.zarinpal_sandbox",
+    "payment.idpay_sandbox",
+    "donation.online_enabled",
+    "donation.card_enabled",
+    "donation.crypto_enabled",
+    "donation.paypal_enabled",
+    # پیکربندی روش‌های دستی حمایت: خالی = هنوز تنظیم نشده
+    "donation.crypto_wallets",
+    "donation.card_instructions",
+    "donation.crypto_instructions",
+    "donation.paypal_instructions",
+})
+
 _cache: dict[str, tuple[str, float]] = {}
 _cache_lock = threading.Lock()
 _version: int = 0
@@ -405,6 +434,13 @@ def _validate_active_languages(value: Any) -> list:
 
 
 def _validate_flag(key: str, value: Any) -> bool:
+    # مقدار رشته‌ای "true"/"false" هم پذیرفته می‌شود: این کلیدها از CRM با
+    # فیلد متنی خام ویرایش می‌شدند و «True» تایپ‌شده نباید کل ذخیره را
+    # منفجر کند. هر مقدار دیگری همچنان صادقانه خطا می‌گیرد.
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in ("true", "false"):
+            return lowered == "true"
     if not isinstance(value, bool):
         raise ValueError(f"{key} must be a boolean")
     return value
@@ -780,8 +816,9 @@ def _validate_json_setting(key: str, value: Any) -> Any:
     # --- فاز ۱۱: تلگرام ---
     if key == "telegram.enabled":
         return _validate_flag(key, value)
-    # --- حمایت دستی + سندباکس آیدی‌پی ---
+    # --- حمایت دستی + سندباکس‌های درگاه ---
     if key in (
+        "payment.zarinpal_sandbox",
         "payment.idpay_sandbox",
         "donation.online_enabled",
         "donation.card_enabled",
@@ -824,6 +861,11 @@ def encode_setting_value(setting_type: str, value: Any, key: str | None = None) 
         canonical = _validate_json_setting(key or "", value)
         return json.dumps(canonical, ensure_ascii=False)
     if setting_type == "localized":
+        # رشتهٔ سادهٔ غیرخالی = متنِ زبان پیش‌فرض (fa) — کلاینت‌های ساده
+        # (و اپراتوری که در فیلد راهنما متن معمولی تایپ می‌کند) نباید به
+        # خاطر نفرستادن آبجکت سه‌زبانه کل ذخیره را از دست بدهند.
+        if isinstance(value, str) and value.strip():
+            value = {"fa": value.strip()}
         if not isinstance(value, dict) or not value:
             raise ValueError("localized value must be a non-empty object")
         for lang, text in value.items():
