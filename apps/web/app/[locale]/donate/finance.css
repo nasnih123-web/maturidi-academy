@@ -50,7 +50,7 @@
 .fin-form { display: flex; flex-direction: column; gap: 1.25rem;
   border: 1px solid rgba(212,175,55,0.28); border-radius: var(--radius-lg);
   background: rgba(7, 35, 28, 0.55); padding: 1.5rem; }
-.fin-fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.9rem; }
+.fin-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 0.9rem; }
 .fin-legend { font-weight: 800; color: #ede6d6; padding: 0; margin-bottom: 0.25rem; }
 .fin-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 0.6rem; }
 .fin-preset { border: 1px solid rgba(212,175,55,0.35); border-radius: var(--radius-md);
@@ -64,8 +64,8 @@
 .fin-field { display: flex; flex-direction: column; gap: 0.45rem; }
 .fin-label { font-weight: 700; color: #ede6d6; font-size: 0.92rem; }
 .fin-optional { font-weight: 400; color: hsl(var(--text-secondary)); font-size: 0.82rem; }
-.fin-amount-wrap { display: flex; align-items: center; gap: 0.6rem; }
-.fin-input { flex: 1; background: rgba(6, 18, 14, 0.7); border: 1px solid rgba(212,175,55,0.35);
+.fin-amount-wrap { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.fin-input { flex: 1; min-width: 0; background: rgba(6, 18, 14, 0.7); border: 1px solid rgba(212,175,55,0.35);
   border-radius: var(--radius-md); color: #ede6d6; padding: 0.75rem 1rem; font-size: 1.05rem;
   font-family: inherit; }
 .fin-input:focus { outline: none; border-color: #d4af37; box-shadow: 0 0 0 3px rgba(212,175,55,0.18); }
@@ -106,14 +106,44 @@
   justify-content: center; margin-top: 0.5rem; }
 .fin-back { margin-top: 1.5rem; }
 
-/* حمایت دستی (کارت‌به‌کارت / کریپتو / PayPal) */
-.fin-manual { margin-top: 2.5rem; padding-top: 1.75rem;
-  border-top: 1px dashed rgba(212,175,55,0.25); display: flex;
-  flex-direction: column; gap: 1rem; }
-.fin-manual-title { margin: 0; font-size: 1.25rem; font-weight: 800; color: #ede6d6; }
-.fin-manual-details { display: flex; flex-direction: column; gap: 0.5rem; }
-.fin-copyrow { display: inline-flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
-.fin-copyvalue { font-size: 1.05rem; font-weight: 700; color: #ede6d6;
+/* بخش پرداخت یکپارچه (ریالی/دلاری — سبک تسویهٔ ووکامرس) */
+.fin-pay { margin-top: 1.5rem; border: 1px solid rgba(212,175,55,0.28);
+  border-radius: var(--radius-lg); background: rgba(7, 35, 28, 0.55);
+  padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem; }
+.fin-pay-title { margin: 0; font-size: 1.25rem; font-weight: 800; color: #ede6d6; }
+.fin-branches { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.fin-branch { display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
+  border: 1px solid rgba(212,175,55,0.35); border-radius: var(--radius-md);
+  background: transparent; color: #ede6d6; padding: 1rem 0.75rem; cursor: pointer;
+  transition: all var(--dur-base) var(--ease-out); font-family: inherit; text-align: center; }
+.fin-branch:hover { border-color: #d4af37; background: rgba(212,175,55,0.08); }
+.fin-branch-active { background: linear-gradient(135deg, rgba(184,145,44,0.35), rgba(212,175,55,0.2));
+  border-color: #d4af37; color: #f5e9c8; }
+.fin-branch-name { font-weight: 800; font-size: 1.05rem; }
+.fin-branch-sub { font-size: 0.8rem; color: hsl(var(--text-secondary)); }
+.fin-branch-active .fin-branch-sub { color: #e5c07b; }
+.fin-methods { display: flex; flex-direction: column; gap: 0.6rem; }
+.fin-method { border: 1px solid rgba(212,175,55,0.25); border-radius: var(--radius-md);
+  background: rgba(6, 18, 14, 0.35); overflow: hidden; }
+.fin-method-active { border-color: #d4af37; background: rgba(212,175,55,0.05); }
+.fin-method-head { display: flex; align-items: center; gap: 0.6rem; width: 100%;
+  background: transparent; border: 0; color: #ede6d6; padding: 0.85rem 1rem;
+  font: inherit; font-weight: 700; cursor: pointer; text-align: start; }
+.fin-radio { width: 1.05rem; height: 1.05rem; border-radius: 50%; flex: none;
+  border: 2px solid rgba(212,175,55,0.55); display: inline-grid; place-items: center; }
+.fin-method-active .fin-radio::after { content: ''; width: 0.55rem; height: 0.55rem;
+  border-radius: 50%; background: #e5c07b; }
+.fin-method-name { font-size: 0.98rem; }
+.fin-method-body { padding: 0 1rem 1.1rem; display: flex; flex-direction: column; gap: 1rem; }
+.fin-method-body .fin-form { border: 0; background: transparent; padding: 0; border-radius: 0; }
+.fin-method-single { display: flex; flex-direction: column; gap: 1rem; }
+.fin-method-single-title { margin: 0; font-weight: 800; color: #ede6d6; font-size: 1rem; }
+.fin-method-single .fin-form { border: 0; background: transparent; padding: 0; border-radius: 0; }
+
+/* جزئیات روش دستی (شماره کارت / کیف پول / حساب پی‌پال) */
+.fin-manual-details { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.fin-copyrow { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; max-width: 100%; }
+.fin-copyvalue { font-size: 1.05rem; font-weight: 700; color: #ede6d6; min-width: 0;
   background: rgba(7, 35, 28, 0.55); border: 1px solid rgba(212,175,55,0.3);
   border-radius: 0.5rem; padding: 0.4rem 0.7rem; letter-spacing: 0.02em;
   word-break: break-all; }
@@ -126,4 +156,11 @@
   .fin-page { padding-block: 1.5rem 3rem; }
   .fin-title { font-size: 1.5rem; }
   .fin-result { padding: 1.75rem 1.25rem; }
+  .fin-form { padding: 1.1rem; }
+  .fin-pay { padding: 1.1rem; }
+  .fin-branches { gap: 0.6rem; }
+  .fin-branch { padding: 0.8rem 0.5rem; }
+  .fin-branch-name { font-size: 0.98rem; }
+  .fin-method-body { padding: 0 0.75rem 1rem; }
+  .fin-input[type='file'] { max-width: 100%; font-size: 0.92rem; }
 }

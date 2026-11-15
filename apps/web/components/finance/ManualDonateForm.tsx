@@ -1,8 +1,11 @@
 /**
- * ManualDonateForm — presentational manual-donation form.
- * State/logic live in useManualDonate; this renders and emits events only
- * (ADR-001, same split as DonateForm). Payment details arrive from the
- * server (CRM-configured) — never hard-coded here.
+ * ManualDonateForm — presentational body for ONE manual method
+ * (card-to-card / crypto / PayPal): the server-published payment details
+ * (card number / wallet / PayPal account, with copy buttons) plus the
+ * proof form. State/logic live in useManualDonate; this renders and
+ * emits events only (ADR-001, same split as DonateForm). Method/branch
+ * selection lives in DonatePayment — payment details arrive from the
+ * server (CRM-configured), never hard-coded here.
  */
 'use client';
 
@@ -35,7 +38,7 @@ export interface ManualDonateLabels {
   errorGeneric: string;
 }
 
-function pickLocalized(text: LocalizedText | null, locale: string): string {
+export function pickLocalized(text: LocalizedText | null, locale: string): string {
   if (!text) return '';
   if (locale === 'ar') return text.ar || text.fa || text.en;
   if (locale === 'en') return text.en || text.fa;
@@ -66,8 +69,7 @@ function CopyValue({ value, labels }: { value: string; labels: ManualDonateLabel
 }
 
 export interface ManualDonateFormProps {
-  methods: ManualMethod[];
-  method: ManualMethod | null;
+  method: ManualMethod;
   phase: string;
   error: string | null;
   amount: string;
@@ -78,7 +80,6 @@ export interface ManualDonateFormProps {
   proofValid: boolean;
   locale: string;
   labels: ManualDonateLabels;
-  onSelect: (method: string) => void;
   onAmount: (raw: string) => void;
   onDonorName: (name: string) => void;
   onProofText: (text: string) => void;
@@ -88,18 +89,8 @@ export interface ManualDonateFormProps {
 }
 
 export function ManualDonateForm(props: ManualDonateFormProps) {
-  const { methods, method, phase, labels, locale } = props;
-  if (methods.length === 0 || !method) return null;
+  const { method, phase, labels, locale } = props;
   const busy = phase === 'submitting';
-
-  if (phase === 'done') {
-    return (
-      <section className="fin-manual" aria-label={labels.title}>
-        <h2 className="fin-manual-title">{labels.successTitle}</h2>
-        <p className="fin-hint">{labels.successBody}</p>
-      </section>
-    );
-  }
 
   const currencySuffix =
     method.method === 'card'
@@ -109,24 +100,7 @@ export function ManualDonateForm(props: ManualDonateFormProps) {
         : (method.wallets[props.walletIndex]?.currency ?? '');
 
   return (
-    <section className="fin-manual" aria-label={labels.title}>
-      <h2 className="fin-manual-title">{labels.title}</h2>
-      <p className="fin-hint">{labels.intro}</p>
-
-      <div className="fin-presets" role="group" aria-label={labels.title}>
-        {methods.map((m) => (
-          <button
-            key={m.method}
-            type="button"
-            className={`fin-preset${m.method === method.method ? ' fin-preset-active' : ''}`}
-            aria-pressed={m.method === method.method}
-            onClick={() => props.onSelect(m.method)}
-          >
-            {pickLocalized(m.title, locale)}
-          </button>
-        ))}
-      </div>
-
+    <>
       <div className="fin-manual-details">
         {method.method === 'card' && method.cardNumber ? (
           <>
@@ -263,6 +237,6 @@ export function ManualDonateForm(props: ManualDonateFormProps) {
           {busy ? labels.submitting : labels.submit}
         </button>
       </form>
-    </section>
+    </>
   );
 }

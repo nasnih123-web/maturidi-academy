@@ -25,6 +25,8 @@ export interface UseManualDonateOptions {
 
 export function useManualDonate({ campaignId }: UseManualDonateOptions) {
   const [methods, setMethods] = useState<ManualMethod[]>([]);
+  const [online, setOnline] = useState<DonationMethod | null>(null);
+  const [methodsLoaded, setMethodsLoaded] = useState(false);
   const [phase, setPhase] = useState<ManualPhase>('loading');
   const [selected, setSelected] = useState<string>('card');
   const [amount, setAmountRaw] = useState('');
@@ -44,6 +46,8 @@ export function useManualDonate({ campaignId }: UseManualDonateOptions) {
           (m): m is ManualMethod => m.method === 'card' || m.method === 'crypto' || m.method === 'paypal',
         );
         setMethods(manual);
+        setOnline(all.find((m) => m.method === 'online') ?? null);
+        setMethodsLoaded(true);
         if (manual.length > 0) setSelected(manual[0].method);
         setPhase('idle');
       })
@@ -95,6 +99,8 @@ export function useManualDonate({ campaignId }: UseManualDonateOptions) {
 
   return {
     methods,
+    online,
+    methodsLoaded,
     method,
     phase,
     error,
