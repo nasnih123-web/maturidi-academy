@@ -355,6 +355,16 @@ async def admin_manual_proof_image(
     return Response(content=data, media_type=mime)
 
 
+@admin_finance_router.get("/fx-rate", response_model=schemas.FxRateOut)
+async def admin_fx_rate(
+    currency: str,
+    user: User = Depends(_finance_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """نرخ لحظه‌ای هر واحد ارز به ریال — CRM پیش از تأیید حمایت ارزی نشان می‌دهد."""
+    return await service.get_fx_rate(currency)
+
+
 @admin_finance_router.post(
     "/manual-donations/{proof_id}/approve", response_model=schemas.ManualDonationAdminOut
 )
@@ -371,6 +381,7 @@ async def admin_approve_manual_donation(
         proof_id=proof_id,
         approve=True,
         note=body.note if body else None,
+        rate_irr=body.rate_irr if body else None,
         admin=user,
         ip=_client_ip(request),
         ua=_ua(request),

@@ -41,7 +41,7 @@ from app.models.models import (
     User,
 )
 
-from . import gateways, receipts, schemas
+from . import fx, gateways, receipts, schemas
 
 _MAX_DONATE_IRR = 100_000_000_000  # سقف هر تراکنش: ۱۰^۱۱ ریال
 _CURSOR_LIMIT = 50
@@ -125,6 +125,7 @@ async def _finalize_success(
     actor_id: UUID | None = None,
     ip: str | None = None,
     ua: str | None = None,
+    campaign_credit_irr: int | None = None,
 ) -> Donation:
     """نیت را موفق ثبت می‌کند: donation + ledger + کمپین + رویداد + audit.
 
@@ -169,14 +170,19 @@ async def _finalize_success(
             donation_id=donation.id,
         )
     )
-    if intent.campaign_id and intent.currency == "IRR":
-        # مجموع کمپین ریالی است؛ اهدای دستیِ ارزی (USD/USDT) نباید آن را
-        # آلوده کند. اهدای درگاهی همیشه IRR است (§DonateIn) — رفتار قبلی
-        # برای آن مسیر عیناً حفظ می‌شود.
-        campaign = await db.get(DonationCampaign, intent.campaign_id)
-        if campaign is not None:
-            campaign.raised_amount = (campaign.raised_amount or 0) + intent.amount
-            campaign.updated_at = _utcnow()
+    if intent.campaign_id:
+        # مجموع کمپین ریالی است. مسیر پیش‌فرض (درگاه): فقط اهدای IRR شمرده
+        # می‌شود. مسیر حمایت دستی هنگام تأیید، اعتبار ریالی را صریح می‌دهد:
+        # برای ریالی همان مبلغ و برای ارزی معادلِ تبدیل‌شده با نرخ لحظه‌ای —
+        # پس مجموع و درصد کمپین همهٔ ارزها را پوشش می‌دهد (درخواست مالک).
+        credit = campaign_credit_irr
+        if credit is None and intent.currency == "IRR":
+            credit = intent.amount
+        if credit:
+            campaign = await db.get(DonationCampaign, intent.campaign_id)
+            if campaign is not None:
+                campaign.raised_amount = (campaign.raised_amount or 0) + credit
+                campaign.updated_at = _utcnow()
 
     await log_audit(
         db,
@@ -1493,6 +1499,9 @@ def _manual_admin_out(
         review_note=proof.review_note,
         reviewed_at=proof.reviewed_at,
         created_at=proof.created_at,
+        amount_irr=proof.amount_irr,
+        fx_rate_irr=proof.fx_rate_irr,
+        fx_source=proof.fx_source,
     )
 
 
@@ -1546,12 +1555,27 @@ async def get_manual_proof_image(
     return data, proof.proof_image_mime or "application/octet-stream"
 
 
+async def get_fx_rate(currency: str) -> schemas.FxRateOut:
+    """نرخ لحظه‌ای برای نمایش پیش از تأیید در CRM — ۵۰۲ اگر منبعی جواب نداد."""
+    cur = (currency or "").strip().upper()
+    if not cur or len(cur) > 10 or not cur.isalnum():
+        raise APIError(400, "invalid_currency", "ارز نامعتبر است")
+    try:
+        rate, source = await fx.get_rate_irr(cur)
+    except fx.FxUnavailable as exc:
+        raise APIError(
+            502, "fx_unavailable", "نرخ لحظه‌ای ارز در دسترس نیست؛ نرخ را دستی وارد کنید"
+        ) from exc
+    return schemas.FxRateOut(currency=cur, rate_irr=rate, source=source)
+
+
 async def review_manual_donation(
     db: AsyncSession,
     *,
     proof_id: UUID,
     approve: bool,
     note: str | None,
+    rate_irr: int | None = None,
     admin: User,
     ip: str | None,
     ua: str | None,
@@ -1563,6 +1587,10 @@ async def review_manual_donation(
     (همان تراکنش برای دو ارسال) با یکتایی gateway_reference به ۴۰۹
     می‌رسد و ارسال دوم pending می‌ماند.
     رد → intent.cancelled؛ هیچ رکورد مالی‌ای ساخته نمی‌شود.
+
+    حمایت ارزی هنگام تأیید با نرخ لحظه‌ای (یا نرخ دستیِ rate_irr) به
+    ریال تبدیل می‌شود و معادلش به مجموع کمپین می‌رود؛ نرخ و منبعش روی
+    رکورد اثبات می‌ماند. نبود هر دو نرخ → ۴۲۲ و حمایت pending می‌ماند.
     """
     proof = await db.get(ManualDonationProof, proof_id)
     if proof is None:
@@ -1572,6 +1600,29 @@ async def review_manual_donation(
     intent = await db.get(PaymentIntent, proof.payment_intent_id)
     if intent is None:
         raise APIError(404, "intent_not_found", "نیت پرداخت یافت نشد")
+
+    # تبدیل ارزی پیش از هر تغییری حساب می‌شود تا اگر نرخ لحظه‌ای در
+    # دسترس نبود و نرخ دستی هم داده نشده بود، حمایت همچنان pending
+    # بماند (۴۲۲) و هیچ رکورد نیمه‌کاره‌ای ثبت نشود.
+    credit_irr: int | None = None
+    fx_rate: int | None = None
+    fx_source: str | None = None
+    if approve:
+        if intent.currency == "IRR":
+            credit_irr = intent.amount
+        elif rate_irr is not None:
+            fx_rate, fx_source = rate_irr, "manual"
+            credit_irr = intent.amount * rate_irr
+        else:
+            try:
+                fx_rate, fx_source = await fx.get_rate_irr(intent.currency)
+            except fx.FxUnavailable as exc:
+                raise APIError(
+                    422,
+                    "fx_rate_required",
+                    "نرخ لحظه‌ای ارز در دسترس نیست؛ نرخ هر واحد را دستی وارد کنید",
+                ) from exc
+            credit_irr = intent.amount * fx_rate
 
     proof.reviewed_by = admin.id
     proof.reviewed_at = _utcnow()
@@ -1598,6 +1649,9 @@ async def review_manual_donation(
         return out
 
     proof.review_status = "approved"
+    proof.amount_irr = credit_irr
+    proof.fx_rate_irr = fx_rate
+    proof.fx_source = fx_source
     ref = (
         proof.proof_text
         if proof.proof_text and len(proof.proof_text) <= 100
@@ -1611,13 +1665,27 @@ async def review_manual_donation(
         action="finance.manual_donation_approved",
         entity_type="payment_intent",
         entity_id=str(intent.id),
-        new_values={"method": proof.method, "gateway_reference": ref, "note": note},
+        new_values={
+            "method": proof.method,
+            "gateway_reference": ref,
+            "note": note,
+            "amount_irr": credit_irr,
+            "fx_rate_irr": fx_rate,
+            "fx_source": fx_source,
+        },
         ip=ip,
         user_agent=ua,
     )
     try:
         await _finalize_success(
-            db, intent, ref_id=ref, actor_type="user", actor_id=admin.id, ip=ip, ua=ua
+            db,
+            intent,
+            ref_id=ref,
+            actor_type="user",
+            actor_id=admin.id,
+            ip=ip,
+            ua=ua,
+            campaign_credit_irr=credit_irr,
         )
     except IntegrityError as exc:
         await db.rollback()
