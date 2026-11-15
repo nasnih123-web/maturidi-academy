@@ -1,24 +1,33 @@
 import React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Button } from "@maturidi/ui-web";
-import { apiFetch } from "../lib/api";
+import { apiFetch, ApiError } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 
 /**
  * Platform settings (super_admin only — Phase 2 spec).
  *
- * AI model/key + fallback, Telegram bot token/channel/session,
- * ZarinPal/IDPay keys, email/SMS provider keys — per the §3 secrets
- * architecture the values are encrypted server-side and take effect
- * without a restart.
+ * Tabbed layout: every tab (AI / Telegram / gateway / card-to-card /
+ * crypto / PayPal / comms) saves INDEPENDENTLY — its payload carries
+ * only that tab's keys, so one tab's empty or invalid fields can never
+ * fail another tab's save. The payment area is split per donation
+ * method on purpose: the operator can enable ONLY card-to-card, with
+ * every other method unset, and save it successfully.
  *
- * Secrets are NEVER displayed: existing values are not returned by the API
- * and inputs stay empty unless the operator types a new value.
+ * Field kinds:
+ * - secret: write-only; the API never returns values and the input
+ *   starts empty. Empty secret = no change (never sent).
+ * - flag: boolean setting rendered as a select (unset/on/off) — the
+ *   operator no longer types raw "true/false" text.
+ * - localized: trilingual object; the input edits the fa text and
+ *   preserves any stored ar/en texts.
+ * - json: structured value edited as JSON text (crypto wallets).
+ * - text: plain string/number input.
+ *
+ * Server errors are shown verbatim (they name the failing key) instead
+ * of a generic failure badge.
  */
 
-type SettingsMap = Record<string, string | null>;
-
-/** Backend shape: { settings: [{key, value, masked, type, updated_at}], version } */
 interface SettingItem {
   key: string;
   value: unknown;
@@ -32,155 +41,304 @@ interface SettingsResponse {
   version: number;
 }
 
-function toMap(data: SettingsResponse | undefined): SettingsMap {
-  const map: SettingsMap = {};
-  for (const item of data?.settings ?? []) {
-    map[item.key] = item.masked ? null : (item.value as string | null);
-  }
-  return map;
-}
+type FieldKind = "text" | "secret" | "flag" | "localized" | "json";
 
 interface FieldDef {
   key: string;
   labelKey: string;
-  secret: boolean;
+  kind: FieldKind;
 }
 
-interface SectionDef {
+interface TabDef {
+  id: string;
   titleKey: string;
   fields: FieldDef[];
 }
 
-const SECTIONS: SectionDef[] = [
+const TABS: TabDef[] = [
   {
+    id: "ai",
     titleKey: "settings.sections.ai",
     fields: [
-      { key: "ai.model", labelKey: "settings.fields.model", secret: false },
-      { key: "ai.api_key", labelKey: "settings.fields.apiKey", secret: true },
-      { key: "ai.fallback_model", labelKey: "settings.fields.fallback", secret: false },
+      { key: "ai.model", labelKey: "settings.fields.model", kind: "text" },
+      { key: "ai.api_key", labelKey: "settings.fields.apiKey", kind: "secret" },
+      { key: "ai.fallback_model", labelKey: "settings.fields.fallback", kind: "text" },
       // Phase 6 AI production controls (backend track registers these in SETTING_DEFS).
-      { key: "ai.provider", labelKey: "settings.fields.aiProvider", secret: false },
-      { key: "ai.claude_model", labelKey: "settings.fields.aiClaudeModel", secret: false },
-      { key: "ai.daily_quota_per_user", labelKey: "settings.fields.aiDailyQuota", secret: false },
-      { key: "ai.rate_per_minute", labelKey: "settings.fields.aiRatePerMinute", secret: false },
-      { key: "ai.external_research_enabled", labelKey: "settings.fields.aiExternalResearch", secret: false },
+      { key: "ai.provider", labelKey: "settings.fields.aiProvider", kind: "text" },
+      { key: "ai.claude_model", labelKey: "settings.fields.aiClaudeModel", kind: "text" },
+      { key: "ai.daily_quota_per_user", labelKey: "settings.fields.aiDailyQuota", kind: "text" },
+      { key: "ai.rate_per_minute", labelKey: "settings.fields.aiRatePerMinute", kind: "text" },
+      { key: "ai.external_research_enabled", labelKey: "settings.fields.aiExternalResearch", kind: "flag" },
     ],
   },
   {
+    id: "telegram",
     titleKey: "settings.sections.telegram",
     fields: [
-      { key: "telegram.bot_token", labelKey: "settings.fields.botToken", secret: true },
-      { key: "telegram.api_id", labelKey: "settings.fields.telegramApiId", secret: true },
-      { key: "telegram.api_hash", labelKey: "settings.fields.telegramApiHash", secret: true },
-      { key: "telegram.channel", labelKey: "settings.fields.channel", secret: false },
+      { key: "telegram.bot_token", labelKey: "settings.fields.botToken", kind: "secret" },
+      { key: "telegram.api_id", labelKey: "settings.fields.telegramApiId", kind: "secret" },
+      { key: "telegram.api_hash", labelKey: "settings.fields.telegramApiHash", kind: "secret" },
+      { key: "telegram.channel", labelKey: "settings.fields.channel", kind: "text" },
     ],
   },
   {
-    titleKey: "settings.sections.payments",
+    id: "gateway",
+    titleKey: "settings.sections.gateway",
     fields: [
-      { key: "payment.zarinpal_key", labelKey: "settings.fields.zarinpal", secret: true },
-      { key: "payment.idpay_key", labelKey: "settings.fields.idpay", secret: true },
-      { key: "payment.idpay_sandbox", labelKey: "settings.fields.idpaySandbox", secret: false },
-      // روش‌های دستی حمایت (کارت‌به‌کارت / رمزارز / دلاری) — فاز حمایت دستی.
-      // مقادیر json/localized همان رشتهٔ ذخیره‌شده‌اند و مثل بقیهٔ فیلدهای
-      // json این صفحه به‌صورت متن ویرایش می‌شوند.
-      { key: "donation.online_enabled", labelKey: "settings.fields.donationOnline", secret: false },
-      { key: "donation.card_enabled", labelKey: "settings.fields.donationCardEnabled", secret: false },
-      { key: "donation.card_number", labelKey: "settings.fields.donationCardNumber", secret: false },
-      { key: "donation.card_holder", labelKey: "settings.fields.donationCardHolder", secret: false },
-      { key: "donation.card_instructions", labelKey: "settings.fields.donationCardInstructions", secret: false },
-      { key: "donation.crypto_enabled", labelKey: "settings.fields.donationCryptoEnabled", secret: false },
-      { key: "donation.crypto_wallets", labelKey: "settings.fields.donationCryptoWallets", secret: false },
-      { key: "donation.crypto_instructions", labelKey: "settings.fields.donationCryptoInstructions", secret: false },
-      { key: "donation.paypal_enabled", labelKey: "settings.fields.donationPaypalEnabled", secret: false },
-      { key: "donation.paypal_account", labelKey: "settings.fields.donationPaypalAccount", secret: false },
-      { key: "donation.paypal_instructions", labelKey: "settings.fields.donationPaypalInstructions", secret: false },
+      { key: "payment.zarinpal_key", labelKey: "settings.fields.zarinpal", kind: "secret" },
+      { key: "payment.idpay_key", labelKey: "settings.fields.idpay", kind: "secret" },
+      { key: "payment.idpay_sandbox", labelKey: "settings.fields.idpaySandbox", kind: "flag" },
+      { key: "donation.online_enabled", labelKey: "settings.fields.donationOnline", kind: "flag" },
     ],
   },
   {
+    id: "card",
+    titleKey: "settings.sections.card",
+    fields: [
+      { key: "donation.card_enabled", labelKey: "settings.fields.donationCardEnabled", kind: "flag" },
+      { key: "donation.card_number", labelKey: "settings.fields.donationCardNumber", kind: "text" },
+      { key: "donation.card_holder", labelKey: "settings.fields.donationCardHolder", kind: "text" },
+      { key: "donation.card_instructions", labelKey: "settings.fields.donationCardInstructions", kind: "localized" },
+    ],
+  },
+  {
+    id: "crypto",
+    titleKey: "settings.sections.crypto",
+    fields: [
+      { key: "donation.crypto_enabled", labelKey: "settings.fields.donationCryptoEnabled", kind: "flag" },
+      { key: "donation.crypto_wallets", labelKey: "settings.fields.donationCryptoWallets", kind: "json" },
+      { key: "donation.crypto_instructions", labelKey: "settings.fields.donationCryptoInstructions", kind: "localized" },
+    ],
+  },
+  {
+    id: "paypal",
+    titleKey: "settings.sections.paypal",
+    fields: [
+      { key: "donation.paypal_enabled", labelKey: "settings.fields.donationPaypalEnabled", kind: "flag" },
+      { key: "donation.paypal_account", labelKey: "settings.fields.donationPaypalAccount", kind: "text" },
+      { key: "donation.paypal_instructions", labelKey: "settings.fields.donationPaypalInstructions", kind: "localized" },
+    ],
+  },
+  {
+    id: "comms",
     titleKey: "settings.sections.comms",
     fields: [
-      { key: "email.smtp_password", labelKey: "settings.fields.emailKey", secret: true },
-      { key: "sms.api_key", labelKey: "settings.fields.smsKey", secret: true },
+      { key: "email.smtp_password", labelKey: "settings.fields.emailKey", kind: "secret" },
+      { key: "sms.api_key", labelKey: "settings.fields.smsKey", kind: "secret" },
     ],
   },
 ];
 
+type Values = Record<string, unknown>;
+
+function normalizeFlag(v: unknown): boolean | null {
+  if (v === true || v === "true") return true;
+  if (v === false || v === "false") return false;
+  return null;
+}
+
+function seedValues(data: SettingsResponse): Values {
+  const server = new Map<string, SettingItem>();
+  for (const item of data.settings ?? []) server.set(item.key, item);
+  const next: Values = {};
+  for (const tab of TABS) {
+    for (const f of tab.fields) {
+      if (f.kind === "secret") continue; // secrets always start empty
+      const item = server.get(f.key);
+      const v = item && !item.masked ? item.value : null;
+      if (f.kind === "flag") {
+        next[f.key] = normalizeFlag(v);
+      } else if (f.kind === "localized") {
+        next[f.key] =
+          v && typeof v === "object" ? v : typeof v === "string" && v ? { fa: v } : null;
+      } else if (f.kind === "json") {
+        next[f.key] =
+          v == null ? "" : typeof v === "string" ? v : JSON.stringify(v, null, 2);
+      } else {
+        next[f.key] = v ?? null;
+      }
+    }
+  }
+  return next;
+}
+
+/** Build one tab's save payload — only that tab's keys, empties omitted. */
+function buildPayload(tab: TabDef, values: Values): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  for (const f of tab.fields) {
+    const v = values[f.key];
+    switch (f.kind) {
+      case "secret":
+        // Only a freshly typed secret is sent; empty means "no change".
+        if (typeof v === "string" && v !== "") payload[f.key] = v;
+        break;
+      case "flag":
+        if (v === true || v === false) payload[f.key] = v;
+        break;
+      case "localized": {
+        if (v && typeof v === "object") {
+          const obj = v as Record<string, unknown>;
+          const hasText = Object.values(obj).some(
+            (x) => typeof x === "string" && x.trim() !== "",
+          );
+          if (hasText) payload[f.key] = obj;
+        } else if (typeof v === "string" && v.trim() !== "") {
+          payload[f.key] = { fa: v };
+        }
+        break;
+      }
+      case "json":
+        if (typeof v === "string" && v.trim() !== "") payload[f.key] = v;
+        break;
+      default: // text
+        if (v !== undefined && v !== null) payload[f.key] = v;
+    }
+  }
+  return payload;
+}
+
 export default function Settings(): React.ReactElement {
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const [values, setValues] = React.useState<SettingsMap>({});
-  const [savedSection, setSavedSection] = React.useState<string | null>(null);
-  const [failedSection, setFailedSection] = React.useState<string | null>(null);
+  const [tab, setTab] = React.useState<string>(TABS[0].id);
+  const [values, setValues] = React.useState<Values>({});
+  const [savedTab, setSavedTab] = React.useState<string | null>(null);
+  const [saveError, setSaveError] = React.useState<{ tab: string; message: string } | null>(null);
+  const seededRef = React.useRef(false);
 
   const settingsQuery = useQuery({
     queryKey: ["platform-settings"],
     queryFn: () => apiFetch<SettingsResponse>("/api/v1/admin/settings"),
   });
 
+  // Seed the form once from the server snapshot. Later refetches must
+  // not wipe unsaved edits in other tabs (the old page reseeded on
+  // every refetch and silently discarded typed values).
+  React.useEffect(() => {
+    if (settingsQuery.data && !seededRef.current) {
+      seededRef.current = true;
+      setValues(seedValues(settingsQuery.data));
+    }
+  }, [settingsQuery.data]);
+
   const saveMutation = useMutation({
-    mutationFn: ({ payload }: { section: string; payload: SettingsMap }) =>
+    mutationFn: ({ payload }: { tab: string; payload: Record<string, unknown> }) =>
       apiFetch<SettingsResponse>("/api/v1/admin/settings", {
         method: "PUT",
         body: { settings: payload },
       }),
     onSuccess: (_data, variables) => {
-      // Secrets are write-only: clear only the saved section's secret
-      // inputs, keep everything else (including other sections' typed
-      // secrets) so each section saves independently.
-      const section = SECTIONS.find((s) => s.titleKey === variables.section);
+      // Secrets are write-only: clear only the saved tab's secret inputs.
+      const tabDef = TABS.find((x) => x.id === variables.tab);
       setValues((prev) => {
-        const next: SettingsMap = { ...prev };
-        for (const f of section?.fields ?? []) {
-          if (f.secret) next[f.key] = null;
+        const next: Values = { ...prev };
+        for (const f of tabDef?.fields ?? []) {
+          if (f.kind === "secret") next[f.key] = "";
         }
         return next;
       });
-      setSavedSection(variables.section);
-      setFailedSection(null);
+      setSavedTab(variables.tab);
+      setSaveError(null);
       queryClient.invalidateQueries({ queryKey: ["platform-settings"] });
-      window.setTimeout(() => setSavedSection(null), 3000);
+      window.setTimeout(() => setSavedTab(null), 3000);
     },
-    onError: (_error, variables) => {
-      setFailedSection(variables.section);
+    onError: (error, variables) => {
+      // Show the server's field-specific message (it names the key).
+      setSaveError({
+        tab: variables.tab,
+        message: error instanceof ApiError ? error.message : t("common.error"),
+      });
+      setSavedTab(null);
     },
   });
 
-  // Seed non-secret fields from the server; secret fields always start empty.
-  React.useEffect(() => {
-    if (settingsQuery.data) {
-      const server = toMap(settingsQuery.data);
-      const next: SettingsMap = {};
-      for (const s of SECTIONS) {
-        for (const f of s.fields) {
-          if (!f.secret) next[f.key] = server[f.key] ?? null;
-        }
-      }
-      setValues(next);
-    }
-  }, [settingsQuery.data]);
-
-  // Each section saves on its own: the payload contains only that
-  // section's fields, so a save never depends on (or fails because of)
-  // any other section's values.
-  function handleSaveSection(section: SectionDef): void {
-    const payload: SettingsMap = {};
-    for (const f of section.fields) {
-      const v = values[f.key];
-      // Only send secrets when the operator actually typed a new value.
-      if (f.secret) {
-        if (v !== undefined && v !== null && v !== "") payload[f.key] = v;
-      } else if (v !== undefined && v !== null) {
-        // Unset fields have no DB row; sending null makes the backend
-        // reject the WHOLE save (400, all-or-nothing) and nothing
-        // persists — including freshly typed secrets. Omit them instead;
-        // clearing a field still sends "" and stores an empty string.
-        payload[f.key] = v;
-      }
-    }
-    setFailedSection(null);
-    saveMutation.mutate({ section: section.titleKey, payload });
+  function handleSave(tabDef: TabDef): void {
+    setSaveError(null);
+    saveMutation.mutate({ tab: tabDef.id, payload: buildPayload(tabDef, values) });
   }
+
+  function setValue(key: string, v: unknown): void {
+    setValues((prev) => ({ ...prev, [key]: v }));
+  }
+
+  function renderField(f: FieldDef): React.ReactElement {
+    const v = values[f.key];
+    if (f.kind === "flag") {
+      const flag = normalizeFlag(v);
+      return (
+        <div className="field" key={f.key}>
+          <label htmlFor={f.key}>{t(f.labelKey)}</label>
+          <select
+            id={f.key}
+            className="input"
+            value={flag === null ? "" : String(flag)}
+            onChange={(e) =>
+              setValue(f.key, e.target.value === "" ? null : e.target.value === "true")
+            }
+          >
+            <option value="">{t("settings.flagUnset")}</option>
+            <option value="true">{t("settings.flagOn")}</option>
+            <option value="false">{t("settings.flagOff")}</option>
+          </select>
+        </div>
+      );
+    }
+    if (f.kind === "localized") {
+      const obj = (v && typeof v === "object" ? (v as Record<string, unknown>) : {}) as Record<
+        string,
+        unknown
+      >;
+      const faText = typeof obj.fa === "string" ? obj.fa : typeof v === "string" ? v : "";
+      return (
+        <div className="field" key={f.key}>
+          <label htmlFor={f.key}>{t(f.labelKey)}</label>
+          <input
+            id={f.key}
+            className="input"
+            type="text"
+            autoComplete="off"
+            value={faText}
+            onChange={(e) => setValue(f.key, { ...obj, fa: e.target.value })}
+          />
+        </div>
+      );
+    }
+    if (f.kind === "json") {
+      return (
+        <div className="field" key={f.key}>
+          <label htmlFor={f.key}>{t(f.labelKey)}</label>
+          <textarea
+            id={f.key}
+            className="input"
+            dir="ltr"
+            rows={5}
+            autoComplete="off"
+            value={typeof v === "string" ? v : ""}
+            onChange={(e) => setValue(f.key, e.target.value)}
+          />
+          <span className="hint">{t("settings.walletsHint")}</span>
+        </div>
+      );
+    }
+    const isSecret = f.kind === "secret";
+    return (
+      <div className="field" key={f.key}>
+        <label htmlFor={f.key}>{t(f.labelKey)}</label>
+        <input
+          id={f.key}
+          className="input"
+          type={isSecret ? "password" : "text"}
+          autoComplete="off"
+          placeholder={isSecret ? t("settings.secretPlaceholder") : undefined}
+          value={typeof v === "string" || typeof v === "number" ? String(v) : ""}
+          onChange={(e) => setValue(f.key, e.target.value)}
+        />
+        {isSecret && <span className="hint">{t("settings.secretHint")}</span>}
+      </div>
+    );
+  }
+
+  const activeTab = TABS.find((x) => x.id === tab) ?? TABS[0];
 
   return (
     <div className="page" style={{ maxWidth: "900px" }}>
@@ -213,45 +371,43 @@ export default function Settings(): React.ReactElement {
 
       {settingsQuery.data && (
         <>
-          {SECTIONS.map((section) => (
-            <section className="panel" key={section.titleKey} aria-label={t(section.titleKey)}>
-              <div className="panel-head">
-                <h2>{t(section.titleKey)}</h2>
-              </div>
-              {section.fields.map((field) => (
-                <div className="field" key={field.key}>
-                  <label htmlFor={field.key}>{t(field.labelKey)}</label>
-                  <input
-                    id={field.key}
-                    className="input"
-                    type={field.secret ? "password" : "text"}
-                    autoComplete="off"
-                    placeholder={field.secret ? t("settings.secretPlaceholder") : undefined}
-                    value={values[field.key] ?? ""}
-                    onChange={(e) => setValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                  />
-                  {field.secret && <span className="hint">{t("settings.secretHint")}</span>}
-                </div>
-              ))}
-              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.75rem" }}>
-                <button
-                  type="button"
-                  className="btn-gold"
-                  onClick={() => handleSaveSection(section)}
-                  disabled={saveMutation.isPending}
-                >
-                  {saveMutation.isPending ? t("settings.saving") : t("settings.save")}
-                </button>
-                {savedSection === section.titleKey && <Badge tone="success">{t("settings.saved")}</Badge>}
-                {failedSection === section.titleKey && (
-                  <span className="form-error" style={{ marginBottom: 0 }}>
-                    {t("common.error")}
-                  </span>
-                )}
-              </div>
-            </section>
-          ))}
+          <div className="tabs" role="tablist" style={{ marginBottom: "1rem" }}>
+            {TABS.map((tabDef) => (
+              <button
+                key={tabDef.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === tabDef.id}
+                className={`tab${tab === tabDef.id ? " active" : ""}`}
+                onClick={() => setTab(tabDef.id)}
+              >
+                {t(tabDef.titleKey)}
+              </button>
+            ))}
+          </div>
 
+          <section className="panel" aria-label={t(activeTab.titleKey)}>
+            <div className="panel-head">
+              <h2>{t(activeTab.titleKey)}</h2>
+            </div>
+            {activeTab.fields.map((f) => renderField(f))}
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.75rem" }}>
+              <button
+                type="button"
+                className="btn-gold"
+                onClick={() => handleSave(activeTab)}
+                disabled={saveMutation.isPending}
+              >
+                {saveMutation.isPending ? t("settings.saving") : t("settings.save")}
+              </button>
+              {savedTab === activeTab.id && <Badge tone="success">{t("settings.saved")}</Badge>}
+              {saveError && saveError.tab === activeTab.id && (
+                <span className="form-error" style={{ marginBottom: 0 }}>
+                  {saveError.message}
+                </span>
+              )}
+            </div>
+          </section>
         </>
       )}
     </div>
