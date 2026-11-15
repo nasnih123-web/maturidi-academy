@@ -330,6 +330,32 @@ export function v2PageIndexForAyah(
   return firsts[lo - 1][2] - 1;
 }
 
+/** The printed-page range of one surah (0-based, inclusive), from
+    the index alone, plus whether the range's first page carries the
+    previous surah's tail and whether its last page carries the next
+    surah's head — the two neighbour-text loads a scrolling page
+    view needs. Null when the surah cannot be mapped (no ayahs, or
+    the index holds no entry for it). Pure. */
+export function v2SurahPageRange(
+  index: V2MushafIndex,
+  surah: number,
+  ayahCount: number,
+): { firstPage: number; lastPage: number; prevSurah: boolean; nextSurah: boolean } | null {
+  if (ayahCount < 1) return null;
+  const firstPage = v2PageIndexForAyah(index, surah, 1);
+  const lastPage = v2PageIndexForAyah(index, surah, ayahCount);
+  if (firstPage === null || lastPage === null) return null;
+  // The first page carries the previous surah exactly when the
+  // surah does NOT start the page: the page's first-ayah entry is
+  // an earlier surah. The last page carries the next surah exactly
+  // when the next surah's first ayah is on it.
+  const firstEntry = index.pageFirstAyahs.find(([, , p]) => p === firstPage + 1);
+  const prevSurah = surah > 1 && firstEntry !== undefined && firstEntry[0] < surah;
+  const nextSurah =
+    surah < 114 && v2PageIndexForAyah(index, surah + 1, 1) === lastPage;
+  return { firstPage, lastPage, prevSurah, nextSurah };
+}
+
 /** First ayah on the page (first text segment), or null for an empty page. */
 export function v2FirstAyahOfPage(page: V2Page): { surah: number; ayah: number } | null {
   for (const line of page.lines) {

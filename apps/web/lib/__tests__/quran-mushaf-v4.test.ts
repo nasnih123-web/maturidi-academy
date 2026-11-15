@@ -158,6 +158,54 @@ describe('loadV4PageGlyphs (stubbed fetch)', () => {
   });
 });
 
+describe('loadV4PageGlyphs: a failed fetch is not cached', () => {
+  it('a 404 then a served file refetches and returns the map', async () => {
+    const origFetch = globalThis.fetch;
+    try {
+      let calls = 0;
+      (globalThis as unknown as { fetch: unknown }).fetch = async (input: unknown) => {
+        const url = String(input);
+        calls += 1;
+        if (url.endsWith('/quran-mushaf-v4-glyphs/p601.json')) {
+          if (calls === 1) return { ok: false, json: async () => null };
+          return { ok: true, json: async () => ({ '23:1:1': 'GLYPH-X' }) };
+        }
+        return { ok: false, json: async () => null };
+      };
+      assert.equal(await loadV4PageGlyphs(601), null);
+      const map = await loadV4PageGlyphs(601);
+      assert.ok(map);
+      assert.equal(map?.get('23:1:1'), 'GLYPH-X');
+      assert.equal(calls, 2, 'the second call refetched instead of returning cached null');
+    } finally {
+      (globalThis as unknown as { fetch: unknown }).fetch = origFetch;
+    }
+  });
+
+  it('a thrown fetch then a served file refetches and returns the map', async () => {
+    const origFetch = globalThis.fetch;
+    try {
+      let calls = 0;
+      (globalThis as unknown as { fetch: unknown }).fetch = async (input: unknown) => {
+        const url = String(input);
+        calls += 1;
+        if (url.endsWith('/quran-mushaf-v4-glyphs/p602.json')) {
+          if (calls === 1) throw new Error('network down');
+          return { ok: true, json: async () => ({ '23:2:1': 'GLYPH-Y' }) };
+        }
+        return { ok: false, json: async () => null };
+      };
+      assert.equal(await loadV4PageGlyphs(602), null);
+      const map = await loadV4PageGlyphs(602);
+      assert.ok(map);
+      assert.equal(map?.get('23:2:1'), 'GLYPH-Y');
+      assert.equal(calls, 2, 'the second call refetched instead of returning cached null');
+    } finally {
+      (globalThis as unknown as { fetch: unknown }).fetch = origFetch;
+    }
+  });
+});
+
 describe('split output: p293 file on disk', () => {
   it('p293 holds 138 entries incl. the Basmalah words, all non-empty', (t) => {
     const raw = readFirst([

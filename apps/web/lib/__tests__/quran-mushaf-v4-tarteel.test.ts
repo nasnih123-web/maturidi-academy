@@ -207,12 +207,17 @@ describe('QuranHifzStudy — Basmalah SVG wiring', () => {
     assert.doesNotMatch(src, /BASMALA_QCF_TEXT/);
   });
 
-  it('the nass-mode Basmalah still uses word spans (no SVG there)', () => {
+  it('the nass scroll Basmalah is the SVG (shared with flip mode); only the V2-unavailable fallback keeps word spans', () => {
     const src = readStudy();
-    const nassAt = src.indexOf("displayMode === 'nass'");
-    assert.ok(nassAt > 0);
-    const svgAt = src.indexOf('basmalah.svg');
-    assert.ok(svgAt > 0 && svgAt < nassAt, 'SVG reference must be before (not inside) the nass block');
+    // One SVG reference total, in renderPageSection, shared by flip
+    // mode and the nass scroll (2026-11-16: nass is scrolling pages now).
+    const uses = src.match(/src="\/quran\/surah-headers\/basmalah\.svg"/g) ?? [];
+    assert.equal(uses.length, 1, 'the SVG must be rendered exactly once (renderPageSection, shared)');
+    const scrollAt = src.indexOf('<HifzNassScroll');
+    assert.ok(scrollAt > 0, 'nass branch renders HifzNassScroll');
+    // The fallback plain-text nass (V2 unavailable) still renders
+    // the Basmalah as word spans.
+    assert.match(src, /nass-b-\$\{i\}/);
   });
 });
 

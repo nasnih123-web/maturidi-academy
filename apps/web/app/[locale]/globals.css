@@ -3686,6 +3686,10 @@ body:has(.quran-hifz-study .recitation-toolbar) .site-footer {
    word spacing is unchanged (the 0.25em word margins stay); mushaf
    lines are unaffected (they are not inside .hifz-nass). */
 .quran-hifz-study .hifz-nass p { overflow-wrap: anywhere; }
+/* Nass scroll (2026-11-16): the page sections inside the scroll are
+   real mushaf pages, not flowing text — their lines keep the flip
+   mode's breaking (no anywhere-wrapping inside words). */
+.quran-hifz-study .hifz-nass-scroll .hifz-line-page p { overflow-wrap: normal; }
 /* Tanzil text credit — hidden in hifz mushaf mode only (user decision
    2026-11-11 «پنهان کن»): in mushaf mode the credit <p> (a sibling
    after QuranReader in page.tsx) paints over mushaf line 2 (measured

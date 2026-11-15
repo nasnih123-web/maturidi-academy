@@ -292,6 +292,15 @@ function ensureMushafFontWith(
   } catch {
     return Promise.resolve(false);
   }
+  // A timed-out or failed load must NOT stick: the raced promise
+  // resolves false while face.load() keeps running in the
+  // background and adds the face when it lands, so a later call
+  // retries (and finds it ready via isFontReady above) instead of
+  // returning the cached false forever. Without this, one slow
+  // fetch over a slow link pins the page to Tanzil text until the
+  // user leaves and comes back (2026-11-16: the first page showed
+  // glyphs while later pages stayed text after peeking across a
+  // page turn).
   const promise: Promise<boolean> = Promise.race([
     face
       .load()
@@ -303,7 +312,10 @@ function ensureMushafFontWith(
     new Promise<boolean>((resolve) => {
       window.setTimeout(() => resolve(false), timeoutMs);
     }),
-  ]);
+  ]).then((ok) => {
+    if (!ok) cache.delete(source.family);
+    return ok;
+  });
   cache.set(source.family, { face, promise });
   // Evict oldest families past the cap. No family is pinned: with
   // per-page fonts every page has its own family, so the oldest

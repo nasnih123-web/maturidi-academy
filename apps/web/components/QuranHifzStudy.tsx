@@ -138,6 +138,7 @@ import { HifzSettingsSheet } from './hifz-study/HifzSettingsSheet';
 import { HifzErrorSheet } from './hifz-study/HifzErrorSheet';
 import { HifzDisplaySheet, type HifzDisplayMode } from './hifz-study/HifzDisplaySheet';
 import { HifzStudyHeader } from './hifz-study/HifzStudyHeader';
+import { HifzNassScroll } from './hifz-study/HifzNassScroll';
 import { HifzSearchSheet } from './hifz-study/HifzSearchSheet';
 import { QuranPickerSheet } from './QuranPickerSheet';
 import type { QuranSearchLabels } from './QuranSearchBox';
@@ -154,6 +155,7 @@ import {
   v2FirstAyahOfSurahOnPage,
   v2PageAyahs,
   v2PageIndexForAyah,
+  v2SurahPageRange,
   type V2MushafIndex,
   type V2Page,
 } from '@/lib/quran-mushaf-v2';
@@ -193,6 +195,7 @@ import type {
   HifzGrade,
   HifzStatus,
   WallWord,
+  HifzV4PageFont,
 } from '@/lib/hifz-study-types';
 // Re-exported so the single consumer (QuranReader) keeps importing it from here.
 export type { HifzLabels } from '@/lib/hifz-study-types';
@@ -919,6 +922,13 @@ export function QuranHifzStudy({
   // in renderLineWord keys on this boolean, never on the hook —
   // otherwise a timed-out font would paint tofu PUA.
   const [v4FontLoaded, setV4FontLoaded] = useState<boolean | undefined>(undefined);
+  // Retry tick + per-page retry counts for the V4 load below: a slow
+  // font or glyph fetch must upgrade the page from text to glyphs
+  // once it lands, not pin it to text (2026-11-16). Bounded per
+  // page (3) so a genuinely missing file cannot retry forever; a
+  // page change always re-attempts through the load effect.
+  const [v4RetryTick, setV4RetryTick] = useState(0);
+  const v4RetryCountsRef = useRef(new Map<number, number>());
   useEffect(() => {
     let cancelled = false;
     loadV2Index().then((index) => {
@@ -1235,6 +1245,15 @@ export function QuranHifzStudy({
   }, [useV2, activeV2Page, v2Index, pageLines, textsBySurah, surah, wallAyahs, v4Glyphs]);
   const { placedAyahs, renderLines, usedV2 } = pageRender;
 
+  // The nass scroll's page range (2026-11-16): the printed pages
+  // holding this surah, from the V2 index alone. Null while the
+  // index loads or when V2 is unavailable — the scroll falls back
+  // to the plain-text nass then.
+  const nassRange = useMemo(
+    () => (useV2 && v2Index ? v2SurahPageRange(v2Index, surah, ayahCount) : null),
+    [useV2, v2Index, surah, ayahCount],
+  );
+
   // Phase 3: a V2 page spanning a surah boundary needs the neighbor
   // surah's texts too (the study surah alone is not enough). Load
   // them into the same cache; until they arrive the page renders
@@ -1243,6 +1262,15 @@ export function QuranHifzStudy({
   useEffect(() => {
     if (!v2Index || !activeV2Page) return;
     const needed = new Set(v2PageAyahs(activeV2Page).map((r) => Number(r.split(':')[0])));
+    // The nass scroll spans the whole surah, so its first and last
+    // pages may need both neighbours (the header page of a spill
+    // surah carries the previous surah's tail; the last page may
+    // carry the next surah's head). Load both when the scroll is
+    // on — one small cached fetch each, never a broken page.
+    if (displayMode === 'nass' && nassRange) {
+      if (surah > 1) needed.add(surah - 1);
+      if (surah < 114) needed.add(surah + 1);
+    }
     const missing = [...needed].filter((s) => s !== surah && textsBySurah[s] === undefined);
     if (missing.length === 0) return;
     let cancelled = false;
@@ -1263,7 +1291,7 @@ export function QuranHifzStudy({
     return () => {
       cancelled = true;
     };
-  }, [v2Index, activeV2Page, surah, textsBySurah]);
+  }, [v2Index, activeV2Page, surah, textsBySurah, displayMode, nassRange]);
 
   // Translation mode (Tarteel sheet): when it is open, every active
   // edition for the current surah must be loaded. The default
@@ -2391,20 +2419,45 @@ export function QuranHifzStudy({
   // missing) or a failed font load falls back to Tanzil text; the
   // font promise is shared with the useMushafFontReadyFor hook
   // above (same per-page cache), so no double load.
+  // Retry (2026-11-16): a slow load must NOT stick — while the page
+  // is still active, a failed glyph map or font is retried after a
+  // short delay (the loaders evict failed entries, and a background
+  // font load that lands meanwhile is found ready), so the page
+  // upgrades from text to glyphs instead of staying text to the end.
+  // Bounded to 3 retries per page; a page change always re-attempts.
+  // The next page's assets preload here too, so a page turn usually
+  // finds them already loaded.
   useEffect(() => {
     if (!useV2 || activePageIndex === null) return;
     const page = activePageIndex + 1;
     let cancelled = false;
-    loadV4PageGlyphs(page).then((glyphs) => {
-      if (!cancelled) setV4Glyphs(glyphs);
-    });
-    ensureMushafFontFor(qcfV4Provider, page).then((ok) => {
-      if (!cancelled) setV4FontLoaded(ok);
+    let retryTimer: number | undefined;
+    if (page < 604) {
+      void loadV4PageGlyphs(page + 1);
+      void ensureMushafFontFor(qcfV4Provider, page + 1);
+    }
+    void Promise.all([
+      loadV4PageGlyphs(page),
+      ensureMushafFontFor(qcfV4Provider, page),
+    ]).then(([glyphs, ok]) => {
+      if (cancelled) return;
+      setV4Glyphs(glyphs);
+      setV4FontLoaded(ok);
+      if (
+        (glyphs === null || ok === false) &&
+        (v4RetryCountsRef.current.get(page) ?? 0) < 3
+      ) {
+        v4RetryCountsRef.current.set(page, (v4RetryCountsRef.current.get(page) ?? 0) + 1);
+        retryTimer = window.setTimeout(() => {
+          if (!cancelled) setV4RetryTick((t) => t + 1);
+        }, 2500);
+      }
     });
     return () => {
       cancelled = true;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
     };
-  }, [useV2, activePageIndex]);
+  }, [useV2, activePageIndex, v4RetryTick]);
   // Clear both on page change (reader pattern): a stale page's map
   // or font state must never render under the new page. Runs after
   // the load effect in the same commit; the new page's fetch resolves
@@ -2532,8 +2585,8 @@ export function QuranHifzStudy({
   // call, no .hifz-tj-* spans: the COLR palette colours the glyph.
   // Callers must already have decided the word may paint a glyph
   // (shouldUseV4Glyph + v4FontLoaded === true).
-  const renderV4Glyph = (slot: LineWordSlot) => (
-    <span style={{ fontFamily: v4FontFamily ?? undefined }}>{slot.glyph}</span>
+  const renderV4Glyph = (slot: LineWordSlot, family?: string | null) => (
+    <span style={{ fontFamily: (family ?? v4FontFamily) ?? undefined }}>{slot.glyph}</span>
   );
   // The eye's unit show / hide applies in practice mode in every
   // display mode (round 2, user 2026-11-12: mushaf, nass and
@@ -2566,7 +2619,14 @@ export function QuranHifzStudy({
       ? containing.juz === eyeScope.target
       : containing.hizb === eyeScope.target;
   };
-  const renderLineWord = (slot: LineWordSlot, key: string) => {
+  const renderLineWord = (slot: LineWordSlot, key: string, font?: HifzV4PageFont) => {
+    // Per-page V4 font state: a scrolling section passes its own
+    // page's state (glyph strings are page-relative PUA codes, so
+    // another page's family would paint wrong glyphs); the
+    // flip-mode caller passes nothing and the active page's closure
+    // values apply.
+    const fontLoaded = font?.loaded ?? v4FontLoaded;
+    const fontFamily = font?.family ?? v4FontFamily;
     // Listen mode: the word the reciter is currently on.
     const isListenNow =
       studyMode === 'listen' &&
@@ -2582,7 +2642,7 @@ export function QuranHifzStudy({
     // state for another surah's words.
     if (slot.displayOnly) {
       const useGlyphDisplay =
-        v4FontLoaded === true &&
+        fontLoaded === true &&
         shouldUseV4Glyph(slot.glyph, {
           concealed: false,
           newestLive: false,
@@ -2600,7 +2660,7 @@ export function QuranHifzStudy({
           data-word-key={slot.index >= 0 ? `${slot.surah}:${slot.ayah}:${slot.index}` : undefined}
           data-qul-id={slot.qulId}
         >
-          {useGlyphDisplay ? renderV4Glyph(slot) : renderTajweedText(slot.text)}
+          {useGlyphDisplay ? renderV4Glyph(slot, fontFamily) : renderTajweedText(slot.text)}
           {slot.pauseAfter ? (
             <span className="hifz-word-pause" aria-hidden="true">
               {slot.pauseAfter}
@@ -2645,7 +2705,7 @@ export function QuranHifzStudy({
         // their V4 glyph; the current word stays text so the green
         // highlight + white ink reads as "current word".
         const useGlyphListen =
-          v4FontLoaded === true &&
+          fontLoaded === true &&
           shouldUseV4Glyph(slot.glyph, {
             concealed: false,
             newestLive: false,
@@ -2664,7 +2724,7 @@ export function QuranHifzStudy({
             data-word-key={slot.index >= 0 ? `${slot.surah}:${slot.ayah}:${slot.index}` : undefined}
             data-qul-id={slot.qulId}
           >
-            {useGlyphListen ? renderV4Glyph(slot) : renderTajweedText(slot.text)}
+            {useGlyphListen ? renderV4Glyph(slot, fontFamily) : renderTajweedText(slot.text)}
             {slot.pauseAfter ? (
               <span className="hifz-word-pause" aria-hidden="true">
                 {slot.pauseAfter}
@@ -2702,7 +2762,7 @@ export function QuranHifzStudy({
           );
         }
         const useGlyphShown =
-          v4FontLoaded === true &&
+          fontLoaded === true &&
           shouldUseV4Glyph(slot.glyph, {
             concealed: false,
             newestLive: false,
@@ -2716,7 +2776,7 @@ export function QuranHifzStudy({
             data-word-key={eyeKey}
             data-qul-id={slot.qulId}
           >
-            {useGlyphShown ? renderV4Glyph(slot) : renderTajweedText(slot.text)}
+            {useGlyphShown ? renderV4Glyph(slot, fontFamily) : renderTajweedText(slot.text)}
             {slot.pauseAfter ? (
               <span className="hifz-word-pause" aria-hidden="true">
                 {slot.pauseAfter}
@@ -2730,7 +2790,7 @@ export function QuranHifzStudy({
       // layout is identical either way, and the glyph keeps the
       // hidden slot's true printed width.
       const useGlyphHidden =
-        v4FontLoaded === true &&
+        fontLoaded === true &&
         shouldUseV4Glyph(slot.glyph, {
           concealed: false,
           newestLive: false,
@@ -2745,7 +2805,7 @@ export function QuranHifzStudy({
           data-word-key={slot.index >= 0 ? `${slot.surah}:${slot.ayah}:${slot.index}` : undefined}
           data-qul-id={slot.qulId}
         >
-          {useGlyphHidden ? renderV4Glyph(slot) : slot.text}
+          {useGlyphHidden ? renderV4Glyph(slot, fontFamily) : slot.text}
           {slot.pauseAfter ? (
             <span className="hifz-word-pause" aria-hidden="true">
               {slot.pauseAfter}
@@ -2850,7 +2910,7 @@ export function QuranHifzStudy({
     // because their signal IS the ink colour, and the listen-now
     // word stays text so the green highlight reads.
     const useGlyph =
-      v4FontLoaded === true &&
+      fontLoaded === true &&
       shouldUseV4Glyph(slot.glyph, {
         concealed: false,
         newestLive: isNewestLive,
@@ -2879,7 +2939,7 @@ export function QuranHifzStudy({
           }}
           title={labels.practiceWordHint}
         >
-          {useGlyph ? renderV4Glyph(slot) : renderTajweedText(slot.text)}
+          {useGlyph ? renderV4Glyph(slot, fontFamily) : renderTajweedText(slot.text)}
         </button>
         {slot.pauseAfter ? (
           <span className="hifz-word-pause" aria-hidden="true">
@@ -3156,7 +3216,14 @@ export function QuranHifzStudy({
   // Tarteel (2026-11-08): in mushaf mode the section takes the
   // swipe handlers (page turning); nass/translation render their
   // own scrolling views and never use this section.
-  const renderPageSection = (pIdx: number, lines: RenderLine[], key: string) => (
+  // font: one scrolling section's own page state (see renderLineWord);
+  // the flip-mode caller passes nothing and the active page applies.
+  const renderPageSection = (
+    pIdx: number,
+    lines: RenderLine[],
+    key: string,
+    font?: HifzV4PageFont,
+  ) => (
     <section
       key={key}
       className="hifz-line-page"
@@ -3284,11 +3351,11 @@ export function QuranHifzStudy({
                   // the SVG rosette whenever the slot has no glyph
                   // (old-lines fallback path, missing V4 key) or
                   // the V4 font is not loaded.
-                  slot.glyph !== undefined && v4FontLoaded === true ? (
+                  slot.glyph !== undefined && (font?.loaded ?? v4FontLoaded) === true ? (
                     <span
                       key={`m${si}`}
                       className="hifz-line-marker hifz-line-marker-glyph"
-                      style={{ fontFamily: v4FontFamily ?? undefined }}
+                      style={{ fontFamily: (font?.family ?? v4FontFamily) ?? undefined }}
                       aria-hidden="true"
                     >
                       {slot.glyph}
@@ -3301,7 +3368,7 @@ export function QuranHifzStudy({
                     {slot.text}
                   </span>
                 ) : (
-                  renderLineWord(slot, `${line.key}-${si}`)
+                  renderLineWord(slot, `${line.key}-${si}`, font)
                 );
               // Wave 2: a real space between slots (in the page's
               // QCF family, ~1px) so text-align-last: justify can
@@ -3310,13 +3377,13 @@ export function QuranHifzStudy({
               // flushes the void 93px -> 1px). Only while V4 glyphs
               // are active: in the Uthmanic fallback a space is
               // ~4px and would overflow the tightest lines.
-              if (si === 0 || v4FontLoaded !== true) return [node];
+              if (si === 0 || (font?.loaded ?? v4FontLoaded) !== true) return [node];
               return [
                 <span
                   key={`sep${si}`}
                   className="hifz-line-sep"
                   aria-hidden="true"
-                  style={{ fontFamily: v4FontFamily ?? undefined }}
+                  style={{ fontFamily: (font?.family ?? v4FontFamily) ?? undefined }}
                 >
                   {' '}
                 </span>,
@@ -3719,47 +3786,67 @@ export function QuranHifzStudy({
         displayMode === 'mushaf' &&
         (!usedV2 || (v4Glyphs !== undefined && v4FontReady)) &&
         renderPageSection(activePageIndex ?? 0, renderLines, 'mushaf')}
-      {/* Nass (Tarteel): the whole surah as scrolling Uthmani text.
-          Same slots as the page (renderLineWord), so hide/reveal,
-          peek (›/») and grades work identically; only the layout
-          differs. The Basmalah is its own centred line (surahs 1
-          and 9 have none); ayah 1's words follow after it. Needs
-          only the surah texts, never the V2 page. */}
+      {/* Nass (2026-11-16, user order): the whole surah as scrolling
+          mushaf pages — one full page section per printed page
+          (surah-header frame + page footer), glyphs exactly like
+          flip mode, the Basmalah as the SVG glyph on its page. Eye,
+          peek, grades and tap-to-practice come free through
+          renderPageSection/renderLineWord. While the V2 index loads
+          the view waits; when V2 is unavailable it keeps the old
+          plain-text nass below as the honest fallback. */}
       {textsReady && ayahCount > 0 && displayMode === 'nass' && (
-        <div className="hifz-nass" dir="rtl" aria-label={labels.displayNass}>
-          {surah !== 1 && surah !== 9 && (
-            <p className="hifz-line hifz-line-basmala" dir="rtl">
-              {(textsBySurah[surah]?.[1] ?? '')
-                .split(/\s+/)
-                .filter(Boolean)
-                .slice(0, 4)
-                .map((text, i) => {
-                  const written = nassWrittenByKey.get(`1:${i}`) ?? null;
-                  return renderLineWord(
-                    { kind: 'word', surah, ayah: 1, index: i, text, written, hidden: written === null },
-                    `nass-b-${i}`,
-                  );
-                })}
-            </p>
-          )}
-          {ayahNumbers.map((a) => {
-            const words = (textsBySurah[surah]?.[a] ?? '').split(/\s+/).filter(Boolean);
-            const start = a === 1 && surah !== 1 && surah !== 9 ? 4 : 0;
-            return (
-              <p key={a} className="hifz-nass-ayah" dir="rtl">
-                {words.slice(start).map((text, k) => {
-                  const i = start + k;
-                  const written = nassWrittenByKey.get(`${a}:${i}`) ?? null;
-                  return renderLineWord(
-                    { kind: 'word', surah, ayah: a, index: i, text, written, hidden: written === null },
-                    `nass-${a}-${i}`,
-                  );
-                })}
-                <HifzRosette digit={toArabicIndic(a)} />
+        useV2 && v2Index && nassRange ? (
+          <HifzNassScroll
+            surah={surah}
+            firstPage={nassRange.firstPage}
+            lastPage={nassRange.lastPage}
+            v2Index={v2Index}
+            textsBySurah={textsBySurah}
+            wallAyahs={wallAyahs}
+            activePageIndex={activePageIndex}
+            loadingLabel={labels.loadingPage}
+            failedLabel={labels.svgFailedNote}
+            ariaLabel={labels.displayNass}
+            renderPageSection={renderPageSection}
+          />
+        ) : v2Index === undefined ? (
+          <p className="hifz-line-loading">{labels.loadingPage}</p>
+        ) : (
+          <div className="hifz-nass" dir="rtl" aria-label={labels.displayNass}>
+            {surah !== 1 && surah !== 9 && (
+              <p className="hifz-line hifz-line-basmala" dir="rtl">
+                {(textsBySurah[surah]?.[1] ?? '')
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .slice(0, 4)
+                  .map((text, i) => {
+                    const written = nassWrittenByKey.get(`1:${i}`) ?? null;
+                    return renderLineWord(
+                      { kind: 'word', surah, ayah: 1, index: i, text, written, hidden: written === null },
+                      `nass-b-${i}`,
+                    );
+                  })}
               </p>
-            );
-          })}
-        </div>
+            )}
+            {ayahNumbers.map((a) => {
+              const words = (textsBySurah[surah]?.[a] ?? '').split(/\s+/).filter(Boolean);
+              const start = a === 1 && surah !== 1 && surah !== 9 ? 4 : 0;
+              return (
+                <p key={a} className="hifz-nass-ayah" dir="rtl">
+                  {words.slice(start).map((text, k) => {
+                    const i = start + k;
+                    const written = nassWrittenByKey.get(`${a}:${i}`) ?? null;
+                    return renderLineWord(
+                      { kind: 'word', surah, ayah: a, index: i, text, written, hidden: written === null },
+                      `nass-${a}-${i}`,
+                    );
+                  })}
+                  <HifzRosette digit={toArabicIndic(a)} />
+                </p>
+              );
+            })}
+          </div>
+        )
       )}
       {/* Translation (Tarteel): the whole surah as scrolling
           translation, read-only. One block per ayah, one paragraph
