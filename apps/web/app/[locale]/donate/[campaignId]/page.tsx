@@ -2,15 +2,15 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { getCampaign, toCampaignView, formatToman, MIN_DONATE_AMOUNT } from '@/lib/finance';
-import type { DonateFlowLabels } from '@/components/finance/DonateFlow';
-import type { ManualDonateLabels } from '@/components/finance/ManualDonate';
+import type { DonateFormLabels } from '@/components/finance/DonateForm';
+import type { ManualDonateLabels } from '@/components/finance/ManualDonateForm';
+import type { DonatePaymentLabels } from '@/components/finance/DonatePayment';
 import '../finance.css';
-import { DonateFlow } from '@/components/finance/DonateFlowLazy';
-import { ManualDonate } from '@/components/finance/ManualDonateLazy';
+import { DonatePayment } from '@/components/finance/DonatePaymentLazy';
 
-// Code-split: the interactive form + hook never enters the shared bundle
-// (homepage First Load JS budget). SSR renders the campaign summary; the
-// form hydrates client-side.
+// Code-split: the interactive payment section + hooks never enter the
+// shared bundle (homepage First Load JS budget). SSR renders the
+// campaign summary; the payment section hydrates client-side.
 
 export async function generateMetadata({
   params,
@@ -29,13 +29,15 @@ export async function generateMetadata({
 }
 
 /**
- * Donate flow (Phase 15).
+ * Donate page (Phase 15; unified payment section).
  *
  * Thin RSC shell: server-fetches the campaign (GET
  * /api/v1/finance/campaigns/{id}) for the summary header and localized
- * labels, then mounts the code-split DonateFlow. The idempotency key is
- * generated once per form session inside useDonate and reused on resubmit —
- * the anti-double-charge guarantee.
+ * labels, then mounts the code-split DonatePayment section — one panel
+ * with rial (gateway / card-to-card) and dollar (crypto / PayPal)
+ * branches; only server-published methods render. The idempotency key
+ * is generated once per form session inside useDonate and reused on
+ * resubmit — the anti-double-charge guarantee.
  */
 export default async function DonateCampaignPage({
   params,
@@ -56,7 +58,7 @@ export default async function DonateCampaignPage({
   }
   const view = toCampaignView(campaign, locale, currencyLabel);
 
-  const labels: DonateFlowLabels = {
+  const labels: DonateFormLabels = {
     amountTitle: t('amountTitle'),
     customAmountLabel: t('customAmountLabel'),
     customAmountPlaceholder: t('customAmountPlaceholder'),
@@ -70,7 +72,6 @@ export default async function DonateCampaignPage({
     redirecting: t('redirecting'),
     secureNote: t('secureNote'),
     oneTimeNote: t('oneTimeNote'),
-    campaignSummary: t('campaignSummary'),
   };
 
   const manualLabels: ManualDonateLabels = {
@@ -98,25 +99,35 @@ export default async function DonateCampaignPage({
     errorGeneric: t('manualErrorGeneric'),
   };
 
+  const payLabels: DonatePaymentLabels = {
+    payTitle: t('payTitle'),
+    branchRial: t('branchRial'),
+    branchUsd: t('branchUsd'),
+    onlineTitle: t('onlineMethodTitle'),
+  };
+
   return (
     <div className="fin-page">
       <div className="fin-page-inner fin-narrow">
         <h1 className="fin-title">{t('donateTo', { title: view.title })}</h1>
         <p className="fin-subtitle">{t('donateSubtitle')}</p>
-        <DonateFlow
+        <div className="fin-summary" aria-label={t('campaignSummary')}>
+          <p className="fin-summary-title">{view.title}</p>
+          <p className="fin-summary-amounts">
+            <span>{view.raisedLabel}</span>
+            <span className="fin-of"> / </span>
+            <span>{view.goalLabel}</span>
+            <span className="fin-pct">{view.progressLabel}</span>
+          </p>
+        </div>
+        <DonatePayment
           campaign={campaign}
           campaignTitle={view.title}
-          raisedLabel={view.raisedLabel}
-          goalLabel={view.goalLabel}
-          progressLabel={view.progressLabel}
+          locale={locale}
           currencySuffix={currencyLabel}
-          locale={locale}
-          labels={labels}
-        />
-        <ManualDonate
-          campaignId={campaign.id}
-          locale={locale}
-          labels={manualLabels}
+          flowLabels={labels}
+          manualLabels={manualLabels}
+          payLabels={payLabels}
         />
         <p className="fin-back">
           <a className="fin-link" href={`/${locale}/donate`}>
