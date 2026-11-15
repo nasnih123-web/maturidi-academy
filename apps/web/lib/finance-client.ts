@@ -162,6 +162,152 @@ export async function downloadReceiptPdf(donationId: string, accessToken: string
   return res.blob();
 }
 
+/* ------------------------------------------------------------------ */
+/* روش‌های حمایت + حمایت دستی (کارت‌به‌کارت / کریپتو / PayPal)          */
+/* ------------------------------------------------------------------ */
+
+export interface LocalizedText {
+  fa: string;
+  ar: string;
+  en: string;
+}
+
+export interface CryptoWallet {
+  currency: string;
+  network: string;
+  address: string;
+}
+
+export interface DonationMethod {
+  method: 'online' | 'card' | 'crypto' | 'paypal';
+  title: LocalizedText;
+  instructions: LocalizedText | null;
+  currency: string | null;
+  gateways: string[];
+  cardNumber: string | null;
+  cardHolder: string | null;
+  wallets: CryptoWallet[];
+  paypalAccount: string | null;
+}
+
+/**
+ * GET /api/v1/finance/donation-methods — only methods that are enabled
+ * AND fully configured server-side are returned; a disabled method is
+ * simply absent (never rendered, never submittable).
+ */
+export async function getDonationMethods(): Promise<DonationMethod[]> {
+  let res: Response;
+  try {
+    res = await fetch(`${apiBase()}/api/v1/finance/donation-methods`, {
+      headers: { Accept: 'application/json' },
+    });
+  } catch (err) {
+    throw new DonateApiError(
+      `donation-methods unreachable: ${err instanceof Error ? err.message : String(err)}`,
+      0,
+    );
+  }
+  if (!res.ok) {
+    throw new DonateApiError(`GET /api/v1/finance/donation-methods → ${res.status}`, res.status);
+  }
+  const body = (await res.json()) as { methods?: unknown[] };
+  const list = Array.isArray(body.methods) ? body.methods : [];
+  return list.map((raw) => {
+    const o = (raw ?? {}) as Record<string, unknown>;
+    const lt = (v: unknown): LocalizedText | null =>
+      v && typeof v === 'object'
+        ? {
+            fa: String((v as Record<string, unknown>).fa ?? ''),
+            ar: String((v as Record<string, unknown>).ar ?? ''),
+            en: String((v as Record<string, unknown>).en ?? ''),
+          }
+        : null;
+    return {
+      method: (typeof o.method === 'string' ? o.method : 'online') as DonationMethod['method'],
+      title: lt(o.title) ?? { fa: '', ar: '', en: '' },
+      instructions: lt(o.instructions),
+      currency: typeof o.currency === 'string' ? o.currency : null,
+      gateways: Array.isArray(o.gateways) ? (o.gateways as string[]) : [],
+      cardNumber: typeof o.card_number === 'string' ? o.card_number : null,
+      cardHolder: typeof o.card_holder === 'string' ? o.card_holder : null,
+      wallets: Array.isArray(o.wallets)
+        ? (o.wallets as Record<string, unknown>[]).map((w) => ({
+            currency: String(w.currency ?? ''),
+            network: String(w.network ?? ''),
+            address: String(w.address ?? ''),
+          }))
+        : [],
+      paypalAccount: typeof o.paypal_account === 'string' ? o.paypal_account : null,
+    };
+  });
+}
+
+export interface ManualDonationRequest {
+  method: 'card' | 'crypto' | 'paypal';
+  /** Whole units of the method currency (IRR for card — caller converts). */
+  amount: number;
+  campaignId?: string;
+  donorName?: string;
+  proofText?: string;
+  walletCurrency?: string;
+  walletNetwork?: string;
+  receiptFile?: File | null;
+}
+
+export interface ManualDonationResult {
+  id: string;
+  status: string;
+}
+
+/**
+ * POST /api/v1/finance/donate/manual (multipart) — records the donation
+ * as PENDING; it is finalised only after an admin reviews the proof in
+ * the CRM. Throws DonateApiError on non-2xx (403 = method disabled).
+ */
+export async function submitManualDonation(req: ManualDonationRequest): Promise<ManualDonationResult> {
+  const fd = new FormData();
+  fd.set('method', req.method);
+  fd.set('amount', String(req.amount));
+  if (req.campaignId) fd.set('campaign_id', req.campaignId);
+  if (req.donorName?.trim()) fd.set('donor_name', req.donorName.trim());
+  if (req.proofText?.trim()) fd.set('proof_text', req.proofText.trim());
+  if (req.walletCurrency) fd.set('wallet_currency', req.walletCurrency);
+  if (req.walletNetwork) fd.set('wallet_network', req.walletNetwork);
+  if (req.receiptFile) fd.set('receipt', req.receiptFile);
+  let res: Response;
+  try {
+    res = await fetch(`${apiBase()}/api/v1/finance/donate/manual`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+      body: fd,
+    });
+  } catch (err) {
+    throw new DonateApiError(
+      `manual donate unreachable: ${err instanceof Error ? err.message : String(err)}`,
+      0,
+    );
+  }
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const b = (await res.json()) as Record<string, unknown>;
+      const e = b.error as Record<string, unknown> | undefined;
+      detail = typeof e?.message === 'string' ? e.message : '';
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new DonateApiError(
+      `POST /api/v1/finance/donate/manual → ${res.status}${detail ? `: ${detail}` : ''}`,
+      res.status,
+    );
+  }
+  const o = (await res.json()) as Record<string, unknown>;
+  return {
+    id: typeof o.id === 'string' ? o.id : '',
+    status: typeof o.status === 'string' ? o.status : 'pending',
+  };
+}
+
 /** Generate a fresh idempotency key (UUID v4, crypto-backed). */
 export function generateIdempotencyKey(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {

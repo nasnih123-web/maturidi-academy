@@ -445,6 +445,111 @@ export function useGatewayStatus() {
   });
 }
 
+/* ------------------------------------------------------------------ */
+/* حمایت دستی (کارت‌به‌کارت / کریپتو / PayPal) — بازبینی در CRM          */
+/* ------------------------------------------------------------------ */
+
+export type ManualMethod = "card" | "crypto" | "paypal";
+export type ManualStatus = "pending" | "approved" | "rejected";
+
+export interface ManualDonation {
+  id: string;
+  intent_id: string;
+  method: ManualMethod;
+  status: ManualStatus;
+  amount: number;
+  currency: string;
+  campaign_id: string | null;
+  donor_name: string | null;
+  proof_text: string | null;
+  has_proof_image: boolean;
+  wallet_label: string | null;
+  review_note: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+function parseManualDonation(raw: unknown): ManualDonation {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const m = asStr(r.method);
+  const st = asStr(r.status);
+  return {
+    id: asStr(r.id),
+    intent_id: asStr(r.intent_id),
+    method: m === "crypto" || m === "paypal" ? m : "card",
+    status: st === "approved" || st === "rejected" ? st : "pending",
+    amount: asNum(r.amount),
+    currency: asStr(r.currency, "IRR").toUpperCase(),
+    campaign_id: typeof r.campaign_id === "string" ? r.campaign_id : null,
+    donor_name: typeof r.donor_name === "string" ? r.donor_name : null,
+    proof_text: typeof r.proof_text === "string" ? r.proof_text : null,
+    has_proof_image: r.has_proof_image === true,
+    wallet_label: typeof r.wallet_label === "string" ? r.wallet_label : null,
+    review_note: typeof r.review_note === "string" ? r.review_note : null,
+    reviewed_at: typeof r.reviewed_at === "string" ? r.reviewed_at : null,
+    created_at: asStr(r.created_at),
+  };
+}
+
+/** Cursor-paginated manual donations, optionally filtered by review status. */
+export function useManualDonations(
+  status: ManualStatus | null,
+  cursor: string | null,
+  limit = 25,
+) {
+  return useQuery({
+    queryKey: [QK, "manual-donations", status, cursor, limit],
+    queryFn: async (): Promise<{ items: ManualDonation[]; nextCursor: string | null }> => {
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (status) params.set("status", status);
+      if (cursor) params.set("cursor", cursor);
+      const raw = await apiFetch<unknown>(`${BASE}/manual-donations?${params.toString()}`);
+      return { items: itemsOf(raw, parseManualDonation), nextCursor: cursorOf(raw) };
+    },
+    retry: false,
+    staleTime: 15_000,
+  });
+}
+
+/** Approve (→ server finalises Donation/Ledger) or reject a manual donation. */
+export function useReviewManualDonation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      id: string;
+      approve: boolean;
+      note?: string;
+    }): Promise<ManualDonation> => {
+      const raw = await apiFetch<unknown>(
+        `${BASE}/manual-donations/${encodeURIComponent(input.id)}/${input.approve ? "approve" : "reject"}`,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": newIdempotencyKey() },
+          body: { note: input.note ?? null },
+        },
+      );
+      return parseManualDonation(raw);
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [QK, "manual-donations"] });
+      void qc.invalidateQueries({ queryKey: [QK, "donations"] });
+      void qc.invalidateQueries({ queryKey: [QK, "ledger"] });
+    },
+  });
+}
+
+/** Fetch a manual donation's receipt image as an object URL (Bearer-required). */
+export async function fetchManualProofImageUrl(proofId: string): Promise<string> {
+  const token = getAccessToken();
+  const res = await fetch(
+    `${apiUrl()}${BASE}/manual-donations/${encodeURIComponent(proofId)}/proof-image`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+  if (!res.ok) throw new Error(`proof_image_failed_${res.status}`);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
 /** Payload shape of the donation.completed domain event (contract §4). */
 export interface DonationCompletedPayload {
   donation_id: string;

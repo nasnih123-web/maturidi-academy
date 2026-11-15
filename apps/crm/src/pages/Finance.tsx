@@ -18,6 +18,9 @@ import {
   useDonations,
   useGatewayStatus,
   useLedger,
+  useManualDonations,
+  useReviewManualDonation,
+  fetchManualProofImageUrl,
   useReconcile,
   useResolveMismatch,
   useUpdateCampaign,
@@ -26,6 +29,8 @@ import {
   type CampaignInput,
   type Donation,
   type LedgerEntry,
+  type ManualDonation,
+  type ManualStatus,
   type MismatchResolution,
   type ReconcileMismatch,
 } from "../lib/finance15";
@@ -33,7 +38,7 @@ import {
 /**
  * Phase 15 — Track 3 (CRM): Finance & donations section.
  *
- * Tabs: campaigns / donations / ledger / reconcile / gateways.
+ * Tabs: campaigns / donations / manual / ledger / reconcile / gateways.
  * A live donation strip (donation.completed domain events over the Phase-2
  * /ws/events feed) sits at the top — no refresh needed, same pattern as the
  * live fatwa strip in pages/Fatwa.tsx.
@@ -46,7 +51,7 @@ import {
  * only configured/not status from /admin/finance/gateways.
  */
 
-const TABS = ["campaigns", "donations", "ledger", "reconcile", "gateways"] as const;
+const TABS = ["campaigns", "donations", "manual", "ledger", "reconcile", "gateways"] as const;
 type FinanceTab = (typeof TABS)[number];
 
 function initialTab(): FinanceTab {
@@ -752,6 +757,217 @@ function ReconcileTab(): React.ReactElement {
 }
 
 /* ------------------------------------------------------------------ */
+/* tab: manual donations (کارت‌به‌کارت / کریپتو / PayPal — بازبینی)      */
+/* ------------------------------------------------------------------ */
+
+function ManualTab(): React.ReactElement {
+  const { t, formatDate } = useI18n();
+  const [status, setStatus] = React.useState<ManualStatus | null>("pending");
+  const [cursor, setCursor] = React.useState<string | null>(null);
+  const [history, setHistory] = React.useState<string[]>([]);
+  const [note, setNote] = React.useState("");
+  const [imageUrl, setImageUrl] = React.useState<string | null>(null);
+  const query = useManualDonations(status, cursor);
+  const reviewMut = useReviewManualDonation();
+
+  const goNext = (next: string | null): void => {
+    if (!next) return;
+    setHistory((h) => [...h, cursor ?? ""]);
+    setCursor(next);
+  };
+  const goPrev = (): void => {
+    setHistory((h) => {
+      const prev = h[h.length - 1];
+      setCursor(prev === "" ? null : (prev ?? null));
+      return h.slice(0, -1);
+    });
+  };
+  const pickStatus = (s: ManualStatus | null): void => {
+    setStatus(s);
+    setCursor(null);
+    setHistory([]);
+  };
+
+  const review = (d: ManualDonation, approve: boolean): void => {
+    const msg = approve ? t("finance15.m_confirmApprove") : t("finance15.m_confirmReject");
+    if (!window.confirm(msg)) return;
+    reviewMut.mutate(
+      { id: d.id, approve, note: note.trim() ? note.trim() : undefined },
+      { onSuccess: () => setNote("") },
+    );
+  };
+
+  const statusTone = (s: ManualStatus): "success" | "warning" | "danger" =>
+    s === "approved" ? "success" : s === "pending" ? "warning" : "danger";
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+        {([null, "pending", "approved", "rejected"] as const).map((s) => (
+          <Button
+            key={s ?? "all"}
+            variant={status === s ? "primary" : "secondary"}
+            onClick={() => pickStatus(s)}
+          >
+            {s === null
+              ? t("finance15.m_filterAll")
+              : s === "pending"
+                ? t("finance15.st_pending")
+                : s === "approved"
+                  ? t("finance15.st_approved")
+                  : t("finance15.st_rejected")}
+          </Button>
+        ))}
+      </div>
+
+      <div className="fin-field" style={{ maxWidth: "26rem", marginBottom: "0.75rem" }}>
+        <label className="hint" htmlFor="manual-review-note">
+          {t("finance15.m_note")}
+        </label>
+        <input
+          id="manual-review-note"
+          className="input"
+          type="text"
+          maxLength={512}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </div>
+
+      {query.isLoading && <p className="empty">{t("common.loading")}</p>}
+      {query.isError && (
+        <div className="empty-state">
+          <h3>{t("finance15.backendMissingTitle")}</h3>
+          <p>{t("finance15.backendMissing")}</p>
+          <p className="hint">
+            <code dir="ltr">GET /api/v1/admin/finance/manual-donations</code> —{" "}
+            {errText(query.error)}
+          </p>
+        </div>
+      )}
+      {query.isSuccess && query.data.items.length === 0 && (
+        <p className="empty">{t("finance15.m_empty")}</p>
+      )}
+      {query.isSuccess && query.data.items.length > 0 && (
+        <>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>{t("finance15.d_donor")}</th>
+                  <th>{t("finance15.m_method")}</th>
+                  <th>{t("finance15.d_amount")}</th>
+                  <th>{t("finance15.m_proof")}</th>
+                  <th>{t("finance15.d_status")}</th>
+                  <th>{t("finance15.d_date")}</th>
+                  <th>{t("finance15.m_actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {query.data.items.map((d) => (
+                  <tr key={d.id}>
+                    <td>
+                      {d.donor_name ?? (
+                        <span className="muted">{t("finance15.d_anonymous")}</span>
+                      )}
+                    </td>
+                    <td>
+                      {t(`finance15.mm_${d.method}`)}
+                      {d.wallet_label ? (
+                        <span className="muted" dir="ltr">
+                          {" "}
+                          ({d.wallet_label})
+                        </span>
+                      ) : null}
+                    </td>
+                    <td dir="ltr">{money(d.amount, d.currency)}</td>
+                    <td>
+                      {d.proof_text ? (
+                        <code dir="ltr" style={{ fontSize: "0.78rem" }}>
+                          {d.proof_text}
+                        </code>
+                      ) : null}
+                      {d.has_proof_image ? (
+                        <button
+                          type="button"
+                          className="linklike"
+                          onClick={() => {
+                            void fetchManualProofImageUrl(d.id)
+                              .then((url) => setImageUrl(url))
+                              .catch((e: unknown) => alert(errText(e)));
+                          }}
+                        >
+                          {t("finance15.m_viewImage")}
+                        </button>
+                      ) : null}
+                      {!d.proof_text && !d.has_proof_image ? "—" : null}
+                    </td>
+                    <td>
+                      <Badge tone={statusTone(d.status)}>
+                        {d.status === "pending"
+                          ? t("finance15.st_pending")
+                          : d.status === "approved"
+                            ? t("finance15.st_approved")
+                            : t("finance15.st_rejected")}
+                      </Badge>
+                    </td>
+                    <td>{d.created_at ? formatDate(d.created_at) : "—"}</td>
+                    <td>
+                      {d.status === "pending" ? (
+                        <span style={{ display: "inline-flex", gap: "0.4rem" }}>
+                          <Button
+                            variant="primary"
+                            disabled={reviewMut.isPending}
+                            onClick={() => review(d, true)}
+                          >
+                            {t("finance15.m_approve")}
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            disabled={reviewMut.isPending}
+                            onClick={() => review(d, false)}
+                          >
+                            {t("finance15.m_reject")}
+                          </Button>
+                        </span>
+                      ) : (
+                        <span className="muted">{d.review_note ?? "—"}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+            <Button variant="secondary" disabled={history.length === 0} onClick={goPrev}>
+              {t("finance15.d_prev")}
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={!query.data.nextCursor}
+              onClick={() => goNext(query.data.nextCursor)}
+            >
+              {t("finance15.d_more")}
+            </Button>
+          </div>
+        </>
+      )}
+
+      {imageUrl && (
+        <div style={{ marginTop: "1rem" }}>
+          <img
+            src={imageUrl}
+            alt={t("finance15.m_proof")}
+            style={{ maxWidth: "26rem", borderRadius: "0.5rem" }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* tab: gateways                                                       */
 /* ------------------------------------------------------------------ */
 
@@ -877,6 +1093,7 @@ export default function Finance(): React.ReactElement {
 
       {tab === "campaigns" && <CampaignsTab locale={locale} />}
       {tab === "donations" && <DonationsTab locale={locale} />}
+      {tab === "manual" && <ManualTab />}
       {tab === "ledger" && <LedgerTab />}
       {tab === "reconcile" && <ReconcileTab />}
       {tab === "gateways" && <GatewaysTab />}

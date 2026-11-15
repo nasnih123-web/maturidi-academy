@@ -80,6 +80,21 @@ const SECTIONS: SectionDef[] = [
     fields: [
       { key: "payment.zarinpal_key", labelKey: "settings.fields.zarinpal", secret: true },
       { key: "payment.idpay_key", labelKey: "settings.fields.idpay", secret: true },
+      { key: "payment.idpay_sandbox", labelKey: "settings.fields.idpaySandbox", secret: false },
+      // روش‌های دستی حمایت (کارت‌به‌کارت / رمزارز / دلاری) — فاز حمایت دستی.
+      // مقادیر json/localized همان رشتهٔ ذخیره‌شده‌اند و مثل بقیهٔ فیلدهای
+      // json این صفحه به‌صورت متن ویرایش می‌شوند.
+      { key: "donation.online_enabled", labelKey: "settings.fields.donationOnline", secret: false },
+      { key: "donation.card_enabled", labelKey: "settings.fields.donationCardEnabled", secret: false },
+      { key: "donation.card_number", labelKey: "settings.fields.donationCardNumber", secret: false },
+      { key: "donation.card_holder", labelKey: "settings.fields.donationCardHolder", secret: false },
+      { key: "donation.card_instructions", labelKey: "settings.fields.donationCardInstructions", secret: false },
+      { key: "donation.crypto_enabled", labelKey: "settings.fields.donationCryptoEnabled", secret: false },
+      { key: "donation.crypto_wallets", labelKey: "settings.fields.donationCryptoWallets", secret: false },
+      { key: "donation.crypto_instructions", labelKey: "settings.fields.donationCryptoInstructions", secret: false },
+      { key: "donation.paypal_enabled", labelKey: "settings.fields.donationPaypalEnabled", secret: false },
+      { key: "donation.paypal_account", labelKey: "settings.fields.donationPaypalAccount", secret: false },
+      { key: "donation.paypal_instructions", labelKey: "settings.fields.donationPaypalInstructions", secret: false },
     ],
   },
   {

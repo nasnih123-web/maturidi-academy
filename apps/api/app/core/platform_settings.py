@@ -47,8 +47,23 @@ SETTING_DEFS: dict[str, dict] = {
     "payment.idpay_key": {"type": "secret", "sensitive": True, "label": "کلید آیدی‌پی"},
     # --- فاز ۱۵: مالی و درگاه پرداخت (ADR-0013) ---
     "payment.zarinpal_sandbox": {"type": "json", "sensitive": False, "label": "حالت سندباکس زرین‌پال (پیش‌فرض: روشن)"},
+    "payment.idpay_sandbox": {"type": "json", "sensitive": False, "label": "حالت سندباکس آیدی‌پی (پیش‌فرض: روشن)"},
     "payment.webhook_secret": {"type": "secret", "sensitive": True, "label": "رمز امضای وبهوک درگاه (HMAC)"},
     "payment.callback_url": {"type": "string", "sensitive": False, "label": "آدرس بازگشت پیش‌فرض درگاه (callback)"},
+    # --- حمایت دستی: کارت‌به‌کارت / کریپتو / خارجی (PayPal) — هر روش
+    # جداگانه از CRM روشن/خاموش و پیکربندی می‌شود؛ روش دستی فقط وقتی در
+    # جریان عمومی نمایش داده می‌شود که هم فعال باشد و هم مشخصاتش کامل.
+    "donation.online_enabled": {"type": "json", "sensitive": False, "label": "فعال‌بودن پرداخت آنلاین (درگاه)"},
+    "donation.card_enabled": {"type": "json", "sensitive": False, "label": "فعال‌بودن حمایت کارت‌به‌کارت"},
+    "donation.card_number": {"type": "string", "sensitive": False, "label": "شماره کارت حمایت (کارت‌به‌کارت)"},
+    "donation.card_holder": {"type": "string", "sensitive": False, "label": "نام صاحب کارت حمایت"},
+    "donation.card_instructions": {"type": "localized", "sensitive": False, "label": "راهنمای کارت‌به‌کارت"},
+    "donation.crypto_enabled": {"type": "json", "sensitive": False, "label": "فعال‌بودن حمایت کریپتو"},
+    "donation.crypto_wallets": {"type": "json", "sensitive": False, "label": "کیف پول‌های کریپتو (ارز/شبکه/آدرس)"},
+    "donation.crypto_instructions": {"type": "localized", "sensitive": False, "label": "راهنمای حمایت کریپتو"},
+    "donation.paypal_enabled": {"type": "json", "sensitive": False, "label": "فعال‌بودن حمایت خارجی (PayPal)"},
+    "donation.paypal_account": {"type": "string", "sensitive": False, "label": "حساب PayPal حمایت (ایمیل/شناسه)"},
+    "donation.paypal_instructions": {"type": "localized", "sensitive": False, "label": "راهنمای حمایت خارجی (PayPal)"},
     "map.key": {"type": "secret", "sensitive": True, "label": "کلید نقشه"},
     # --- maps phase (overnight/w10): CRM control of the public map popup.
     # Shape: {"show_image": bool, "show_description": bool,
@@ -395,6 +410,47 @@ def _validate_flag(key: str, value: Any) -> bool:
     return value
 
 
+def _validate_crypto_wallets(value: Any) -> list:
+    """فهرست کیف پول‌های کریپتوی حمایت — canonical.
+
+    هر ورودی: {currency, network, address} — currency و address اجباری و
+    غیرخالی؛ network می‌تواند خالی باشد (زنجیرهٔ پیش‌فرض همان ارز).
+    سقف ۱۰ کیف پول تا صفحهٔ حمایت خوانا بماند.
+    """
+    if not isinstance(value, list):
+        raise TypeError("donation.crypto_wallets must be a list")
+    if len(value) > 10:
+        raise ValueError("donation.crypto_wallets: at most 10 wallets")
+    out: list[dict[str, str]] = []
+    for i, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise TypeError(f"donation.crypto_wallets[{i}] must be an object")
+        unknown = set(item) - {"currency", "network", "address"}
+        if unknown:
+            raise ValueError(f"donation.crypto_wallets[{i}]: unknown fields {sorted(unknown)}")
+        currency = item.get("currency")
+        address = item.get("address")
+        network = item.get("network") or ""
+        if not isinstance(currency, str):
+            raise TypeError(f"donation.crypto_wallets[{i}].currency must be a string")
+        if not currency.strip():
+            raise ValueError(f"donation.crypto_wallets[{i}].currency must be a non-empty string")
+        if not isinstance(address, str):
+            raise TypeError(f"donation.crypto_wallets[{i}].address must be a string")
+        if not address.strip():
+            raise ValueError(f"donation.crypto_wallets[{i}].address must be a non-empty string")
+        if not isinstance(network, str):
+            raise TypeError(f"donation.crypto_wallets[{i}].network must be a string")
+        out.append(
+            {
+                "currency": currency.strip().upper(),
+                "network": network.strip().upper(),
+                "address": address.strip(),
+            }
+        )
+    return out
+
+
 def _validate_highlight_mode(value: Any) -> str:
     if value not in ("word", "ayah", "off"):
         raise ValueError("quran.highlight_mode must be one of word|ayah|off")
@@ -724,6 +780,17 @@ def _validate_json_setting(key: str, value: Any) -> Any:
     # --- فاز ۱۱: تلگرام ---
     if key == "telegram.enabled":
         return _validate_flag(key, value)
+    # --- حمایت دستی + سندباکس آیدی‌پی ---
+    if key in (
+        "payment.idpay_sandbox",
+        "donation.online_enabled",
+        "donation.card_enabled",
+        "donation.crypto_enabled",
+        "donation.paypal_enabled",
+    ):
+        return _validate_flag(key, value)
+    if key == "donation.crypto_wallets":
+        return _validate_crypto_wallets(value)
     if key == "ai.embedding_provider":
         if value not in ("hash", "external_api", "local_model"):
             raise ValueError(

@@ -2430,6 +2430,45 @@ class RecurringDonation(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class ManualDonationProof(Base):
+    """اثبات پرداخت حمایت دستی — ۱:۱ با PaymentIntent روش‌های دستی.
+
+    رکورد مالی همان PaymentIntent/Donation موجود است (gateway یکی از
+    card | crypto | paypal)؛ این جدول فقط اثبات ارسالیِ اهداکننده (متن
+    رسید/هش تراکنش و/یا کلید تصویر رسید در storage) و وضعیت بازبینی ادمین
+    را نگه می‌دارد. چرخه: pending ← ادمین approve (→ _finalize_success و
+    Donation/Ledger) یا reject (→ intent.cancelled).
+    """
+
+    __tablename__ = "manual_donation_proofs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    payment_intent_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("payment_intents.id"), nullable=False, unique=True
+    )
+    method: Mapped[str] = mapped_column(
+        String(16), nullable=False, index=True
+    )  # card | crypto | paypal
+    proof_text: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    proof_image_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    proof_image_mime: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    wallet_label: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )  # فقط کریپتو: برچسب کیف پول انتخاب‌شده، مثل «USDT · TRC20»
+    review_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", index=True
+    )  # pending | approved | rejected
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 # ---------------------------------------------------------------------------
 # فاز ۱۶ — مدیریت پروژه و نیروی انسانی داخلی (PMS)
 # (قراردادها: docs/adr/0014-phase16-pms-backend.md)
