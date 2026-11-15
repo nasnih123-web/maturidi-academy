@@ -234,3 +234,20 @@ describe('peeked words have no cream background (user 2026-11-15)', () => {
     assert.doesNotMatch(wallRule[0], /rgba\(122,74,0/);
   });
 });
+
+describe('nass scroll sections are full-width, like flip mode (2026-11-16)', () => {
+    it('the scroll container drops its side padding so lines are 361px, not 329px', () => {
+          const css = readCss();
+          const scrollRule = /\.quran-hifz-study \.hifz-nass-scroll \{[^}]*\}/.exec(css);
+          assert.ok(scrollRule, 'nass-scroll full-width rule not found');
+          assert.match(scrollRule[0], /padding-left: 0/);
+          assert.match(scrollRule[0], /padding-right: 0/);
+    });
+
+           it('plain .hifz-nass keeps its padding for the text fallback', () => {
+                 const css = readCss();
+                 const nassRule = /\.quran-hifz-study \.hifz-nass \{[^}]*\}/.exec(css);
+                 assert.ok(nassRule, 'plain nass rule not found');
+                 assert.match(nassRule[0], /padding: 0 1rem 1rem/);
+           });
+});
