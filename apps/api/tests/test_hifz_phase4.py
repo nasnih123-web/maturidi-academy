@@ -449,6 +449,48 @@ async def test_peek_kind_validation(tc, monkeypatch):
     assert len(r.json()["revealed"]) == 3
 
 
+async def test_attempt_detail_returns_all_peek_mistakes_without_cap(tc, monkeypatch):
+    """سقفِ خطاها برداشته شد (کاربر ۲۰۲۶-۱۱-۱۵): جزئیاتِ تلاش همهٔ
+    Peekها را برمی‌گرداند، نه فقط ۱۰۰تای آخر را — وگرنه دیوارِ صفحه
+    قدیمی‌ترین کلمه‌های نمایان‌شده را از دست می‌دهد و با چشمِ بسته
+    به‌صورتِ جایِ خالیِ سرگردان دیده می‌شوند."""
+    monkeypatch.setattr(
+        hifz_service.quran_service, "get_ayah_bundle", _fake_ayah_bundle
+    )
+    token = await _user_token(tc["client"], "peek-cap-141@example.com")
+    r = await tc["client"].post(
+        f"{HIFZ}/attempts", json={"surah": 112, "page": 604}, headers=_auth(token)
+    )
+    assert r.status_code == 200, r.text
+    attempt_id = r.json()["id"]
+    # سورهٔ ۱۱۲، آیه‌های ۱ تا ۴: ۸+۲+۴+۵ = ۱۹ کلمه در هر دور (آیهٔ ۱
+    # بسمله را هم دارد)؛ ۱۰ دور یعنی ۱۹۰ ردیف Peek — خیلی بیشتر از
+    # سقفِ ۱۰۰تاییِ قبلی.
+    counts = {a: len(_tanzil_ayah(112, a).split()) for a in (1, 2, 3, 4)}
+    assert sum(counts.values()) == 19
+    total = 0
+    for _ in range(10):
+        for ayah, n in counts.items():
+            r = await tc["client"].post(
+                f"{HIFZ}/attempts/{attempt_id}/peek",
+                json={
+                    "surah": 112,
+                    "ayah": ayah,
+                    "word_indices": list(range(n)),
+                    "kind": "ayah",
+                },
+                headers=_auth(token),
+            )
+            assert r.status_code == 200, r.text
+            total += n
+    assert total == 190
+    r = await tc["client"].get(
+        f"{HIFZ}/attempts/{attempt_id}", headers=_auth(token)
+    )
+    assert r.status_code == 200, r.text
+    assert len(r.json()["mistakes"]) == 190
+
+
 async def _admin_headers(tc) -> dict:
     """سرفصلِ ادمین با مجوز platform.settings (الگوی تست‌های فاز ۱۴)."""
     import uuid as _uuid

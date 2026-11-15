@@ -353,11 +353,14 @@ async def attempt_detail(db: AsyncSession, user: User, attempt_id: UUID) -> dict
         )
     )
     word_rows = list(words.scalars().all())
+    # بدون سقف (کاربر ۲۰۲۶-۱۱-۱۵): کلمه‌های نمایان‌شده با Peek فقط در
+    # خطاها زندگی می‌کنند و دیوارِ صفحه از همین فهرست ساخته می‌شود؛
+    # سقفِ ۱۰۰تاییِ قبلی قدیمی‌ترین Peekها را از دیوار می‌انداخت و
+    # با چشمِ بسته به‌صورتِ جایِ خالیِ سرگردان دیده می‌شد.
     mistakes = await db.execute(
         select(HifzMistake)
         .where(HifzMistake.attempt_id == attempt_id)
         .order_by(HifzMistake.created_at.desc())
-        .limit(100)
     )
     return {
         "attempt": _attempt_out(attempt, _counts_for(word_rows)),

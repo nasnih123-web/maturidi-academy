@@ -194,11 +194,13 @@ describe('QuranHifzStudy — Basmalah SVG wiring', () => {
     return src as string;
   }
 
-  it('renders the SVG in every state, with the word-span fallback only for practice/peek', () => {
+  it('renders the SVG always — no word-span fallback (user 2026-11-15)', () => {
     const src = readStudy();
     const uses = src.match(/src="\/quran\/surah-headers\/basmalah\.svg"/g) ?? [];
     assert.equal(uses.length, 1, 'the SVG must be rendered exactly once (mushaf page only)');
-    assert.match(src, /basmalaPracticeSelected \|\| \(basmalaAnyPeeked && !basmalaAnyGraded\)/);
+    assert.doesNotMatch(src, /basmalaPracticeSelected/);
+    assert.doesNotMatch(src, /basmalaAnyPeeked/);
+    assert.doesNotMatch(src, /basmalaAnyGraded/);
     assert.match(src, /const basmalaHideSvg =/);
     assert.match(src, /scriptHidden \|\| \(basmalaInScope && eyeHidden && !basmalaAnyWritten\)/);
     assert.match(src, /hifz-basmala-svg hifz-line-word-hidden/);
@@ -211,5 +213,19 @@ describe('QuranHifzStudy — Basmalah SVG wiring', () => {
     assert.ok(nassAt > 0);
     const svgAt = src.indexOf('basmalah.svg');
     assert.ok(svgAt > 0 && svgAt < nassAt, 'SVG reference must be before (not inside) the nass block');
+  });
+});
+
+describe('peeked words have no cream background (user 2026-11-15)', () => {
+  it('the line-page and wall peeked rules are plain text', () => {
+    const css = readCss();
+    const lineRule = /\.quran-hifz-study \.hifz-line-word\.hifz-word-peeked \{[^}]*\}/.exec(css);
+    assert.ok(lineRule, 'line-page peeked rule not found');
+    assert.match(lineRule[0], /background: transparent/);
+    assert.doesNotMatch(lineRule[0], /rgba\(122,74,0/);
+    const wallRule = /\.quran-hifz-study \.hifz-wall \.hifz-word-peeked \{[^}]*\}/.exec(css);
+    assert.ok(wallRule, 'wall peeked rule not found');
+    assert.match(wallRule[0], /background: transparent/);
+    assert.doesNotMatch(wallRule[0], /rgba\(122,74,0/);
   });
 });

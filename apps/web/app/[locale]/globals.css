@@ -2556,7 +2556,7 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
 .quran-hifz-study .hifz-wall .hifz-word-close { background: #ffe14d; color: #1c1710; text-decoration: underline dotted #1c1710; text-underline-offset: 0.2em; }
 .quran-hifz-study .hifz-wall .hifz-word-wrong { background: transparent; color: #b3261e; text-decoration: underline dashed #b3261e; text-underline-offset: 0.2em; }
 .quran-hifz-study .hifz-wall .hifz-word-skipped { background: transparent; color: #6b655a; }
-.quran-hifz-study .hifz-wall .hifz-word-peeked { background: rgba(122,74,0,0.10); color: #7a4a00; }
+.quran-hifz-study .hifz-wall .hifz-word-peeked { background: transparent; color: #1c1710; }
 .quran-hifz-study .hifz-wall .hifz-word-live { background: rgba(0,0,0,0.04); color: #1c1710; }
 .quran-hifz-study .hifz-wall .hifz-word-practice { outline: 2px solid #8a6d1b; outline-offset: 2px; }
 .quran-hifz-study .hifz-wall .hifz-word-heard,
@@ -2742,7 +2742,12 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
 .quran-hifz-study .hifz-line-word.hifz-word-close { background: #ffe14d; color: #1c1710; text-decoration: underline dotted #1c1710; text-underline-offset: 0.2em; }
 .quran-hifz-study .hifz-line-word.hifz-word-wrong { background: transparent; color: #b3261e; text-decoration: underline dashed #b3261e; text-underline-offset: 0.2em; }
 .quran-hifz-study .hifz-line-word.hifz-word-skipped { background: transparent; color: #6b655a; }
-.quran-hifz-study .hifz-line-word.hifz-word-peeked { background: rgba(122,74,0,0.10); color: #7a4a00; }
+/* Peeked word on the line page and the wall: NO cream background
+   (user 2026-11-15) — a revealed word reads as plain text, like a
+   correct word; the old brown tint was the highlight the user
+   reported. The dark-base .hifz-word-peeked rule above keeps its
+   own colours for its dark surface. */
+.quran-hifz-study .hifz-line-word.hifz-word-peeked { background: transparent; color: #1c1710; }
 /* Tajweed letter colors (the 8-color documented palette, phase 7).
    They apply only to LIVE words: once a word is graded, the grade
    color wins and the letters inherit it, so a wrong word never

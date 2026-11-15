@@ -3222,36 +3222,28 @@ export function QuranHifzStudy({
               </p>
             );
           }
-          // (2026-11-14): the Basmalah line is one calligraphic unit —
-          // it renders as the dedicated Basmalah SVG (public/quran/
+          // (2026-11-14, hardened 2026-11-15 at the user's order):
+          // the Basmalah line is one calligraphic unit — it renders
+          // as the dedicated Basmalah SVG (public/quran/
           // surah-headers/basmalah.svg — the printed surah-header form,
           // composed from the page-1 V4 glyph outlines), in EVERY state,
-          // not only when plain. The QCF_BSML font glyph was tried first
-          // and REJECTED: the bundled font's Arabic-letter glyphs are all
-          // the same hollow-rectangle outline (fontTools-verified; the real
-          // calligraphy lives in unmapped glyphs reachable only through
-          // the font's AAT morx table, which Chromium on Android/Linux
-          // does not apply), so the font renders the Basmalah as tofu
-          // boxes in the browser — worse than text. The SVG is the only
-          // rendering that actually draws the calligraphy here. The
-          // Fatiha Basmalah (1:1:1-4, real ayah words) never reaches
-          // this branch — it renders as text-line words — so it stays
-          // glyphs/text as before. Per-word Basmalah grades no longer
-          // colour the line itself (one image has no per-word spans);
-          // they stay visible in the error sheet, the pill and the live
-          // panel.
+          // never as word spans: no peek/practice fallback any more, so
+          // one peeked Basmalah word reveals the whole glyph at once
+          // (basmalaAnyWritten below). The QCF_BSML font glyph was tried
+          // first and REJECTED: the bundled font's Arabic-letter glyphs
+          // are all the same hollow-rectangle outline (fontTools-verified;
+          // the real calligraphy lives in unmapped glyphs reachable only
+          // through the font's AAT morx table, which Chromium on
+          // Android/Linux does not apply), so the font renders the
+          // Basmalah as tofu boxes in the browser — worse than text.
+          // The SVG is the only rendering that actually draws the
+          // calligraphy here. The Fatiha Basmalah (1:1:1-4, real ayah
+          // words) never reaches this branch — it renders as text-line
+          // words — so it stays glyphs/text as before. Per-word Basmalah
+          // grades no longer colour the line itself (one image has no
+          // per-word spans); they stay visible in the error sheet, the
+          // pill and the live panel.
           const basmalaAnyWritten = line.slots.some((s) => s.written !== null);
-          const basmalaAnyPeeked = line.slots.some(
-            (s) => s.written !== null && s.written.status === 'peeked',
-          );
-          const basmalaAnyGraded = line.slots.some(
-            (s) => s.written !== null && s.written.status !== 'peeked',
-          );
-          const basmalaPracticeSelected =
-            practiceWord !== null &&
-            practiceWord.ayah === 1 &&
-            practiceWord.index >= 0 &&
-            practiceWord.index < 4;
           // The eye and the Basmalah SVG: the SVG branch bypasses
           // renderLineWord, so without this the eye could never show
           // or hide the Basmalah — on the first page of every surah
@@ -3268,17 +3260,6 @@ export function QuranHifzStudy({
             eyeCoversWord(line.slots[0].surah, line.slots[0].ayah);
           const basmalaHideSvg =
             scriptHidden || (basmalaInScope && eyeHidden && !basmalaAnyWritten);
-          // Practice-selected Basmalah word, or a peek with no grade
-          // yet: keep the word spans, so the practice outline can
-          // wrap the one word being practised and a peek reveals one
-          // word instead of the whole Basmalah.
-          if (basmalaPracticeSelected || (basmalaAnyPeeked && !basmalaAnyGraded)) {
-            return (
-              <p key={line.key} className="hifz-line hifz-line-basmala" dir="rtl">
-                {line.slots.map((slot) => renderLineWord(slot, `${line.key}-${slot.index}`))}
-              </p>
-            );
-          }
           return (
             <p key={line.key} className="hifz-line hifz-line-basmala" dir="rtl">
               <img
