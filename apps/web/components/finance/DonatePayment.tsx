@@ -6,12 +6,12 @@
  *
  * WooCommerce-checkout style: two selectable branch cards — rial
  * (online gateway / card-to-card) and dollar (crypto / PayPal) — then
- * radio-style method rows whose selected row expands to show that
- * method's own form. Only methods the server publishes (enabled AND
- * configured in the CRM — GET /donation-methods) are ever rendered: a
- * disabled method is absent, a branch with one method shows its form
- * directly, an empty branch disappears, and if nothing is available
- * the section hides entirely.
+ * radio-style method rows. Every method form starts COLLAPSED (owner
+ * request): tapping a row expands that method's form, tapping the
+ * open row collapses it again. Only methods the server publishes
+ * (enabled AND configured in the CRM — GET /donation-methods) are
+ * ever rendered: a disabled method is absent, an empty branch
+ * disappears, and if nothing is available the section hides entirely.
  *
  * State machines stay in useDonate / useManualDonate (ADR-001); this
  * container owns only branch/method selection and composition.
@@ -85,8 +85,10 @@ export function DonatePayment({
   ];
 
   const [branch, setBranch] = useState<Branch>('rial');
-  const [rialMethod, setRialMethod] = useState<MethodId>('online');
-  const [usdMethod, setUsdMethod] = useState<MethodId>('crypto');
+  // Which method's form is open per branch — null = all collapsed
+  // (the default; forms open only on tap).
+  const [openRial, setOpenRial] = useState<MethodId | null>(null);
+  const [openUsd, setOpenUsd] = useState<MethodId | null>(null);
 
   const effBranch: Branch | null =
     branch === 'rial'
@@ -100,11 +102,12 @@ export function DonatePayment({
         : rialIds.length
           ? 'rial'
           : null;
-  const effRial = rialIds.includes(rialMethod) ? rialMethod : rialIds[0];
-  const effUsd = usdIds.includes(usdMethod) ? usdMethod : usdIds[0];
-  const active: MethodId | null = effBranch === 'rial' ? effRial : effBranch === 'usd' ? effUsd : null;
+  const effOpenRial = openRial && rialIds.includes(openRial) ? openRial : null;
+  const effOpenUsd = openUsd && usdIds.includes(openUsd) ? openUsd : null;
+  const active: MethodId | null =
+    effBranch === 'rial' ? effOpenRial : effBranch === 'usd' ? effOpenUsd : null;
 
-  // Keep the manual hook's selected method in sync with the visible one
+  // Keep the manual hook's selected method in sync with the open one
   // (its submit posts the method it holds).
   const setManualSelected = manual.setSelected;
   useEffect(() => {
@@ -120,7 +123,7 @@ export function DonatePayment({
     );
   }
 
-  if (effBranch === null || active === null) return null;
+  if (effBranch === null) return null;
 
   const titleOf = (id: MethodId): string => {
     if (id === 'online') {
@@ -131,8 +134,9 @@ export function DonatePayment({
   };
 
   const chooseMethod = (id: MethodId) => {
-    if (BRANCH_OF[id] === 'rial') setRialMethod(id);
-    else setUsdMethod(id);
+    // Accordion toggle: tapping the open row collapses it.
+    if (BRANCH_OF[id] === 'rial') setOpenRial((cur) => (cur === id ? null : id));
+    else setOpenUsd((cur) => (cur === id ? null : id));
   };
 
   const renderForm = (id: MethodId) => {
@@ -207,30 +211,24 @@ export function DonatePayment({
         </div>
       ) : null}
 
-      {branchIds.length > 1 ? (
-        <div className="fin-methods" role="radiogroup" aria-label={payLabels.payTitle}>
-          {branchIds.map((id) => (
-            <div key={id} className={`fin-method${id === active ? ' fin-method-active' : ''}`}>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={id === active}
-                className="fin-method-head"
-                onClick={() => chooseMethod(id)}
-              >
-                <span className="fin-radio" aria-hidden="true" />
-                <span className="fin-method-name">{titleOf(id)}</span>
-              </button>
-              {id === active ? <div className="fin-method-body">{renderForm(id)}</div> : null}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="fin-method-single">
-          <p className="fin-method-single-title">{titleOf(active)}</p>
-          {renderForm(active)}
-        </div>
-      )}
+      <div className="fin-methods" role="radiogroup" aria-label={payLabels.payTitle}>
+        {branchIds.map((id) => (
+          <div key={id} className={`fin-method${id === active ? ' fin-method-active' : ''}`}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={id === active}
+              aria-expanded={id === active}
+              className="fin-method-head"
+              onClick={() => chooseMethod(id)}
+            >
+              <span className="fin-radio" aria-hidden="true" />
+              <span className="fin-method-name">{titleOf(id)}</span>
+            </button>
+            {id === active ? <div className="fin-method-body">{renderForm(id)}</div> : null}
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
