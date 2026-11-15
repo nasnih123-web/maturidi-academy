@@ -24,6 +24,7 @@ from app.core.errors import APIError
 from app.core.events import emit_event
 from app.core.key_rotation import reencrypt_all
 from app.core.platform_settings import (
+    EMPTY_MEANS_UNSET_KEYS,
     SETTING_DEFS,
     bump_settings_version,
     decode_setting_value,
@@ -275,6 +276,16 @@ async def update_settings(
             raise APIError(400, "unknown_setting", f"کلید ناشناخته: {key}")
         if meta.get("sensitive") and raw_value == MASKED:
             continue  # بدون تغییر
+        # مقدار خالی یعنی «بدون تغییر»: برای secretها این تکمیلِ همان
+        # قرارداد MASKED است (خالی هرگز نباید کلید ذخیره‌شده را پاک
+        # کند) و برای کلیدهای EMPTY_MEANS_UNSET_KEYS یعنی «هنوز
+        # پیکربندی نشده». بدون این قانون، یک فیلد خالیِ لمس‌شده در
+        # یک بخش، کل ذخیرهٔ آن بخش را ۴۰۰ می‌کرد و هیچ‌چیز — حتی
+        # فیلدهای درست همان فرم — ذخیره نمی‌شد.
+        if (raw_value is None or raw_value == "") and (
+            meta.get("sensitive") or key in EMPTY_MEANS_UNSET_KEYS
+        ):
+            continue
         try:
             plaintext = encode_setting_value(meta["type"], raw_value, key)
         except (ValueError, TypeError) as exc:
