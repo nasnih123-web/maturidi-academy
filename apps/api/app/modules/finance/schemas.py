@@ -28,7 +28,7 @@ class DonateIn(BaseModel):
     currency: str = Field(default="IRR", pattern="^IRR$")
     campaign_id: UUID | None = None
     donor_name: str | None = Field(default=None, max_length=256)
-    gateway: str = Field(default="zarinpal", pattern="^zarinpal$")
+    gateway: str = Field(default="zarinpal", pattern="^(zarinpal|idpay)$")
     callback_url: str | None = Field(
         default=None, max_length=1024, description="callback سفارشی؛ پیش‌فرض از تنظیمات"
     )
@@ -159,3 +159,71 @@ class GatewayStatus(BaseModel):
 class GatewayStatusOut(BaseModel):
     zarinpal: GatewayStatus
     idpay: GatewayStatus
+
+
+# ---------------------------------------------------------------------------
+# روش‌های حمایت (عمومی) + حمایت دستی (کارت‌به‌کارت / کریپتو / PayPal)
+# ---------------------------------------------------------------------------
+
+
+class CryptoWalletOut(BaseModel):
+    currency: str
+    network: str = ""
+    address: str
+
+
+class DonationMethodOut(BaseModel):
+    """یک روش پرداختِ قابل‌استفاده در صفحهٔ حمایت — فقط روش‌های فعال و
+    کاملِ پیکربندی‌شده اینجا می‌آیند؛ روش خاموش اصلاً نمایش داده نمی‌شود."""
+
+    method: str  # online | card | crypto | paypal
+    title: LocalizedText
+    instructions: LocalizedText | None = None
+    currency: str | None = None  # ارز پیش‌فرض روش (کارت: IRR، پی‌پال: USD)
+    gateways: list[str] = []  # فقط online: درگاه‌های پیکربندی‌شده
+    card_number: str | None = None
+    card_holder: str | None = None
+    wallets: list[CryptoWalletOut] = []
+    paypal_account: str | None = None
+
+
+class DonationMethodsOut(BaseModel):
+    methods: list[DonationMethodOut]
+
+
+class ManualDonationOut(BaseModel):
+    """پاسخ ثبت حمایت دستی — همیشه در وضعیت pending (در انتظار تأیید)."""
+
+    id: UUID  # شناسهٔ رکورد اثبات (manual_donation_proofs)
+    intent_id: UUID
+    method: str
+    status: str = "pending"
+    amount: int
+    currency: str
+    created_at: datetime
+
+
+class ManualDonationAdminOut(BaseModel):
+    id: UUID
+    intent_id: UUID
+    method: str
+    status: str  # از review_status رکورد اثبات: pending | approved | rejected
+    amount: int
+    currency: str
+    campaign_id: UUID | None
+    donor_name: str | None
+    proof_text: str | None
+    has_proof_image: bool
+    wallet_label: str | None
+    review_note: str | None
+    reviewed_at: datetime | None
+    created_at: datetime
+
+
+class ManualDonationPage(BaseModel):
+    items: list[ManualDonationAdminOut]
+    next_cursor: str | None
+
+
+class ManualReviewIn(BaseModel):
+    note: str | None = Field(default=None, max_length=512)

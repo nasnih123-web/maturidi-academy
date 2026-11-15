@@ -4,17 +4,25 @@
 - ZarinPal: `request_payment` → authority + pay_url؛ `verify_payment` → ref_id.
   سندباکس: https://sandbox.zarinpal.com — پروداکشن: https://api.zarinpal.com
   (حالت از `payment.zarinpal_sandbox` خوانده می‌شود؛ پیش‌فرض: sandbox).
+- IDPay: `request_payment` → ساخت تراکنش (POST /v1.1/payment) و لینک پرداخت؛
+  `verify_payment` → POST /v1.1/payment/verify (وضعیت ۱۰۰/۱۰۱ = موفق).
+  سندباکس با هدر X-SANDBOX کنترل می‌شود (`payment.idpay_sandbox`؛ پیش‌فرض: روشن).
+  نکتهٔ قراردادی: verify آیدی‌پی علاوه بر شناسهٔ تراکنش، `order_id` ساخت را
+  هم می‌خواهد؛ order_id در خود authority نگه داشته می‌شود (قالب
+  «<tx_id>:<order_id>») تا هیچ ستون/وضعیت اضافه‌ای لازم نباشد.
 - httpx با timeout صریح؛ هر خطای حمل‌ونقل به GatewayError تبدیل می‌شود.
 - امضای وبهوک: برای زرین‌پال وبهوک کلاسیک وجود ندارد — «تأیید»، همان فراخوان
   سمت‌سرورِ verify روی authority است (در ADR-0013 مستند شده). درگاه‌هایی که
-  وبهوک امضاشده می‌فرستند (مثل IDPay) از HMAC-SHA256 روی بدنهٔ خام استفاده
-  می‌کنند (کلید: `payment.webhook_secret`).
+  وبهوک امضاشده می‌فرستند از HMAC-SHA256 روی بدنهٔ خام استفاده
+  می‌کنند (کلید: `payment.webhook_secret`). آیدی‌پی هم امضا نمی‌فرستد؛
+  اصالت اعلان آن هم با verify سمت‌سرور اثبات می‌شود (مثل زرین‌پال).
 """
 from __future__ import annotations
 
 import abc
 import hashlib
 import hmac
+import uuid
 from dataclasses import dataclass
 
 import httpx
@@ -23,6 +31,10 @@ ZARINPAL_SANDBOX_BASE = "https://sandbox.zarinpal.com"
 ZARINPAL_PROD_BASE = "https://api.zarinpal.com"
 ZARINPAL_SANDBOX_PAY = "https://sandbox.zarinpal.com/pg/StartPay"
 ZARINPAL_PROD_PAY = "https://www.zarinpal.com/pg/StartPay"
+
+IDPAY_BASE = "https://api.idpay.ir/v1.1"
+IDPAY_PAY = "https://idpay.ir/p/ws"
+IDPAY_SANDBOX_PAY = "https://idpay.ir/p/ws-sandbox"
 
 _HTTP_TIMEOUT = httpx.Timeout(15.0, connect=8.0)
 
@@ -171,10 +183,125 @@ class ZarinPalGateway(PaymentGateway):
         return GatewayVerifyResult(ref_id=str(ref_id), card_pan=data.get("card_pan"))
 
 
+class IdpayGateway(PaymentGateway):
+    """درگاه آیدی‌پی (API v1.1) — هدر X-API-KEY + X-SANDBOX.
+
+    authority ذخیره‌شده قالب «<tx_id>:<order_id>» دارد: verify آیدی‌پی هر
+    دو را می‌خواهد و order_id هنگام ساخت تولید می‌شود؛ این قالب آن را بدون
+    ستون اضافه کنار شناسهٔ تراکنش نگه می‌دارد. `pay_url_for` بخش order را
+    جدا می‌کند (لینک پرداخت فقط با tx_id ساخته می‌شود).
+    """
+
+    name = "idpay"
+
+    def __init__(self, *, sandbox: bool = True, client: httpx.AsyncClient | None = None):
+        self.sandbox = sandbox
+        self._client = client  # تزریق در تست
+
+    def _http(self) -> httpx.AsyncClient:
+        if self._client is not None:
+            return self._client
+        return httpx.AsyncClient(timeout=_HTTP_TIMEOUT, trust_env=False)
+
+    def _headers(self, merchant_key: str) -> dict[str, str]:
+        return {
+            "X-API-KEY": merchant_key,
+            "X-SANDBOX": "1" if self.sandbox else "0",
+            "Content-Type": "application/json",
+        }
+
+    @staticmethod
+    def split_authority(authority: str) -> tuple[str, str]:
+        """(tx_id, order_id) — authority بدون «:» → order_id همان tx_id."""
+        tx_id, sep, order_id = authority.partition(":")
+        return tx_id, (order_id if sep and order_id else tx_id)
+
+    def pay_url_for(self, authority: str) -> str:
+        tx_id, _ = self.split_authority(authority)
+        base = IDPAY_SANDBOX_PAY if self.sandbox else IDPAY_PAY
+        return f"{base}/{tx_id}"
+
+    def verify_webhook_signature(self, *, raw_body: bytes, signature: str | None, webhook_secret: str | None) -> bool:
+        # آیدی‌پی اعلان امضاشده نمی‌فرستد؛ اصالت پرداخت فقط با فراخوان
+        # سمت‌سرور verify اثبات می‌شود (همان الگوی زرین‌پال، ADR-0013).
+        return False
+
+    async def request_payment(
+        self, *, amount: int, description: str, callback_url: str, merchant_key: str
+    ) -> GatewayPaymentRequest:
+        order_id = uuid.uuid4().hex
+        payload = {
+            "order_id": order_id,
+            "amount": amount,
+            "desc": description[:255],
+            "callback": callback_url,
+        }
+        client = self._http()
+        close = self._client is None
+        try:
+            resp = await client.post(
+                f"{IDPAY_BASE}/payment", json=payload, headers=self._headers(merchant_key)
+            )
+            status_code = resp.status_code
+            body = resp.json() if resp.content else {}
+        except httpx.HTTPError as exc:
+            raise GatewayError(f"idpay request failed: {exc}") from exc
+        finally:
+            if close:
+                await client.aclose()
+        tx_id = (body or {}).get("id")
+        link = (body or {}).get("link")
+        if status_code != 201 or not tx_id:
+            raise GatewayError(
+                f"idpay request rejected: status={status_code} "
+                f"error_code={(body or {}).get('error_code')} "
+                f"error_message={(body or {}).get('error_message')}"
+            )
+        return GatewayPaymentRequest(
+            authority=f"{tx_id}:{order_id}",
+            pay_url=str(link) if link else self.pay_url_for(str(tx_id)),
+        )
+
+    async def verify_payment(
+        self, *, authority: str, amount: int, merchant_key: str
+    ) -> GatewayVerifyResult:
+        tx_id, order_id = self.split_authority(authority)
+        payload = {"id": tx_id, "order_id": order_id}
+        client = self._http()
+        close = self._client is None
+        try:
+            resp = await client.post(
+                f"{IDPAY_BASE}/payment/verify",
+                json=payload,
+                headers=self._headers(merchant_key),
+            )
+            body = resp.json() if resp.content else {}
+        except httpx.HTTPError as exc:
+            raise GatewayError(f"idpay verify failed: {exc}") from exc
+        finally:
+            if close:
+                await client.aclose()
+        status = (body or {}).get("status")
+        track_id = (body or {}).get("track_id")
+        # ۱۰۰ = تأییدشده؛ ۱۰۱ = قبلاً تأیید شده (idempotent در سمت درگاه)
+        if status not in (100, 101) or track_id is None:
+            raise GatewayError(
+                f"idpay verify rejected: status={status} "
+                f"error_code={(body or {}).get('error_code')} "
+                f"error_message={(body or {}).get('error_message')}"
+            )
+        payment = (body or {}).get("payment") or {}
+        return GatewayVerifyResult(
+            ref_id=str(track_id), card_pan=payment.get("card_no")
+        )
+
+
 def build_gateway(
     name: str, *, sandbox: bool = True, client: httpx.AsyncClient | None = None
 ) -> PaymentGateway:
     """کارخانهٔ درگاه — نام ناشناس → GatewayError (نه fallback مخفی)."""
     if name == "zarinpal":
         return ZarinPalGateway(sandbox=sandbox, client=client)
+    if name == "idpay":
+        return IdpayGateway(sandbox=sandbox, client=client)
     raise GatewayError(f"unknown gateway: {name}")

@@ -174,3 +174,20 @@ dark-obsidian تنها تم است و در `platform_settings` ثبت نشده �
   کانونی است؛ CRM همان id/labelها را mirror می‌کند (ایمپورت cross-app ممکن نیست).
 - **صفحهٔ نمایشی** `/demo/sections` (فقط dev؛ در production ‏۴۰۴): هر ۱۰ واریانت
   با دادهٔ نمایشی `lib/demo-fixtures.ts` — هرگز در مسیر production استفاده نمی‌شود.
+
+## ۱۱) کلیدهای روش‌های دستی حمایت — فاز حمایت دستی
+
+| کلید | نوع | مصرف‌کننده | نکته |
+|---|---|---|---|
+| `payment.idpay_sandbox` | json (bool) | درگاه آیدی‌پی | پیش‌فرض `false` (محیط واقعی)؛ قبلاً sandbox هاردکد `True` بود |
+| `donation.online_enabled` | json (bool) | جریان حمایت وب | پیش‌فرض `true`؛ `false` → ساخت intent آنلاین تازه ۴۰۳ می‌شود (پرداخت‌های در جریان سالم می‌مانند) |
+| `donation.card_enabled` / `donation.card_number` / `donation.card_holder` / `donation.card_instructions` | json (bool) / string / string / localized | کارت‌به‌کارت | روش فقط وقتی در `GET /api/v1/finance/donation-methods` فهرست می‌شود که فعال و شماره‌کارت غیرخالی باشد |
+| `donation.crypto_enabled` / `donation.crypto_wallets` / `donation.crypto_instructions` | json (bool) / json / localized | رمزارز | کیف‌ها: `[{"currency","network","address"}]` حداکثر ۱۰ تا؛ اعتبارسنجی در زمان نوشتن (نوع اشتباه TypeError، مقدار اشتباه ValueError) |
+| `donation.paypal_enabled` / `donation.paypal_account` / `donation.paypal_instructions` | json (bool) / string / localized | دلاری (پی‌پال) | حساب متنی آزاد (ایمیل/شناسهٔ پی‌پال) |
+
+حمایت‌های دستی (`POST /api/v1/finance/donate/manual`) با وضعیت `pending` در
+جدول `manual_donation_proofs` + یک `PaymentIntent` ثبت می‌شوند و فقط با تأیید
+ادمین در CRM (تب «حمایت‌های دستی» صفحهٔ مالی) به Donation/Ledger تبدیل می‌شوند؛
+رد ادمین intent را `cancelled` می‌کند. رسید تصویری با سقف ۵MB و بررسی
+magic-bytes (PNG/JPEG/WEBP) در storage با کلید `donation-receipts/…` ذخیره
+می‌شود.

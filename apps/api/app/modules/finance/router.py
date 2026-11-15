@@ -7,12 +7,23 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Request, Response
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.errors import APIError
+from app.core.storage import read_capped_upload
 from app.models.models import User
 from app.modules.auth.dependencies import get_current_user, require_permission
 
@@ -110,6 +121,76 @@ async def payment_webhook(
         raw_body=raw_body,
         headers=dict(request.headers),
         ip=_client_ip(request),
+    )
+
+
+@finance_router.post("/callback/idpay")
+async def idpay_callback(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """مقصد بازگشت آیدی‌پی (POST فرم: id/order_id/status/track_id).
+
+    اصالت پرداخت فقط با verify سمت‌سرور در سرویس اثبات می‌شود.
+    """
+    form = await request.form()
+    fields = {k: str(v) for k, v in form.items()}
+    return await service.handle_idpay_callback(
+        db,
+        fields=fields,
+        ip=_client_ip(request),
+        ua=_ua(request),
+    )
+
+
+@finance_router.get("/donation-methods", response_model=schemas.DonationMethodsOut)
+async def donation_methods(db: AsyncSession = Depends(get_db)):
+    """روش‌های پرداختِ فعال و کاملِ صفحهٔ حمایت — روش خاموش اینجا نیست."""
+    return await service.donation_methods(db)
+
+
+@finance_router.post(
+    "/donate/manual", response_model=schemas.ManualDonationOut, status_code=201
+)
+async def donate_manual(
+    request: Request,
+    method: str = Form(...),
+    amount: int = Form(...),
+    campaign_id: UUID | None = Form(default=None),
+    donor_name: str | None = Form(default=None),
+    proof_text: str | None = Form(default=None),
+    wallet_currency: str | None = Form(default=None),
+    wallet_network: str | None = Form(default=None),
+    receipt: UploadFile | None = File(default=None),
+    db: AsyncSession = Depends(get_db),
+    user: User | None = Depends(_optional_user),
+):
+    """ثبت حمایت دستی (کارت‌به‌کارت/کریپتو/PayPal) — وضعیت pending.
+
+    رسید: تصویر (PNG/JPG/WEBP، حداکثر ۵MB) یا متن (هش/کد رهگیری) — دست‌کم
+    یکی الزامی است. ثبت نهایی پول فقط با تأیید ادمین در CRM انجام می‌شود.
+    """
+    image_data: bytes | None = None
+    if receipt is not None:
+        image_data = await read_capped_upload(
+            receipt,
+            service.RECEIPT_IMAGE_MAX_BYTES,
+            too_large_code="receipt_too_large",
+            too_large_message="حجم تصویر رسید نباید بیش از ۵ مگابایت باشد",
+        )
+    return await service.submit_manual_donation(
+        db,
+        method=method,
+        amount=amount,
+        campaign_id=campaign_id,
+        donor_name=donor_name,
+        proof_text=proof_text,
+        image_data=image_data,
+        wallet_currency=wallet_currency,
+        wallet_network=wallet_network,
+        user=user,
+        ip=_client_ip(request),
+        ua=_ua(request),
     )
 
 
@@ -246,3 +327,73 @@ async def admin_gateway_status(
 ):
     """وضعیت اتصال درگاه‌ها — فقط configured، هرگز مقدار secret (§۳)."""
     return await service.gateway_statuses(db)
+
+
+@admin_finance_router.get("/manual-donations", response_model=schemas.ManualDonationPage)
+async def admin_list_manual_donations(
+    status: str | None = Query(default=None, pattern="^(pending|approved|rejected)$"),
+    cursor: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=50),
+    user: User = Depends(_finance_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """فهرست حمایت‌های دستی با اثبات — بازبینی در CRM از همین‌جا."""
+    items, next_cursor = await service.list_manual_donations(
+        db, status=status, cursor=cursor, limit=limit
+    )
+    return {"items": items, "next_cursor": next_cursor}
+
+
+@admin_finance_router.get("/manual-donations/{proof_id}/proof-image")
+async def admin_manual_proof_image(
+    proof_id: UUID,
+    user: User = Depends(_finance_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """تصویر رسید یک حمایت دستی — فقط finance.manage (بدون URL عمومی)."""
+    data, mime = await service.get_manual_proof_image(db, proof_id=proof_id)
+    return Response(content=data, media_type=mime)
+
+
+@admin_finance_router.post(
+    "/manual-donations/{proof_id}/approve", response_model=schemas.ManualDonationAdminOut
+)
+async def admin_approve_manual_donation(
+    proof_id: UUID,
+    request: Request,
+    body: schemas.ManualReviewIn | None = None,
+    user: User = Depends(_finance_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """تأیید حمایت دستی → ثبت نهایی Donation/Ledger از مسیر مشترک."""
+    return await service.review_manual_donation(
+        db,
+        proof_id=proof_id,
+        approve=True,
+        note=body.note if body else None,
+        admin=user,
+        ip=_client_ip(request),
+        ua=_ua(request),
+    )
+
+
+@admin_finance_router.post(
+    "/manual-donations/{proof_id}/reject", response_model=schemas.ManualDonationAdminOut
+)
+async def admin_reject_manual_donation(
+    proof_id: UUID,
+    request: Request,
+    body: schemas.ManualReviewIn | None = None,
+    user: User = Depends(_finance_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """رد حمایت دستی → intent لغوشده؛ هیچ رکورد مالی‌ای ساخته نمی‌شود."""
+    return await service.review_manual_donation(
+        db,
+        proof_id=proof_id,
+        approve=False,
+        note=body.note if body else None,
+        admin=user,
+        ip=_client_ip(request),
+        ua=_ua(request),
+    )
