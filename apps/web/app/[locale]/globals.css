@@ -3690,6 +3690,15 @@ body:has(.quran-hifz-study .recitation-toolbar) .site-footer {
    real mushaf pages, not flowing text — their lines keep the flip
    mode's breaking (no anywhere-wrapping inside words). */
 .quran-hifz-study .hifz-nass-scroll .hifz-line-page p { overflow-wrap: normal; }
+/* Nass scroll line-wrap fix (2026-11-16, p341): the scroll sections
+   sat inside .hifz-nass (padding 0 1rem 1rem), so their lines were
+   329px while flip-mode lines are 361px — the two widest lines of
+   p341 (lines 12–13, end of 22:78) overflowed and their last word
+   spilled alone onto a second row (الزَّكَاةَ alone). The scroll
+   container drops its side padding, so sections are full-width
+   (393px, lines 361px) — the same geometry flip mode proves fits.
+   Plain .hifz-nass keeps its padding: the text fallback needs it. */
+.quran-hifz-study .hifz-nass-scroll { padding-left: 0; padding-right: 0; }
 /* Tanzil text credit — hidden in hifz mushaf mode only (user decision
    2026-11-11 «پنهان کن»): in mushaf mode the credit <p> (a sibling
    after QuranReader in page.tsx) paints over mushaf line 2 (measured
