@@ -168,6 +168,39 @@ def _basmala_phoneme_string(mapping) -> str:
     )
 
 
+def _basmala_word_indices(mapping, surah: int, ayah: int) -> frozenset[int]:
+    """شماره‌های کلمه‌های بسملهٔ آیه (فقط آیهٔ ۱، جز سوره‌های ۱ و ۹):
+    قطعه‌های آغازینِ آیه که دقیقاً بسمله را می‌سازند — همان قدمِ
+    پیشوندیِ `_locate_pass`. اگر آیه بسملهٔ پیش‌چسب ندارد (مثلِ
+    نگاشتِ مصنوعیِ تست‌ها که آیهٔ ۱اش کلمه‌های واقعی است)، مجموعه
+    خالی است و هیچ کلمه‌ای بسمله نیست؛ پس فیلترِ ذخیره‌سازی فقط
+    وقتی عمل می‌کند که بسمله واقعاً در نگاشت باشد. (شمارهٔ خامِ
+    «۰ تا ۳» کافی نیست: در نگاشتِ بدونِ بسمله، ۰ تا ۳ کلمه‌های
+    واقعیِ آیه‌اند و فیلترِ خام آن‌ها را بی‌دلیل از نمره می‌انداخت.)"""
+    if mapping is None or surah in (1, 9) or ayah != 1:
+        return frozenset()
+    basmala = _basmala_phoneme_string(mapping)
+    if not basmala:
+        return frozenset()
+    segs = mapping.segments_for(surah, ayah)
+    if not segs:
+        return frozenset()
+    acc = ""
+    out: set[int] = set()
+    for s in segs:
+        if acc == basmala:
+            break
+        if s.phoneme is None:
+            out.update(s.word_indices)
+            continue
+        cand = acc + collapse_phoneme_runs(s.phoneme)
+        if not basmala.startswith(cand):
+            break
+        acc = cand
+        out.update(s.word_indices)
+    return frozenset(out) if acc == basmala else frozenset()
+
+
 def _locate_pass(
     mapping, surah, buf, hint_ayah, allow_backward, required_len,
     buf_offset,
@@ -507,7 +540,10 @@ class LiveWord:
     ayah: int
     word_index: int
     expected: str
-    status: str  # correct | close | wrong | skipped
+    status: str  # correct | close | wrong | skipped | basmala
+    # `basmala` یعنی کلمهٔ بسملهٔ خوانده‌شده: روی صفحه نوشته
+    # می‌شود ولی در نمره‌دهی حساب نمی‌شود و هرگز ذخیره نمی‌شود
+    # (مشخصهٔ کاربر ۲۰۲۶-۱۱-۱۵) — فقط زنده است، نه در attempt.
     prob: float
     heard: str | None = None
     reason: str | None = None
@@ -740,6 +776,12 @@ class LiveSession:
     # اشاره‌گر بی‌مهار جلو نرود و آیه‌های نخوانده نوشته نشوند. با
     # نخستین تطابقِ درست/نزدیک، یا یافتنِ موفق، پایین می‌آید.
     _locate_failed: bool = False
+    # بسملهٔ آغازینِ نشست که بی‌نمره مصرف شد (مشخصهٔ کاربر
+    # ۲۰۲۶-۱۱-۱۵): سرِ نشست بسمله گفته شد ولی هنوز معلوم نیست به
+    # آیهٔ ۱ می‌رسد یا آیهٔ دیگر؛ اگر یافتن روی آیهٔ ۱ لنگر انداخت،
+    # بسمله پس‌ازآن تایپ می‌شود (وضعیتِ `basmala`، بی‌نمره)؛ اگر
+    # روی آیهٔ دیگر لنگر انداخت، دور ریخته می‌شود (ایراد ۱۴).
+    _opening_basmala_consumed: bool = False
     _assigned: dict = field(default_factory=dict)  # (ayah, idx) -> (heard, prob)
     # وضعیتِ فعلیِ هر خانه (برای تشخیصِ «بازخوانیِ اصلاحی» از
     # «تکرار» — ایراد ۱۴): خانه‌ای که غلط خورده و دوباره خوانده
@@ -1130,6 +1172,29 @@ class LiveSession:
         پرچمِ needs_review می‌خورد. وقفِ درونِ بازهٔ قطعه پیش از
         کلمهٔ بعدش صادر می‌شود (`_emit_spanned_pauses_before`).
         """
+        # بسملهٔ نخوانده هرگز تایپ نمی‌شود (مشخصهٔ کاربر ۲۰۲۶-۱۱-۱۵):
+        # واحدِ بسمله با وضعیتِ «جاافتاده» صادر نمی‌شود — نه
+        # خاکستریِ زنده، نه جاافتادهٔ ذخیره؛ فقط اشاره‌گرها جلو
+        # می‌روند. این شاخه همهٔ مسیرهای ردشدن (پرشِ درون‌آیه‌ای،
+        # جست‌وجوی جلوتر، ردِ خودکارِ وقف) را می‌پوشاند، چون همه
+        # از همین‌جا می‌گذرند.
+        if status == "skipped" and self._is_basmala_unit(self._unit_pos):
+            if word_indices:
+                self._index = max(word_indices) + 1
+            self._unit_pos += 1
+            return
+        # بسملهٔ خوانده‌شده تایپ می‌شود ولی نمره نمی‌خورد (مشخصهٔ
+        # کاربر ۲۰۲۶-۱۱-۱۵): هر نتیجه‌ای برای واحدِ بسمله
+        # (درست/نزدیک/غلط) با وضعیتِ `basmala` صادر می‌شود؛ کلاینت
+        # آن را نوشته نشان می‌دهد ولی در قرصِ دقت و برگهٔ خطاها
+        # نمی‌شمارد و finish آن را ذخیره نمی‌کند. با صدورِ بسمله،
+        # پرچمِ «بسملهٔ مصرف‌شدهٔ آغازین» هم پایین می‌آید — بسمله
+        # دیگر مصرف‌شده نیست، نمره‌خورده است.
+        if status in ("correct", "close", "wrong") and self._is_basmala_unit(
+            self._unit_pos
+        ):
+            status = "basmala"
+            self._opening_basmala_consumed = False
         needs_review = (
             status == "close" and distance == _NEAR_MISS_MAX_DISTANCE
         )
@@ -1139,7 +1204,7 @@ class LiveSession:
             if heard is not None:
                 h: str | None = heard
             else:
-                h = expected if status in ("correct", "close") else None
+                h = expected if status in ("correct", "close", "basmala") else None
             reason = "wrong_word" if status in ("close", "wrong") else None
             self._emit_word(
                 self._ayah, wi, expected, status, prob, h, reason,
@@ -1311,6 +1376,25 @@ class LiveSession:
         self._index = min(unit.word_indices) if unit.word_indices else 0
         self._last_heard_ayah = ayah
         self._located_count += 1
+        # بسملهٔ آغازینِ مصرف‌شده (مشخصهٔ کاربر ۲۰۲۶-۱۱-۱۵): اگر
+        # نشست با بسمله شروع شد و یافتن روی آیهٔ ۱ لنگر انداخت،
+        # بسمله پس‌ازآن تایپ می‌شود (وضعیتِ `basmala`، بی‌نمره)؛
+        # اگر روی آیهٔ دیگر لنگر انداخت، دور ریخته می‌شود (ایراد
+        # ۱۴ — بسمله نباید نشستِ آیهٔ دیگر را روی آیهٔ ۱ لنگر
+        # بیندازد). شرطِ موضع یعنی بسمله پیش از نقطهٔ یافتن است،
+        # نه خودِ آن.
+        if self._opening_basmala_consumed:
+            self._opening_basmala_consumed = False
+            if ayah == 1 and self._unit_pos >= self._basmala_unit_count():
+                for j in range(self._basmala_unit_count()):
+                    for wi in self._units[j].word_indices:
+                        expected = (
+                            self._words[wi] if wi < len(self._words) else ""
+                        )
+                        self._emit_word(
+                            ayah, wi, expected, "basmala", _PROB_CORRECT,
+                            expected,
+                        )
         if from_ayah != ayah and not any(
             a == from_ayah for (a, _i) in self._assigned
         ):
@@ -1338,9 +1422,15 @@ class LiveSession:
             # مصرفش کن تا لنگرِ سریع روی واحدِ اولِ همان آیه
             # بنشیند، نه اینکه یافتن با کاوشِ بسمله‌دار به آیهٔ ۱
             # پرتاب شود. (آیهٔ ۱ مستثناست: بسمله آن‌جا خودِ متن
-            # است و قطعه‌اش در نگاشت هست.)
+            # است و قطعه‌اش در نگاشت هست.) ولی مصرف، بی‌ثبت نیست
+            # (مشخصهٔ کاربر ۲۰۲۶-۱۱-۱۵): اگر یافتنِ پس‌ازآن روی
+            # آیهٔ ۱ لنگر انداخت، همین بسمله پس‌ازآن تایپ می‌شود
+            # (وضعیتِ `basmala`، بی‌نمره)؛ اگر روی آیهٔ دیگر لنگر
+            # انداخت، پرچم در `_jump_to` پایین می‌آید و بسمله دور
+            # ریخته می‌شود.
             basmala = self._session_basmala()
             if basmala and buf.startswith(basmala):
+                self._opening_basmala_consumed = True
                 self._phoneme_buffer = buf[len(basmala):]
                 self._resync_dropped += len(basmala)
                 buf = self._phoneme_buffer
@@ -1390,6 +1480,14 @@ class LiveSession:
             return False
         if len(buf) < _LOCATE_MIN_CHARS:
             return False
+        # بسملهٔ سرِ بافر، پیش از یافتن (مشخصهٔ کاربر ۲۰۲۶-۱۱-۱۵):
+        # یافتن بسمله را از رشتهٔ موردانتظار کنار می‌گذارد (ایراد
+        # ۱۴)، ولی اگر یافتن روی آیهٔ ۱ لنگر انداخت، همین بسمله
+        # پس‌ازآن در `_jump_to` تایپ می‌شود (وضعیتِ `basmala`،
+        # بی‌نمره)؛ اگر روی آیهٔ دیگر لنگر انداخت، پرچم همان‌جا
+        # پایین می‌آید و بسمله دور ریخته می‌شود.
+        if basmala and buf.startswith(basmala):
+            self._opening_basmala_consumed = True
         # یافتن: در شروعِ نشست هر آیه‌ای مجاز است؛ در یافتنِ دوبارهٔ
         # وسطِ نشست فقط آیه‌های جلوتر از اشاره‌گرِ جاری.
         if self._locating:
@@ -1423,6 +1521,39 @@ class LiveSession:
         if self._basmala_cache is None:
             self._basmala_cache = _basmala_phoneme_string(self.mapping)
         return self._basmala_cache
+
+    def _basmala_unit_count(self) -> int:
+        """چند واحدِ آغازینِ آیهٔ جاری بسمله‌اند (ایراد ۱۴، ادامه):
+        آیهٔ ۱ هر سوره جز ۱ و ۹. همان قدمِ پیشوندیِ `_locate_pass`
+        است (ردِ وقف شمرده می‌شود ولی واج نمی‌دهد): اگر واحدهای
+        آغازین دقیقاً بسمله را ندهند، صفر — یعنی این آیه بسملهٔ
+        پیش‌چسب ندارد و هیچ واحدی بسمله نیست."""
+        if self.surah in (1, 9) or self._ayah != 1 or self._units is None:
+            return 0
+        basmala = self._session_basmala()
+        if not basmala:
+            return 0
+        acc = ""
+        count = 0
+        for s in self._units:
+            if acc == basmala:
+                break
+            if s.phoneme is None:
+                count += 1
+                continue
+            cand = acc + collapse_phoneme_runs(s.phoneme)
+            if not basmala.startswith(cand):
+                break
+            acc = cand
+            count += 1
+        return count if acc == basmala else 0
+
+    def _is_basmala_unit(self, unit_pos: int) -> bool:
+        """آیا واحدِ `unit_pos` از آیهٔ جاری، بسملهٔ پیش‌چسبِ آیهٔ
+        ۱ است؟ فقط موضعِ واحد ملاک است، نه شمارهٔ کلمه — نگاشتِ
+        مصنوعیِ تست‌ها بسمله را ۳ قطعه می‌دهد و نگاشتِ واقعی ۴
+        کلمه؛ هر دو با همین شمارش درست درمی‌آیند."""
+        return unit_pos < self._basmala_unit_count()
 
     async def feed_phonemes(self, phonemes: list[str]) -> None:
         """واج‌های Zipformer را با نگاشت قطعه‌ای به کلمه تبدیل کن.
@@ -2171,8 +2302,21 @@ class LiveSession:
                 # می‌آیند (نه `skipped` زنده): کلاینت آن‌ها را از
                 # کلمه‌های وسطِ جلسه جدا می‌کند.
                 self._emitting_final = True
+                # شماره‌های بسملهٔ آیهٔ جاری (خالی اگر آیه بسملهٔ
+                # پیش‌چسب ندارد) — بسملهٔ نخوانده در پایان هم
+                # «جاافتاده» نمی‌خورد.
+                basmala_idx = _basmala_word_indices(
+                    self.mapping, self.surah, self._ayah
+                )
                 try:
                     while self._index < len(self._words):
+                        # بسملهٔ نخوانده هرگز تایپ نمی‌شود (مشخصهٔ
+                        # کاربر ۲۰۲۶-۱۱-۱۵): در پایان هم «جاافتاده»
+                        # نمی‌خورد — وگرنه پس از بارگذاریِ دوباره
+                        # تایپ‌شده دیده می‌شد.
+                        if self._index in basmala_idx:
+                            self._index += 1
+                            continue
                         # خانهٔ ازپیش‌صادرشده (مثلاً واحدِ غلطِ
                         # نگه‌داشته‌شده در حالتِ hold) دست نمی‌خورد:
                         # «جاافتاده» نباید روی «غلط» اصلاحیه بفرستد.
@@ -2196,6 +2340,19 @@ class LiveSession:
             aligned, _ = alignment.align_words(
                 expected_words, heard, probs, self.green, self.amber
             )
+            # بسمله هرگز ذخیره/شمرده نمی‌شود (مشخصهٔ کاربر ۲۰۲۶-۱۱-۱۵):
+            # خوانده‌شده‌اش زنده تایپ شد (وضعیتِ `basmala`) ولی در
+            # نمرهٔ attempt نمی‌آید؛ نخوانده‌اش هم «جاافتاده» ذخیره
+            # نمی‌شود تا پس از بارگذاریِ دوباره تایپ‌شده دیده نشود.
+            # فیلتر پیش از `_store_grade` است تا ردیفِ نمره و ردیفِ
+            # خطا (تاریخچه) هیچ‌کدام برای بسمله ساخته نشود؛ شمارهٔ
+            # کلمه‌های دیگر مطلق است و جابه‌جا نمی‌شود. مجموعهٔ
+            # بسمله از خودِ نگاشت خوانده می‌شود، نه از شمارهٔ خام —
+            # آیهٔ ۱ِ بدونِ بسملهٔ پیش‌چسب، بسمله ندارد.
+            basmala_idx = _basmala_word_indices(self.mapping, self.surah, ayah)
+            aligned = [
+                w for w in aligned if w.word_index not in basmala_idx
+            ]
             extra = self._extras if pos == len(touched) - 1 else []
             stored = await hifz_service._store_grade(
                 self.db, self.attempt, self.surah, ayah, aligned, extra

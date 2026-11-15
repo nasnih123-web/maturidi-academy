@@ -320,7 +320,10 @@ export interface LiveWordEvent {
   ayah: number;
   word_index: number;
   expected: string;
-  status: 'correct' | 'close' | 'wrong' | 'skipped';
+  status: 'correct' | 'close' | 'wrong' | 'skipped' | 'basmala';
+  // `basmala` یعنی کلمهٔ بسملهٔ خوانده‌شده: روی صفحه نوشته می‌شود
+  // ولی در نمره‌دهی حساب نمی‌شود و هرگز ذخیره نمی‌شود (مشخصهٔ
+  // کاربر ۲۰۲۶-۱۱-۱۵) — فقط زنده است، نه در attempt.
   prob: number;
   heard: string | null;
   /** پاکت نسخهٔ ۲ (برای کلاینت قدیمی/رویدادِ بدون پاکت، غایب است). */
@@ -552,7 +555,9 @@ export class LiveEventStore {
       return 'ignored-malformed';
     }
     const status = event.status as LiveWordStatus;
-    if (!['correct', 'close', 'wrong', 'skipped'].includes(status)) {
+    // `basmala` هم وضعیتِ معتبر است: کلمهٔ بسملهٔ خوانده‌شده —
+    // نوشته می‌شود ولی نمره نمی‌خورد (مشخصهٔ کاربر ۲۰۲۶-۱۱-۱۵).
+    if (!['correct', 'close', 'wrong', 'skipped', 'basmala'].includes(status)) {
       return 'ignored-malformed';
     }
     const word: LiveWordEvent = {
@@ -622,7 +627,9 @@ export class LiveEventStore {
       return 'ignored-correction-unknown';
     }
     const status = event.status as LiveWordStatus;
-    if (!['correct', 'close', 'wrong', 'skipped'].includes(status)) {
+    // `basmala` هم وضعیتِ معتبر است (همانِ applyWord): اصلاحیهٔ
+    // خانهٔ بسمله نباید به‌عنوانِ ناقص دور ریخته شود.
+    if (!['correct', 'close', 'wrong', 'skipped', 'basmala'].includes(status)) {
       return 'ignored-malformed';
     }
     const index = this.words.indexOf(target);

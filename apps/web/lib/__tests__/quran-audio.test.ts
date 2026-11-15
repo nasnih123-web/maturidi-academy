@@ -274,6 +274,54 @@ describe('LiveEventStore', () => {
     assert.equal(store.correctionsForUnknown, 1);
   });
 
+  it('بسملهٔ خوانده‌شده (وضعیتِ basmala) می‌نشیند و اصلاحیه‌اش هم اعمال می‌شود', () => {
+    // مشخصهٔ کاربر ۲۰۲۶-۱۱-۱۵: بسمله تایپ می‌شود ولی نمره
+    // نمی‌خورد — پس رویدادِ `basmala` باید در store بنشیند (نه
+    // `ignored-malformed`) و اصلاحیهٔ همان خانه هم اعمال شود.
+    const store = new LiveEventStore();
+    store.reset('sess-1');
+    assert.equal(
+      store.apply(
+        wordEvent({
+          event_id: 'b1',
+          sequence_no: 1,
+          surah: 104,
+          ayah: 1,
+          word_index: 0,
+          expected: 'بِسْمِ',
+          status: 'basmala',
+          heard: 'بِسْمِ',
+        }),
+      ),
+      'word',
+    );
+    const words = store.snapshot();
+    assert.equal(words.length, 1);
+    assert.equal(words[0].status, 'basmala');
+    assert.equal(words[0].expected, 'بِسْمِ');
+    assert.equal(
+      store.apply({
+        session_id: 'sess-1',
+        event_id: 'b2',
+        sequence_no: 2,
+        event_type: 'correction',
+        type: 'correction',
+        status: 'basmala',
+        surah: 104,
+        ayah: 1,
+        word_index: 0,
+        expected: 'بِسْمِ',
+        prob: 0.95,
+        heard: 'بِسْمِ',
+        corrects_event_id: 'b1',
+      }),
+      'correction',
+    );
+    assert.equal(store.snapshot().length, 1);
+    assert.equal(store.snapshot()[0].status, 'basmala');
+    assert.equal(store.correctionsApplied, 1);
+  });
+
   it('رویدادِ نشستِ دیگر (سوکتِ کهنه پس از اتصالِ دوباره) نادیده گرفته می‌شود', () => {
     const store = new LiveEventStore();
     store.reset('sess-2');

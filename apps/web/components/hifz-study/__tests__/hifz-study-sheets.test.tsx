@@ -627,4 +627,23 @@ describe('Fixed hifz study page + sign-in toast (user 2026-11-10)', () => {
     assert.match(study, /onClick=\{pauseLive\}/);
     assert.match(study, /\{labels\.liveListening\}/);
   });
+
+  it('Basmalah words are written but never counted in the pill (user 2026-11-15)', () => {
+    // مشخصهٔ کاربر: بسملهٔ خوانده‌شده تایپ می‌شود ولی در نمره‌دهی
+    // حساب نمی‌شود. قرصِ دقت فقط correct/close/wrong (و peeked و
+    // extra) را می‌شمارد؛ وضعیتِ `basmala` باید از زنجیرهٔ شمارش
+    // بیفتد — نه درست، نه خطا.
+    const study = readStudy();
+    assert.match(study, /`basmala` word \(recited Basmalah, user spec 2026-11-15\)/);
+    assert.match(study, /NEVER counted here/);
+    // The pill counts correct/close/wrong only — there must be no
+    // `basmala` branch inside the pillStats counting loops.
+    const pill = study.slice(study.indexOf('const pillStats'));
+    const pillEnd = pill.indexOf('}, [liveWords, attemptWords');
+    const pillBody = pill.slice(0, pillEnd);
+    assert.doesNotMatch(pillBody, /'basmala'/);
+    // And the error sheet only takes wrong/close — a `basmala`
+    // word never lands there either.
+    assert.match(study, /if \(w\.status !== 'wrong' && w\.status !== 'close'\) continue;/);
+  });
 });

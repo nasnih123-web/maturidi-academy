@@ -342,7 +342,10 @@ export interface WallWord {
   ayah: number;
   index: number;
   text: string;
-  status: 'correct' | 'close' | 'wrong' | 'skipped' | 'peeked';
+  status: 'correct' | 'close' | 'wrong' | 'skipped' | 'peeked' | 'basmala';
+  // `basmala` یعنی کلمهٔ بسملهٔ خوانده‌شده (فقط زنده): نوشته
+  // نشان داده می‌شود ولی در قرصِ دقت و برگهٔ خطاها نمی‌شمارد و
+  // هرگز ذخیره نمی‌شود (مشخصهٔ کاربر ۲۰۲۶-۱۱-۱۵).
   prob: number;
   heard: string | null;
   scoreId: string | null;
