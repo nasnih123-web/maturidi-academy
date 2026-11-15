@@ -2290,7 +2290,11 @@ export function QuranHifzStudy({
 
   // Live pills (Tarteel): error count and accuracy, from the words
   // written so far in this session (live + graded). A close word is
-  // a tashkeel error and counts as an error, like Tarteel.
+  // a tashkeel error and counts as an error, like Tarteel. A
+  // `basmala` word (recited Basmalah, user spec 2026-11-15) is
+  // written but NEVER counted here — neither correct nor an error —
+  // and a `skipped` word is not counted either; both statuses fall
+  // through the chain below on purpose.
   const pillStats = useMemo(() => {
     let correct = 0;
     let close = 0;
