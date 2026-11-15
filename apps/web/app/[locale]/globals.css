@@ -3699,7 +3699,6 @@ body:has(.quran-hifz-study .recitation-toolbar) .site-footer {
    (393px, lines 361px) — the same geometry flip mode proves fits.
    Plain .hifz-nass keeps its padding: the text fallback needs it. */
 .quran-hifz-study .hifz-nass-scroll { padding-left: 0; padding-right: 0; }
-
 /* Tanzil text credit — hidden in hifz mushaf mode only (user decision
    2026-11-11 «پنهان کن»): in mushaf mode the credit <p> (a sibling
    after QuranReader in page.tsx) paints over mushaf line 2 (measured
