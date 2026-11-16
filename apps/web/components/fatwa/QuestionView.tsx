@@ -21,9 +21,16 @@ interface QuestionViewProps {
   prefill?: string;
   /** Demo-only: submit the prefilled question on mount (static screenshots). */
   autoAsk?: boolean;
+  /**
+   * 'page' (default): standalone question page with an h1.
+   * 'sidebar': compact box for the fatwa list sidebar — h2 heading,
+   * same form, same submit/suggestion behaviour.
+   */
+  variant?: 'page' | 'sidebar';
 }
 
-export function QuestionView({ locale, labels, prefill, autoAsk }: QuestionViewProps) {
+export function QuestionView({ locale, labels, prefill, autoAsk, variant = 'page' }: QuestionViewProps) {
+  const sidebar = variant === 'sidebar';
   const form = useQuestionForm();
 
   useEffect(() => {
@@ -42,9 +49,18 @@ export function QuestionView({ locale, labels, prefill, autoAsk }: QuestionViewP
   const result = form.result;
 
   return (
-    <div className="page-wrap">
-      <h1 className="page-title">{labels.title}</h1>
-      <p className="page-sub">{labels.subtitle}</p>
+    <div className={sidebar ? 'ftw-ask-box' : 'page-wrap'}>
+      {sidebar ? (
+        <>
+          <h2>{labels.title}</h2>
+          <p className="ftw-ask-sub">{labels.subtitle}</p>
+        </>
+      ) : (
+        <>
+          <h1 className="page-title">{labels.title}</h1>
+          <p className="page-sub">{labels.subtitle}</p>
+        </>
+      )}
 
       <form
         className="soc-composer"
