@@ -21,6 +21,8 @@ import {
   useManualDonations,
   useReviewManualDonation,
   fetchManualProofImageUrl,
+  fetchFxRate,
+  type FxRate,
   useReconcile,
   useResolveMismatch,
   useUpdateCampaign,
@@ -767,6 +769,10 @@ function ManualTab(): React.ReactElement {
   const [history, setHistory] = React.useState<string[]>([]);
   const [note, setNote] = React.useState("");
   const [imageUrl, setImageUrl] = React.useState<string | null>(null);
+  const [fxTarget, setFxTarget] = React.useState<ManualDonation | null>(null);
+  const [fxRateInput, setFxRateInput] = React.useState("");
+  const [fxInfo, setFxInfo] = React.useState<FxRate | null>(null);
+  const [fxState, setFxState] = React.useState<"idle" | "loading" | "ok" | "error">("idle");
   const query = useManualDonations(status, cursor);
   const reviewMut = useReviewManualDonation();
 
@@ -789,11 +795,48 @@ function ManualTab(): React.ReactElement {
   };
 
   const review = (d: ManualDonation, approve: boolean): void => {
+    // تأیید حمایت ارزی از پنل تبدیل می‌گذرد (نرخ لحظه‌ای + امکان ویرایش)؛
+    // ریالی و رد کردن همان تأیید سادهٔ قبلی است.
+    if (approve && d.currency !== "IRR") {
+      setFxTarget(d);
+      setFxRateInput("");
+      setFxInfo(null);
+      setFxState("loading");
+      fetchFxRate(d.currency)
+        .then((r) => {
+          setFxInfo(r);
+          setFxRateInput(String(r.rate_irr));
+          setFxState("ok");
+        })
+        .catch(() => setFxState("error"));
+      return;
+    }
     const msg = approve ? t("finance15.m_confirmApprove") : t("finance15.m_confirmReject");
     if (!window.confirm(msg)) return;
     reviewMut.mutate(
       { id: d.id, approve, note: note.trim() ? note.trim() : undefined },
       { onSuccess: () => setNote("") },
+    );
+  };
+
+  const fxRateNum = Number(fxRateInput);
+  const fxValid = fxTarget !== null && Number.isFinite(fxRateNum) && fxRateNum > 0;
+  const confirmFx = (): void => {
+    if (!fxTarget || !fxValid) return;
+    reviewMut.mutate(
+      {
+        id: fxTarget.id,
+        approve: true,
+        note: note.trim() ? note.trim() : undefined,
+        rateIrr: Math.round(fxRateNum),
+      },
+      {
+        onSuccess: () => {
+          setNote("");
+          setFxTarget(null);
+        },
+        onError: (e) => alert(errText(e)),
+      },
     );
   };
 
@@ -833,6 +876,64 @@ function ManualTab(): React.ReactElement {
           onChange={(e) => setNote(e.target.value)}
         />
       </div>
+
+      {fxTarget && (
+        <div style={{ marginBottom: "0.75rem" }}>
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                {t("finance15.m_fxTitle")} — {money(fxTarget.amount, fxTarget.currency)}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="fin-field" style={{ maxWidth: "26rem" }}>
+                <label className="hint" htmlFor="manual-fx-rate">
+                  {t("finance15.m_fxRate")}
+                </label>
+                <input
+                  id="manual-fx-rate"
+                  className="input"
+                  type="number"
+                  min={1}
+                  dir="ltr"
+                  value={fxRateInput}
+                  onChange={(e) => setFxRateInput(e.target.value)}
+                />
+              </div>
+              {fxState === "loading" && <p className="hint">{t("common.loading")}</p>}
+              {fxState === "ok" && fxInfo && (
+                <p className="hint">
+                  {t("finance15.m_fxAuto")} — {t("finance15.m_fxSource")}:{" "}
+                  <span dir="ltr">{fxInfo.source}</span>
+                </p>
+              )}
+              {fxState === "error" && <p className="hint">{t("finance15.m_fxUnavailable")}</p>}
+              {fxValid && (
+                <p className="hint">
+                  {t("finance15.m_fxEquivalent")}:{" "}
+                  <span dir="ltr">{money(fxTarget.amount * Math.round(fxRateNum), "IRR")}</span>
+                </p>
+              )}
+              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+                <Button
+                  variant="primary"
+                  disabled={!fxValid || reviewMut.isPending}
+                  onClick={confirmFx}
+                >
+                  {t("finance15.m_fxConfirm")}
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={reviewMut.isPending}
+                  onClick={() => setFxTarget(null)}
+                >
+                  {t("finance15.m_fxCancel")}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {query.isLoading && <p className="empty">{t("common.loading")}</p>}
       {query.isError && (
@@ -880,7 +981,17 @@ function ManualTab(): React.ReactElement {
                         </span>
                       ) : null}
                     </td>
-                    <td dir="ltr">{money(d.amount, d.currency)}</td>
+                    <td dir="ltr">
+                      {money(d.amount, d.currency)}
+                      {d.amount_irr !== null && d.currency !== "IRR" ? (
+                        <span
+                          className="muted"
+                          style={{ display: "block", fontSize: "0.78rem" }}
+                        >
+                          {t("finance15.m_fxEqShort")}: {money(d.amount_irr, "IRR")}
+                        </span>
+                      ) : null}
+                    </td>
                     <td>
                       {d.proof_text ? (
                         <code dir="ltr" style={{ fontSize: "0.78rem" }}>

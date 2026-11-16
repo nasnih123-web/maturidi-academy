@@ -218,6 +218,11 @@ class ManualDonationAdminOut(BaseModel):
     review_note: str | None
     reviewed_at: datetime | None
     created_at: datetime
+    # تبدیل ارزی هنگام تأیید (فقط حمایت تأییدشده): معادل ریالیِ شمرده‌شده
+    # در مجموع کمپین + نرخ و منبعش؛ برای ریالی‌ها amount_irr == amount.
+    amount_irr: int | None = None
+    fx_rate_irr: int | None = None
+    fx_source: str | None = None
 
 
 class ManualDonationPage(BaseModel):
@@ -227,3 +232,14 @@ class ManualDonationPage(BaseModel):
 
 class ManualReviewIn(BaseModel):
     note: str | None = Field(default=None, max_length=512)
+    # نرخ دستیِ هر واحد ارز به ریال — فقط تأییدِ حمایت ارزی: وقتی داده
+    # شود بر نرخ لحظه‌ایِ خودکار مقدم است (منبع: manual).
+    rate_irr: int | None = Field(default=None, gt=0, le=10**13)
+
+
+class FxRateOut(BaseModel):
+    """نرخ لحظه‌ای هر واحد ارز به ریال + منبع — نمایش پیش از تأیید در CRM."""
+
+    currency: str
+    rate_irr: int
+    source: str  # wallex | coingecko | fixed

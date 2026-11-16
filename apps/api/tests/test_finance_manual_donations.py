@@ -8,7 +8,9 @@
 - فهرست روش‌های عمومی دقیقاً وضعیت روشن/خاموش و کامل‌بودن CRM را نشان می‌دهد.
 - حمایت دستی: ثبت → pending → تأیید ادمین (Donation/Ledger/کمپین) و رد.
 - روش خاموش: نه نمایش، نه پذیرش ارسال. پرداخت آنلاین خاموش → ۴۰۳.
-- کریپتو: هش تکراری در تأیید دوم → ۴۰۹؛ مبلغ ارزی وارد مجموع ریالی کمپین نمی‌شود.
+- کریپتو: هش تکراری در تأیید دوم → ۴۰۹؛ مبلغ ارزی هنگام تأیید با نرخ
+  (دستی یا لحظه‌ای) به ریال تبدیل و وارد مجموع کمپین می‌شود؛ نبود نرخ
+  → ۴۲۲ و حمایت pending می‌ماند. endpoint نرخ لحظه‌ای ادمین هم پوشش دارد.
 - تصویر رسید: اعتبارسنجی نوع/حجم + نمایش فقط برای finance.manage.
 - اعتبارسنج تنظیمات کیف پول‌ها و پرچم‌ها در platform_settings.
 """
@@ -615,9 +617,13 @@ async def test_manual_crypto_duplicate_hash(tc, db_session):
     ap = await client.post(
         f"{BASE}/admin/finance/manual-donations/{first['id']}/approve",
         headers=admin_h,
-        json={},
+        json={"rate_irr": 2_000_000},
     )
     assert ap.status_code == 200, ap.text
+    # تبدیل دستی: ۵۰ تتر × نرخ ۲٬۰۰۰٬۰۰۰ ریال روی خود رکورد می‌ماند
+    assert ap.json()["amount_irr"] == 100_000_000
+    assert ap.json()["fx_rate_irr"] == 2_000_000
+    assert ap.json()["fx_source"] == "manual"
 
     don = (
         await db_session.execute(
@@ -626,17 +632,17 @@ async def test_manual_crypto_duplicate_hash(tc, db_session):
     ).scalar_one()
     assert don.gateway == "crypto" and don.amount == 50 and don.currency == "USDT"
 
-    # مبلغ ارزی نباید مجموع ریالی کمپین را تغییر داده باشد
+    # معادل ریالیِ تبدیل‌شده به مجموع کمپین رفته است
     camp_row = await db_session.get(DonationCampaign, uuid.UUID(camp["id"]))
     await db_session.refresh(camp_row)
-    assert camp_row.raised_amount == 0
+    assert camp_row.raised_amount == 100_000_000
 
     # همان هش برای ارسال دوم → تأیید ۴۰۹ (یکتایی مرجع)
     second = await _submit()
     ap2 = await client.post(
         f"{BASE}/admin/finance/manual-donations/{second['id']}/approve",
         headers=admin_h,
-        json={},
+        json={"rate_irr": 2_000_000},
     )
     assert ap2.status_code == 409
     assert ap2.json()["error"]["code"] == "duplicate_reference"
@@ -682,9 +688,150 @@ async def test_manual_paypal_flow(tc, db_session):
     ap = await client.post(
         f"{BASE}/admin/finance/manual-donations/{sub.json()['id']}/approve",
         headers=admin_h,
-        json={},
+        json={"rate_irr": 2_500_000},
     )
     assert ap.status_code == 200
+    assert ap.json()["amount_irr"] == 62_500_000
+    assert ap.json()["fx_source"] == "manual"
+
+
+# ---------------------------------------------------------------------------
+# تبدیل ارزی لحظه‌ای هنگام تأیید (مجموع کمپین چندارزی)
+# ---------------------------------------------------------------------------
+
+
+async def _stage_crypto_usdt(db_session) -> None:
+    await _stage(
+        db_session,
+        {
+            "donation.crypto_enabled": "true",
+            "donation.crypto_wallets": json.dumps(
+                [{"currency": "USDT", "network": "TRC20", "address": "TXYZabc123"}]
+            ),
+        },
+    )
+
+
+async def _submit_usdt(client, camp_id: str, amount: str = "10") -> dict:
+    r = await client.post(
+        f"{BASE}/finance/donate/manual",
+        data={
+            "method": "crypto",
+            "amount": amount,
+            "campaign_id": camp_id,
+            "wallet_currency": "USDT",
+            "wallet_network": "TRC20",
+            "proof_text": f"fx-hash-{uuid.uuid4().hex}",
+        },
+    )
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+@pytest.mark.asyncio
+async def test_manual_fx_auto_rate_counts_campaign(tc, db_session, monkeypatch):
+    from app.models.models import DonationCampaign
+    from app.modules.finance import fx as fx_mod
+
+    async def fake_rate(currency: str):
+        assert currency == "USDT"
+        return 3_000_000, "wallex"
+
+    monkeypatch.setattr(fx_mod, "get_rate_irr", fake_rate)
+
+    client = tc["client"]
+    admin_tok = await _finance_admin_token(client, db_session, "manual-fx@example.com")
+    admin_h = _auth(admin_tok)
+    await _stage_crypto_usdt(db_session)
+    camp = await _make_campaign(client, admin_h)
+    sub = await _submit_usdt(client, camp["id"], "10")
+
+    # بدون نرخ دستی → نرخ لحظه‌ای خودکار (مونکی‌پچ‌شده) اعمال می‌شود
+    ap = await client.post(
+        f"{BASE}/admin/finance/manual-donations/{sub['id']}/approve",
+        headers=admin_h,
+        json={},
+    )
+    assert ap.status_code == 200, ap.text
+    body = ap.json()
+    assert body["amount_irr"] == 30_000_000
+    assert body["fx_rate_irr"] == 3_000_000
+    assert body["fx_source"] == "wallex"
+
+    camp_row = await db_session.get(DonationCampaign, uuid.UUID(camp["id"]))
+    await db_session.refresh(camp_row)
+    assert camp_row.raised_amount == 30_000_000
+
+
+@pytest.mark.asyncio
+async def test_manual_fx_unavailable_requires_manual_rate(tc, db_session, monkeypatch):
+    from app.models.models import DonationCampaign
+    from app.modules.finance import fx as fx_mod
+
+    async def dead_rate(currency: str):
+        raise fx_mod.FxUnavailable(currency)
+
+    monkeypatch.setattr(fx_mod, "get_rate_irr", dead_rate)
+
+    client = tc["client"]
+    admin_tok = await _finance_admin_token(client, db_session, "manual-fx2@example.com")
+    admin_h = _auth(admin_tok)
+    await _stage_crypto_usdt(db_session)
+    camp = await _make_campaign(client, admin_h)
+    sub = await _submit_usdt(client, camp["id"], "10")
+
+    # نه نرخ لحظه‌ای، نه نرخ دستی → ۴۲۲ و حمایت pending می‌ماند
+    ap = await client.post(
+        f"{BASE}/admin/finance/manual-donations/{sub['id']}/approve",
+        headers=admin_h,
+        json={},
+    )
+    assert ap.status_code == 422, ap.text
+    assert ap.json()["error"]["code"] == "fx_rate_required"
+
+    camp_row = await db_session.get(DonationCampaign, uuid.UUID(camp["id"]))
+    await db_session.refresh(camp_row)
+    assert camp_row.raised_amount == 0
+
+    # همان حمایت با نرخ دستی تأیید می‌شود
+    ap2 = await client.post(
+        f"{BASE}/admin/finance/manual-donations/{sub['id']}/approve",
+        headers=admin_h,
+        json={"rate_irr": 1_500_000},
+    )
+    assert ap2.status_code == 200, ap2.text
+    assert ap2.json()["amount_irr"] == 15_000_000
+    await db_session.refresh(camp_row)
+    assert camp_row.raised_amount == 15_000_000
+
+
+@pytest.mark.asyncio
+async def test_fx_rate_endpoint(tc, db_session, monkeypatch):
+    from app.modules.finance import fx as fx_mod
+
+    client = tc["client"]
+    admin_tok = await _finance_admin_token(client, db_session, "manual-fx3@example.com")
+    admin_h = _auth(admin_tok)
+
+    async def fake_rate(currency: str):
+        return 2_700_000, "wallex"
+
+    monkeypatch.setattr(fx_mod, "get_rate_irr", fake_rate)
+    r = await client.get(f"{BASE}/admin/finance/fx-rate", params={"currency": "USDT"}, headers=admin_h)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"currency": "USDT", "rate_irr": 2_700_000, "source": "wallex"}
+
+    async def dead_rate(currency: str):
+        raise fx_mod.FxUnavailable(currency)
+
+    monkeypatch.setattr(fx_mod, "get_rate_irr", dead_rate)
+    r = await client.get(f"{BASE}/admin/finance/fx-rate", params={"currency": "USDT"}, headers=admin_h)
+    assert r.status_code == 502
+    assert r.json()["error"]["code"] == "fx_unavailable"
+
+    # بدون دسترسی مالی → رد
+    r = await client.get(f"{BASE}/admin/finance/fx-rate", params={"currency": "USDT"})
+    assert r.status_code in (401, 403)
 
 
 # ---------------------------------------------------------------------------

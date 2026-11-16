@@ -2455,6 +2455,15 @@ class ManualDonationProof(Base):
     wallet_label: Mapped[str | None] = mapped_column(
         String(128), nullable=True
     )  # فقط کریپتو: برچسب کیف پول انتخاب‌شده، مثل «USDT · TRC20»
+    amount_irr: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )  # معادل ریالیِ شمارش‌شده در مجموع کمپین هنگام تأیید (ارزی‌ها: تبدیل لحظه‌ای)
+    fx_rate_irr: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )  # نرخ هر واحد ارز به ریال در لحظهٔ تأیید (فقط حمایت‌های ارزی)
+    fx_source: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )  # wallex | coingecko | manual — منشأ نرخ تبدیل
     review_status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="pending", index=True
     )  # pending | approved | rejected

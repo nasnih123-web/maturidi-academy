@@ -467,6 +467,9 @@ export interface ManualDonation {
   review_note: string | null;
   reviewed_at: string | null;
   created_at: string;
+  amount_irr: number | null;
+  fx_rate_irr: number | null;
+  fx_source: string | null;
 }
 
 function parseManualDonation(raw: unknown): ManualDonation {
@@ -488,6 +491,9 @@ function parseManualDonation(raw: unknown): ManualDonation {
     review_note: typeof r.review_note === "string" ? r.review_note : null,
     reviewed_at: typeof r.reviewed_at === "string" ? r.reviewed_at : null,
     created_at: asStr(r.created_at),
+    amount_irr: typeof r.amount_irr === "number" ? r.amount_irr : null,
+    fx_rate_irr: typeof r.fx_rate_irr === "number" ? r.fx_rate_irr : null,
+    fx_source: typeof r.fx_source === "string" ? r.fx_source : null,
   };
 }
 
@@ -511,7 +517,10 @@ export function useManualDonations(
   });
 }
 
-/** Approve (→ server finalises Donation/Ledger) or reject a manual donation. */
+/** Approve (→ server finalises Donation/Ledger) or reject a manual donation.
+ *  For foreign-currency approvals, rateIrr (IRR per unit) may pin the
+ *  conversion rate; without it the server applies the live rate and
+ *  answers 422 fx_rate_required when no live rate is available. */
 export function useReviewManualDonation() {
   const qc = useQueryClient();
   return useMutation({
@@ -519,13 +528,17 @@ export function useReviewManualDonation() {
       id: string;
       approve: boolean;
       note?: string;
+      rateIrr?: number;
     }): Promise<ManualDonation> => {
       const raw = await apiFetch<unknown>(
         `${BASE}/manual-donations/${encodeURIComponent(input.id)}/${input.approve ? "approve" : "reject"}`,
         {
           method: "POST",
           headers: { "Idempotency-Key": newIdempotencyKey() },
-          body: { note: input.note ?? null },
+          body: {
+            note: input.note ?? null,
+            ...(input.rateIrr ? { rate_irr: input.rateIrr } : {}),
+          },
         },
       );
       return parseManualDonation(raw);
@@ -536,6 +549,25 @@ export function useReviewManualDonation() {
       void qc.invalidateQueries({ queryKey: [QK, "ledger"] });
     },
   });
+}
+
+/** Live FX rate (IRR per unit) for the pre-approval conversion panel. */
+export interface FxRate {
+  currency: string;
+  rate_irr: number;
+  source: string;
+}
+
+export async function fetchFxRate(currency: string): Promise<FxRate> {
+  const raw = await apiFetch<unknown>(
+    `${BASE}/fx-rate?currency=${encodeURIComponent(currency)}`,
+  );
+  const r = (raw ?? {}) as Record<string, unknown>;
+  return {
+    currency: asStr(r.currency, currency).toUpperCase(),
+    rate_irr: asNum(r.rate_irr),
+    source: asStr(r.source),
+  };
 }
 
 /** Fetch a manual donation's receipt image as an object URL (Bearer-required). */

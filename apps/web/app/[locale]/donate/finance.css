@@ -136,9 +136,6 @@
 .fin-method-name { font-size: 0.98rem; }
 .fin-method-body { padding: 0 1rem 1.1rem; display: flex; flex-direction: column; gap: 1rem; }
 .fin-method-body .fin-form { border: 0; background: transparent; padding: 0; border-radius: 0; }
-.fin-method-single { display: flex; flex-direction: column; gap: 1rem; }
-.fin-method-single-title { margin: 0; font-weight: 800; color: #ede6d6; font-size: 1rem; }
-.fin-method-single .fin-form { border: 0; background: transparent; padding: 0; border-radius: 0; }
 
 /* جزئیات روش دستی (شماره کارت / کیف پول / حساب پی‌پال) */
 .fin-manual-details { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
