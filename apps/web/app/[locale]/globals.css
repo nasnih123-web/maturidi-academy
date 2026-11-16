@@ -2162,6 +2162,8 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
 .ftw-sidebar ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
 .ftw-sidebar a { text-decoration: none; color: inherit; }
 .ftw-sidebar a:hover { text-decoration: underline; }
+.ftw-ask-box { border-block-end: 1px solid var(--line, #ddd); padding-block-end: 1rem; }
+.ftw-ask-box .ftw-ask-sub { font-size: 0.9rem; margin: 0.25rem 0 0.75rem; color: hsl(var(--text-secondary)); }
 .ftw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 1rem; }
 .ftw-card { border: 1px solid var(--line, #ddd); border-radius: 0.75rem; overflow: hidden; padding-block-end: 0.75rem; }
 .ftw-card-link { text-decoration: none; color: inherit; display: block; }

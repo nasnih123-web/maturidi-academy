@@ -454,8 +454,14 @@ async def _chunk_identity_rows(db: AsyncSession) -> list[tuple]:
     json_array_length روی SQLite) تا خود بردارها برای یک گزارش
     وضعیتی جابه‌جا نشوند؛ روی dialect ناشناخته به len پایتونی
     برمی‌گردد.
+
+    روی PG مقدار embedding صریحاً به JSONB کست می‌شود: ستون در
+    مایگریشن فاز ۶ با sa.JSON() ساخته شده (نوع json) ولی مدل آن را
+    JSONB اعلام می‌کند و jsonb_array_length روی json خطای
+    UndefinedFunctionError می‌دهد.
     """
-    from sqlalchemy import func, select
+    from sqlalchemy import cast, func, select
+    from sqlalchemy.dialects.postgresql import JSONB
 
     from app.models.models import FiqhKnowledgeChunk
 
@@ -465,7 +471,7 @@ async def _chunk_identity_rows(db: AsyncSession) -> list[tuple]:
         dialect = bind.dialect.name
     dim_expr = None
     if dialect == "postgresql":
-        dim_expr = func.jsonb_array_length(FiqhKnowledgeChunk.embedding)
+        dim_expr = func.jsonb_array_length(cast(FiqhKnowledgeChunk.embedding, JSONB))
     elif dialect == "sqlite":
         dim_expr = func.json_array_length(FiqhKnowledgeChunk.embedding)
     if dim_expr is not None:

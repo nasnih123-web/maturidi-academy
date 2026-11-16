@@ -14,6 +14,8 @@ import {
   getFatwaListServer,
   formatDualHijri,
 } from '@/lib/fatwa-topics';
+import type { FatwaQuestionLabels } from '@/components/social/labels';
+import { QuestionView } from '@/components/fatwa/QuestionViewLazy';
 
 export async function generateMetadata({
   params,
@@ -47,6 +49,19 @@ export default async function FatwaAllPage({
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: 'fatwa' });
+  const questionLabels: FatwaQuestionLabels = {
+    title: t('question.title'),
+    subtitle: t('question.subtitle'),
+    questionLabel: t('question.label'),
+    questionPlaceholder: t('question.placeholder'),
+    ask: t('question.ask'),
+    asking: t('question.asking'),
+    suggestionTitle: t('question.suggestionTitle'),
+    answeredAt: t('question.answeredAt'),
+    clusterLabel: t('question.clusterLabel'),
+    noSuggestion: t('question.noSuggestion'),
+    error: t('question.error'),
+  };
   const sp = await searchParams;
   const q = typeof sp.q === 'string' ? sp.q : '';
   const category = typeof sp.category === 'string' ? sp.category : '';
@@ -169,7 +184,9 @@ export default async function FatwaAllPage({
             )}
           </section>
 
-          <aside className="ftw-sidebar" aria-label={t('allCategories')}>
+          <aside className="ftw-sidebar">
+            <QuestionView locale={locale} labels={questionLabels} variant="sidebar" />
+            <nav aria-label={t('allCategories')}>
             <h2>{t('allCategories')}</h2>
             <ul>
               <li>
@@ -192,6 +209,7 @@ export default async function FatwaAllPage({
                 </li>
               ))}
             </ul>
+            </nav>
           </aside>
         </div>
       )}
