@@ -64,6 +64,8 @@ from app.modules.content.legal import LEGAL_TEXT_VERSION
 REFRESH_EXPIRE_DAYS = 30
 EMAIL_VERIFY_EXPIRE_HOURS = 24
 PHONE_CODE_EXPIRE_MINUTES = 5
+SETUP_TOKEN_EXPIRE_MINUTES = 60
+REGISTRATION_MARKER_EXPIRE_DAYS = 7
 RESET_TOKEN_EXPIRE_HOURS = 1
 # بلیط وب‌سوکت: کوتاه‌مدت و یک‌بارمصرف — جایگزین JWT در query string
 WS_TICKET_EXPIRE_SECONDS = 60
@@ -161,6 +163,119 @@ async def _get_user_by_identifier(db: AsyncSession, identifier: str) -> User | N
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+def _normalize_phone_digits(phone: str | None) -> str:
+    """فقط رقم‌های شماره، بدون + و پیش‌شمارهٔ بین‌المللی 00 — برای تشخیص کشور."""
+    if not phone:
+        return ""
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    return digits.removeprefix("00")
+
+
+def _is_iran_phone(phone: str | None) -> bool:
+    """قاعدهٔ کشوری فاز A: برای شمارهٔ ایران (+98) تأیید پیامکی اجباری است."""
+    return _normalize_phone_digits(phone).startswith("98")
+
+
+async def _pending_setup_row(
+    db: AsyncSession, user_id: uuid.UUID
+) -> PasswordResetToken | None:
+    """ردیف توکن «تکمیل ثبت‌نام» مصرف‌نشده = نشانگر حسابِ در انتظار تکمیل.
+
+    ثبت‌نام بدون رمز (جریان وب) هنگام ساخت حساب یک ردیف password_setup
+    می‌سازد که مقدار خامش هرگز جایی فرستاده نمی‌شود؛ صرفِ وجودش حساب را
+    «در انتظار» می‌کند. بعد از تأیید، توکن تازهٔ یک‌ساعته جای آن را
+    می‌گیرد و با ست‌شدن رمز مصرف می‌شود و نشانگر خاموش می‌شود.
+    """
+    return (
+        await db.execute(
+            select(PasswordResetToken)
+            .where(
+                PasswordResetToken.user_id == user_id,
+                PasswordResetToken.purpose == "password_setup",
+                PasswordResetToken.used.is_(False),
+            )
+            .order_by(PasswordResetToken.created_at.desc())
+        )
+    ).scalars().first()
+
+
+async def _has_sessions(db: AsyncSession, user_id: uuid.UUID) -> bool:
+    row = (
+        await db.execute(
+            select(RefreshToken.id).where(RefreshToken.user_id == user_id).limit(1)
+        )
+    ).first()
+    return row is not None
+
+
+async def _clear_setup_tokens(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """همهٔ توکن‌های تکمیلِ مصرف‌نشدهٔ کاربر را باطل می‌کند (حداکثر یک توکن زنده)."""
+    await db.execute(
+        update(PasswordResetToken)
+        .where(
+            PasswordResetToken.user_id == user_id,
+            PasswordResetToken.purpose == "password_setup",
+            PasswordResetToken.used.is_(False),
+        )
+        .values(used=True)
+    )
+
+
+async def _issue_setup_token(db: AsyncSession, user: User) -> str:
+    """توکن یک‌ساعتهٔ ست‌کردن رمز — فقط بعد از تأیید ایمیل/شماره صادر می‌شود."""
+    await _clear_setup_tokens(db, user.id)
+    raw = pysecrets.token_urlsafe(32)
+    db.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token_hash=hash_token(raw),
+            purpose="password_setup",
+            expires_at=_utcnow() + timedelta(minutes=SETUP_TOKEN_EXPIRE_MINUTES),
+        )
+    )
+    return raw
+
+
+def _mask_phone(phone: str | None) -> str | None:
+    if not phone:
+        return None
+    digits = phone.strip()
+    if len(digits) <= 4:
+        return digits
+    return f"{digits[:4]}****{digits[-2:]}"
+
+
+async def _issue_verification_email(db: AsyncSession, user: User) -> None:
+    """توکن تأیید ایمیل تازه می‌سازد (قبلی‌های مصرف‌نشده باطل می‌شوند) و می‌فرستد."""
+    await db.execute(
+        update(PasswordResetToken)
+        .where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.purpose == "email_verify",
+            PasswordResetToken.used.is_(False),
+        )
+        .values(used=True)
+    )
+    token = pysecrets.token_urlsafe(32)
+    db.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token_hash=hash_token(token),
+            purpose="email_verify",
+            expires_at=_utcnow() + timedelta(hours=EMAIL_VERIFY_EXPIRE_HOURS),
+        )
+    )
+    if user.email:
+        await email_mod.send_email(
+            user.email,
+            "تأیید ایمیل — آکادمی ماتریدی",
+            "برای تأیید ایمیل خود روی لینک زیر کلیک کنید:\n"
+            + public_url(f"/{user.locale}/verify-email?token={token}")
+            + "\n"
+            f"verify_token={token}",
+        )
+
+
 async def _revoke_user_tokens(db: AsyncSession, user_id: uuid.UUID) -> None:
     await db.execute(
         update(RefreshToken)
@@ -230,16 +345,33 @@ async def register(
     if not await rl.is_allowed(f"register:{ip or 'unknown'}", limit=10, window_s=3600, auth=True):
         raise APIError(429, "rate_limited", "تعداد درخواست بیش از حد مجاز است")
 
-    if data.email and await _get_user_by_identifier(db, data.email):
+    existing = await _get_user_by_identifier(db, data.email) if data.email else None
+    if existing is not None and await _pending_setup_row(db, existing.id) is None:
         raise APIError(409, "email_taken", "این ایمیل قبلاً ثبت شده است")
-    if data.phone and await _get_user_by_identifier(db, data.phone):
-        raise APIError(409, "phone_taken", "این شماره قبلاً ثبت شده است")
+    if data.phone:
+        phone_owner = await _get_user_by_identifier(db, data.phone)
+        if phone_owner is not None and (existing is None or phone_owner.id != existing.id):
+            raise APIError(409, "phone_taken", "این شماره قبلاً ثبت شده است")
+    if existing is not None:
+        # ثبت‌نام نیمه‌کارهٔ بدون رمز: به‌جای 409، لینک تأیید تازه می‌فرستیم.
+        # رمز در این مسیر هرگز دست نمی‌خورد؛ تکمیل فقط با تأیید + ست‌کردن رمز.
+        existing.full_name = data.full_name.strip()
+        existing.locale = data.locale
+        if data.phone and existing.phone is None:
+            existing.phone = data.phone
+        if existing.email:
+            await _issue_verification_email(db, existing)
+        await db.commit()
+        await db.refresh(existing)
+        return existing
 
     user = User(
         full_name=data.full_name.strip(),
         email=data.email,
         phone=data.phone,
-        password_hash=hash_password(data.password),
+        # جریان بدون رمز (وب): هشِ یک راز تصادفیِ ناشناخته — ورود ناممکن است
+        # تا وقتی کاربر بعد از تأیید، رمز خودش را ست کند.
+        password_hash=hash_password(data.password or pysecrets.token_urlsafe(32)),
         locale=data.locale,
     )
     db.add(user)
@@ -271,25 +403,23 @@ async def register(
                 )
             )
 
-    # توکن تأیید ایمیل
-    if user.email:
-        token = pysecrets.token_urlsafe(32)
+    if data.password is None:
+        # نشانگر «ثبت‌نام در انتظار تکمیل» (جریان بدون رمز وب) — مقدار خام
+        # این توکن هرگز جایی ارسال نمی‌شود؛ صرف وجود ردیف مصرف‌نشده‌اش
+        # حساب را در وضعیت «در انتظار» نگه می‌دارد.
         db.add(
             PasswordResetToken(
                 user_id=user.id,
-                token_hash=hash_token(token),
-                purpose="email_verify",
-                expires_at=_utcnow() + timedelta(hours=EMAIL_VERIFY_EXPIRE_HOURS),
+                token_hash=hash_token(pysecrets.token_urlsafe(32)),
+                purpose="password_setup",
+                expires_at=_utcnow()
+                + timedelta(days=REGISTRATION_MARKER_EXPIRE_DAYS),
             )
         )
-        await email_mod.send_email(
-            user.email,
-            "تأیید ایمیل — آکادمی ماتریدی",
-            "برای تأیید ایمیل خود روی لینک زیر کلیک کنید:\n"
-            + public_url(f"/verify-email?token={token}")
-            + "\n"
-            f"verify_token={token}",
-        )
+
+    # توکن تأیید ایمیل
+    if user.email:
+        await _issue_verification_email(db, user)
 
     await emit_event(
         db,
@@ -321,6 +451,12 @@ async def authenticate(db: AsyncSession, data: LoginIn, ip: str | None) -> User:
     if not await rl.is_allowed(f"login:{ip or 'unknown'}", limit=20, window_s=300, auth=True):
         raise APIError(429, "rate_limited", "تعداد تلاش بیش از حد مجاز؛ دقایقی صبر کنید")
     user = await _get_user_by_identifier(db, data.identifier)
+    if user is not None and user.is_active and await _pending_setup_row(db, user.id) is not None:
+        raise APIError(
+            403,
+            "registration_incomplete",
+            "ثبت‌نام شما کامل نشده است؛ ابتدا ایمیل یا شماره‌تان را تأیید کنید و رمز عبور بگذارید",
+        )
     if not user or not user.is_active or not verify_password(user.password_hash, data.password):
         raise APIError(401, "invalid_credentials", "ایمیل/شماره یا رمز عبور نادرست است")
     if user.totp_secret:
@@ -556,7 +692,8 @@ async def logout_all(db: AsyncSession, user: User) -> None:
 
 # ---------- verify email / phone ----------
 
-async def verify_email(db: AsyncSession, token: str) -> User:
+async def _consume_email_verify_token(db: AsyncSession, token: str) -> User:
+    """توکن تأیید ایمیل را اتمیک مصرف می‌کند و کاربرش را برمی‌گرداند."""
     row = (
         await db.execute(
             select(PasswordResetToken).where(
@@ -578,6 +715,11 @@ async def verify_email(db: AsyncSession, token: str) -> User:
         row.id,
         error=APIError(400, "invalid_token", "توکن تأیید نامعتبر یا منقضی است"),
     )
+    return user
+
+
+async def verify_email(db: AsyncSession, token: str) -> User:
+    user = await _consume_email_verify_token(db, token)
     user.is_verified = True
     await emit_event(
         db,
@@ -597,6 +739,167 @@ async def verify_email(db: AsyncSession, token: str) -> User:
     await db.commit()
     await db.refresh(user)
     return user
+
+
+async def verify_email_registration(
+    db: AsyncSession, token: str
+) -> tuple[str, str | None, str | None]:
+    """تأیید ایمیل در جریان ثبت‌نام وب: (وضعیت، توکن ست‌کردن رمز، راهنمای شماره).
+
+    already_active: حساب قبلاً نشست دارد — فقط تأیید ثبت می‌شود.
+    phone_required: شماره ایران است — تأیید پیامکی هم لازم است.
+    verified: توکن ست‌کردن رمز صادر شد.
+    """
+    user = await _consume_email_verify_token(db, token)
+    user.is_verified = True
+    await emit_event(
+        db,
+        aggregate_type="user",
+        aggregate_id=str(user.id),
+        event_type="user.email_verified",
+        payload={},
+    )
+    await log_audit(
+        db,
+        actor_id=user.id,
+        actor_type="user",
+        action="user.verify_email",
+        entity_type="user",
+        entity_id=str(user.id),
+    )
+    if await _has_sessions(db, user.id):
+        await db.commit()
+        return ("already_active", None, None)
+    if _is_iran_phone(user.phone):
+        await db.commit()
+        return ("phone_required", None, _mask_phone(user.phone))
+    setup_token = await _issue_setup_token(db, user)
+    await db.commit()
+    return ("verified", setup_token, None)
+
+
+async def request_register_phone_code(db: AsyncSession, phone: str) -> None:
+    """کد پیامکی برای حسابی که با همین شماره در انتظار تکمیل ثبت‌نام است.
+
+    ضد شمارش: برای شمارهٔ ناشناخته یا حسابِ کامل‌شده هم بی‌صدا برمی‌گردد.
+    """
+    user = await _get_user_by_identifier(db, phone)
+    if user is None or await _pending_setup_row(db, user.id) is None:
+        return
+    rl = get_rate_limiter()
+    if not await rl.is_allowed(f"reg_sms:{phone}", limit=5, window_s=3600, auth=True):
+        raise APIError(429, "rate_limited", "تعداد درخواست کد بیش از حد مجاز است")
+    code = f"{pysecrets.randbelow(900000) + 100000:06d}"
+    db.add(
+        PhoneVerificationCode(
+            user_id=user.id,
+            phone=phone,
+            code_hash=hash_token(code),
+            expires_at=_utcnow() + timedelta(minutes=PHONE_CODE_EXPIRE_MINUTES),
+        )
+    )
+    await db.commit()
+    await sms_mod.send_sms(phone, f"کد تأیید آکادمی ماتریدی: {code}")
+
+
+async def verify_register_phone_code(db: AsyncSession, phone: str, code: str) -> str:
+    """کد پیامکی ثبت‌نام را مصرف می‌کند و توکن ست‌کردن رمز برمی‌گرداند."""
+    rl = get_rate_limiter()
+    if not await rl.is_allowed(
+        f"reg_sms_verify:{phone}", limit=10, window_s=3600, auth=True
+    ):
+        raise APIError(429, "rate_limited", "تعداد تلاش بیش از حد مجاز است")
+    user = await _get_user_by_identifier(db, phone)
+    row = None
+    if user is not None:
+        row = (
+            await db.execute(
+                select(PhoneVerificationCode)
+                .where(
+                    PhoneVerificationCode.user_id == user.id,
+                    PhoneVerificationCode.phone == phone,
+                    PhoneVerificationCode.used.is_(False),
+                )
+                .order_by(PhoneVerificationCode.created_at.desc())
+            )
+        ).scalars().first()
+    if (
+        user is None
+        or row is None
+        or ensure_aware(row.expires_at) < _utcnow()
+        or not hmac.compare_digest(row.code_hash, hash_token(code))
+    ):
+        raise APIError(400, "invalid_code", "کد تأیید نامعتبر یا منقضی است")
+    await _consume_single_use_token(
+        db,
+        PhoneVerificationCode,
+        row.id,
+        error=APIError(400, "invalid_code", "کد تأیید نامعتبر یا منقضی است"),
+    )
+    user.is_verified = True
+    await emit_event(
+        db,
+        aggregate_type="user",
+        aggregate_id=str(user.id),
+        event_type="user.phone_verified",
+        payload={},
+    )
+    await log_audit(
+        db,
+        actor_id=user.id,
+        actor_type="user",
+        action="user.verify_phone",
+        entity_type="user",
+        entity_id=str(user.id),
+    )
+    setup_token = await _issue_setup_token(db, user)
+    await db.commit()
+    return setup_token
+
+
+async def set_password_with_setup_token(
+    db: AsyncSession, token: str, new_password: str
+) -> User:
+    """رمز حسابِ تأییدشده را با توکن تکمیل ست می‌کند (مصرف اتمیک توکن)."""
+    row = (
+        await db.execute(
+            select(PasswordResetToken).where(
+                PasswordResetToken.token_hash == hash_token(token),
+                PasswordResetToken.purpose == "password_setup",
+                PasswordResetToken.used.is_(False),
+            )
+        )
+    ).scalar_one_or_none()
+    if not row or ensure_aware(row.expires_at) < _utcnow():
+        raise APIError(400, "invalid_token", "توکن نامعتبر یا منقضی است")
+    user = await db.get(User, row.user_id)
+    if not user or not user.is_verified:
+        raise APIError(400, "invalid_token", "توکن نامعتبر یا منقضی است")
+    await _consume_single_use_token(
+        db,
+        PasswordResetToken,
+        row.id,
+        error=APIError(400, "invalid_token", "توکن نامعتبر یا منقضی است"),
+    )
+    await _clear_setup_tokens(db, user.id)
+    user.password_hash = hash_password(new_password)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def resend_registration(db: AsyncSession, identifier: str) -> None:
+    """ارسال دوبارهٔ لینک تأیید برای ثبت‌نام نیمه‌کاره — همیشه بی‌صدا (ضد شمارش)."""
+    user = await _get_user_by_identifier(db, identifier)
+    if user is None or user.email is None:
+        return
+    if await _pending_setup_row(db, user.id) is None:
+        return
+    rl = get_rate_limiter()
+    if not await rl.is_allowed(f"reg_resend:{user.id}", limit=3, window_s=3600, auth=True):
+        return
+    await _issue_verification_email(db, user)
+    await db.commit()
 
 
 async def request_phone_code(
@@ -696,7 +999,7 @@ async def request_password_reset(
             user.email,
             "بازیابی رمز عبور — آکادمی ماتریدی",
             "برای تعیین رمز جدید:\n"
-            + public_url(f"/reset-password?token={token}")
+            + public_url(f"/{user.locale}/reset-password?token={token}")
             + "\n"
             f"reset_token={token}\n"
             "این لینک یک ساعت اعتبار دارد.",

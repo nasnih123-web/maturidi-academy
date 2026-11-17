@@ -61,6 +61,9 @@ export default async function FatwaAllPage({
     clusterLabel: t('question.clusterLabel'),
     noSuggestion: t('question.noSuggestion'),
     error: t('question.error'),
+    loginRequired: t('question.loginRequired'),
+    signIn: t('question.signIn'),
+    signUp: t('question.signUp'),
   };
   const sp = await searchParams;
   const q = typeof sp.q === 'string' ? sp.q : '';

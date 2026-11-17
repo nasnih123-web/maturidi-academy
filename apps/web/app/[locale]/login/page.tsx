@@ -35,12 +35,16 @@ export default async function LoginPage({
         <h1 className="page-title">{t('signIn')}</h1>
         <p className="page-sub">{t('signInHint')}</p>
         <LoginForm
+          locale={locale}
           labels={{
             identifier: t('identifier'),
             password: t('password'),
             totp: t('totp'),
             signIn: t('signIn'),
             loginFailed: t('loginFailed'),
+            forgot: t('forgot'),
+            noAccount: t('noAccount'),
+            signUp: t('signUp'),
           }}
         />
       </div>

@@ -5,6 +5,7 @@
  * stays inside the performance budget; see docs/performance-budget.md).
  * Auth logic lives in lib/auth-client.ts; this is presentation + wiring.
  */
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
@@ -22,9 +23,12 @@ export interface LoginFormLabels {
   totp: string;
   signIn: string;
   loginFailed: string;
+  forgot: string;
+  noAccount: string;
+  signUp: string;
 }
 
-export default function LoginForm({ labels }: { labels: LoginFormLabels }) {
+export default function LoginForm({ labels, locale }: { labels: LoginFormLabels; locale: string }) {
   const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -55,7 +59,11 @@ export default function LoginForm({ labels }: { labels: LoginFormLabels }) {
     }
   };
 
+  const rawNext = searchParams.get('next');
+  const registerHref = `/${locale}/register${rawNext ? `?next=${encodeURIComponent(rawNext)}` : ''}`;
+
   return (
+    <>
       <form onSubmit={submit} className="auth-form">
           <label>
             <span>{labels.identifier}</span>
@@ -101,5 +109,12 @@ export default function LoginForm({ labels }: { labels: LoginFormLabels }) {
             {busy ? '…' : labels.signIn}
           </button>
       </form>
+      <div className="auth-links">
+        <Link href={`/${locale}/forgot-password`}>{labels.forgot}</Link>
+        <span>
+          {labels.noAccount} <Link href={registerHref}>{labels.signUp}</Link>
+        </span>
+      </div>
+    </>
   );
 }

@@ -11,7 +11,9 @@ class RegisterIn(BaseModel):
     full_name: str = Field(min_length=2, max_length=200)
     email: EmailStr | None = None
     phone: str | None = Field(default=None, min_length=8, max_length=32)
-    password: str = Field(min_length=8, max_length=128)
+    # جریان وب (فاز A): رمز بعد از تأیید ایمیل/شماره ست می‌شود — پس اینجا
+    # اختیاری است؛ وقتی داده شود همان رفتار قبلی (موبایل/CRM) حفظ می‌شود.
+    password: str | None = Field(default=None, min_length=8, max_length=128)
     locale: str = Field(default="fa", max_length=8)
     accept_terms: bool = False
     # توکن Cloudflare Turnstile (C-02) — وقتی کپچا active است الزامی
@@ -48,6 +50,41 @@ class LogoutIn(BaseModel):
 
 class VerifyEmailIn(BaseModel):
     token: str = Field(min_length=10)
+
+
+class RegisterVerifyEmailOut(BaseModel):
+    """نتیجهٔ تأیید ایمیل در جریان ثبت‌نام وب (فاز A).
+
+    status: verified = توکن ست‌کردن رمز صادر شد | phone_required = شمارهٔ
+    ایران است و تأیید پیامکی هم لازم است | already_active = حساب قبلاً
+    وارد شده، فقط تأیید ایمیل ثبت شد.
+    """
+
+    status: str
+    setup_token: str | None = None
+    phone_hint: str | None = None
+
+
+class RegisterPhoneCodeRequestIn(BaseModel):
+    phone: str = Field(min_length=8, max_length=32)
+
+
+class RegisterPhoneCodeVerifyIn(BaseModel):
+    phone: str = Field(min_length=8, max_length=32)
+    code: str = Field(min_length=4, max_length=16)
+
+
+class RegisterPhoneCodeVerifyOut(BaseModel):
+    setup_token: str
+
+
+class RegisterSetPasswordIn(BaseModel):
+    setup_token: str = Field(min_length=16, max_length=256)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class RegisterResendIn(BaseModel):
+    identifier: str = Field(min_length=3, max_length=320)
 
 
 class PhoneCodeRequestIn(BaseModel):

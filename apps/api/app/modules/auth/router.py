@@ -21,6 +21,12 @@ from app.modules.auth.schemas import (
     RecoveryCodesOut,
     RefreshIn,
     RegisterIn,
+    RegisterPhoneCodeRequestIn,
+    RegisterPhoneCodeVerifyIn,
+    RegisterPhoneCodeVerifyOut,
+    RegisterResendIn,
+    RegisterSetPasswordIn,
+    RegisterVerifyEmailOut,
     TokenPair,
     TwoFAEnableIn,
     TwoFAReauthIn,
@@ -93,6 +99,62 @@ async def logout_all(
 async def verify_email(data: VerifyEmailIn, db: AsyncSession = Depends(get_db)):
     await service.verify_email(db, data.token)
     return MessageOut(message="ایمیل با موفقیت تأیید شد")
+
+
+@router.post("/register/verify-email", response_model=RegisterVerifyEmailOut)
+async def register_verify_email(
+    data: VerifyEmailIn, db: AsyncSession = Depends(get_db)
+):
+    status, setup_token, phone_hint = await service.verify_email_registration(
+        db, data.token
+    )
+    return RegisterVerifyEmailOut(
+        status=status, setup_token=setup_token, phone_hint=phone_hint
+    )
+
+
+@router.post("/register/phone-code/request", response_model=MessageOut)
+async def register_phone_code_request(
+    data: RegisterPhoneCodeRequestIn, db: AsyncSession = Depends(get_db)
+):
+    await service.request_register_phone_code(db, data.phone)
+    return MessageOut(
+        message="اگر ثبت‌نامی با این شماره در انتظار تکمیل باشد، کد تأیید پیامک می‌شود"
+    )
+
+
+@router.post("/register/phone-code/verify", response_model=RegisterPhoneCodeVerifyOut)
+async def register_phone_code_verify(
+    data: RegisterPhoneCodeVerifyIn, db: AsyncSession = Depends(get_db)
+):
+    setup_token = await service.verify_register_phone_code(db, data.phone, data.code)
+    return RegisterPhoneCodeVerifyOut(setup_token=setup_token)
+
+
+@router.post("/register/set-password", response_model=TokenPair)
+async def register_set_password(
+    data: RegisterSetPasswordIn, request: Request, db: AsyncSession = Depends(get_db)
+):
+    ip, ua = _client(request)
+    user = await service.set_password_with_setup_token(
+        db, data.setup_token, data.new_password
+    )
+    access, refresh = await service.create_session_pair(db, user, ua, ip)
+    return TokenPair(
+        access_token=access,
+        refresh_token=refresh,
+        must_enroll_2fa=await service.must_enroll_2fa(db, user),
+    )
+
+
+@router.post("/register/resend", response_model=MessageOut)
+async def register_resend(
+    data: RegisterResendIn, db: AsyncSession = Depends(get_db)
+):
+    await service.resend_registration(db, data.identifier)
+    return MessageOut(
+        message="اگر ثبت‌نام نیمه‌کاره‌ای با این مشخصات باشد، لینک تأیید دوباره ارسال شد"
+    )
 
 
 @router.post("/verify-phone/request", response_model=MessageOut)

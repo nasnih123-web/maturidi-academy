@@ -281,3 +281,199 @@ async def test_meta_endpoints(tc):
     assert r.json()["locale"] == "ar"
     r = await client.get(f"{BASE}/i18n/detect", headers={"Accept-Language": "en-US"})
     assert r.json()["locale"] == "en"
+
+
+# ---------- فاز A: ثبت‌نام بدون رمز (تأیید اول، رمز بعد) ----------
+
+
+async def _register_passwordless(client, email, phone=None):
+    body = {
+        "full_name": "کاربر وب",
+        "email": email,
+        "locale": "fa",
+        "accept_terms": True,
+    }
+    if phone:
+        body["phone"] = phone
+    r = await client.post(f"{BASE}/auth/register", json=body)
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def _last_verify_token(sent, email):
+    body = [
+        e["body"] for e in sent["emails"] if e["to"] == email and "verify_token=" in e["body"]
+    ][-1]
+    m = re.search(r"verify_token=([A-Za-z0-9\-_]+)", body)
+    assert m
+    return m.group(1)
+
+
+async def test_passwordless_registration_email_flow(tc):
+    client, sent = tc["client"], tc["sent"]
+    email = "webflow@example.com"
+    me = await _register_passwordless(client, email, phone="+93700123456")
+    assert me["is_verified"] is False
+
+    # تا تکمیل ثبت‌نام، ورود با هر رمزی 403 «نیمه‌کاره» است
+    r = await client.post(
+        f"{BASE}/auth/login", json={"identifier": email, "password": "Whatever123"}
+    )
+    assert r.status_code == 403, r.text
+    assert r.json()["error"]["code"] == "registration_incomplete"
+
+    # تأیید ایمیل (شماره غیرایرانی) → توکن ست‌کردن رمز
+    token = _last_verify_token(sent, email)
+    r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": token})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["status"] == "verified"
+    assert out["setup_token"]
+
+    # ست‌کردن رمز → ورود خودکار (جفت توکن)
+    r = await client.post(
+        f"{BASE}/auth/register/set-password",
+        json={"setup_token": out["setup_token"], "new_password": "MyNewPass123"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["access_token"]
+
+    # توکن تکمیل یک‌بارمصرف است
+    r = await client.post(
+        f"{BASE}/auth/register/set-password",
+        json={"setup_token": out["setup_token"], "new_password": "MyNewPass123"},
+    )
+    assert r.status_code == 400
+
+    # ورود عادی با رمز ست‌شده کار می‌کند
+    await _login(client, email, password="MyNewPass123")
+
+
+async def test_passwordless_registration_iran_phone_requires_sms(tc):
+    client, sent = tc["client"], tc["sent"]
+    email = "iranflow@example.com"
+    phone = "+989121112233"
+    await _register_passwordless(client, email, phone=phone)
+
+    # تأیید ایمیل برای شمارهٔ ایران کافی نیست
+    token = _last_verify_token(sent, email)
+    r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": token})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["status"] == "phone_required"
+    assert out["setup_token"] is None
+    assert out["phone_hint"]
+
+    # درخواست کد پیامکی + کد اشتباه → 400
+    r = await client.post(f"{BASE}/auth/register/phone-code/request", json={"phone": phone})
+    assert r.status_code == 200, r.text
+    sms = [s for s in sent["sms"] if s["phone"] == phone][-1]
+    m = re.search(r"(\d{6})", sms["message"])
+    assert m
+    r = await client.post(
+        f"{BASE}/auth/register/phone-code/verify",
+        json={"phone": phone, "code": "000000"},
+    )
+    assert r.status_code == 400
+
+    # کد درست → توکن ست‌کردن رمز → تکمیل و ورود
+    r = await client.post(
+        f"{BASE}/auth/register/phone-code/verify",
+        json={"phone": phone, "code": m.group(1)},
+    )
+    assert r.status_code == 200, r.text
+    setup_token = r.json()["setup_token"]
+    r = await client.post(
+        f"{BASE}/auth/register/set-password",
+        json={"setup_token": setup_token, "new_password": "IranPass123"},
+    )
+    assert r.status_code == 200, r.text
+    await _login(client, email, password="IranPass123")
+
+
+async def test_passwordless_phone_only_completion(tc):
+    # شمارهٔ غیرایرانی با پیامک هم می‌تواند به‌تنهایی ثبت‌نام را کامل کند
+    client, sent = tc["client"], tc["sent"]
+    email = "smsflow@example.com"
+    phone = "+905301112233"
+    await _register_passwordless(client, email, phone=phone)
+
+    r = await client.post(f"{BASE}/auth/register/phone-code/request", json={"phone": phone})
+    assert r.status_code == 200, r.text
+    sms = [s for s in sent["sms"] if s["phone"] == phone][-1]
+    code = re.search(r"(\d{6})", sms["message"]).group(1)
+    r = await client.post(
+        f"{BASE}/auth/register/phone-code/verify", json={"phone": phone, "code": code}
+    )
+    assert r.status_code == 200, r.text
+    r = await client.post(
+        f"{BASE}/auth/register/set-password",
+        json={"setup_token": r.json()["setup_token"], "new_password": "SmsPass123"},
+    )
+    assert r.status_code == 200, r.text
+    await _login(client, phone, password="SmsPass123")
+
+
+async def test_passwordless_reregister_resends_and_completed_conflicts(tc):
+    client, sent = tc["client"], tc["sent"]
+    email = "resendflow@example.com"
+    await _register_passwordless(client, email, phone="+93700999888")
+    first_token = _last_verify_token(sent, email)
+
+    # ثبت‌نام دوبارهٔ همان ایمیل در وضعیت نیمه‌کاره → 201 و لینک تازه
+    await _register_passwordless(client, email, phone="+93700999888")
+    second_token = _last_verify_token(sent, email)
+    assert second_token != first_token
+
+    # توکن قبلی باطل شده است
+    r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": first_token})
+    assert r.status_code == 400
+
+    # توکن تازه کار می‌کند و ثبت‌نام کامل می‌شود
+    r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": second_token})
+    assert r.status_code == 200, r.text
+    r = await client.post(
+        f"{BASE}/auth/register/set-password",
+        json={"setup_token": r.json()["setup_token"], "new_password": "DonePass123"},
+    )
+    assert r.status_code == 200, r.text
+
+    # بعد از تکمیل، ثبت‌نام دوباره → 409
+    r = await client.post(
+        f"{BASE}/auth/register",
+        json={"full_name": "دوباره", "email": email, "accept_terms": True},
+    )
+    assert r.status_code == 409
+
+
+async def test_register_resend_endpoint(tc):
+    client, sent = tc["client"], tc["sent"]
+    email = "resendep@example.com"
+    await _register_passwordless(client, email)
+    before = len([e for e in sent["emails"] if e["to"] == email])
+
+    r = await client.post(f"{BASE}/auth/register/resend", json={"identifier": email})
+    assert r.status_code == 200, r.text
+    after = [e for e in sent["emails"] if e["to"] == email]
+    assert len(after) == before + 1
+
+    # ناشناخته هم 200 بی‌صداست (ضد شمارش)
+    r = await client.post(
+        f"{BASE}/auth/register/resend", json={"identifier": "ghost@example.com"}
+    )
+    assert r.status_code == 200
+
+
+async def test_register_verify_email_already_active(tc):
+    # حساب قدیمی (با رمز) که وارد شده: تأیید از مسیر ثبت‌نام فقط «تأییدشده»
+    # ثبت می‌کند و توکن ست‌کردن رمز نمی‌دهد.
+    client, sent = tc["client"], tc["sent"]
+    email = "active@example.com"
+    await _register(client, email)
+    await _login(client, email)
+    token = _last_verify_token(sent, email)
+    r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": token})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["status"] == "already_active"
+    assert out["setup_token"] is None
