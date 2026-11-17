@@ -97,8 +97,25 @@ class ClusterPage(BaseModel):
     next_cursor: str | None = None
 
 
+class ClusterPublishIn(BaseModel):
+    """انتشار هم‌زمان پاسخ خوشه به‌صورت فتوای عمومی — همان ساختار کامل فتوا.
+
+    عنوان و متن‌ها فارسی ساده‌اند و سمت سرور به LocalizedText ({fa}) تبدیل
+    می‌شوند؛ پاسخ حنفی همان فیلد answer درخواست است و positions فقط
+    دیدگاه مذاهب دیگر (shafii/maliki/hanbali) را می‌گیرد.
+    """
+
+    title: str = Field(min_length=1, max_length=500)
+    evidence: str | None = Field(default=None, max_length=20000)
+    positions: dict[str, str] = Field(default_factory=dict)
+    category_id: UUID | None = None
+    featured_image_url: str | None = Field(default=None, max_length=1024)
+    author_name: str | None = Field(default=None, max_length=160)
+
+
 class ClusterAnswer(BaseModel):
     answer: str = Field(min_length=1, max_length=20000)
+    publish: ClusterPublishIn | None = None
 
 
 class ClusterAnswerOut(BaseModel):
@@ -107,3 +124,4 @@ class ClusterAnswerOut(BaseModel):
     answer: str
     answered_at: datetime | None
     notified_count: int
+    published_topic_id: UUID | None = None

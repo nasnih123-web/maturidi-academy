@@ -263,14 +263,41 @@ export function useFatwaCluster(id: string | null) {
   });
 }
 
+export interface ClusterPublishPayload {
+  title: string;
+  evidence?: string;
+  positions?: Record<string, string>;
+  category_id?: string | null;
+  featured_image_url?: string;
+  author_name?: string;
+}
+
+export interface ClusterAnswerResult {
+  published_topic_id: string | null;
+}
+
 export function useAnswerCluster() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, answer }: { id: string; answer: string }) =>
-      apiFetch<unknown>(`/api/v1/fatwa/clusters/${id}/answer`, {
+    mutationFn: async ({
+      id,
+      answer,
+      publish,
+    }: {
+      id: string;
+      answer: string;
+      publish?: ClusterPublishPayload;
+    }): Promise<ClusterAnswerResult> => {
+      const raw = await apiFetch<unknown>(`/api/v1/fatwa/clusters/${id}/answer`, {
         method: "POST",
-        body: { answer },
-      }),
+        body: publish ? { answer, publish } : { answer },
+      });
+      const r = (raw ?? {}) as Record<string, unknown>;
+      return {
+        published_topic_id:
+          typeof r.published_topic_id === "string" ? r.published_topic_id : null,
+      };
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: CLUSTER_KEY });
     },

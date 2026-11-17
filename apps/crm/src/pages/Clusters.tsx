@@ -5,6 +5,7 @@ import { useI18n } from "../lib/i18n";
 import { useEventFeed } from "../lib/events";
 import {
   CLUSTER_KEY,
+  ClusterPublishPayload,
   FatwaCluster,
   FatwaClusterDetail,
   errText,
@@ -12,6 +13,7 @@ import {
   useFatwaCluster,
   useFatwaClusters,
 } from "../lib/fatwaSubmissions";
+import { useFatwaCategories } from "../lib/fatwa";
 
 /**
  * Question clusters — Phase 10 (CRM track).
@@ -21,7 +23,9 @@ import {
  *
  * Contract: GET /api/v1/fatwa/clusters, GET /api/v1/fatwa/clusters/{id}
  * (cluster + members[] + answer), POST /api/v1/fatwa/clusters/{id}/answer
- * {answer}.
+ * {answer, publish?} — with `publish` the same form is also published as a
+ * public fatwa with the full fatwa structure (madhab positions, category,
+ * featured image); without it the answer only notifies the members.
  */
 
 function LiveClusterStrip(): React.ReactElement {
@@ -71,10 +75,45 @@ function LiveClusterStrip(): React.ReactElement {
 
 function AnswerComposer({ cluster }: { cluster: FatwaClusterDetail }): React.ReactElement {
   const { t } = useI18n();
+  const categories = useFatwaCategories();
+  const [title, setTitle] = React.useState(cluster.representative_question ?? "");
   const [answer, setAnswer] = React.useState("");
+  const [evidence, setEvidence] = React.useState("");
+  const [shafii, setShafii] = React.useState("");
+  const [maliki, setMaliki] = React.useState("");
+  const [hanbali, setHanbali] = React.useState("");
+  const [categoryId, setCategoryId] = React.useState("");
+  const [imageUrl, setImageUrl] = React.useState("");
   const [touched, setTouched] = React.useState(false);
+  const [publishTried, setPublishTried] = React.useState(false);
   const answerCluster = useAnswerCluster();
   const empty = answer.trim().length === 0;
+  const titleEmpty = title.trim().length === 0;
+  const publishedId = answerCluster.data?.published_topic_id ?? null;
+
+  const submitReply = () => {
+    setTouched(true);
+    if (empty || answerCluster.isPending) return;
+    answerCluster.mutate({ id: cluster.id, answer: answer.trim() });
+  };
+
+  const submitPublish = () => {
+    setTouched(true);
+    setPublishTried(true);
+    if (empty || titleEmpty || answerCluster.isPending) return;
+    const positions: Record<string, string> = {};
+    if (shafii.trim()) positions.shafii = shafii.trim();
+    if (maliki.trim()) positions.maliki = maliki.trim();
+    if (hanbali.trim()) positions.hanbali = hanbali.trim();
+    const publish: ClusterPublishPayload = {
+      title: title.trim(),
+      evidence: evidence.trim() || undefined,
+      positions,
+      category_id: categoryId || null,
+      featured_image_url: imageUrl.trim() || undefined,
+    };
+    answerCluster.mutate({ id: cluster.id, answer: answer.trim(), publish });
+  };
 
   return (
     <section className="panel" aria-label={t("clusters.answerLabel")}>
@@ -82,8 +121,26 @@ function AnswerComposer({ cluster }: { cluster: FatwaClusterDetail }): React.Rea
         <h2>{t("clusters.answerLabel")}</h2>
         <Badge tone="warning">{t("clusters.open")}</Badge>
       </div>
+
       <div className="field">
-        <label htmlFor="cluster-answer">{t("clusters.answerText")}</label>
+        <label htmlFor="cluster-title">{t("clusters.titleLabel")}</label>
+        <input
+          id="cluster-title"
+          className="input"
+          dir="auto"
+          placeholder={t("clusters.titlePlaceholder")}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        {publishTried && titleEmpty && (
+          <span className="form-error" style={{ marginBottom: 0 }}>
+            {t("clusters.titleRequired")}
+          </span>
+        )}
+      </div>
+
+      <div className="field">
+        <label htmlFor="cluster-answer">{t("clusters.hanafiLabel")}</label>
         <textarea
           id="cluster-answer"
           className="input"
@@ -99,28 +156,116 @@ function AnswerComposer({ cluster }: { cluster: FatwaClusterDetail }): React.Rea
           </span>
         )}
       </div>
+
+      <div className="field">
+        <label htmlFor="cluster-evidence">{t("clusters.evidenceLabel")}</label>
+        <textarea
+          id="cluster-evidence"
+          className="input"
+          rows={4}
+          dir="auto"
+          placeholder={t("clusters.evidencePlaceholder")}
+          value={evidence}
+          onChange={(e) => setEvidence(e.target.value)}
+        />
+      </div>
+
+      <fieldset style={{ border: "1px solid var(--x-line)", borderRadius: "0.5rem", padding: "0.75rem", margin: "0 0 1rem" }}>
+        <legend style={{ fontSize: "0.88rem", padding: "0 0.4rem" }}>{t("clusters.otherMadhabsLabel")}</legend>
+        <div className="field">
+          <label htmlFor="cluster-shafii">{t("clusters.shafiiLabel")}</label>
+          <textarea
+            id="cluster-shafii"
+            className="input"
+            rows={3}
+            dir="auto"
+            value={shafii}
+            onChange={(e) => setShafii(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="cluster-maliki">{t("clusters.malikiLabel")}</label>
+          <textarea
+            id="cluster-maliki"
+            className="input"
+            rows={3}
+            dir="auto"
+            value={maliki}
+            onChange={(e) => setMaliki(e.target.value)}
+          />
+        </div>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label htmlFor="cluster-hanbali">{t("clusters.hanbaliLabel")}</label>
+          <textarea
+            id="cluster-hanbali"
+            className="input"
+            rows={3}
+            dir="auto"
+            value={hanbali}
+            onChange={(e) => setHanbali(e.target.value)}
+          />
+        </div>
+      </fieldset>
+
+      <div className="field">
+        <label htmlFor="cluster-category">{t("clusters.categoryLabel")}</label>
+        <select
+          id="cluster-category"
+          className="input"
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+        >
+          <option value="">{t("clusters.categoryNone")}</option>
+          {categories.data?.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title?.fa || c.slug}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="field">
+        <label htmlFor="cluster-image">{t("clusters.imageLabel")}</label>
+        <input
+          id="cluster-image"
+          className="input"
+          dir="ltr"
+          placeholder={t("clusters.imagePlaceholder")}
+          value={imageUrl}
+          onChange={(e) => setImageUrl(e.target.value)}
+        />
+        {imageUrl.startsWith("http") && (
+          <img src={imageUrl} alt="" style={{ maxWidth: "100%", maxHeight: "12rem", marginTop: "0.5rem" }} />
+        )}
+      </div>
+
       <p className="hint" style={{ fontSize: "0.88rem" }}>
         {t("clusters.notifyCount").replace("{n}", String(cluster.member_count))}
       </p>
-      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+      <p className="hint" style={{ fontSize: "0.88rem" }}>
+        {t("clusters.publishHint")}
+      </p>
+
+      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
         <button
           type="button"
           className="btn-gold"
           disabled={answerCluster.isPending}
-          onClick={() => {
-            setTouched(true);
-            if (empty || answerCluster.isPending) return;
-            answerCluster.mutate({ id: cluster.id, answer: answer.trim() });
-          }}
+          onClick={submitPublish}
         >
-          {answerCluster.isPending ? t("common.loading") : t("clusters.sendAnswer")}
+          {answerCluster.isPending ? t("common.loading") : t("clusters.publish")}
         </button>
+        <Button variant="secondary" disabled={answerCluster.isPending} onClick={submitReply}>
+          {t("clusters.replyOnly")}
+        </Button>
         {answerCluster.isError && (
           <span className="form-error" style={{ marginBottom: 0 }}>
             {errText(answerCluster.error)}
           </span>
         )}
-        {answerCluster.isSuccess && <Badge tone="success">{t("clusters.answeredOk")}</Badge>}
+        {answerCluster.isSuccess && (
+          <Badge tone="success">{publishedId ? t("clusters.publishedOk") : t("clusters.answeredOk")}</Badge>
+        )}
       </div>
     </section>
   );

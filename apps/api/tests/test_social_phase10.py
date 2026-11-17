@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 BASE = "/api/v1"
 
@@ -501,6 +501,101 @@ async def test_cluster_answer_requires_mufti_permission(tc):
 
     r = await client.get(f"{BASE}/fatwa/clusters", headers=mufti)
     assert r.status_code == 200, r.text
+
+
+async def test_cluster_answer_with_publish_creates_public_fatwa(tc):
+    """پاسخ مفتی با انتشار → فتوای عمومی کامل (مواضع مذاهب) + اعلان پرسنده."""
+    user = await _make_user(tc)
+    mufti = await _make_user(tc, ("fatwa.answer_cluster",))
+    client = tc["client"]
+
+    # متن یکتا و نامرتبط با سوال‌های تست‌های دیگر تا خوشهٔ تازه بسازد
+    r = await client.post(
+        f"{BASE}/fatwa/questions",
+        json={"text": "حکم خرید و فروش ارز دیجیتال چیست؟"},
+        headers=user,
+    )
+    assert r.status_code == 201, r.text
+    cluster_id = r.json()["cluster_id"]
+
+    answer_text = "پاسخ حنفی: نماز مسافر در سفر قصر می‌شود."
+    r = await client.post(
+        f"{BASE}/fatwa/clusters/{cluster_id}/answer",
+        json={
+            "answer": answer_text,
+            "publish": {
+                "title": "حکم نماز مسافر",
+                "evidence": "دلیل از منابع حنفی",
+                "positions": {
+                    "shafii": "دیدگاه شافعی آزمایشی",
+                    "maliki": "دیدگاه مالکی آزمایشی",
+                },
+                "featured_image_url": "https://example.com/fatwa.jpg",
+            },
+        },
+        headers=mufti,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "answered"
+    assert body["notified_count"] >= 1
+    topic_id = body["published_topic_id"]
+    assert topic_id
+
+    # فتوای عمومی با ساختار کامل در دسترس است
+    r = await client.get(f"{BASE}/fatwa/topics/{topic_id}")
+    assert r.status_code == 200, r.text
+    topic = r.json()
+    assert topic["title"]["fa"] == "حکم نماز مسافر"
+    assert topic["featured_image_url"] == "https://example.com/fatwa.jpg"
+    by_madhab = {p["madhab"]: p for p in topic["positions"]}
+    assert by_madhab["hanafi"]["position_text"]["fa"] == answer_text
+    assert by_madhab["hanafi"]["evidence_refs"] == ["دلیل از منابع حنفی"]
+    assert by_madhab["shafii"]["position_text"]["fa"] == "دیدگاه شافعی آزمایشی"
+    assert by_madhab["maliki"]["position_text"]["fa"] == "دیدگاه مالکی آزمایشی"
+    assert "hanbali" not in by_madhab  # متن خالی → موضع ساخته نمی‌شود
+
+    # پرسنده همچنان اعلان پاسخ را گرفته است
+    r = await client.get(f"{BASE}/social/notifications", headers=user)
+    matches = [
+        n for n in r.json()["items"] if n["notif_type"] == "fatwa.cluster_answered"
+    ]
+    assert len(matches) == 1
+    assert matches[0]["body"] == answer_text
+
+
+async def test_cluster_answer_without_publish_creates_no_topic(tc):
+    """پاسخ خصوصی مفتی (بدون انتشار) هیچ فتوای عمومی‌ای نمی‌سازد."""
+    user = await _make_user(tc)
+    mufti = await _make_user(tc, ("fatwa.answer_cluster",))
+    client = tc["client"]
+
+    from app.models.models import FiqhTopic
+
+    async def _topic_count() -> int:
+        async with tc["maker"]() as db:
+            return (
+                await db.execute(select(func.count()).select_from(FiqhTopic))
+            ).scalar_one()
+
+    before = await _topic_count()
+
+    # متن یکتا و نامرتبط با سوال‌های تست‌های دیگر تا خوشهٔ تازه بسازد
+    r = await client.post(
+        f"{BASE}/fatwa/questions",
+        json={"text": "آیا بیمه عمر از نظر شرعی جایز است؟"},
+        headers=user,
+    )
+    cluster_id = r.json()["cluster_id"]
+
+    r = await client.post(
+        f"{BASE}/fatwa/clusters/{cluster_id}/answer",
+        json={"answer": "پاسخ خصوصی"},
+        headers=mufti,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["published_topic_id"] is None
+    assert await _topic_count() == before
 
 
 # ---------------------------------------------------------------------------
