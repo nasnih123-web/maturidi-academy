@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import logging
 import secrets as pysecrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -60,6 +61,8 @@ from app.modules.auth.schemas import (
     TwoFARecoverIn,
 )
 from app.modules.content.legal import LEGAL_TEXT_VERSION
+
+logger = logging.getLogger("maturidi.auth")
 
 REFRESH_EXPIRE_DAYS = 30
 EMAIL_VERIFY_EXPIRE_HOURS = 24
@@ -266,14 +269,21 @@ async def _issue_verification_email(db: AsyncSession, user: User) -> None:
         )
     )
     if user.email:
-        await email_mod.send_email(
-            user.email,
-            "تأیید ایمیل — آکادمی ماتریدی",
-            "برای تأیید ایمیل خود روی لینک زیر کلیک کنید:\n"
-            + public_url(f"/{user.locale}/verify-email?token={token}")
-            + "\n"
-            f"verify_token={token}",
-        )
+        # خرابی سرویس ایمیل نباید ثبت‌نام را خراب کند: توکن ذخیره شده و
+        # کاربر می‌تواند ارسال دوباره بخواهد.
+        try:
+            await email_mod.send_email(
+                user.email,
+                "تأیید ایمیل — آکادمی ماتریدی",
+                "برای تأیید ایمیل خود روی لینک زیر کلیک کنید:\n"
+                + public_url(f"/{user.locale}/verify-email?token={token}")
+                + "\n"
+                f"verify_token={token}",
+            )
+        except Exception:
+            logger.exception(
+                "verification email send failed for user %s", user.id
+            )
 
 
 async def _revoke_user_tokens(db: AsyncSession, user_id: uuid.UUID) -> None:
@@ -799,7 +809,12 @@ async def request_register_phone_code(db: AsyncSession, phone: str) -> None:
         )
     )
     await db.commit()
-    await sms_mod.send_sms(phone, f"کد تأیید آکادمی ماتریدی: {code}")
+    # خرابی سرویس پیامک نباید جریان را خراب کند: کد ذخیره شده و کاربر
+    # می‌تواند درخواست دوباره بدهد.
+    try:
+        await sms_mod.send_sms(phone, f"کد تأیید آکادمی ماتریدی: {code}")
+    except Exception:
+        logger.exception("register phone code SMS send failed for %s", phone)
 
 
 async def verify_register_phone_code(db: AsyncSession, phone: str, code: str) -> str:
@@ -918,7 +933,12 @@ async def request_phone_code(
         )
     )
     await db.commit()
-    await sms_mod.send_sms(data.phone, f"کد تأیید آکادمی ماتریدی: {code}")
+    # خرابی سرویس پیامک نباید جریان را خراب کند: کد ذخیره شده و کاربر
+    # می‌تواند درخواست دوباره بدهد.
+    try:
+        await sms_mod.send_sms(data.phone, f"کد تأیید آکادمی ماتریدی: {code}")
+    except Exception:
+        logger.exception("phone code SMS send failed for user %s", user.id)
 
 
 async def verify_phone_code(db: AsyncSession, user: User, data: PhoneVerifyIn) -> None:
@@ -995,15 +1015,22 @@ async def request_password_reset(
             )
         )
         await db.commit()
-        await email_mod.send_email(
-            user.email,
-            "بازیابی رمز عبور — آکادمی ماتریدی",
-            "برای تعیین رمز جدید:\n"
-            + public_url(f"/{user.locale}/reset-password?token={token}")
-            + "\n"
-            f"reset_token={token}\n"
-            "این لینک یک ساعت اعتبار دارد.",
-        )
+        # خرابی سرویس ایمیل نباید پاسخ عمومی بازیابی را تغییر دهد: توکن
+        # ذخیره شده و کاربر می‌تواند دوباره درخواست بدهد.
+        try:
+            await email_mod.send_email(
+                user.email,
+                "بازیابی رمز عبور — آکادمی ماتریدی",
+                "برای تعیین رمز جدید:\n"
+                + public_url(f"/{user.locale}/reset-password?token={token}")
+                + "\n"
+                f"reset_token={token}\n"
+                "این لینک یک ساعت اعتبار دارد.",
+            )
+        except Exception:
+            logger.exception(
+                "password reset email send failed for user %s", user.id
+            )
 
 
 async def confirm_password_reset(db: AsyncSession, token: str, new_password: str) -> None:

@@ -477,3 +477,54 @@ async def test_register_verify_email_already_active(tc):
     out = r.json()
     assert out["status"] == "already_active"
     assert out["setup_token"] is None
+
+
+# ---------- تاب‌آوری در برابر خرابی سرویس ایمیل ----------
+
+
+async def _raise_email(to, subject, body_text, body_html=None):
+    raise RuntimeError("mail provider unavailable")
+
+
+async def test_registration_survives_mail_provider_failure(tc):
+    # خرابی SMTP نباید ثبت‌نام را 500 کند: حساب ساخته می‌شود (توکن تأیید
+    # ذخیره شده و ارسال دوباره ممکن است) و ورود همچنان 403 نیمه‌کاره است.
+    import app.core.email as email_mod
+
+    client = tc["client"]
+    email = "mailfail@example.com"
+
+    original = email_mod.send_email
+    email_mod.send_email = _raise_email
+    try:
+        me = await _register_passwordless(client, email)
+    finally:
+        email_mod.send_email = original
+    assert me["email"] == email
+    assert me["is_verified"] is False
+
+    r = await client.post(
+        f"{BASE}/auth/login", json={"identifier": email, "password": "Whatever123"}
+    )
+    assert r.status_code == 403, r.text
+    assert r.json()["error"]["code"] == "registration_incomplete"
+
+
+async def test_password_reset_request_survives_mail_provider_failure(tc):
+    # پاسخ عمومی بازیابی رمز حتی با SMTP خراب هم همان 200 معمول است.
+    import app.core.email as email_mod
+
+    client = tc["client"]
+    email = "resetmailfail@example.com"
+    await _register(client, email)
+
+    original = email_mod.send_email
+    email_mod.send_email = _raise_email
+    try:
+        r = await client.post(
+            f"{BASE}/auth/password-reset/request", json={"email": email}
+        )
+    finally:
+        email_mod.send_email = original
+    assert r.status_code == 200, r.text
+    assert r.json()["message"]
