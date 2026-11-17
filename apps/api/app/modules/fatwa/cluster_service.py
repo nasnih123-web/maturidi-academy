@@ -23,7 +23,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import APIError
 from app.core.events import emit_event
 from app.core.platform_settings import get_setting
-from app.models.models import ClusterMember, QuestionCluster, User
+from app.models.models import (
+    ClusterMember,
+    FatwaCategory,
+    FiqhTopic,
+    MadhabPosition,
+    QuestionCluster,
+    User,
+)
 from app.modules.fatwa.embeddings import (
     cosine_similarity,
     get_embedding_provider,
@@ -225,12 +232,77 @@ async def list_members(db: AsyncSession, cluster_id: uuid.UUID) -> list[ClusterM
     return list(rows)
 
 
+async def _publish_as_fatwa(
+    db: AsyncSession, *, answer: str, publish: dict, now: datetime
+) -> FiqhTopic:
+    """ساخت فتوای عمومی منتشرشده از روی فرم پاسخ خوشه — ساختار کامل فتوا.
+
+    موضوع با وضعیت published ساخته می‌شود؛ پاسخ حنفی موضع hanafi است و
+    دلایلش در evidence_refs همان موضع می‌نشیند؛ برای هر مذهب دیگر که
+    متنش پر شده باشد یک موضع جدا ساخته می‌شود (همه با وضعیت published
+    تا در جزئیات عمومی و RAG دیده شوند).
+    """
+    title = (publish.get("title") or "").strip()
+    if not title:
+        raise APIError(422, "empty_title", "عنوان فتوا نمی‌تواند خالی باشد")
+    category_id = publish.get("category_id")
+    if category_id is not None:
+        category = await db.get(FatwaCategory, category_id)
+        if category is None:
+            raise APIError(422, "category_not_found", "دستهٔ فتوا یافت نشد")
+    topic = FiqhTopic(
+        title={"fa": title},
+        description=None,
+        workflow_status="published",
+        published_at=now,
+        category_id=category_id,
+        author_name=(publish.get("author_name") or None),
+        featured_image_url=(publish.get("featured_image_url") or None),
+    )
+    db.add(topic)
+    await db.flush()
+
+    evidence = (publish.get("evidence") or "").strip()
+    db.add(
+        MadhabPosition(
+            topic_id=topic.id,
+            madhab="hanafi",
+            position_text={"fa": answer},
+            evidence_refs=[evidence] if evidence else None,
+            workflow_status="published",
+        )
+    )
+    positions = publish.get("positions") or {}
+    for madhab in ("shafii", "maliki", "hanbali"):
+        text = (positions.get(madhab) or "").strip()
+        if text:
+            db.add(
+                MadhabPosition(
+                    topic_id=topic.id,
+                    madhab=madhab,
+                    position_text={"fa": text},
+                    evidence_refs=None,
+                    workflow_status="published",
+                )
+            )
+    await db.flush()
+    return topic
+
+
 async def answer_cluster(
-    db: AsyncSession, *, cluster: QuestionCluster, answer: str, answered_by: User
-) -> tuple[QuestionCluster, int]:
+    db: AsyncSession,
+    *,
+    cluster: QuestionCluster,
+    answer: str,
+    answered_by: User,
+    publish: dict | None = None,
+) -> tuple[QuestionCluster, int, uuid.UUID | None]:
     """پاسخ یک‌بارهٔ مفتی → اعلان برای همهٔ اعضای یکتای خوشه.
 
-    خروجی: (cluster, notified_count).
+    اگر publish داده شود، همان پاسخ هم‌زمان به‌صورت فتوای عمومی با
+    ساختار کامل (مواضع مذاهب + دسته + تصویر شاخص) منتشر می‌شود.
+
+    خروجی: (cluster, notified_count, published_topic_id|None).
     """
     cleaned = answer.strip()
     if not cleaned:
@@ -241,6 +313,11 @@ async def answer_cluster(
     cluster.answered_at = now
     cluster.status = "answered"
     await db.flush()
+
+    topic_id: uuid.UUID | None = None
+    if publish is not None:
+        topic = await _publish_as_fatwa(db, answer=cleaned, publish=publish, now=now)
+        topic_id = topic.id
 
     members = await list_members(db, cluster.id)
     user_ids = list(dict.fromkeys(m.user_id for m in members))  # یکتا، با حفظ ترتیب
@@ -266,7 +343,8 @@ async def answer_cluster(
             "answered_by": str(answered_by.id),
             "member_count": len(user_ids),
             "notified_count": len(user_ids),
+            "published_topic_id": str(topic_id) if topic_id else None,
         },
     )
     await db.commit()
-    return cluster, len(user_ids)
+    return cluster, len(user_ids), topic_id

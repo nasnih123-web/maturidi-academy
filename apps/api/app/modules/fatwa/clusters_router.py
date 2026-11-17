@@ -108,8 +108,12 @@ async def answer_cluster(
     user: User = Depends(_can_answer),
 ):
     cluster = await service.get_cluster(db, cluster_id)
-    cluster, notified = await service.answer_cluster(
-        db, cluster=cluster, answer=payload.answer, answered_by=user
+    cluster, notified, topic_id = await service.answer_cluster(
+        db,
+        cluster=cluster,
+        answer=payload.answer,
+        answered_by=user,
+        publish=payload.publish.model_dump() if payload.publish else None,
     )
     return schemas.ClusterAnswerOut(
         id=cluster.id,
@@ -117,4 +121,5 @@ async def answer_cluster(
         answer=cluster.answer or "",
         answered_at=cluster.answered_at,
         notified_count=notified,
+        published_topic_id=topic_id,
     )
