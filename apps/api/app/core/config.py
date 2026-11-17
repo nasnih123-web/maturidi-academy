@@ -104,6 +104,9 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = "noreply@example.com"
+    # ریسند (HTTPS API) — اگر ست باشد بر SMTP مقدم است؛ روی بعضی
+    # هاست‌ها (Railway) پورت‌های SMTP بسته‌اند و اتصال تایم‌اوت می‌خورد.
+    resend_api_key: str = ""
 
     # پیامک — فاز ۱ (خالی = حالت dev با لاگ)
     sms_provider: str = ""
