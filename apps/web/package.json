@@ -16,7 +16,7 @@
     "@types/react-dom": "19.3.0",
     "axe-core": "^4.10.2",
     "tailwindcss": "^4.1.4",
-    "typescript": "5.9.3"
+    "typescript": "7.0.2"
   },
   "name": "@maturidi/web",
   "private": true,
