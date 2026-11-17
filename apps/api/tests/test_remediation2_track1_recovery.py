@@ -46,8 +46,9 @@ async def test_reset_link_uses_configured_base_url(tc):
     assert len(tc["sent"]["emails"]) == n_before + 1
     body = tc["sent"]["emails"][-1]["body"]
     assert "example.com" not in body, body
-    # app_base_url پیش‌فرض تست: http://localhost:8000
-    assert "http://localhost:8000/reset-password?token=" in body, body
+    # app_base_url پیش‌فرض تست: http://localhost:8000 — از فاز A مسیر لینک
+    # پیشوند زبان کاربر را هم دارد (/{locale}/reset-password)
+    assert "http://localhost:8000/fa/reset-password?token=" in body, body
 
 
 async def test_verify_email_link_uses_configured_base_url(tc):
@@ -58,7 +59,7 @@ async def test_verify_email_link_uses_configured_base_url(tc):
     bodies = [m["body"] for m in tc["sent"]["emails"][n_before:]]
     assert bodies, "expected verification email"
     assert "example.com" not in bodies[0], bodies[0]
-    assert "http://localhost:8000/verify-email?token=" in bodies[0], bodies[0]
+    assert "http://localhost:8000/fa/verify-email?token=" in bodies[0], bodies[0]
 
 
 async def test_unknown_email_uniform_response_no_email(tc):

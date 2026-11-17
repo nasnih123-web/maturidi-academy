@@ -45,6 +45,9 @@ export default async function FatwaQuestionPage({
     clusterLabel: t('question.clusterLabel'),
     noSuggestion: t('question.noSuggestion'),
     error: t('question.error'),
+    loginRequired: t('question.loginRequired'),
+    signIn: t('question.signIn'),
+    signUp: t('question.signUp'),
   };
   const prefill = typeof searchParams.q === 'string' ? searchParams.q : undefined;
   const autoAsk = searchParams.demo === 'ask';

@@ -68,6 +68,9 @@ export interface FatwaQuestionLabels {
   clusterLabel: string;
   noSuggestion: string;
   error: string;
+  loginRequired: string;
+  signIn: string;
+  signUp: string;
 }
 
 export interface FatwaSubmitLabels {

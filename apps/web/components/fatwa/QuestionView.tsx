@@ -10,7 +10,10 @@
  */
 
 import { useEffect } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useQuestionForm } from '@/lib/hooks/useSocial';
+import { useAuth } from '@/lib/auth-context';
 import { formatSocialDate, isSocialDemo } from '@/lib/social';
 import type { FatwaQuestionLabels } from '@/components/social/labels';
 
@@ -32,6 +35,8 @@ interface QuestionViewProps {
 export function QuestionView({ locale, labels, prefill, autoAsk, variant = 'page' }: QuestionViewProps) {
   const sidebar = variant === 'sidebar';
   const form = useQuestionForm();
+  const { loggedIn } = useAuth();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (prefill) form.setText(prefill);
@@ -47,6 +52,38 @@ export function QuestionView({ locale, labels, prefill, autoAsk, variant = 'page
   }, [autoAsk, prefill, form.text, form.asking, form.result]);
 
   const result = form.result;
+
+  // Asking requires an account (the API rejects anonymous submits).
+  // Signed-out visitors get sign-in / sign-up actions carrying `next`,
+  // so after registering they land back on this page — instead of the
+  // form failing silently like it used to.
+  if (!loggedIn && !isSocialDemo()) {
+    const nextParam = pathname ? `?next=${encodeURIComponent(pathname)}` : '';
+    return (
+      <div className={sidebar ? 'ftw-ask-box' : 'page-wrap'}>
+        {sidebar ? (
+          <>
+            <h2>{labels.title}</h2>
+            <p className="ftw-ask-sub">{labels.subtitle}</p>
+          </>
+        ) : (
+          <>
+            <h1 className="page-title">{labels.title}</h1>
+            <p className="page-sub">{labels.subtitle}</p>
+          </>
+        )}
+        <p>{labels.loginRequired}</p>
+        <div className="soc-composer-foot">
+          <Link className="soc-btn soc-btn-primary" href={`/${locale}/register${nextParam}`}>
+            {labels.signUp}
+          </Link>
+          <Link className="soc-btn" href={`/${locale}/login${nextParam}`}>
+            {labels.signIn}
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={sidebar ? 'ftw-ask-box' : 'page-wrap'}>

@@ -133,6 +133,92 @@ export async function register(input: RegisterInput): Promise<void> {
   });
 }
 
+export interface RegisterStartInput {
+  fullName: string;
+  email: string;
+  phone: string;
+  locale?: string;
+  captchaToken?: string;
+}
+
+/**
+ * Phase A web flow, step 1: create a *pending* account with no password.
+ * The account activates only after email/SMS verification + set-password
+ * (POST /auth/register/set-password). Throws the API error on failure.
+ */
+export async function registerStart(input: RegisterStartInput): Promise<void> {
+  await postJson('/api/v1/auth/register', {
+    full_name: input.fullName,
+    email: input.email,
+    phone: input.phone,
+    locale: input.locale ?? 'fa',
+    accept_terms: true,
+    ...(input.captchaToken ? { captcha_token: input.captchaToken } : {}),
+  });
+}
+
+export interface RegisterVerifyResult {
+  status: 'verified' | 'phone_required' | 'already_active';
+  setupToken?: string;
+  phoneHint?: string;
+}
+
+/** Step 2a: consume the emailed verification-link token. */
+export async function verifyRegisterEmail(token: string): Promise<RegisterVerifyResult> {
+  const out = await postJson<{
+    status: string;
+    setup_token?: string | null;
+    phone_hint?: string | null;
+  }>('/api/v1/auth/register/verify-email', { token });
+  return {
+    status: out.status as RegisterVerifyResult['status'],
+    setupToken: out.setup_token ?? undefined,
+    phoneHint: out.phone_hint ?? undefined,
+  };
+}
+
+/** Step 2b: ask for an SMS code for a pending registration. Always resolves. */
+export async function requestRegisterPhoneCode(phone: string): Promise<void> {
+  await postJson('/api/v1/auth/register/phone-code/request', { phone });
+}
+
+/** Step 2b: exchange the SMS code for a one-time password-setup token. */
+export async function verifyRegisterPhoneCode(phone: string, code: string): Promise<string> {
+  const out = await postJson<{ setup_token: string }>(
+    '/api/v1/auth/register/phone-code/verify',
+    { phone, code },
+  );
+  return out.setup_token;
+}
+
+/** Step 3: set the password with the setup token; stores the session pair. */
+export async function completeRegistration(setupToken: string, newPassword: string): Promise<void> {
+  const pair = await postJson<TokenPair>('/api/v1/auth/register/set-password', {
+    setup_token: setupToken,
+    new_password: newPassword,
+  });
+  storePair(pair);
+  emitAuthChange();
+}
+
+/** Resend the verification email for a pending registration (silent server-side). */
+export async function resendRegistration(identifier: string): Promise<void> {
+  await postJson('/api/v1/auth/register/resend', { identifier });
+}
+
+/** Forgot-password: request the reset email (always resolves). */
+export async function requestPasswordReset(email: string): Promise<void> {
+  await postJson('/api/v1/auth/password-reset/request', { email });
+}
+
+/** Forgot-password: set a new password with the emailed token. */
+export async function confirmPasswordReset(token: string, newPassword: string): Promise<void> {
+  await postJson('/api/v1/auth/password-reset/confirm', {
+    token,
+    new_password: newPassword,
+  });
+}
+
 /**
  * Public Turnstile site key from GET /api/v1/settings/public (C-02).
  * null when CAPTCHA is not configured for clients — widgets render

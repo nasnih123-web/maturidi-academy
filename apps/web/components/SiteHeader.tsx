@@ -10,6 +10,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { NavEntryFinal } from "@/lib/section-data";
+import { useAuth } from "@/lib/auth-context";
 
 export interface NavEntry {
   href: string;
@@ -24,8 +25,9 @@ export interface HeaderLabels {
   brandSub: string;
   navAria: string;
   mobileNavAria: string;
-  searchPlaceholder: string;
-  searchAria: string;
+  signIn: string;
+  signUp: string;
+  logout: string;
   langAria: string;
   langNames: Record<string, string>;
   menuAria: string;
@@ -140,6 +142,7 @@ export function SiteHeader({
   nav: NavEntry[];
 }) {
   const pathname = usePathname();
+  const { loggedIn, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);
@@ -201,13 +204,22 @@ export function SiteHeader({
           </nav>
 
           <div className="header-actions">
-            <form className="header-search" action={`/${locale}/search`} role="search">
-              <input type="search" name="q" placeholder={labels.searchPlaceholder} aria-label={labels.searchAria} />
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <circle cx="11" cy="11" r="7" />
-                <path d="m20 20-3.5-3.5" />
-              </svg>
-            </form>
+            <div className="header-auth">
+              {loggedIn ? (
+                <button type="button" className="auth-btn auth-btn-ghost" onClick={() => void logout()}>
+                  {labels.logout}
+                </button>
+              ) : (
+                <>
+                  <Link className="auth-btn auth-btn-ghost" href={`/${locale}/login`}>
+                    {labels.signIn}
+                  </Link>
+                  <Link className="auth-btn auth-btn-solid" href={`/${locale}/register`}>
+                    {labels.signUp}
+                  </Link>
+                </>
+              )}
+            </div>
 
             <div className="lang-dd" ref={langRef}>
               <button
@@ -276,6 +288,22 @@ export function SiteHeader({
               ))}
             </ul>
           </nav>
+          <div className="nav-drawer-auth">
+            {loggedIn ? (
+              <button type="button" className="auth-btn auth-btn-ghost" onClick={() => void logout()}>
+                {labels.logout}
+              </button>
+            ) : (
+              <>
+                <Link className="auth-btn auth-btn-ghost" href={`/${locale}/login`}>
+                  {labels.signIn}
+                </Link>
+                <Link className="auth-btn auth-btn-solid" href={`/${locale}/register`}>
+                  {labels.signUp}
+                </Link>
+              </>
+            )}
+          </div>
         </div>
       )}
     </>
