@@ -7,17 +7,20 @@
  * - GET/PATCH /api/v1/users/me — the Phase B fields (profile_complete,
  *   missing_profile_fields, profile_required_sections) come from the
  *   backend; the client never recomputes completeness.
+ * - POST /api/v1/users/me/avatar — multipart avatar upload; the
+ *   response is the updated profile.
  * - /api/v1/auth/2fa/* — the pre-existing TOTP endpoints, mirrored
  *   exactly (setup → enable with the pending secret + code; disable and
  *   recovery regeneration require re-authentication).
  *
- * Profile completeness is defined server-side over the columns that
- * exist today (full_name + avatar_media_id). Date of birth, gender and
- * a stored country column do NOT exist on users yet — the country shown
- * in the UI is derived from the verified phone's dial code instead.
+ * Profile completeness is defined server-side over five fields
+ * (full_name, avatar_media_id, date_of_birth, gender, country_code).
+ * The country is a stored column; when the user has a verified phone,
+ * the API requires it to equal the phone's country, so the UI
+ * preselects and locks it to the dial-code-derived country.
  */
 import { useEffect, useState } from 'react';
-import { authJson, isLoggedIn } from './auth-client';
+import { authFetch, authJson, isLoggedIn } from './auth-client';
 import { COUNTRIES } from './countries';
 
 export interface MeProfile {
@@ -28,6 +31,9 @@ export interface MeProfile {
   locale: string;
   is_verified: boolean;
   avatar_media_id: string | null;
+  date_of_birth: string | null;
+  gender: string | null;
+  country_code: string | null;
   profile_complete: boolean;
   missing_profile_fields: string[];
   profile_required_sections: string[];
@@ -41,12 +47,29 @@ export async function updateMe(patch: {
   full_name?: string;
   locale?: string;
   avatar_media_id?: string;
+  date_of_birth?: string;
+  gender?: string;
+  country_code?: string;
 }): Promise<MeProfile> {
   return authJson<MeProfile>('/api/v1/users/me', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
   });
+}
+
+/**
+ * Upload a new profile picture (multipart). No explicit Content-Type:
+ * the browser sets the multipart boundary. Returns the updated profile.
+ */
+export async function uploadAvatar(file: File): Promise<MeProfile> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await authFetch('/api/v1/users/me/avatar', {
+    method: 'POST',
+    body: form,
+  });
+  return (await res.json()) as MeProfile;
 }
 
 /**

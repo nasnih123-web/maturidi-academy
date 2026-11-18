@@ -2130,8 +2130,14 @@
     "fullName": "نام و نام خانوادگی",
     "email": "ایمیل",
     "phone": "شماره تلفن",
+    "dateOfBirth": "تاریخ تولد",
+    "gender": "جنسیت",
+    "genderMale": "مرد",
+    "genderFemale": "زن",
+    "genderPlaceholder": "انتخاب کنید",
     "country": "کشور",
     "countryFromPhone": "از روی شماره تلفن تأییدشده",
+    "countryPlaceholder": "انتخاب کنید",
     "language": "زبان",
     "save": "ذخیره",
     "saving": "در حال ذخیره…",
@@ -2143,6 +2149,10 @@
     "avatarTitle": "عکس پروفایل",
     "avatarSet": "عکس پروفایل ثبت شده است.",
     "avatarMissing": "هنوز عکس پروفایل ندارید.",
+    "avatarUpload": "بارگذاری عکس",
+    "avatarUploading": "در حال بارگذاری…",
+    "avatarUploadFailed": "بارگذاری عکس ممکن نشد.",
+    "avatarHint": "PNG یا JPG یا WEBP، حداکثر ۵ مگابایت",
     "completeTitle": "پروفایل شما کامل است.",
     "incompleteTitle": "پروفایل شما کامل نیست.",
     "missingIntro": "برای کامل‌شدن پروفایل این موارد مانده است:",
@@ -2165,7 +2175,10 @@
     "twofaDisabledDone": "تأیید دوعاملی غیرفعال شد.",
     "fields": {
       "full_name": "نام و نام خانوادگی",
-      "avatar_media_id": "عکس پروفایل"
+      "avatar_media_id": "عکس پروفایل",
+      "date_of_birth": "تاریخ تولد",
+      "gender": "جنسیت",
+      "country_code": "کشور"
     }
   }
 }

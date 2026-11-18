@@ -2130,8 +2130,14 @@
     "fullName": "Full name",
     "email": "Email",
     "phone": "Phone number",
+    "dateOfBirth": "Date of birth",
+    "gender": "Gender",
+    "genderMale": "Male",
+    "genderFemale": "Female",
+    "genderPlaceholder": "Select",
     "country": "Country",
     "countryFromPhone": "From your verified phone number",
+    "countryPlaceholder": "Select",
     "language": "Language",
     "save": "Save",
     "saving": "Saving…",
@@ -2143,6 +2149,10 @@
     "avatarTitle": "Profile picture",
     "avatarSet": "A profile picture is set.",
     "avatarMissing": "No profile picture yet.",
+    "avatarUpload": "Upload picture",
+    "avatarUploading": "Uploading…",
+    "avatarUploadFailed": "Could not upload the picture.",
+    "avatarHint": "PNG, JPG or WEBP, up to 5 MB",
     "completeTitle": "Your profile is complete.",
     "incompleteTitle": "Your profile is not complete yet.",
     "missingIntro": "Still missing for a complete profile:",
@@ -2165,7 +2175,10 @@
     "twofaDisabledDone": "Two-factor authentication is now off.",
     "fields": {
       "full_name": "Full name",
-      "avatar_media_id": "Profile picture"
+      "avatar_media_id": "Profile picture",
+      "date_of_birth": "Date of birth",
+      "gender": "Gender",
+      "country_code": "Country"
     }
   }
 }

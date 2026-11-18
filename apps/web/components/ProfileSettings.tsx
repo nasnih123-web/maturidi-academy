@@ -6,13 +6,13 @@
  * Sections:
  * 1. Completeness banner — driven entirely by the backend's
  *    profile_complete / missing_profile_fields (never recomputed here).
- * 2. Personal info — full name + language are editable via
- *    PATCH /users/me; email/phone are read-only; the country is shown
- *    derived from the verified phone's dial code (there is no stored
- *    country column yet, so nothing else could be honest).
- * 3. Profile picture — status only: the codebase has no end-user media
- *    upload path yet, so this shows whether a picture is set instead
- *    of pretending an upload exists.
+ * 2. Personal info — full name, date of birth, gender, country and
+ *    language are editable via PATCH /users/me; email/phone are
+ *    read-only. With a verified phone, the country is preselected to
+ *    the phone's country and locked (the API enforces the same rule).
+ * 3. Profile picture — real upload via POST /users/me/avatar; after a
+ *    successful upload the just-picked file is previewed locally (the
+ *    API exposes the media id, not a public URL).
  * 4. Two-factor auth — full self-service over the existing
  *    /auth/2fa/* endpoints (setup/enable/disable/regenerate).
  *
@@ -23,7 +23,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { isLoggedIn } from '@/lib/auth-client';
-import { flagEmoji } from '@/lib/countries';
+import { COUNTRIES, flagEmoji } from '@/lib/countries';
 import {
   countryIsoFromPhone,
   disable2fa,
@@ -33,6 +33,7 @@ import {
   regenerateRecoveryCodes,
   setup2fa,
   updateMe,
+  uploadAvatar,
   type MeProfile,
   type TwoFAStatus,
 } from '@/lib/profile-client';
@@ -44,8 +45,14 @@ export interface ProfileLabels {
   fullName: string;
   email: string;
   phone: string;
+  dateOfBirth: string;
+  gender: string;
+  genderMale: string;
+  genderFemale: string;
+  genderPlaceholder: string;
   country: string;
   countryFromPhone: string;
+  countryPlaceholder: string;
   language: string;
   save: string;
   saving: string;
@@ -59,6 +66,10 @@ export interface ProfileLabels {
   avatarTitle: string;
   avatarSet: string;
   avatarMissing: string;
+  avatarUpload: string;
+  avatarUploading: string;
+  avatarUploadFailed: string;
+  avatarHint: string;
   completeTitle: string;
   incompleteTitle: string;
   missingIntro: string;
@@ -95,9 +106,15 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
   const [signedOut, setSignedOut] = useState(false);
   const [fullName, setFullName] = useState('');
   const [localeSel, setLocaleSel] = useState(locale);
+  const [dob, setDob] = useState('');
+  const [gender, setGender] = useState('');
+  const [countryCode, setCountryCode] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
 
   const [twofa, setTwofa] = useState<TwoFAStatus | null>(null);
   const [setupSecret, setSetupSecret] = useState<string | null>(null);
@@ -120,6 +137,9 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
       setMe(meData);
       setFullName(meData.full_name);
       setLocaleSel(meData.locale);
+      setDob(meData.date_of_birth ?? '');
+      setGender(meData.gender ?? '');
+      setCountryCode(meData.country_code ?? countryIsoFromPhone(meData.phone) ?? '');
       setTwofa(status);
     } catch {
       setLoadError(true);
@@ -139,6 +159,8 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
   }, [locale]);
 
   const countryIso = me ? countryIsoFromPhone(me.phone) : null;
+  // شمارهٔ تأییدشده کشور را قفل می‌کند — API هم همان سازگاری را enforce می‌کند.
+  const countryLocked = Boolean(countryIso && me?.is_verified);
 
   async function savePersonal(e: React.FormEvent) {
     e.preventDefault();
@@ -146,7 +168,13 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
     setSaved(false);
     setSaveError(false);
     try {
-      const updated = await updateMe({ full_name: fullName.trim(), locale: localeSel });
+      const updated = await updateMe({
+        full_name: fullName.trim(),
+        locale: localeSel,
+        ...(dob ? { date_of_birth: dob } : {}),
+        ...(gender ? { gender } : {}),
+        ...(countryCode ? { country_code: countryCode } : {}),
+      });
       setMe(updated);
       setSaved(true);
       if (localeSel !== locale) router.refresh();
@@ -154,6 +182,26 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
       setSaveError(true);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function pickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setAvatarBusy(true);
+    setAvatarError(false);
+    try {
+      const updated = await uploadAvatar(file);
+      setMe(updated);
+      setAvatarPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(file);
+      });
+    } catch {
+      setAvatarError(true);
+    } finally {
+      setAvatarBusy(false);
     }
   }
 
@@ -294,16 +342,39 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
           <span>{labels.phone}</span>
           <input type="tel" value={me.phone ?? ''} readOnly dir="ltr" />
         </label>
-        {countryIso && (
-          <label>
-            <span>{labels.country}</span>
-            <input
-              type="text"
-              value={`${flagEmoji(countryIso)} ${countryNames?.of(countryIso) ?? countryIso} — ${labels.countryFromPhone}`}
-              readOnly
-            />
-          </label>
-        )}
+        <label>
+          <span>{labels.dateOfBirth}</span>
+          <input
+            type="date"
+            value={dob}
+            onChange={(e) => setDob(e.target.value)}
+            dir="ltr"
+          />
+        </label>
+        <label>
+          <span>{labels.gender}</span>
+          <select value={gender} onChange={(e) => setGender(e.target.value)}>
+            <option value="">{labels.genderPlaceholder}</option>
+            <option value="male">{labels.genderMale}</option>
+            <option value="female">{labels.genderFemale}</option>
+          </select>
+        </label>
+        <label>
+          <span>{labels.country}</span>
+          <select
+            value={countryLocked ? (countryIso ?? '') : countryCode}
+            onChange={(e) => setCountryCode(e.target.value)}
+            disabled={countryLocked}
+          >
+            <option value="">{labels.countryPlaceholder}</option>
+            {COUNTRIES.map((c) => (
+              <option key={c.iso} value={c.iso}>
+                {flagEmoji(c.iso)} {countryNames?.of(c.iso) ?? c.iso}
+              </option>
+            ))}
+          </select>
+          {countryLocked && <span className="page-sub">{labels.countryFromPhone}</span>}
+        </label>
         <label>
           <span>{labels.language}</span>
           <select value={localeSel} onChange={(e) => setLocaleSel(e.target.value)}>
@@ -323,6 +394,36 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
 
       <h2 className="auth-step-title">{labels.avatarTitle}</h2>
       <p className="page-sub">{me.avatar_media_id ? labels.avatarSet : labels.avatarMissing}</p>
+      {avatarPreview && (
+        <p>
+          {/* پیش‌نمایش محلیِ همان فایلی که کاربر انتخاب کرده — API فقط
+              شناسهٔ رسانه را برمی‌گرداند، نه URL عمومی. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={avatarPreview}
+            alt=""
+            width={96}
+            height={96}
+            style={{ borderRadius: '50%', objectFit: 'cover' }}
+          />
+        </p>
+      )}
+      <div className="auth-form">
+        <label>
+          <span>{labels.avatarUpload}</span>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={(e) => void pickAvatar(e)}
+            disabled={avatarBusy}
+          />
+        </label>
+        <p className="page-sub">{labels.avatarHint}</p>
+        {avatarBusy && <p className="page-sub">{labels.avatarUploading}</p>}
+        {avatarError && (
+          <p className="auth-error" role="alert">{labels.avatarUploadFailed}</p>
+        )}
+      </div>
 
       <h2 className="auth-step-title">{labels.securityTitle}</h2>
       {twofaNotice && <p className="page-sub">{twofaNotice}</p>}

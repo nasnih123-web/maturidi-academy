@@ -2130,8 +2130,14 @@
     "fullName": "الاسم الكامل",
     "email": "البريد الإلكتروني",
     "phone": "رقم الهاتف",
+    "dateOfBirth": "تاريخ الميلاد",
+    "gender": "الجنس",
+    "genderMale": "ذكر",
+    "genderFemale": "أنثى",
+    "genderPlaceholder": "اختر",
     "country": "الدولة",
     "countryFromPhone": "من رقم الهاتف المؤكد",
+    "countryPlaceholder": "اختر",
     "language": "اللغة",
     "save": "حفظ",
     "saving": "جارٍ الحفظ…",
@@ -2143,6 +2149,10 @@
     "avatarTitle": "صورة الملف الشخصي",
     "avatarSet": "تم تعيين صورة الملف الشخصي.",
     "avatarMissing": "لا توجد صورة ملف شخصي بعد.",
+    "avatarUpload": "رفع صورة",
+    "avatarUploading": "جارٍ الرفع…",
+    "avatarUploadFailed": "تعذر رفع الصورة.",
+    "avatarHint": "PNG أو JPG أو WEBP، بحد أقصى ٥ ميغابايت",
     "completeTitle": "ملفك الشخصي مكتمل.",
     "incompleteTitle": "ملفك الشخصي غير مكتمل.",
     "missingIntro": "لإكمال ملفك الشخصي تبقى هذه العناصر:",
@@ -2165,7 +2175,10 @@
     "twofaDisabledDone": "تم إلغاء تفعيل التحقق بخطوتين.",
     "fields": {
       "full_name": "الاسم الكامل",
-      "avatar_media_id": "صورة الملف الشخصي"
+      "avatar_media_id": "صورة الملف الشخصي",
+      "date_of_birth": "تاريخ الميلاد",
+      "gender": "الجنس",
+      "country_code": "الدولة"
     }
   }
 }
