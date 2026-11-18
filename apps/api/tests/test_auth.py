@@ -425,11 +425,14 @@ async def test_passwordless_reregister_resends_and_completed_conflicts(tc):
     second_token = _last_verify_token(sent, email)
     assert second_token != first_token
 
-    # توکن قبلی باطل شده است
+    # توکن قبلی باطل نمی‌شود: لینک ایمیل اول بعد از ارسالِ دوباره هم کار
+    # می‌کند (در Gmail همهٔ ایمیل‌های تأیید زیر یک نخ‌اند و کاربر ممکن
+    # است روی پیام قدیمی‌تر کلیک کند)
     r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": first_token})
-    assert r.status_code == 400
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "verified"
 
-    # توکن تازه کار می‌کند و ثبت‌نام کامل می‌شود
+    # توکن تازه هم کار می‌کند و ثبت‌نام با توکن تکمیلِ آن کامل می‌شود
     r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": second_token})
     assert r.status_code == 200, r.text
     r = await client.post(
@@ -477,6 +480,137 @@ async def test_register_verify_email_already_active(tc):
     out = r.json()
     assert out["status"] == "already_active"
     assert out["setup_token"] is None
+
+
+async def _expire_verify_token(tc, token):
+    """انقضای ردیف توکن تأیید را در دیتابیس تست به گذشته می‌برد."""
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import update
+
+    from app.core.security import hash_token
+    from app.models.models import PasswordResetToken
+
+    async with tc["maker"]() as session:
+        await session.execute(
+            update(PasswordResetToken)
+            .where(PasswordResetToken.token_hash == hash_token(token))
+            .values(expires_at=datetime.now(UTC) - timedelta(hours=1))
+        )
+        await session.commit()
+
+
+async def test_register_verify_email_second_click_resumes(tc):
+    # کلیک دوم روی همان لینک (رفرش/ریماونت صفحهٔ تأیید) نباید
+    # invalid_token بگیرد: جریان از سر گرفته می‌شود و توکن تکمیلِ تازه
+    # می‌رسد (توکن تکمیلِ قبلی با صدور تازه باطل می‌شود).
+    client, sent = tc["client"], tc["sent"]
+    email = "doubleclick@example.com"
+    await _register_passwordless(client, email, phone="+93700444555")
+    token = _last_verify_token(sent, email)
+
+    r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": token})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "verified"
+    first_setup = r.json()["setup_token"]
+    assert first_setup
+
+    r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": token})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["status"] == "verified"
+    assert out["setup_token"] and out["setup_token"] != first_setup
+
+    # توکن تکمیلِ تازه کار می‌کند و ورود ممکن می‌شود
+    r = await client.post(
+        f"{BASE}/auth/register/set-password",
+        json={"setup_token": out["setup_token"], "new_password": "ResumePass123"},
+    )
+    assert r.status_code == 200, r.text
+    await _login(client, email, password="ResumePass123")
+
+
+async def test_register_verify_email_second_click_iran_phone(tc):
+    # برای شمارهٔ ایران، کلیک دوم هم phone_required می‌ماند (نه 400)
+    client, sent = tc["client"], tc["sent"]
+    email = "doubleiran@example.com"
+    phone = "+989351112233"
+    await _register_passwordless(client, email, phone=phone)
+    token = _last_verify_token(sent, email)
+    for _ in range(2):
+        r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": token})
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "phone_required"
+        assert r.json()["setup_token"] is None
+        assert r.json()["phone_hint"]
+
+
+async def test_register_verify_email_reclick_after_completion(tc):
+    # بعد از تکمیل ثبت‌نام، کلیک دوباره روی همان لینک → already_active
+    client, sent = tc["client"], tc["sent"]
+    email = "reclick@example.com"
+    await _register_passwordless(client, email, phone="+93700666777")
+    token = _last_verify_token(sent, email)
+    r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": token})
+    assert r.status_code == 200, r.text
+    r = await client.post(
+        f"{BASE}/auth/register/set-password",
+        json={"setup_token": r.json()["setup_token"], "new_password": "FinalPass123"},
+    )
+    assert r.status_code == 200, r.text
+
+    r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": token})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["status"] == "already_active"
+    assert out["setup_token"] is None
+
+
+async def test_register_verify_email_unknown_and_expired_tokens_400(tc):
+    client, sent = tc["client"], tc["sent"]
+    email = "expiredlink@example.com"
+    await _register_passwordless(client, email)
+    token = _last_verify_token(sent, email)
+
+    # توکن ناشناخته → 400 invalid_token
+    r = await client.post(
+        f"{BASE}/auth/register/verify-email", json={"token": "no-such-token-000"}
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "invalid_token"
+
+    # توکن واقعی ولی منقضی → 400 invalid_token
+    await _expire_verify_token(tc, token)
+    r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": token})
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "invalid_token"
+
+
+async def test_register_verify_email_expired_after_use_no_resume(tc):
+    # حتی توکنِ مصرف‌شده هم بعد از انقضا دیگر resume نمی‌شود
+    client, sent = tc["client"], tc["sent"]
+    email = "expiredresume@example.com"
+    await _register_passwordless(client, email, phone="+93700888999")
+    token = _last_verify_token(sent, email)
+    r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": token})
+    assert r.status_code == 200, r.text
+
+    await _expire_verify_token(tc, token)
+    r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": token})
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "invalid_token"
+
+
+async def test_verify_email_second_click_ok(tc):
+    # مسیر سادهٔ verify-email هم در کلیک دوم موفقِ تکراری است، نه 400
+    client, sent = tc["client"], tc["sent"]
+    email = "plainreclick@example.com"
+    await _register(client, email)
+    token = _last_verify_token(sent, email)
+    r = await client.post(f"{BASE}/auth/verify-email", json={"token": token})
+    assert r.status_code == 200, r.text
+    r = await client.post(f"{BASE}/auth/verify-email", json={"token": token})
+    assert r.status_code == 200, r.text
 
 
 # ---------- تاب‌آوری در برابر خرابی سرویس ایمیل ----------
