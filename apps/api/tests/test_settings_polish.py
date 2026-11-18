@@ -421,6 +421,9 @@ async def test_settings_public_returns_whitelisted_keys(tc, db_session):
         # complete-your-profile wall from these (public by design).
         "profile.require_for_fatwa_question",
         "profile.require_for_hifz_advanced",
+        # شبکه‌های اجتماعی منوی سایت — CRM لینک‌ها را مدیریت می‌کند و
+        # وب ردیف آیکون‌ها را از همین کلید رندر می‌کند (public by design).
+        "site.social_links",
     }
     assert set(body["settings"].keys()) == expected
     # هیچ کلید حساسی لو نرفته
