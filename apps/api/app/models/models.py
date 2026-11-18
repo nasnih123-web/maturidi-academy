@@ -61,6 +61,12 @@ class User(Base):
     avatar_media_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("media_assets.id"), nullable=True
     )
+    # فاز B (تکمیل): ستون‌های هویتی پروفایل — هر سه nullable؛ پرکردنشان
+    # اختیاری است ولی جزو تعریف «پروفایل کامل»‌اند (migration متناظر:
+    # profile_identity_columns). country_code کد ISO 3166-1 alpha-2 است.
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    gender: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    country_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     # سکرت TOTP — رمزنگاری‌شده (envelope فاز ۰ §۳) به‌صورت رشتهٔ JSON، نه plaintext
