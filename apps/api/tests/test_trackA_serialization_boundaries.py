@@ -100,6 +100,11 @@ def test_user_out_hides_secrets():
         "profile_complete",
         "missing_profile_fields",
         "profile_required_sections",
+        # فاز B (تکمیل): سه ستون هویتی خودِ کاربر — دادهٔ شخصیِ خودش
+        # است، نه secret؛ فقط در پاسخِ خودِ کاربر/ادمین برمی‌گردد.
+        "date_of_birth",
+        "gender",
+        "country_code",
     }
     blob = str(out)
     assert "HASH-MUST-NOT-LEAK" not in blob

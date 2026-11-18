@@ -2,14 +2,17 @@
 
 پوشش:
 - GET /users/me فیلدهای فاز B را برمی‌گرداند (پروفایل ناقصِ پیش‌فرض:
-  فقط avatar_media_id کم است چون ثبت‌نام نام کامل دارد).
-- PATCH /users/me با avatar_media_id ناموجود → 422؛ با رسانهٔ واقعی
-  → profile_complete=true.
+  ثبت‌نام نام کامل دارد؛ چهار فیلد دیگر — عکس، تاریخ تولد، جنسیت،
+  کشور — کم‌اند. تعریف پنج‌فیلدی: migration ‏c2b0cc7d091a).
+- PATCH /users/me با avatar_media_id ناموجود → 422؛ تکمیل هر پنج
+  فیلد → profile_complete=true.
 - اعتبارسنج پرچم‌های profile.* در _validate_json_setting.
 - گیت فتوا: پرچم خاموش → ثبت پرسش آزاد؛ روشن + پروفایل ناقص → 403
   با کد profile_incomplete؛ روشن + پروفایل کامل → موفق.
 - گیت حفاظ پیشرفته: روشن + پروفایل ناقص → ساخت آزمون 403.
 - GET /settings/public هر دو پرچم را با پیش‌فرض false برمی‌گرداند.
+
+اعتبارسنجی فیلدهای هویتی و آپلود عکس در test_profile_completion.py است.
 """
 from __future__ import annotations
 
@@ -66,10 +69,16 @@ async def _make_media(tc) -> str:
 
 
 async def _complete_profile(client, tc, token: str) -> None:
+    """تکمیل هر پنج فیلد تعریف completeness (نام از ثبت‌نام هست)."""
     media_id = await _make_media(tc)
     r = await client.patch(
         f"{BASE}/users/me",
-        json={"avatar_media_id": media_id},
+        json={
+            "avatar_media_id": media_id,
+            "date_of_birth": "1995-04-12",
+            "gender": "male",
+            "country_code": "IR",
+        },
         headers=_auth(token),
     )
     assert r.status_code == 200, r.text
@@ -132,8 +141,16 @@ async def test_me_profile_fields_and_avatar_validation(tc):
     assert r.status_code == 200, r.text
     me = r.json()
     assert me["avatar_media_id"] is None
+    assert me["date_of_birth"] is None
+    assert me["gender"] is None
+    assert me["country_code"] is None
     assert me["profile_complete"] is False
-    assert me["missing_profile_fields"] == ["avatar_media_id"]
+    assert me["missing_profile_fields"] == [
+        "avatar_media_id",
+        "date_of_birth",
+        "gender",
+        "country_code",
+    ]
     assert me["profile_required_sections"] == []
 
     # رسانهٔ ناموجود → 422 صادقانه (نه خطای FK در commit)
