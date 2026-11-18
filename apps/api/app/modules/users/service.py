@@ -2,19 +2,23 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import secrets as pysecrets
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.antivirus import scan_upload_or_reject
 from app.core.audit import log_audit
+from app.core.countries import country_iso_from_phone, is_valid_country_code
 from app.core.errors import APIError
 from app.core.events import emit_event
 from app.core.platform_settings import get_typed_setting
 from app.core.security import hash_password
+from app.core.storage import get_storage
 from app.models.models import (
     Donation,
     FatwaMessage,
@@ -81,14 +85,28 @@ async def roles_permissions_for(
 # ---------------------------------------------------------------------------
 # فاز B: تکمیل پروفایل و گیتینگ بخش‌ها
 #
-# «پروفایل کامل» فقط روی ستون‌های موجودِ users تعریف می‌شود: نام کامل و
-# عکس پروفایل (avatar_media_id). ستون‌های سن/جنسیت/کشور روی users وجود
-# ندارند و ساخت migration برایشان تصمیم جداگانهٔ مالک است — تا آن زمان
-# این دو فیلد تنها مبنای completeness است و با اضافه‌شدن ستون‌های تازه
-# فقط همین فهرست باید گسترش یابد.
+# «پروفایل کامل» روی پنج فیلد users تعریف می‌شود: نام کامل، عکس پروفایل
+# (avatar_media_id) و سه ستون هویتیِ migration ‏c2b0cc7d091a (تاریخ
+# تولد، جنسیت، کشور). تعریف فقط همین‌جاست؛ کلاینت‌ها هرگز completeness
+# را خودشان حساب نمی‌کنند.
 # ---------------------------------------------------------------------------
 
-PROFILE_COMPLETION_FIELDS: tuple[str, ...] = ("full_name", "avatar_media_id")
+PROFILE_COMPLETION_FIELDS: tuple[str, ...] = (
+    "full_name",
+    "avatar_media_id",
+    "date_of_birth",
+    "gender",
+    "country_code",
+)
+
+# مجموعهٔ مجاز جنسیت — همان قرارداد موتور ارث (calculators/miras_engine).
+PROFILE_GENDERS: frozenset[str] = frozenset({"male", "female"})
+
+# سقف سن معقول برای تاریخ تولد (سال) — بالاتر از آن 422.
+MAX_PROFILE_AGE_YEARS = 120
+
+# سقف حجم عکس پروفایل — هم‌تراز سقف کاور کتابخانه و رسید حمایت (۵MB).
+AVATAR_MAX_BYTES = 5 * 1024 * 1024
 
 # نگاشت بخش گیت‌شونده → کلید تنظیمات پلتفرم (پرچم json در CRM).
 PROFILE_SECTION_SETTINGS: dict[str, str] = {
@@ -100,11 +118,56 @@ PROFILE_SECTION_SETTINGS: dict[str, str] = {
 def missing_profile_fields(user: User) -> list[str]:
     """فیلدهای ناقص پروفایل — ترتیب ثابت PROFILE_COMPLETION_FIELDS."""
     missing: list[str] = []
-    if not (user.full_name or "").strip():
-        missing.append("full_name")
-    if user.avatar_media_id is None:
-        missing.append("avatar_media_id")
+    for field in PROFILE_COMPLETION_FIELDS:
+        if field == "full_name":
+            if not (user.full_name or "").strip():
+                missing.append(field)
+        elif getattr(user, field) is None:
+            missing.append(field)
     return missing
+
+
+def verified_phone_country(user: User) -> str | None:
+    """کشور شمارهٔ تأییدشدهٔ کاربر — یا None اگر شمارهٔ تأییدشده‌ای نیست.
+
+    مدل داده پرچم جدا برای «تلفن تأییدشده» ندارد؛ is_verified فقط از
+    مسیرهای تأیید (لینک ایمیل، کد پیامکی ثبت‌نام، تأیید تلفن) ست
+    می‌شود. پس «شمارهٔ تأییدشده» = شمارهٔ ثبت‌شده روی حسابی که تأیید
+    را کامل کرده است — همان برداشتی که وب هم دارد (کشور از روی شماره
+    نمایش داده و قفل می‌شود).
+    """
+    if not user.phone or not user.is_verified:
+        return None
+    return country_iso_from_phone(user.phone)
+
+
+def _validate_date_of_birth(value: date) -> None:
+    today = datetime.now(UTC).date()
+    if value > today:
+        raise APIError(422, "validation_error", "تاریخ تولد نمی‌تواند در آینده باشد")
+    age = today.year - value.year - (
+        (today.month, today.day) < (value.month, value.day)
+    )
+    if age > MAX_PROFILE_AGE_YEARS:
+        raise APIError(422, "validation_error", "تاریخ تولد معتبر نیست")
+
+
+def _validate_gender(value: str) -> None:
+    if value not in PROFILE_GENDERS:
+        raise APIError(422, "validation_error", "جنسیت نامعتبر است")
+
+
+def _validate_country_code(user: User, value: str) -> None:
+    code = value.strip().upper()
+    if not is_valid_country_code(code):
+        raise APIError(422, "validation_error", "کد کشور نامعتبر است")
+    phone_country = verified_phone_country(user)
+    if phone_country is not None and code != phone_country:
+        raise APIError(
+            422,
+            "validation_error",
+            "کشور باید با کشور شمارهٔ تلفن تأییدشده یکی باشد",
+        )
 
 
 def profile_is_complete(user: User) -> bool:
@@ -265,7 +328,13 @@ async def update_me(
     ip: str | None,
     user_agent: str | None,
 ) -> User:
-    old = {"full_name": user.full_name, "locale": user.locale}
+    old = {
+        "full_name": user.full_name,
+        "locale": user.locale,
+        "date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None,
+        "gender": user.gender,
+        "country_code": user.country_code,
+    }
     if data.full_name is not None:
         user.full_name = data.full_name.strip()
     if data.locale is not None:
@@ -281,7 +350,22 @@ async def update_me(
         if exists is None:
             raise APIError(422, "validation_error", "رسانهٔ عکس پروفایل یافت نشد")
         user.avatar_media_id = data.avatar_media_id
-    new = {"full_name": user.full_name, "locale": user.locale}
+    if data.date_of_birth is not None:
+        _validate_date_of_birth(data.date_of_birth)
+        user.date_of_birth = data.date_of_birth
+    if data.gender is not None:
+        _validate_gender(data.gender)
+        user.gender = data.gender
+    if data.country_code is not None:
+        _validate_country_code(user, data.country_code)
+        user.country_code = data.country_code.strip().upper()
+    new = {
+        "full_name": user.full_name,
+        "locale": user.locale,
+        "date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None,
+        "gender": user.gender,
+        "country_code": user.country_code,
+    }
     await emit_event(
         db,
         aggregate_type="user",
@@ -298,6 +382,89 @@ async def update_me(
         entity_id=str(user.id),
         old_values=old,
         new_values=new,
+        ip=ip,
+        user_agent=user_agent,
+    )
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+def _sniff_avatar_image(data: bytes) -> tuple[str, str] | None:
+    """تشخیص نوع تصویر از magic bytes — به mime کلاینت اعتماد نمی‌شود.
+
+    همان الگوی رسید حمایت دستی (finance): (mime, ext) یا None.
+    """
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png", "png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg", "jpg"
+    if len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp", "webp"
+    return None
+
+
+async def upload_avatar(
+    db: AsyncSession,
+    user: User,
+    content: bytes,
+    filename: str | None,
+    ip: str | None,
+    user_agent: str | None,
+) -> User:
+    """آپلود عکس پروفایل کاربر نهایی — اولین سازندهٔ MediaAsset در کد.
+
+    مسیر: اسکن ویروس fail-closed (C-01، مثل کتابخانه/فونت/صدا) →
+    تشخیص نوع از magic-byte (نه mime کلاینت) → ذخیره از همان لایهٔ
+    storage برنامه (app.core.storage) → ساخت MediaAsset با مالکیت
+    خود کاربر → ست‌کردن avatar_media_id. کانفیگ خراب storage یعنی
+    503 صادقانه؛ موفقیت ساختگی هرگز.
+    """
+    await scan_upload_or_reject(content, filename=filename)
+    sniffed = _sniff_avatar_image(content) if content else None
+    if sniffed is None:
+        raise APIError(
+            415,
+            "unsupported_avatar_image",
+            "عکس پروفایل باید PNG یا JPG یا WEBP باشد",
+        )
+    mime, ext = sniffed
+    try:
+        storage = get_storage()
+    except RuntimeError as exc:
+        raise APIError(
+            503, "storage_not_configured", "ذخیره‌سازی فایل پیکربندی نشده است"
+        ) from exc
+    key = f"avatars/{user.id}/{uuid.uuid4().hex}.{ext}"
+    await storage.put_object(key, content, mime)
+    asset = MediaAsset(
+        owner_id=user.id,
+        kind="image",
+        storage_key=key,
+        mime_type=mime,
+        size_bytes=len(content),
+        checksum=hashlib.sha256(content).hexdigest(),
+        visibility="public",
+    )
+    db.add(asset)
+    await db.flush()
+    user.avatar_media_id = asset.id
+    await emit_event(
+        db,
+        aggregate_type="user",
+        aggregate_id=str(user.id),
+        event_type="user.avatar_updated",
+        payload={"media_id": str(asset.id)},
+    )
+    await log_audit(
+        db,
+        actor_id=user.id,
+        actor_type="user",
+        action="user.avatar_update",
+        entity_type="user",
+        entity_id=str(user.id),
+        old_values=None,
+        new_values={"avatar_media_id": str(asset.id)},
         ip=ip,
         user_agent=user_agent,
     )
@@ -487,6 +654,9 @@ async def export_data(db: AsyncSession, user: User) -> dict:
             "email": user.email,
             "phone": user.phone,
             "locale": user.locale,
+            "date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None,
+            "gender": user.gender,
+            "country_code": user.country_code,
             "is_verified": user.is_verified,
             "created_at": user.created_at.isoformat(),
         },
@@ -549,6 +719,9 @@ async def delete_account(
     user.password_hash = hash_password(pysecrets.token_hex(32))
     user.totp_secret = None
     user.avatar_media_id = None
+    user.date_of_birth = None
+    user.gender = None
+    user.country_code = None
     user.is_active = False
     user.is_verified = False
     await db.execute(
