@@ -750,9 +750,11 @@ SOCIAL_NETWORKS = (
 def _validate_social_links(value: Any) -> list:
     """فهرست شبکه‌های اجتماعی منوی سایت — canonical.
 
-    هر ورودی: {network, url, enabled} — network از مجموعهٔ ثابت
+    هر ورودی: {network, url, enabled, logo} — network از مجموعهٔ ثابت
     SOCIAL_NETWORKS و بدون تکرار؛ url یا خالی (آن شبکه نمایش داده
-    نمی‌شود) یا http(s)؛ ترتیب فهرست = ترتیب نمایش در منو.
+    نمی‌شود) یا http(s)؛ logo اختیاری: یا http(s) یا data-URI تصویری
+    کوچک (png/jpeg/webp — لوگوی فشرده‌ای که CRM آپلود می‌کند)؛ ترتیب
+    فهرست = ترتیب نمایش در منو.
     """
     if not isinstance(value, list):
         raise TypeError("site.social_links must be a list")
@@ -763,7 +765,7 @@ def _validate_social_links(value: Any) -> list:
     for i, item in enumerate(value):
         if not isinstance(item, dict):
             raise TypeError(f"site.social_links[{i}] must be an object")
-        unknown = set(item) - {"network", "url", "enabled"}
+        unknown = set(item) - {"network", "url", "enabled", "logo"}
         if unknown:
             raise ValueError(
                 f"site.social_links[{i}]: unknown fields {sorted(unknown)}"
@@ -789,7 +791,33 @@ def _validate_social_links(value: Any) -> list:
         enabled = item.get("enabled", True)
         if not isinstance(enabled, bool):
             raise TypeError(f"site.social_links[{i}].enabled must be a boolean")
-        out.append({"network": network, "url": url, "enabled": enabled})
+        logo = item.get("logo") or ""
+        if not isinstance(logo, str):
+            raise TypeError(f"site.social_links[{i}].logo must be a string")
+        logo = logo.strip()
+        if logo:
+            if logo.startswith(("https://", "http://")):
+                if len(logo) > 500:
+                    raise ValueError(f"site.social_links[{i}].logo is too long")
+            elif logo.startswith(
+                (
+                    "data:image/png;base64,",
+                    "data:image/jpeg;base64,",
+                    "data:image/webp;base64,",
+                )
+            ):
+                # لوگوی آپلودشده از CRM: تصویر کوچکِ فشرده (≤128px) —
+                # سقف رشتهٔ base64 حدود ۶۴KB است تا تنظیم عمومی سبک بماند.
+                if len(logo) > 65536:
+                    raise ValueError(f"site.social_links[{i}].logo is too large")
+            else:
+                raise ValueError(
+                    f"site.social_links[{i}].logo must be an http(s) URL"
+                    " or a png/jpeg/webp data URI"
+                )
+        out.append(
+            {"network": network, "url": url, "enabled": enabled, "logo": logo}
+        )
     return out
 
 

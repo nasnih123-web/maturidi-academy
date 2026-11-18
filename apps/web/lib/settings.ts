@@ -219,6 +219,8 @@ export interface SocialLinkSetting {
   network: string;
   url: string;
   enabled: boolean;
+  /** لوگوی دلخواه از CRM: URL یا data-URI تصویر کوچک؛ خالی = آیکن آماده. */
+  logo: string;
 }
 
 export const DEFAULT_PARTICLES: ParticlesSettings = {
@@ -356,7 +358,16 @@ function parseSocialLinks(v: unknown): SocialLinkSetting[] {
     const network = cleanText(o.network, 32);
     const url = cleanText(o.url, 500);
     if (!network) continue;
-    out.push({ network, url: url ?? '', enabled: o.enabled !== false });
+    // logo می‌تواند data-URI بلند باشد؛ cleanText با سقف ۵۰۰ آن را می‌بُرد.
+    const rawLogo = typeof o.logo === 'string' ? o.logo.trim() : '';
+    const logo =
+      rawLogo.length <= 70000 &&
+      (rawLogo.startsWith('https://') ||
+        rawLogo.startsWith('http://') ||
+        rawLogo.startsWith('data:image/'))
+        ? rawLogo
+        : '';
+    out.push({ network, url: url ?? '', enabled: o.enabled !== false, logo });
   }
   return out;
 }

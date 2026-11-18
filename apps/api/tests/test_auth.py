@@ -631,9 +631,54 @@ def test_social_links_validation():
         ],
     )
     assert out == [
-        {"network": "telegram", "url": "https://t.me/academy", "enabled": True},
-        {"network": "instagram", "url": "", "enabled": False},
+        {"network": "telegram", "url": "https://t.me/academy", "enabled": True, "logo": ""},
+        {"network": "instagram", "url": "", "enabled": False, "logo": ""},
     ]
+    # لوگوی دلخواه: URL یا data-URI تصویری کوچک پذیرفته و نگه داشته می‌شود
+    out = _validate_json_setting(
+        "site.social_links",
+        [
+            {
+                "network": "telegram",
+                "url": "https://t.me/academy",
+                "logo": "https://cdn.example.com/tg.png",
+            },
+            {
+                "network": "instagram",
+                "url": "https://instagram.com/academy",
+                "logo": "data:image/webp;base64,UklGRg==",
+            },
+        ],
+    )
+    assert out[0]["logo"] == "https://cdn.example.com/tg.png"
+    assert out[1]["logo"] == "data:image/webp;base64,UklGRg=="
+    with pytest.raises(ValueError):
+        _validate_json_setting(
+            "site.social_links",
+            [
+                {
+                    "network": "telegram",
+                    "url": "https://t.me/a",
+                    "logo": "data:image/svg+xml;base64,PHN2Zz4=",
+                }
+            ],
+        )
+    with pytest.raises(ValueError):
+        _validate_json_setting(
+            "site.social_links",
+            [
+                {
+                    "network": "telegram",
+                    "url": "https://t.me/a",
+                    "logo": "data:image/png;base64," + "A" * 70000,
+                }
+            ],
+        )
+    with pytest.raises(TypeError):
+        _validate_json_setting(
+            "site.social_links",
+            [{"network": "telegram", "url": "https://t.me/a", "logo": 5}],
+        )
     with pytest.raises(ValueError):
         _validate_json_setting(
             "site.social_links", [{"network": "tiktok", "url": "https://x"}]
