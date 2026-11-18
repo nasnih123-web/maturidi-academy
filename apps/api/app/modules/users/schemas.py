@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -11,6 +11,12 @@ class MeUpdate(BaseModel):
     full_name: str | None = Field(default=None, min_length=2, max_length=200)
     locale: str | None = Field(default=None, max_length=8)
     avatar_media_id: uuid.UUID | None = None
+    # فاز B (تکمیل): اعتبارسنجی معنایی (بازهٔ تاریخ تولد، مجموعهٔ جنسیت،
+    # اعتبار/سازگاری کشور با شمارهٔ تأییدشده) در لایهٔ سرویس است — مثل
+    # چک FK عکس پروفایل — تا خطاها 422 یک‌دست با کد validation_error باشند.
+    date_of_birth: date | None = None
+    gender: str | None = Field(default=None, max_length=16)
+    country_code: str | None = Field(default=None, min_length=2, max_length=2)
 
 
 class UserOut(BaseModel):
@@ -27,6 +33,19 @@ class UserOut(BaseModel):
     # نه stub permissive. اعتبارسنجی مستقیم از ORM (بدون سرویس) خالی می‌ماند.
     roles: list[str] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
+    # --- فاز B: تکمیل پروفایل + گیتینگ بخش‌ها. avatar_media_id و سه
+    # فیلد هویتی از خود ORM می‌آیند (ستون‌های users)؛ سه فیلد بعدی را
+    # لایهٔ سرویس پر می‌کند (محاسبه از روی فیلدهای کاربر + پرچم‌های
+    # platform_settings).
+    avatar_media_id: uuid.UUID | None = None
+    date_of_birth: date | None = None
+    gender: str | None = None
+    country_code: str | None = None
+    profile_complete: bool = False
+    missing_profile_fields: list[str] = Field(default_factory=list)
+    # بخش‌هایی که همین حالا برای این کاربر نیازمند پروفایل کامل‌اند
+    # (زیرمجموعه‌ای از {"fatwa_question", "hifz_advanced"}).
+    profile_required_sections: list[str] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

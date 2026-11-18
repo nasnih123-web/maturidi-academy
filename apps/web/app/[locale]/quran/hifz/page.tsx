@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { HifzHub, type HifzHubLabels } from '@/components/HifzHub';
+import { getSiteConfig } from '@/lib/settings';
 
 export async function generateMetadata({
   params,
@@ -173,7 +174,16 @@ export default async function HifzHubPage({
       done: t('hifzHubTasmiDone'),
       noSession: t('hifzHubTasmiNoSession'),
     },
+    profileRequired: t('profileRequired'),
+    completeProfile: t('completeProfile'),
   };
 
-  return <HifzHub labels={labels} locale={locale} />;
+  const cfg = await getSiteConfig();
+  return (
+    <HifzHub
+      labels={labels}
+      locale={locale}
+      profileRequired={cfg.profileGating.hifzAdvanced}
+    />
+  );
 }

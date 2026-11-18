@@ -93,6 +93,18 @@ def test_user_out_hides_secrets():
         # پیش‌فرض خالی‌اند و هیچ دادهٔ حساسی از این مسیر نشت نمی‌کند.
         "roles",
         "permissions",
+        # فاز B: وضعیت تکمیل پروفایل + بخش‌های گیت‌شده عمداً expose
+        # می‌شوند (مبنای دیوار تکمیل پروفایل در وب) — هیچ‌کدام secret
+        # نیستند؛ avatar_media_id فقط یک UUID ارجاعی است.
+        "avatar_media_id",
+        "profile_complete",
+        "missing_profile_fields",
+        "profile_required_sections",
+        # فاز B (تکمیل): سه ستون هویتی خودِ کاربر — دادهٔ شخصیِ خودش
+        # است، نه secret؛ فقط در پاسخِ خودِ کاربر/ادمین برمی‌گردد.
+        "date_of_birth",
+        "gender",
+        "country_code",
     }
     blob = str(out)
     assert "HASH-MUST-NOT-LEAK" not in blob

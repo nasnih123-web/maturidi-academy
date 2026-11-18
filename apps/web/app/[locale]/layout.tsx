@@ -71,6 +71,7 @@ function headerLabels(
   tRoot: Awaited<ReturnType<typeof getTranslations>>,
   tHome: Awaited<ReturnType<typeof getTranslations>>,
   tAuth: Awaited<ReturnType<typeof getTranslations>>,
+  tProfile: Awaited<ReturnType<typeof getTranslations>>,
 ): HeaderLabels {
   return {
     skip: tHome("skipToContent"),
@@ -81,6 +82,7 @@ function headerLabels(
     signIn: tAuth("signIn"),
     signUp: tAuth("signUp"),
     logout: tAuth("logout"),
+    profile: tProfile("title"),
     langAria: tHeader("langAria"),
     langNames: {
       fa: tHeader("langNames.fa"),
@@ -108,6 +110,7 @@ export default async function LocaleLayout({
   const tRoot = await getTranslations({ locale });
   const tHeader = await getTranslations({ locale, namespace: "header" });
   const tAuth = await getTranslations({ locale, namespace: "auth" });
+  const tProfile = await getTranslations({ locale, namespace: "profile" });
   const tFooter = await getTranslations({ locale, namespace: "footer" });
   const tAdhan = await getTranslations({ locale, namespace: "adhan" });
   const tOffline = await getTranslations({ locale, namespace: "offline" });
@@ -223,7 +226,7 @@ export default async function LocaleLayout({
                 <AdhanCountdown locale={locale} settings={siteConfig.adhan} labels={adhanStripLabels} />
                 <OfflineIndicator labels={offlineLabels} />
               </div>
-              <SiteHeader locale={locale} labels={headerLabels(tHeader, tRoot, t, tAuth)} nav={nav} />
+              <SiteHeader locale={locale} labels={headerLabels(tHeader, tRoot, t, tAuth, tProfile)} nav={nav} />
               <AudioPlayerProvider labels={miniPlayerLabels}>
                 <main id="main-content" aria-label={t("mainLandmark")}>
                   {children}

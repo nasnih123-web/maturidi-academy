@@ -71,6 +71,10 @@ export interface FatwaQuestionLabels {
   loginRequired: string;
   signIn: string;
   signUp: string;
+  /** Phase B: shown instead of the form when the CRM requires a
+   * complete profile for asking and the user's profile is incomplete. */
+  profileRequired: string;
+  completeProfile: string;
 }
 
 export interface FatwaSubmitLabels {

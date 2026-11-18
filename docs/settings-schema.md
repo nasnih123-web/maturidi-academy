@@ -84,6 +84,8 @@ dark-obsidian تنها تم است و در `platform_settings` ثبت نشده �
 | `quran.highlight_mode` | json (string) | `"ayah"` | یکی از `word`/`ayah`/`off` |
 | `quran.font_size` | json (number) | `20` | عدد ۱۲..۷۲ |
 | `quran.playback` | json (object) | `{autoplay: false, repeat: "off"}` | `{autoplay: bool, repeat: off\|ayah\|surah}`؛ فیلد ناشناخته → ۴۰۰ |
+| `profile.require_for_fatwa_question` | json (bool) | `false` | بولی — فاز B: `true` → ثبت پرسش فتوا برای کاربر واردشده با پروفایل ناقص قفل است (دیوار وب + 403 `profile_incomplete` در API). عمومی است (`/settings/public`) |
+| `profile.require_for_hifz_advanced` | json (bool) | `false` | بولی — فاز B: `true` → امکانات پیشرفتهٔ حفاظ (ساخت آزمون + نشست تسمّع) برای پروفایل ناقص قفل است. عمومی است (`/settings/public`) |
 | `munajat.enabled` | json (bool) | `true` | بولی |
 | `munajat.window` | json (object) | `{start: "02:00", end: "05:00"}` | `{start, end}` هر دو `HH:MM` (‏۰۰:۰۰–۲۳:۵۹) |
 | `adhan.defaults` | json (object) | `{calculation_method: "mwl", madhab: "shafi"}` | `calculation_method`: یکی از `isna`/`mwl`/`egypt`/`karachi`/`makkah`/`jafari`؛ `madhab`: ‏`shafi`/`hanafi` |

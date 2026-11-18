@@ -16,6 +16,7 @@ from app.models.models import User
 from app.modules.auth.dependencies import get_current_user, require_permission
 from app.modules.fatwa import cluster_service as service
 from app.modules.fatwa import panel_schemas as schemas
+from app.modules.users import service as users_service
 
 clusters_router = APIRouter(prefix="/api/v1/fatwa", tags=["fatwa-clusters"])
 
@@ -40,6 +41,10 @@ async def ask_question(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    # فاز B: اگر CRM تکمیل پروفایل را برای ثبت پرسش الزامی کرده باشد،
+    # پروفایل ناقص همین‌جا 403 profile_incomplete می‌گیرد (دیوار وب
+    # مسیر اصلی است؛ این guard جلوی دورزدن از API را می‌گیرد).
+    await users_service.ensure_profile_for_section(db, user, "fatwa_question")
     result = await service.submit_question(
         db, user=user, text=payload.text, source=payload.source
     )

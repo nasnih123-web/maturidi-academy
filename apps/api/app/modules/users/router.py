@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.storage import read_capped_upload
 from app.models.models import User
 from app.modules.auth.dependencies import get_current_user, require_permission
 from app.modules.users import service
@@ -53,6 +54,29 @@ async def update_me(
 ):
     ip, ua = _client(request)
     updated = await service.update_me(db, user, data, ip, ua)
+    return await service.build_user_out(db, updated)
+
+
+@router.post("/users/me/avatar", response_model=UserOut)
+async def upload_my_avatar(
+    request: Request,
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """آپلود عکس پروفایل (PNG/JPG/WEBP، حداکثر ۵MB) — فاز B تکمیلی.
+
+    نوع واقعی از magic-byte تشخیص داده می‌شود، نه از mime کلاینت؛
+    سقف حجم هنگام خواندن جریانی اعمال می‌شود (read_capped_upload).
+    """
+    ip, ua = _client(request)
+    content = await read_capped_upload(
+        file,
+        service.AVATAR_MAX_BYTES,
+        too_large_code="avatar_too_large",
+        too_large_message="حجم عکس پروفایل نباید بیش از ۵ مگابایت باشد",
+    )
+    updated = await service.upload_avatar(db, user, content, file.filename, ip, ua)
     return await service.build_user_out(db, updated)
 
 

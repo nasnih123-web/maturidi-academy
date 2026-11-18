@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import type { FatwaQuestionLabels } from '@/components/social/labels';
 import { QuestionView } from '@/components/fatwa/QuestionViewLazy';
+import { getSiteConfig } from '@/lib/settings';
 
 export async function generateMetadata({
   params,
@@ -48,8 +49,19 @@ export default async function FatwaQuestionPage({
     loginRequired: t('question.loginRequired'),
     signIn: t('question.signIn'),
     signUp: t('question.signUp'),
+    profileRequired: t('question.profileRequired'),
+    completeProfile: t('question.completeProfile'),
   };
   const prefill = typeof searchParams.q === 'string' ? searchParams.q : undefined;
   const autoAsk = searchParams.demo === 'ask';
-  return <QuestionView locale={locale} labels={labels} prefill={prefill} autoAsk={autoAsk} />;
+  const cfg = await getSiteConfig();
+  return (
+    <QuestionView
+      locale={locale}
+      labels={labels}
+      prefill={prefill}
+      autoAsk={autoAsk}
+      profileRequired={cfg.profileGating.fatwaQuestion}
+    />
+  );
 }

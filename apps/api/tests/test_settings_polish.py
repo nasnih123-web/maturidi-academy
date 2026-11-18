@@ -417,6 +417,10 @@ async def test_settings_public_returns_whitelisted_keys(tc, db_session):
         "quran.display_font",
         "quran.display_theme",
         "quran.playback",
+        # Phase B: profile-gating flags — the web renders the
+        # complete-your-profile wall from these (public by design).
+        "profile.require_for_fatwa_question",
+        "profile.require_for_hifz_advanced",
     }
     assert set(body["settings"].keys()) == expected
     # هیچ کلید حساسی لو نرفته

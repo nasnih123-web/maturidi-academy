@@ -40,6 +40,10 @@ _PUBLIC_SETTING_KEYS = (
     "quran.display_font",
     "quran.display_theme",
     "quran.playback",
+    # Phase B profile gating flags — the web needs them to render the
+    # "complete your profile" wall before the API rejects the action.
+    "profile.require_for_fatwa_question",
+    "profile.require_for_hifz_advanced",
 )
 
 _PUBLIC_DEFAULTS: dict[str, object] = {
@@ -61,6 +65,8 @@ _PUBLIC_DEFAULTS: dict[str, object] = {
     "quran.display_font": "system",
     "quran.display_theme": "dark",
     "quran.playback": {"autoplay": False, "repeat": "off"},
+    "profile.require_for_fatwa_question": False,
+    "profile.require_for_hifz_advanced": False,
 }
 
 

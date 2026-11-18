@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useQuestionForm } from '@/lib/hooks/useSocial';
 import { useAuth } from '@/lib/auth-context';
+import { useProfileGate } from '@/lib/profile-client';
 import { formatSocialDate, isSocialDemo } from '@/lib/social';
 import type { FatwaQuestionLabels } from '@/components/social/labels';
 
@@ -30,13 +31,22 @@ interface QuestionViewProps {
    * same form, same submit/suggestion behaviour.
    */
   variant?: 'page' | 'sidebar';
+  /**
+   * Phase B: CRM flag profile.require_for_fatwa_question (via public
+   * settings, passed by the server page). When on and the signed-in
+   * user's profile is incomplete, a complete-your-profile wall
+   * replaces the form — the API enforces the same rule (403
+   * profile_incomplete) as the backstop.
+   */
+  profileRequired?: boolean;
 }
 
-export function QuestionView({ locale, labels, prefill, autoAsk, variant = 'page' }: QuestionViewProps) {
+export function QuestionView({ locale, labels, prefill, autoAsk, variant = 'page', profileRequired = false }: QuestionViewProps) {
   const sidebar = variant === 'sidebar';
   const form = useQuestionForm();
   const { loggedIn } = useAuth();
   const pathname = usePathname();
+  const gate = useProfileGate(profileRequired && loggedIn);
 
   useEffect(() => {
     if (prefill) form.setText(prefill);
@@ -79,6 +89,33 @@ export function QuestionView({ locale, labels, prefill, autoAsk, variant = 'page
           </Link>
           <Link className="soc-btn" href={`/${locale}/login${nextParam}`}>
             {labels.signIn}
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Phase B profile gate: signed in, but the CRM requires a complete
+  // profile for asking and this user's profile is incomplete.
+  if (gate.kind === 'blocked' && !isSocialDemo()) {
+    const nextParam = pathname ? `?next=${encodeURIComponent(pathname)}` : '';
+    return (
+      <div className={sidebar ? 'ftw-ask-box' : 'page-wrap'}>
+        {sidebar ? (
+          <>
+            <h2>{labels.title}</h2>
+            <p className="ftw-ask-sub">{labels.subtitle}</p>
+          </>
+        ) : (
+          <>
+            <h1 className="page-title">{labels.title}</h1>
+            <p className="page-sub">{labels.subtitle}</p>
+          </>
+        )}
+        <p>{labels.profileRequired}</p>
+        <div className="soc-composer-foot">
+          <Link className="soc-btn soc-btn-primary" href={`/${locale}/profile${nextParam}`}>
+            {labels.completeProfile}
           </Link>
         </div>
       </div>

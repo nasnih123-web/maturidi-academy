@@ -127,6 +127,17 @@ const TABS: TabDef[] = [
       { key: "sms.api_key", labelKey: "settings.fields.smsKey", kind: "secret" },
     ],
   },
+  {
+    // Phase B: section gating — when a flag is on, signed-in users
+    // with an incomplete profile are walled out of that section (web
+    // wall + API 403 profile_incomplete). Off/unset = today's behavior.
+    id: "profile",
+    titleKey: "settings.sections.profile",
+    fields: [
+      { key: "profile.require_for_fatwa_question", labelKey: "settings.fields.profileRequireFatwa", kind: "flag" },
+      { key: "profile.require_for_hifz_advanced", labelKey: "settings.fields.profileRequireHifz", kind: "flag" },
+    ],
+  },
 ];
 
 type Values = Record<string, unknown>;
