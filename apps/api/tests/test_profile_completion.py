@@ -1,7 +1,7 @@
 """تست‌های تکمیل فاز B — ستون‌های هویتی پروفایل، آپلود عکس، migration.
 
 پوشش:
-- migration ‏c2b0cc7d091a: روی دیتابیس خالی upgrade head از صفر (همان
+- migration c2b0cc7d091a: روی دیتابیس خالی upgrade head از صفر (همان
   مسیر production در start.sh) → هر سه ستون روی users هست؛
   downgrade -1 → ستون‌ها نیستند؛ upgrade head دوباره → برگشته‌اند.
 - PATCH /users/me: تاریخ تولد آینده/کهن → 422؛ جنسیت نامعتبر → 422؛
@@ -88,9 +88,9 @@ def _users_columns(db_file: Path) -> set[str]:
 
 def test_profile_identity_migration_up_down_up(monkeypatch, tmp_path):
     """همان الگوی drill بکاپ (test_infra_track_b): alembic روی SQLite."""
-    from alembic import command
     from alembic.config import Config
 
+    from alembic import command
     from app.core.config import get_settings
 
     monkeypatch.chdir(APPS_API)

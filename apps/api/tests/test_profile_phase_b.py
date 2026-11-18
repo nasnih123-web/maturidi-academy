@@ -3,7 +3,7 @@
 پوشش:
 - GET /users/me فیلدهای فاز B را برمی‌گرداند (پروفایل ناقصِ پیش‌فرض:
   ثبت‌نام نام کامل دارد؛ چهار فیلد دیگر — عکس، تاریخ تولد، جنسیت،
-  کشور — کم‌اند. تعریف پنج‌فیلدی: migration ‏c2b0cc7d091a).
+  کشور — کم‌اند. تعریف پنج‌فیلدی: migration c2b0cc7d091a).
 - PATCH /users/me با avatar_media_id ناموجود → 422؛ تکمیل هر پنج
   فیلد → profile_complete=true.
 - اعتبارسنج پرچم‌های profile.* در _validate_json_setting.
