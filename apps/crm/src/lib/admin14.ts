@@ -786,6 +786,7 @@ export interface AuditEntry {
   old_values: Record<string, unknown> | null;
   new_values: Record<string, unknown> | null;
   ip: string | null;
+  user_agent: string | null;
   created_at: string;
 }
 
@@ -801,6 +802,7 @@ function parseAudit(raw: unknown): AuditEntry {
     old_values: (r.old_values as Record<string, unknown> | null) ?? null,
     new_values: (r.new_values as Record<string, unknown> | null) ?? null,
     ip: pickString(r, "ip") || null,
+    user_agent: pickString(r, "user_agent") || null,
     created_at: pickString(r, "created_at"),
   };
 }
@@ -1131,6 +1133,29 @@ export interface UserProfile360 {
   fatwa_activity: { questions: number; answers: number; submissions: number };
   recent_notifications: { id: string; title: string; channel: string; sent_at: string; read: boolean }[];
   audit_trail: AuditEntry[];
+  // Phase C — identity (Phase B fields), registration device, sessions,
+  // donations and hifz from the extended overview endpoint.
+  date_of_birth: string | null;
+  gender: string | null;
+  country_code: string | null;
+  country_source: string | null;
+  avatar_media_id: string | null;
+  registration_status: string; // pending | completed
+  profile_complete: boolean;
+  missing_profile_fields: string[];
+  registration: DashboardDevice | null;
+  sessions: UserSessionRow[];
+  donations: {
+    count: number;
+    total_succeeded_irr: number;
+    recent: { id: string; amount: number; currency: string; gateway: string; status: string; created_at: string }[];
+  };
+  hifz: {
+    attempts: number;
+    tests: number;
+    tasmi_sessions: number;
+    recent_attempts: { id: string; surah: number; status: string; engine: string; created_at: string }[];
+  };
 }
 
 export async function getUser360(id: string): Promise<UserProfile360> {
@@ -1190,6 +1215,52 @@ export async function getUser360(id: string): Promise<UserProfile360> {
       read: pickBool(n, "read", false),
     })),
     audit_trail: readList<unknown>(r.audit_trail ?? r.audit).map(parseAudit),
+    date_of_birth: pickString(profile, "date_of_birth") || null,
+    gender: pickString(profile, "gender") || null,
+    country_code: pickString(profile, "country_code") || null,
+    country_source: pickString(profile, "country_source") || null,
+    avatar_media_id: pickString(profile, "avatar_media_id") || null,
+    registration_status: pickString(profile, "registration_status") || "completed",
+    profile_complete: pickBool(profile, "profile_complete", false),
+    missing_profile_fields: pickArr<string>(profile, "missing_profile_fields"),
+    registration: parseDevice(r.registration),
+    sessions: readList<unknown>(r.sessions).map(parseSessionRow),
+    donations: (() => {
+      const d = asRecord(r.donations);
+      return {
+        count: pickNum(d, "count") ?? 0,
+        total_succeeded_irr: pickNum(d, "total_succeeded_irr") ?? 0,
+        recent: readList<unknown>(d.recent).map((x) => {
+          const dr = asRecord(x);
+          return {
+            id: pickString(dr, "id"),
+            amount: pickNum(dr, "amount") ?? 0,
+            currency: pickString(dr, "currency"),
+            gateway: pickString(dr, "gateway"),
+            status: pickString(dr, "status"),
+            created_at: pickString(dr, "created_at"),
+          };
+        }),
+      };
+    })(),
+    hifz: (() => {
+      const h = asRecord(r.hifz);
+      return {
+        attempts: pickNum(h, "attempts") ?? 0,
+        tests: pickNum(h, "tests") ?? 0,
+        tasmi_sessions: pickNum(h, "tasmi_sessions") ?? 0,
+        recent_attempts: readList<unknown>(h.recent_attempts).map((x) => {
+          const hr = asRecord(x);
+          return {
+            id: pickString(hr, "id"),
+            surah: pickNum(hr, "surah") ?? 0,
+            status: pickString(hr, "status"),
+            engine: pickString(hr, "engine"),
+            created_at: pickString(hr, "created_at"),
+          };
+        }),
+      };
+    })(),
   };
 }
 
@@ -1203,6 +1274,157 @@ export async function setUserRoles(id: string, roles: string[]): Promise<unknown
 
 export async function revokeUserSessions(id: string): Promise<unknown> {
   return apiFetch<unknown>(`/api/v1/admin/users/${id}/sessions/revoke`, { method: "POST" });
+}
+
+/* ------------------------------------------------------------------ */
+/* users dashboard (Phase C) — interactive list + stats header         */
+/* ------------------------------------------------------------------ */
+
+export interface DashboardDevice {
+  ip: string | null;
+  user_agent: string | null;
+  browser: string | null;
+  os: string | null;
+  device: string; // mobile | tablet | desktop | bot | unknown
+  summary: string | null;
+  at: string | null;
+}
+
+export function parseDevice(raw: unknown): DashboardDevice | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const r = asRecord(raw);
+  return {
+    ip: pickString(r, "ip") || null,
+    user_agent: pickString(r, "user_agent") || null,
+    browser: pickString(r, "browser") || null,
+    os: pickString(r, "os") || null,
+    device: pickString(r, "device") || "unknown",
+    summary: pickString(r, "summary") || null,
+    at: pickString(r, "at") || null,
+  };
+}
+
+export interface DashboardUserRow {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  locale: string;
+  is_active: boolean;
+  is_verified: boolean;
+  registration_status: string; // pending | completed
+  profile_complete: boolean;
+  missing_profile_fields: string[];
+  country_code: string | null;
+  country_source: string | null; // profile | phone
+  created_at: string;
+  registration: DashboardDevice | null;
+  last_activity: DashboardDevice | null;
+  counts: { fatwa_questions: number; hifz_sessions: number; hifz_tests: number; donations: number };
+}
+
+function parseDashboardUser(raw: unknown): DashboardUserRow {
+  const r = asRecord(raw);
+  const counts = asRecord(r.counts);
+  return {
+    id: pickString(r, "id"),
+    full_name: pickString(r, "full_name", "display_name", "email"),
+    email: pickString(r, "email"),
+    phone: pickString(r, "phone") || null,
+    locale: pickString(r, "locale") || "fa",
+    is_active: pickBool(r, "is_active", true),
+    is_verified: pickBool(r, "is_verified", false),
+    registration_status: pickString(r, "registration_status") || "completed",
+    profile_complete: pickBool(r, "profile_complete", false),
+    missing_profile_fields: pickArr<string>(r, "missing_profile_fields"),
+    country_code: pickString(r, "country_code") || null,
+    country_source: pickString(r, "country_source") || null,
+    created_at: pickString(r, "created_at"),
+    registration: parseDevice(r.registration),
+    last_activity: parseDevice(r.last_activity),
+    counts: {
+      fatwa_questions: pickNum(counts, "fatwa_questions") ?? 0,
+      hifz_sessions: pickNum(counts, "hifz_sessions") ?? 0,
+      hifz_tests: pickNum(counts, "hifz_tests") ?? 0,
+      donations: pickNum(counts, "donations") ?? 0,
+    },
+  };
+}
+
+export interface UsersDashboardParams {
+  q?: string;
+  status?: string; // pending | completed
+  profile?: string; // complete | incomplete
+  country?: string;
+  sort?: string; // created_at | last_activity
+  order?: string; // asc | desc
+  limit?: number;
+  offset?: number;
+}
+
+export async function listUsersDashboard(
+  params: UsersDashboardParams = {},
+): Promise<{ items: DashboardUserRow[]; total: number; limit: number; offset: number }> {
+  const raw = await apiFetch<unknown>(`/api/v1/admin/users/dashboard${q(params as Record<string, string | number | undefined>)}`);
+  const r = asRecord(raw);
+  return {
+    items: readList<unknown>(raw).map(parseDashboardUser),
+    total: pickNum(r, "total") ?? 0,
+    limit: pickNum(r, "limit") ?? params.limit ?? 20,
+    offset: pickNum(r, "offset") ?? params.offset ?? 0,
+  };
+}
+
+export interface UsersStats {
+  total_users: number;
+  pending: number;
+  completed: number;
+  verified: number;
+  profile_complete: number;
+}
+
+export async function getUsersStats(): Promise<UsersStats> {
+  const raw = await apiFetch<unknown>(`/api/v1/admin/users/stats`);
+  const r = asRecord(raw);
+  return {
+    total_users: pickNum(r, "total_users") ?? 0,
+    pending: pickNum(r, "pending") ?? 0,
+    completed: pickNum(r, "completed") ?? 0,
+    verified: pickNum(r, "verified") ?? 0,
+    profile_complete: pickNum(r, "profile_complete") ?? 0,
+  };
+}
+
+export interface UserSessionRow {
+  id: string;
+  ip: string | null;
+  user_agent: string | null;
+  browser: string | null;
+  os: string | null;
+  device: string;
+  summary: string | null;
+  created_at: string;
+  last_active_at: string | null;
+  revoked: boolean;
+  state: string; // active | revoked
+}
+
+function parseSessionRow(raw: unknown): UserSessionRow {
+  const r = asRecord(raw);
+  const d = parseDevice(raw);
+  return {
+    id: pickString(r, "id"),
+    ip: d?.ip ?? null,
+    user_agent: d?.user_agent ?? null,
+    browser: d?.browser ?? null,
+    os: d?.os ?? null,
+    device: d?.device ?? "unknown",
+    summary: d?.summary ?? null,
+    created_at: pickString(r, "created_at"),
+    last_active_at: pickString(r, "at") || null,
+    revoked: pickBool(r, "revoked", false),
+    state: pickString(r, "state") || "active",
+  };
 }
 
 /* ------------------------------------------------------------------ */

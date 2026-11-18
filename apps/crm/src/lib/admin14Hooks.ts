@@ -33,6 +33,8 @@ import {
   getDistribution,
   getUser360,
   getUserAudit,
+  getUsersStats,
+  listUsersDashboard,
   listAiSources,
   listContentFlags,
   listContentInbox,
@@ -89,6 +91,8 @@ export const admin14Keys = {
   tgHistory: ["admin14", "telegram", "history"] as const,
   tgDedupe: ["admin14", "telegram", "dedupe"] as const,
   users: (f: { q?: string; role?: string }) => ["admin14", "users", JSON.stringify(f)] as const,
+  usersDashboard: (f: unknown) => ["admin14", "users-dashboard", JSON.stringify(f)] as const,
+  usersStats: ["admin14", "users-stats"] as const,
   user360: (id: string) => ["admin14", "user360", id] as const,
   userAudit: (id: string) => ["admin14", "user-audit", id] as const,
   flags: (status?: string) => ["admin14", "flags", status ?? "all"] as const,
@@ -309,6 +313,31 @@ export function useTelegramMutation() {
 }
 
 /* ---------------- users ---------------- */
+
+export function useUsersDashboard(params: {
+  q?: string;
+  status?: string;
+  profile?: string;
+  country?: string;
+  sort?: string;
+  order?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  return useQuery({
+    queryKey: admin14Keys.usersDashboard(params),
+    queryFn: () => listUsersDashboard(params),
+    retry: false,
+  });
+}
+
+export function useUsersStats() {
+  return useQuery({
+    queryKey: admin14Keys.usersStats,
+    queryFn: () => getUsersStats(),
+    retry: false,
+  });
+}
 
 export function useUserSearch(q?: string, role?: string) {
   return useQuery({
