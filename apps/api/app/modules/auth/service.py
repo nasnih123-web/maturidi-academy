@@ -23,6 +23,11 @@ from app.core.audit import log_audit
 from app.core.database import ensure_aware
 from app.core.errors import APIError
 from app.core.events import emit_event
+from app.core.mail_templates import (
+    render_password_reset_email,
+    render_verification_email,
+    resolve_email_locale,
+)
 from app.core.rate_limit import get_rate_limiter
 from app.core.secrets import decrypt_value, encrypt_value
 from app.core.security import (
@@ -270,13 +275,19 @@ async def _issue_verification_email(db: AsyncSession, user: User) -> None:
         # خرابی سرویس ایمیل نباید ثبت‌نام را خراب کند: توکن ذخیره شده و
         # کاربر می‌تواند ارسال دوباره بخواهد.
         try:
+            # زبان ایمیل از کشور کاربر می‌آید (شماره → کشور؛ وگرنه زبان
+            # ذخیره‌شده) و مسیر لینک هم دقیقاً همان زبان است تا صفحهٔ
+            # فرود با ایمیل یکی باشد.
+            lang = resolve_email_locale(user.phone, user.locale)
+            rendered = render_verification_email(
+                locale=lang,
+                action_url=public_url(f"/{lang}/verify-email?token={token}"),
+                logo_url=public_url("/logo.jpg"),
+                name=user.full_name,
+                token=token,
+            )
             await email_mod.send_email(
-                user.email,
-                "تأیید ایمیل — آکادمی ماتریدی",
-                "برای تأیید ایمیل خود روی لینک زیر کلیک کنید:\n"
-                + public_url(f"/{user.locale}/verify-email?token={token}")
-                + "\n"
-                f"verify_token={token}",
+                user.email, rendered.subject, rendered.text, rendered.html
             )
         except Exception:
             logger.exception(
@@ -1102,14 +1113,18 @@ async def request_password_reset(
         # خرابی سرویس ایمیل نباید پاسخ عمومی بازیابی را تغییر دهد: توکن
         # ذخیره شده و کاربر می‌تواند دوباره درخواست بدهد.
         try:
+            # همان پوسته و همان قاعدهٔ زبانِ ایمیل تأیید (کشور → زبان)؛
+            # مسیر لینک هم همان زبان رندر است.
+            lang = resolve_email_locale(user.phone, user.locale)
+            rendered = render_password_reset_email(
+                locale=lang,
+                action_url=public_url(f"/{lang}/reset-password?token={token}"),
+                logo_url=public_url("/logo.jpg"),
+                name=user.full_name,
+                token=token,
+            )
             await email_mod.send_email(
-                user.email,
-                "بازیابی رمز عبور — آکادمی ماتریدی",
-                "برای تعیین رمز جدید:\n"
-                + public_url(f"/{user.locale}/reset-password?token={token}")
-                + "\n"
-                f"reset_token={token}\n"
-                "این لینک یک ساعت اعتبار دارد.",
+                user.email, rendered.subject, rendered.text, rendered.html
             )
         except Exception:
             logger.exception(
