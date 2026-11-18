@@ -249,16 +249,14 @@ def _mask_phone(phone: str | None) -> str | None:
 
 
 async def _issue_verification_email(db: AsyncSession, user: User) -> None:
-    """توکن تأیید ایمیل تازه می‌سازد (قبلی‌های مصرف‌نشده باطل می‌شوند) و می‌فرستد."""
-    await db.execute(
-        update(PasswordResetToken)
-        .where(
-            PasswordResetToken.user_id == user.id,
-            PasswordResetToken.purpose == "email_verify",
-            PasswordResetToken.used.is_(False),
-        )
-        .values(used=True)
-    )
+    """توکن تأیید ایمیل تازه می‌سازد و می‌فرستد.
+
+    توکن‌های قبلیِ مصرف‌نشده باطل نمی‌شوند: کلاینت‌های ایمیل (مثل Gmail)
+    همهٔ ایمیل‌های تأیید را زیر یک موضوع نخ می‌کنند و کاربر ممکن است روی
+    لینک پیام قدیمی‌تر کلیک کند؛ هر توکن تا انقضای خودش (۲۴ ساعت) یا
+    مصرف‌شدنش معتبر می‌ماند و کلیک تکراری روی لینکِ مصرف‌شده هم در مسیر
+    تأیید از سر گرفته می‌شود (resume)، نه این‌که invalid_token بگیرد.
+    """
     token = pysecrets.token_urlsafe(32)
     db.add(
         PasswordResetToken(
@@ -728,8 +726,91 @@ async def _consume_email_verify_token(db: AsyncSession, token: str) -> User:
     return user
 
 
+async def _resumed_verify_user(db: AsyncSession, token: str) -> User | None:
+    """کاربرِ یک توکن تأییدِ قبلاً مصرف‌شده — مبنای ازسرگیری (resume).
+
+    فقط وقتی کاربر برمی‌گردد که ردیف توکن با همین هش و منظور email_verify
+    موجود، مصرف‌شده و هنوز منقضی‌نشده باشد و کاربرش هم تأیید شده باشد.
+    هر حالت دیگر (توکن ناشناخته، منقضی، یا کاربرِ تأییدنشده) None است تا
+    خطای اصلی invalid_token دست‌نخورده بماند.
+    """
+    row = (
+        await db.execute(
+            select(PasswordResetToken).where(
+                PasswordResetToken.token_hash == hash_token(token),
+                PasswordResetToken.purpose == "email_verify",
+                PasswordResetToken.used.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+    if not row or ensure_aware(row.expires_at) < _utcnow():
+        return None
+    user = await db.get(User, row.user_id)
+    if not user or not user.is_verified:
+        return None
+    return user
+
+
+async def _registration_status_after_verify(
+    db: AsyncSession, user: User
+) -> tuple[str, str | None, str | None]:
+    """وضعیت جریان ثبت‌نام برای کاربرِ تأییدشده — مشترکِ مصرف اول و resume."""
+    if await _has_sessions(db, user.id):
+        await db.commit()
+        return ("already_active", None, None)
+    if _is_iran_phone(user.phone):
+        await db.commit()
+        return ("phone_required", None, _mask_phone(user.phone))
+    setup_token = await _issue_setup_token(db, user)
+    await db.commit()
+    return ("verified", setup_token, None)
+
+
+async def _resume_registration_verification(
+    db: AsyncSession, user: User
+) -> tuple[str, str | None, str | None]:
+    """کلیک تکراری روی لینک تأییدِ مصرف‌شده: وضعیت جاری جریان، نه خطا.
+
+    در ممیزی با action جدا ثبت می‌شود تا پشتیبانی resume را از مصرف اول
+    تشخیص دهد. حسابِ کامل‌شده already_active می‌گیرد؛ حسابِ در انتظار
+    تکمیل همان وضعیتی را می‌گیرد که مصرف اول می‌داد.
+    """
+    await log_audit(
+        db,
+        actor_id=user.id,
+        actor_type="user",
+        action="user.verify_email_resumed",
+        entity_type="user",
+        entity_id=str(user.id),
+        new_values={"resumed": True},
+    )
+    if await _pending_setup_row(db, user.id) is None:
+        await db.commit()
+        return ("already_active", None, None)
+    return await _registration_status_after_verify(db, user)
+
+
 async def verify_email(db: AsyncSession, token: str) -> User:
-    user = await _consume_email_verify_token(db, token)
+    try:
+        user = await _consume_email_verify_token(db, token)
+    except APIError:
+        resumed_user = await _resumed_verify_user(db, token)
+        if resumed_user is None:
+            raise
+        # کلیک تکراری روی لینکِ مصرف‌شدهٔ همان کاربرِ تأییدشده: موفقیتِ
+        # تکراری (idempotent) — با action جدا در ممیزی ثبت می‌شود.
+        await log_audit(
+            db,
+            actor_id=resumed_user.id,
+            actor_type="user",
+            action="user.verify_email_resumed",
+            entity_type="user",
+            entity_id=str(resumed_user.id),
+            new_values={"resumed": True},
+        )
+        await db.commit()
+        await db.refresh(resumed_user)
+        return resumed_user
     user.is_verified = True
     await emit_event(
         db,
@@ -759,8 +840,19 @@ async def verify_email_registration(
     already_active: حساب قبلاً نشست دارد — فقط تأیید ثبت می‌شود.
     phone_required: شماره ایران است — تأیید پیامکی هم لازم است.
     verified: توکن ست‌کردن رمز صادر شد.
+
+    کلیک تکراری روی لینکِ مصرف‌شده (رفرش/ریماونت صفحه، یا کلیک روی پیام
+    قدیمی‌ترِ همان نخ ایمیل) خطا نیست: اگر حساب هنوز وسط ثبت‌نام است
+    وضعیت جاری جریان برگردانده می‌شود (resume) و اگر ثبت‌نام کامل شده
+    already_active. توکن ناشناخته یا منقضی همچنان 400 invalid_token است.
     """
-    user = await _consume_email_verify_token(db, token)
+    try:
+        user = await _consume_email_verify_token(db, token)
+    except APIError:
+        resumed_user = await _resumed_verify_user(db, token)
+        if resumed_user is None:
+            raise
+        return await _resume_registration_verification(db, resumed_user)
     user.is_verified = True
     await emit_event(
         db,
@@ -777,15 +869,7 @@ async def verify_email_registration(
         entity_type="user",
         entity_id=str(user.id),
     )
-    if await _has_sessions(db, user.id):
-        await db.commit()
-        return ("already_active", None, None)
-    if _is_iran_phone(user.phone):
-        await db.commit()
-        return ("phone_required", None, _mask_phone(user.phone))
-    setup_token = await _issue_setup_token(db, user)
-    await db.commit()
-    return ("verified", setup_token, None)
+    return await _registration_status_after_verify(db, user)
 
 
 async def request_register_phone_code(db: AsyncSession, phone: str) -> None:
