@@ -74,6 +74,7 @@ SETTING_DEFS: dict[str, dict] = {
     # اجباری است — پیش‌فرض خالی (ایمیل برای همه کافی است)؛ مدیر از CRM
     # انتخاب می‌کند، مثلاً وقتی پنل پیامک وصل شد ایران را اضافه می‌کند.
     "auth.sms_required_countries": {"type": "json", "sensitive": False, "label": "کشورهای با تأیید پیامکی اجباری (ثبت‌نام)"},
+    "site.social_links": {"type": "json", "sensitive": False, "label": "شبکه‌های اجتماعی سایت (لینک‌ها و ترتیب نمایش در منو)"},
     "map.key": {"type": "secret", "sensitive": True, "label": "کلید نقشه"},
     # --- maps phase (overnight/w10): CRM control of the public map popup.
     # Shape: {"show_image": bool, "show_description": bool,
@@ -195,6 +196,7 @@ EMPTY_MEANS_UNSET_KEYS = frozenset({
     "profile.require_for_hifz_advanced",
     # پیکربندی روش‌های دستی حمایت: خالی = هنوز تنظیم نشده
     "donation.crypto_wallets",
+    "site.social_links",
     "donation.card_instructions",
     "donation.crypto_instructions",
     "donation.paypal_instructions",
@@ -730,6 +732,67 @@ def _validate_sms_required_countries(value: Any) -> list:
     raise ValueError("auth.sms_required_countries must be a list of ISO country codes")
 
 
+#: شبکه‌های اجتماعی شناخته‌شدهٔ منوی سایت — آیکون هرکدام در وب ثابت
+#: است؛ CRM فقط لینک، فعال/غیرفعال و ترتیب را مدیریت می‌کند.
+SOCIAL_NETWORKS = (
+    "telegram",
+    "instagram",
+    "whatsapp",
+    "youtube",
+    "aparat",
+    "eitaa",
+    "bale",
+    "x",
+    "facebook",
+)
+
+
+def _validate_social_links(value: Any) -> list:
+    """فهرست شبکه‌های اجتماعی منوی سایت — canonical.
+
+    هر ورودی: {network, url, enabled} — network از مجموعهٔ ثابت
+    SOCIAL_NETWORKS و بدون تکرار؛ url یا خالی (آن شبکه نمایش داده
+    نمی‌شود) یا http(s)؛ ترتیب فهرست = ترتیب نمایش در منو.
+    """
+    if not isinstance(value, list):
+        raise TypeError("site.social_links must be a list")
+    if len(value) > len(SOCIAL_NETWORKS):
+        raise ValueError("site.social_links: too many entries")
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for i, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise TypeError(f"site.social_links[{i}] must be an object")
+        unknown = set(item) - {"network", "url", "enabled"}
+        if unknown:
+            raise ValueError(
+                f"site.social_links[{i}]: unknown fields {sorted(unknown)}"
+            )
+        network = item.get("network")
+        if not isinstance(network, str):
+            raise TypeError(f"site.social_links[{i}].network must be a string")
+        if network not in SOCIAL_NETWORKS:
+            raise ValueError(f"site.social_links[{i}]: unknown network {network!r}")
+        if network in seen:
+            raise ValueError(f"site.social_links: duplicate network {network!r}")
+        seen.add(network)
+        url = item.get("url") or ""
+        if not isinstance(url, str):
+            raise TypeError(f"site.social_links[{i}].url must be a string")
+        url = url.strip()
+        if url and not url.startswith(("https://", "http://")):
+            raise ValueError(
+                f"site.social_links[{i}].url must start with http(s)://"
+            )
+        if len(url) > 500:
+            raise ValueError(f"site.social_links[{i}].url is too long")
+        enabled = item.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise TypeError(f"site.social_links[{i}].enabled must be a boolean")
+        out.append({"network": network, "url": url, "enabled": enabled})
+    return out
+
+
 def _validate_json_setting(key: str, value: Any) -> Any:
     """اعتبارسنج اختصاصی هر کلید json — خروجی canonical."""
     if key == "particles":
@@ -793,6 +856,8 @@ def _validate_json_setting(key: str, value: Any) -> Any:
         return _validate_flag(key, value)
     if key == "auth.sms_required_countries":
         return _validate_sms_required_countries(value)
+    if key == "site.social_links":
+        return _validate_social_links(value)
     if key == "quran.highlight_mode":
         return _validate_highlight_mode(value)
     if key == "quran.font_size":

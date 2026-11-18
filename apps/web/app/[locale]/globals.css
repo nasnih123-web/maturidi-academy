@@ -312,7 +312,10 @@ img, svg { max-inline-size: 100%; }
 .nav-drawer-list { list-style: none; margin: 0; padding: 0; }
 .nav-drawer-sub { list-style: none; margin: 0; padding: 0 0 0.3rem; }
 .nav-drawer-sub a { font-size: 0.9rem !important; font-weight: 500 !important; padding-inline-start: 1.8rem !important; }
-.header-actions { display: flex; align-items: center; gap: 0.45rem; }
+/* margin-inline-start:auto pushes language + hamburger to the far
+ * corner of the bar (left in fa/ar, right in en) instead of floating
+ * mid-header next to the brand once the desktop nav is hidden. */
+.header-actions { display: flex; align-items: center; gap: 0.45rem; margin-inline-start: auto; }
 .icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 2.2rem; height: 2.2rem; border-radius: var(--radius-sm);
@@ -435,9 +438,14 @@ img, svg { max-inline-size: 100%; }
 .nav-drawer-item > a { display: flex; align-items: center; gap: 0.6rem; }
 .nav-drawer-item > a::before { content: ""; flex: none; width: 0.45rem; height: 0.45rem; background: rgba(212, 175, 55, 0.55); transform: rotate(45deg); }
 .nav-drawer-item > a[aria-current="page"]::before { background: #d4af37; box-shadow: 0 0 8px rgba(212, 175, 55, 0.8); }
-.drawer-langs { margin-top: auto; padding-top: 1.1rem; display: flex; gap: 0.5rem; }
-.drawer-langs a { flex: 1; display: inline-flex; align-items: center; justify-content: center; padding: 0.55rem 0.4rem; border-radius: 999px; border: 2px solid rgba(212, 175, 55, 0.3); background: rgba(255, 255, 255, 0.03); color: hsl(var(--text-secondary)); text-decoration: none; font-size: 0.85rem; font-weight: 700; }
-.drawer-langs a.on { background: linear-gradient(180deg, #e3c766, #b8912c); border-color: transparent; color: #06120e; font-weight: 800; }
+/* Drawer footer: social-icons row (CRM-managed links). Language
+ * switching lives in the header bar, not the drawer. */
+.drawer-socials { margin-top: auto; padding-top: 1.1rem; text-align: center; }
+.drawer-socials-cap { display: flex; align-items: center; gap: 0.8rem; color: #e5c07b; font-size: 0.85rem; font-weight: 800; margin-bottom: 0.9rem; }
+.drawer-socials-cap::before, .drawer-socials-cap::after { content: ""; flex: 1; height: 2px; background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.55), transparent); }
+.drawer-socials-row { display: flex; justify-content: center; gap: 0.65rem; flex-wrap: wrap; }
+.drawer-soc { width: 2.9rem; height: 2.9rem; border-radius: 50%; border: 2px solid rgba(212, 175, 55, 0.65); background: radial-gradient(circle at 32% 28%, rgba(212, 175, 55, 0.28), rgba(0, 0, 0, 0.3) 68%); display: inline-flex; align-items: center; justify-content: center; color: #ede6d6; box-shadow: 0 0 16px rgba(212, 175, 55, 0.22), inset 0 0 10px rgba(212, 175, 55, 0.12); transition: transform var(--dur-fast) ease, background var(--dur-fast) ease; }
+.drawer-soc:hover { transform: translateY(-2px); background: linear-gradient(180deg, #e3c766, #b8912c); color: #06120e; }
 
 /* ═══ Footer ═══ */
 .site-footer { border-top: 1px solid rgba(212, 175, 55, 0.18); background: rgba(7, 35, 28, 0.55); backdrop-filter: blur(18px); margin-top: var(--section-y); }
@@ -1449,6 +1457,19 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .auth-form button { padding: 0.7rem; border-radius: var(--radius-md); border: 1px solid rgba(212, 175, 55, 0.5); background: rgba(212, 175, 55, 0.18); color: #e5c07b; font-size: 0.95rem; cursor: pointer; }
 .auth-form button:disabled { opacity: 0.5; }
 .auth-error { color: #e08080; font-size: 0.85rem; margin: 0; }
+/* Password field with show/hide eye + strength meter (set-password and
+ * login forms). The eye sits at the inline-end of the input. */
+.pw-field { position: relative; display: block; }
+.pw-field input { width: 100%; padding-inline-end: 2.6rem; }
+.pw-eye { position: absolute; inset-inline-end: 0.35rem; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border: 0; border-radius: 50%; background: transparent; color: rgba(237, 230, 214, 0.65); cursor: pointer; }
+.pw-eye:hover { color: #e5c07b; background: rgba(212, 175, 55, 0.12); }
+.pw-strength { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.45rem; }
+.pw-bar { flex: 1; height: 0.4rem; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.pw-bar i { display: block; height: 100%; border-radius: 999px; transition: width 0.25s ease, background 0.25s ease; }
+.pw-bar i.lv1 { background: #e05d5d; }
+.pw-bar i.lv2 { background: #e8b93e; }
+.pw-bar i.lv3 { background: #43c465; }
+.pw-strength span { font-size: 0.78rem; font-weight: 700; color: hsl(var(--text-secondary)); white-space: nowrap; }
 .auth-links { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 1.1rem; font-size: 0.85rem; color: hsl(var(--text-secondary)); }
 .auth-links a { color: #e5c07b; text-decoration: none; }
 .auth-links a:hover { text-decoration: underline; }

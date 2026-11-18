@@ -202,11 +202,23 @@ export interface SiteConfig {
    * same rule with 403 profile_incomplete).
    */
   profileGating: ProfileGatingSettings;
+  /**
+   * Social links for the drawer footer (CRM setting `site.social_links`):
+   * ordered; the header renders only entries that are enabled AND have a
+   * URL. Empty array = the block does not render at all.
+   */
+  socials: SocialLinkSetting[];
 }
 
 export interface ProfileGatingSettings {
   fatwaQuestion: boolean;
   hifzAdvanced: boolean;
+}
+
+export interface SocialLinkSetting {
+  network: string;
+  url: string;
+  enabled: boolean;
 }
 
 export const DEFAULT_PARTICLES: ParticlesSettings = {
@@ -232,6 +244,7 @@ export function defaultSiteConfig(): SiteConfig {
     munajat: { ...DEFAULT_MUNAJAT },
     adhan: { ...DEFAULT_ADHAN },
     profileGating: { fatwaQuestion: false, hifzAdvanced: false },
+    socials: [],
   };
 }
 
@@ -332,6 +345,20 @@ function parseHero(v: unknown): HeroSettings | null {
   const secondaryCta = parseCta(o.secondary_cta);
   if (!title && !subtitle && !primaryCta && !secondaryCta) return null;
   return { title, subtitle, primaryCta, secondaryCta };
+}
+
+function parseSocialLinks(v: unknown): SocialLinkSetting[] {
+  const arr = asArray(v);
+  const out: SocialLinkSetting[] = [];
+  for (const raw of arr) {
+    const o = asObject(raw);
+    if (!o) continue;
+    const network = cleanText(o.network, 32);
+    const url = cleanText(o.url, 500);
+    if (!network) continue;
+    out.push({ network, url: url ?? '', enabled: o.enabled !== false });
+  }
+  return out;
 }
 
 function parseHomeSections(v: unknown): HomeSlotSetting[] | null {
@@ -564,6 +591,7 @@ export function parseSiteConfig(body: unknown): SiteConfig {
     fatwaQuestion: bool(get('profile.require_for_fatwa_question'), false),
     hifzAdvanced: bool(get('profile.require_for_hifz_advanced'), false),
   };
+  cfg.socials = parseSocialLinks(get('site.social_links'));
 
   return cfg;
 }

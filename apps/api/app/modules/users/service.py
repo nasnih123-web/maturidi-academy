@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import secrets as pysecrets
 import uuid
 from datetime import UTC, date, datetime
@@ -155,6 +156,22 @@ def _validate_date_of_birth(value: date) -> None:
 def _validate_gender(value: str) -> None:
     if value not in PROFILE_GENDERS:
         raise APIError(422, "validation_error", "جنسیت نامعتبر است")
+
+
+_PHONE_E164_RE = re.compile(r"^\+[1-9]\d{6,14}$")
+
+
+def _normalize_profile_phone(value: str) -> str:
+    """نرمال‌سازی شمارهٔ پروفایل به E.164 — فاصله/خط‌تیره/پرانتز حذف
+    می‌شود؛ هر شکل دیگری (بدون +، حروف، طول نامعتبر) 422 می‌گیرد."""
+    cleaned = re.sub(r"[\s\-()]+", "", value.strip())
+    if not _PHONE_E164_RE.match(cleaned):
+        raise APIError(
+            422,
+            "validation_error",
+            "شمارهٔ تلفن باید با کد کشور و قالب بین‌المللی وارد شود (مثل +98912…)",
+        )
+    return cleaned
 
 
 def _validate_country_code(user: User, value: str) -> None:
@@ -334,6 +351,7 @@ async def update_me(
         "date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None,
         "gender": user.gender,
         "country_code": user.country_code,
+        "phone": user.phone,
     }
     if data.full_name is not None:
         user.full_name = data.full_name.strip()
@@ -356,6 +374,30 @@ async def update_me(
     if data.gender is not None:
         _validate_gender(data.gender)
         user.gender = data.gender
+    if data.phone is not None:
+        # قبل از اعتبارسنجی کشور اعمال می‌شود تا در یک درخواستِ هم‌زمان،
+        # کشور با شمارهٔ تازه سنجیده شود، نه شمارهٔ قبلی.
+        # رشتهٔ خالی = پاک‌کردن شماره (از فرم پروفایل قابل انجام است).
+        if data.phone.strip() == "":
+            user.phone = None
+            phone = None
+        else:
+            phone = _normalize_profile_phone(data.phone)
+        if phone is not None and phone != user.phone:
+            clash = (
+                await db.execute(
+                    select(User.id).where(
+                        User.phone == phone, User.id != user.id
+                    )
+                )
+            ).scalar_one_or_none()
+            if clash is not None:
+                raise APIError(
+                    409,
+                    "phone_in_use",
+                    "این شمارهٔ تلفن برای حساب دیگری ثبت شده است",
+                )
+            user.phone = phone
     if data.country_code is not None:
         _validate_country_code(user, data.country_code)
         user.country_code = data.country_code.strip().upper()
@@ -365,6 +407,7 @@ async def update_me(
         "date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None,
         "gender": user.gender,
         "country_code": user.country_code,
+        "phone": user.phone,
     }
     await emit_event(
         db,

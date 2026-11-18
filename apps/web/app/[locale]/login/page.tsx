@@ -39,6 +39,8 @@ export default async function LoginPage({
           labels={{
             identifier: t('identifier'),
             password: t('password'),
+            showPassword: t('showPassword'),
+            hidePassword: t('hidePassword'),
             totp: t('totp'),
             signIn: t('signIn'),
             loginFailed: t('loginFailed'),

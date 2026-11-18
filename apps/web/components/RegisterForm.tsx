@@ -54,6 +54,12 @@ export interface RegisterFormLabels {
   finish: string;
   passwordMismatch: string;
   passwordShort: string;
+  showPassword: string;
+  hidePassword: string;
+  passwordStrength: string;
+  strengthWeak: string;
+  strengthMedium: string;
+  strengthStrong: string;
   haveAccount: string;
   signIn: string;
 }
@@ -215,6 +221,12 @@ export default function RegisterForm({
             mismatch: labels.passwordMismatch,
             tooShort: labels.passwordShort,
             failed: labels.registerFailed,
+            showPassword: labels.showPassword,
+            hidePassword: labels.hidePassword,
+            passwordStrength: labels.passwordStrength,
+            strengthWeak: labels.strengthWeak,
+            strengthMedium: labels.strengthMedium,
+            strengthStrong: labels.strengthStrong,
           }}
           onComplete={finish}
         />

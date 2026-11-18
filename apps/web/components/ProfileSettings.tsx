@@ -6,10 +6,11 @@
  * Sections:
  * 1. Completeness banner — driven entirely by the backend's
  *    profile_complete / missing_profile_fields (never recomputed here).
- * 2. Personal info — full name, date of birth, gender, country and
- *    language are editable via PATCH /users/me; email/phone are
- *    read-only. With a verified phone, the country is preselected to
- *    the phone's country and locked (the API enforces the same rule).
+ * 2. Personal info — full name, date of birth, gender, country,
+ *    language and phone are editable via PATCH /users/me; only the
+ *    email stays read-only. With a verified phone, the country is
+ *    preselected to the phone's country and locked (the API enforces
+ *    the same rule); editing the phone re-derives the country.
  * 3. Profile picture — real upload via POST /users/me/avatar; after a
  *    successful upload the just-picked file is previewed locally (the
  *    API exposes the media id, not a public URL).
@@ -109,6 +110,7 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
   const [dob, setDob] = useState('');
   const [gender, setGender] = useState('');
   const [countryCode, setCountryCode] = useState('');
+  const [phone, setPhone] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -140,6 +142,7 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
       setDob(meData.date_of_birth ?? '');
       setGender(meData.gender ?? '');
       setCountryCode(meData.country_code ?? countryIsoFromPhone(meData.phone) ?? '');
+      setPhone(meData.phone ?? '');
       setTwofa(status);
     } catch {
       setLoadError(true);
@@ -174,8 +177,10 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
         ...(dob ? { date_of_birth: dob } : {}),
         ...(gender ? { gender } : {}),
         ...(countryCode ? { country_code: countryCode } : {}),
+        ...(phone.trim() !== (me?.phone ?? '') ? { phone: phone.trim() } : {}),
       });
       setMe(updated);
+      setPhone(updated.phone ?? '');
       setSaved(true);
       if (localeSel !== locale) router.refresh();
     } catch {
@@ -340,7 +345,22 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
         </label>
         <label>
           <span>{labels.phone}</span>
-          <input type="tel" value={me.phone ?? ''} readOnly dir="ltr" />
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => {
+              const next = e.target.value;
+              setPhone(next);
+              // Keep the country in step when it was derived from the
+              // phone (or unset): a new number means a new phone country.
+              const derived = countryIsoFromPhone(next);
+              if (derived && (countryCode === '' || countryCode === countryIso)) {
+                setCountryCode(derived);
+              }
+            }}
+            placeholder="+989120000000"
+            dir="ltr"
+          />
         </label>
         <label>
           <span>{labels.dateOfBirth}</span>

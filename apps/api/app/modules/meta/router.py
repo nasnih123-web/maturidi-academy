@@ -44,6 +44,9 @@ _PUBLIC_SETTING_KEYS = (
     # "complete your profile" wall before the API rejects the action.
     "profile.require_for_fatwa_question",
     "profile.require_for_hifz_advanced",
+    # شبکه‌های اجتماعی منوی سایت — CRM لینک/فعال/ترتیب را مدیریت
+    # می‌کند و وب فقط شبکه‌های دارای لینکِ فعال را رندر می‌کند.
+    "site.social_links",
 )
 
 _PUBLIC_DEFAULTS: dict[str, object] = {
@@ -67,6 +70,7 @@ _PUBLIC_DEFAULTS: dict[str, object] = {
     "quran.playback": {"autoplay": False, "repeat": "off"},
     "profile.require_for_fatwa_question": False,
     "profile.require_for_hifz_advanced": False,
+    "site.social_links": [],
 }
 
 

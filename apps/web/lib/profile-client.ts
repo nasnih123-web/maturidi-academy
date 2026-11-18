@@ -50,6 +50,8 @@ export async function updateMe(patch: {
   date_of_birth?: string;
   gender?: string;
   country_code?: string;
+  /** E.164 phone; empty string clears the stored number. */
+  phone?: string;
 }): Promise<MeProfile> {
   return authJson<MeProfile>('/api/v1/users/me', {
     method: 'PATCH',
