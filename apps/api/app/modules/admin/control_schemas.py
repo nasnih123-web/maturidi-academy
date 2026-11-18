@@ -301,6 +301,70 @@ class UserOverviewOut(BaseModel):
     notifications: dict[str, Any]
     audit_trail: list[dict[str, Any]]
     generated_at: str
+    # فاز C: ثبت‌نام (IP/دستگاه)، نشست‌ها، حمایت‌ها، حفظ
+    registration: dict[str, Any] | None = None
+    sessions: list[dict[str, Any]] = Field(default_factory=list)
+    donations: dict[str, Any] = Field(default_factory=dict)
+    hifz: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# داشبورد کاربران (فاز C)
+# ---------------------------------------------------------------------------
+
+
+class DashboardDeviceOut(BaseModel):
+    """IP + دستگاه یک رویداد (ثبت‌نام یا آخرین فعالیت)."""
+
+    ip: str | None = None
+    user_agent: str | None = None
+    browser: str | None = None
+    os: str | None = None
+    device: str = "unknown"
+    summary: str | None = None
+    at: str | None = None
+
+
+class DashboardCountsOut(BaseModel):
+    fatwa_questions: int = 0
+    hifz_sessions: int = 0
+    hifz_tests: int = 0
+    donations: int = 0
+
+
+class DashboardUserOut(BaseModel):
+    id: str
+    full_name: str
+    email: str | None = None
+    phone: str | None = None
+    locale: str = "fa"
+    is_active: bool = True
+    is_verified: bool = False
+    registration_status: str  # pending | completed
+    profile_complete: bool = False
+    missing_profile_fields: list[str] = Field(default_factory=list)
+    country_code: str | None = None
+    country_source: str | None = None  # profile | phone
+    country_name: str | None = None
+    created_at: str | None = None
+    registration: DashboardDeviceOut | None = None
+    last_activity: DashboardDeviceOut | None = None
+    counts: DashboardCountsOut = Field(default_factory=DashboardCountsOut)
+
+
+class UsersDashboardPageOut(BaseModel):
+    items: list[DashboardUserOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class UsersStatsOut(BaseModel):
+    total_users: int
+    pending: int
+    completed: int
+    verified: int
+    profile_complete: int
 
 
 # ---------------------------------------------------------------------------
