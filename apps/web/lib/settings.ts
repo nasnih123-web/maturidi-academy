@@ -195,6 +195,18 @@ export interface SiteConfig {
   quran: QuranSettings;
   munajat: MunajatSettings;
   adhan: AdhanSettings;
+  /**
+   * Phase B profile gating (CRM flags `profile.require_for_*`): when a
+   * flag is on, signed-in users with an incomplete profile get the
+   * "complete your profile" wall in that section (the API enforces the
+   * same rule with 403 profile_incomplete).
+   */
+  profileGating: ProfileGatingSettings;
+}
+
+export interface ProfileGatingSettings {
+  fatwaQuestion: boolean;
+  hifzAdvanced: boolean;
 }
 
 export const DEFAULT_PARTICLES: ParticlesSettings = {
@@ -219,6 +231,7 @@ export function defaultSiteConfig(): SiteConfig {
     quran: { ...DEFAULT_QURAN },
     munajat: { ...DEFAULT_MUNAJAT },
     adhan: { ...DEFAULT_ADHAN },
+    profileGating: { fatwaQuestion: false, hifzAdvanced: false },
   };
 }
 
@@ -547,6 +560,10 @@ export function parseSiteConfig(body: unknown): SiteConfig {
   cfg.quran = parseQuranSettings(get);
   cfg.munajat = parseMunajatSettings(get);
   cfg.adhan = parseAdhanSettings(get);
+  cfg.profileGating = {
+    fatwaQuestion: bool(get('profile.require_for_fatwa_question'), false),
+    hifzAdvanced: bool(get('profile.require_for_hifz_advanced'), false),
+  };
 
   return cfg;
 }

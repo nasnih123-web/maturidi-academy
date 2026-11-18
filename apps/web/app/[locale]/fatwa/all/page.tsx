@@ -16,6 +16,7 @@ import {
 } from '@/lib/fatwa-topics';
 import type { FatwaQuestionLabels } from '@/components/social/labels';
 import { QuestionView } from '@/components/fatwa/QuestionViewLazy';
+import { getSiteConfig } from '@/lib/settings';
 
 export async function generateMetadata({
   params,
@@ -64,7 +65,10 @@ export default async function FatwaAllPage({
     loginRequired: t('question.loginRequired'),
     signIn: t('question.signIn'),
     signUp: t('question.signUp'),
+    profileRequired: t('question.profileRequired'),
+    completeProfile: t('question.completeProfile'),
   };
+  const siteCfg = await getSiteConfig();
   const sp = await searchParams;
   const q = typeof sp.q === 'string' ? sp.q : '';
   const category = typeof sp.category === 'string' ? sp.category : '';
@@ -188,7 +192,12 @@ export default async function FatwaAllPage({
           </section>
 
           <aside className="ftw-sidebar">
-            <QuestionView locale={locale} labels={questionLabels} variant="sidebar" />
+            <QuestionView
+              locale={locale}
+              labels={questionLabels}
+              variant="sidebar"
+              profileRequired={siteCfg.profileGating.fatwaQuestion}
+            />
             <nav aria-label={t('allCategories')}>
             <h2>{t('allCategories')}</h2>
             <ul>

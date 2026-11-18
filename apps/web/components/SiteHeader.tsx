@@ -28,6 +28,7 @@ export interface HeaderLabels {
   signIn: string;
   signUp: string;
   logout: string;
+  profile: string;
   langAria: string;
   langNames: Record<string, string>;
   menuAria: string;
@@ -206,9 +207,14 @@ export function SiteHeader({
           <div className="header-actions">
             <div className="header-auth">
               {loggedIn ? (
-                <button type="button" className="auth-btn auth-btn-ghost" onClick={() => void logout()}>
-                  {labels.logout}
-                </button>
+                <>
+                  <Link className="auth-btn auth-btn-ghost" href={`/${locale}/profile`}>
+                    {labels.profile}
+                  </Link>
+                  <button type="button" className="auth-btn auth-btn-ghost" onClick={() => void logout()}>
+                    {labels.logout}
+                  </button>
+                </>
               ) : (
                 <>
                   <Link className="auth-btn auth-btn-ghost" href={`/${locale}/login`}>
@@ -290,9 +296,14 @@ export function SiteHeader({
           </nav>
           <div className="nav-drawer-auth">
             {loggedIn ? (
-              <button type="button" className="auth-btn auth-btn-ghost" onClick={() => void logout()}>
-                {labels.logout}
-              </button>
+              <>
+                <Link className="auth-btn auth-btn-ghost" href={`/${locale}/profile`}>
+                  {labels.profile}
+                </Link>
+                <button type="button" className="auth-btn auth-btn-ghost" onClick={() => void logout()}>
+                  {labels.logout}
+                </button>
+              </>
             ) : (
               <>
                 <Link className="auth-btn auth-btn-ghost" href={`/${locale}/login`}>
