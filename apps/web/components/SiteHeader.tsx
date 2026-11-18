@@ -13,6 +13,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { NavEntryFinal } from "@/lib/section-data";
 import { useAuth } from "@/lib/auth-context";
+import type { SocialLinkSetting } from "@/lib/settings";
+import { SocialIcon } from "./SocialIcons";
 
 export interface NavEntry {
   href: string;
@@ -38,6 +40,8 @@ export interface HeaderLabels {
   submenuAria: string;
   /** e.g. "Open submenu for {label}" — {label} is substituted client-side */
   submenuExpandTemplate: string;
+  /** Caption above the drawer's social-icons row («ما را دنبال کنید»). */
+  followUs: string;
 }
 
 const LOCALES = ["fa", "ar", "en"] as const;
@@ -139,10 +143,14 @@ export function SiteHeader({
   locale,
   labels,
   nav,
+  socials = [],
 }: {
   locale: string;
   labels: HeaderLabels;
   nav: NavEntry[];
+  /** CRM-managed social links (site.social_links); only enabled entries
+   * with a URL render, in the drawer's footer row. */
+  socials?: SocialLinkSetting[];
 }) {
   const pathname = usePathname();
   const { loggedIn, logout } = useAuth();
@@ -328,20 +336,27 @@ export function SiteHeader({
                 ))}
               </ul>
             </nav>
-            <div className="drawer-langs" role="listbox" aria-label={labels.langAria}>
-              {LOCALES.map((loc) => (
-                <Link
-                  key={loc}
-                  href={swapLocaleHref(loc)}
-                  role="option"
-                  aria-selected={loc === locale}
-                  className={loc === locale ? "on" : ""}
-                  onClick={() => setOpen(false)}
-                >
-                  {labels.langNames[loc] ?? loc}
-                </Link>
-              ))}
-            </div>
+            {socials.some((s) => s.enabled && s.url) && (
+              <div className="drawer-socials">
+                <div className="drawer-socials-cap">{labels.followUs}</div>
+                <div className="drawer-socials-row">
+                  {socials
+                    .filter((s) => s.enabled && s.url)
+                    .map((s) => (
+                      <a
+                        key={s.network}
+                        className="drawer-soc"
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={s.network}
+                      >
+                        <SocialIcon network={s.network} />
+                      </a>
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

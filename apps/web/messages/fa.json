@@ -118,7 +118,8 @@
     "searchAria": "جست‌وجوی سراسری",
     "searchPlaceholder": "جستجو",
     "submenuAria": "زیرمنو",
-    "submenuExpand": "باز کردن زیرمنوی {label}"
+    "submenuExpand": "باز کردن زیرمنوی {label}",
+    "followUs": "ما را دنبال کنید"
   },
   "home": {
     "card": {
@@ -996,7 +997,13 @@
     "logout": "خروج",
     "phoneInvalid": "شماره تلفن درست نیست؛ کشور و شماره را بررسی کنید.",
     "emailInvalid": "ایمیل درست نیست.",
-    "nameInvalid": "نام و نام خانوادگی را کامل بنویسید."
+    "nameInvalid": "نام و نام خانوادگی را کامل بنویسید.",
+    "showPassword": "نمایش رمز",
+    "hidePassword": "مخفی‌کردن رمز",
+    "passwordStrength": "قدرت رمز",
+    "strengthWeak": "ضعیف",
+    "strengthMedium": "متوسط",
+    "strengthStrong": "قوی"
   },
   "fatwa": {
     "metaTitle": "پرسش فتوا | آکادمی ماتریدی",

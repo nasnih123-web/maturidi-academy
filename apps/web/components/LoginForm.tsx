@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { EyeIcon } from './SetPasswordForm';
 
 function safeNext(raw: string | null): string {
   if (!raw) return '/';
@@ -26,6 +27,8 @@ export interface LoginFormLabels {
   forgot: string;
   noAccount: string;
   signUp: string;
+  showPassword: string;
+  hidePassword: string;
 }
 
 export default function LoginForm({ labels, locale }: { labels: LoginFormLabels; locale: string }) {
@@ -36,6 +39,7 @@ export default function LoginForm({ labels, locale }: { labels: LoginFormLabels;
   const [password, setPassword] = useState('');
   const [totp, setTotp] = useState('');
   const [showTotp, setShowTotp] = useState(false);
+  const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -78,14 +82,24 @@ export default function LoginForm({ labels, locale }: { labels: LoginFormLabels;
           </label>
           <label>
             <span>{labels.password}</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-              dir="ltr"
-            />
+            <span className="pw-field">
+              <input
+                type={showPw ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+                dir="ltr"
+              />
+              <button
+                type="button"
+                className="pw-eye"
+                aria-label={showPw ? labels.hidePassword : labels.showPassword}
+                onClick={() => setShowPw((v) => !v)}
+              >
+                <EyeIcon off={showPw} />
+              </button>
+            </span>
           </label>
           {showTotp ? (
             <label>

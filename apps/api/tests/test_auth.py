@@ -617,6 +617,43 @@ def test_sms_required_countries_validation():
         _validate_json_setting("auth.sms_required_countries", "IR")
 
 
+def test_social_links_validation():
+    import pytest
+
+    from app.core.platform_settings import _validate_json_setting
+
+    assert _validate_json_setting("site.social_links", []) == []
+    out = _validate_json_setting(
+        "site.social_links",
+        [
+            {"network": "telegram", "url": " https://t.me/academy ", "enabled": True},
+            {"network": "instagram", "url": "", "enabled": False},
+        ],
+    )
+    assert out == [
+        {"network": "telegram", "url": "https://t.me/academy", "enabled": True},
+        {"network": "instagram", "url": "", "enabled": False},
+    ]
+    with pytest.raises(ValueError):
+        _validate_json_setting(
+            "site.social_links", [{"network": "tiktok", "url": "https://x"}]
+        )
+    with pytest.raises(ValueError):
+        _validate_json_setting(
+            "site.social_links",
+            [
+                {"network": "telegram", "url": "https://t.me/a"},
+                {"network": "telegram", "url": "https://t.me/b"},
+            ],
+        )
+    with pytest.raises(ValueError):
+        _validate_json_setting(
+            "site.social_links", [{"network": "telegram", "url": "t.me/no-scheme"}]
+        )
+    with pytest.raises(TypeError):
+        _validate_json_setting("site.social_links", "telegram")
+
+
 async def test_register_verify_email_second_click_iran_phone(tc):
     # برای کشورِ داخل فهرست پیامکی، کلیک دوم هم phone_required می‌ماند (نه 400)
     client, sent = tc["client"], tc["sent"]

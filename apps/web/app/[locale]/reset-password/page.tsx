@@ -34,6 +34,12 @@ export default async function ResetPasswordPage({
           labels={{
             password: t('password'),
             confirmPassword: t('confirmPassword'),
+            showPassword: t('showPassword'),
+            hidePassword: t('hidePassword'),
+            passwordStrength: t('passwordStrength'),
+            strengthWeak: t('strengthWeak'),
+            strengthMedium: t('strengthMedium'),
+            strengthStrong: t('strengthStrong'),
             finish: t('resetTitle'),
             mismatch: t('passwordMismatch'),
             tooShort: t('passwordShort'),

@@ -17,6 +17,10 @@ class MeUpdate(BaseModel):
     date_of_birth: date | None = None
     gender: str | None = Field(default=None, max_length=16)
     country_code: str | None = Field(default=None, min_length=2, max_length=2)
+    # شمارهٔ تلفن از پروفایل قابل ثبت/ویرایش است (قبلاً فقط‌خواندنی بود و
+    # حسابی که از مسیر ایمیل ساخته شده بود هیچ راهی برای ثبت شماره
+    # نداشت). نرمال‌سازی E.164، یکتایی و سازگاری با کشور در لایهٔ سرویس.
+    phone: str | None = Field(default=None, max_length=32)
 
 
 class UserOut(BaseModel):

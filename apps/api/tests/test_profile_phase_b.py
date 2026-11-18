@@ -249,3 +249,54 @@ async def test_hifz_advanced_gate(tc):
     assert r.status_code == 200, r.text
 
     await _set_flag(tc, "profile.require_for_hifz_advanced", False)
+
+
+async def test_profile_phone_set_and_edit(tc):
+    """شمارهٔ تلفن از پروفایل قابل ثبت و ویرایش است (قبلاً فقط‌خواندنی
+    بود)؛ قالب نامعتبر 422 و شمارهٔ کاربر دیگر 409 می‌گیرد."""
+    client = tc["client"]
+    token, me = await _register_and_login(client)
+    assert me.get("phone") is None
+
+    # ثبت اول — با فاصله و خط‌تیره هم نرمال می‌شود.
+    r = await client.patch(
+        f"{BASE}/users/me",
+        json={"phone": "+98 912-000 1122"},
+        headers=_auth(token),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["phone"] == "+989120001122"
+
+    # ویرایش به شمارهٔ دیگر.
+    r = await client.patch(
+        f"{BASE}/users/me",
+        json={"phone": "+49 151 00000000"},
+        headers=_auth(token),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["phone"] == "+4915100000000"
+
+    # قالب نامعتبر (بدون کد کشور).
+    r = await client.patch(
+        f"{BASE}/users/me",
+        json={"phone": "09120001122"},
+        headers=_auth(token),
+    )
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "validation_error"
+
+    # شمارهٔ کاربر دیگر → 409.
+    token2, _ = await _register_and_login(client)
+    r = await client.patch(
+        f"{BASE}/users/me",
+        json={"phone": "+989120001122"},
+        headers=_auth(token2),
+    )
+    assert r.status_code == 200, r.text
+    r = await client.patch(
+        f"{BASE}/users/me",
+        json={"phone": "+989120001122"},
+        headers=_auth(token),
+    )
+    assert r.status_code == 409, r.text
+    assert r.json()["error"]["code"] == "phone_in_use"

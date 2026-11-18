@@ -118,7 +118,8 @@
     "searchAria": "Global search",
     "searchPlaceholder": "Search…",
     "submenuAria": "Submenu",
-    "submenuExpand": "Open submenu for {label}"
+    "submenuExpand": "Open submenu for {label}",
+    "followUs": "Follow us"
   },
   "home": {
     "card": {
@@ -996,7 +997,13 @@
     "logout": "Sign out",
     "phoneInvalid": "The phone number looks wrong; check the country and number.",
     "emailInvalid": "The email address looks wrong.",
-    "nameInvalid": "Please enter your first and last name."
+    "nameInvalid": "Please enter your first and last name.",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "passwordStrength": "Password strength",
+    "strengthWeak": "Weak",
+    "strengthMedium": "Medium",
+    "strengthStrong": "Strong"
   },
   "fatwa": {
     "metaTitle": "Ask Fatwa | Maturidi Academy",

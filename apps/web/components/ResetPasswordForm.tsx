@@ -18,6 +18,12 @@ export interface ResetPasswordLabels {
   mismatch: string;
   tooShort: string;
   failed: string;
+  showPassword: string;
+  hidePassword: string;
+  passwordStrength: string;
+  strengthWeak: string;
+  strengthMedium: string;
+  strengthStrong: string;
   invalid: string;
   done: string;
   goToLogin: string;
@@ -62,6 +68,12 @@ export default function ResetPasswordForm({
         mismatch: labels.mismatch,
         tooShort: labels.tooShort,
         failed: labels.failed,
+        showPassword: labels.showPassword,
+        hidePassword: labels.hidePassword,
+        passwordStrength: labels.passwordStrength,
+        strengthWeak: labels.strengthWeak,
+        strengthMedium: labels.strengthMedium,
+        strengthStrong: labels.strengthStrong,
       }}
       onComplete={async (pw) => {
         await confirmPasswordReset(token, pw);

@@ -45,7 +45,7 @@ interface SettingsResponse {
   version: number;
 }
 
-type FieldKind = "text" | "secret" | "flag" | "localized" | "json" | "smsCountries";
+type FieldKind = "text" | "secret" | "flag" | "localized" | "json" | "smsCountries" | "socialLinks";
 
 interface FieldDef {
   key: string;
@@ -143,6 +143,15 @@ const TABS: TabDef[] = [
     ],
   },
   {
+    // شبکه‌های اجتماعی منوی سایت (site.social_links): لینک و ترتیب و
+    // فعال/غیرفعال هر شبکه؛ وب فقط فعال‌های دارای لینک را نشان می‌دهد.
+    id: "social",
+    titleKey: "settings.sections.social",
+    fields: [
+      { key: "site.social_links", labelKey: "settings.fields.socialLinks", kind: "socialLinks" },
+    ],
+  },
+  {
     // Registration verification policy: listed countries must verify
     // by SMS; everywhere else email is enough. Empty (the default) =
     // no SMS requirement — the state the operator wants while no SMS
@@ -156,6 +165,121 @@ const TABS: TabDef[] = [
 ];
 
 type Values = Record<string, unknown>;
+
+/** شبکه‌های اجتماعی شناخته‌شده — همان مجموعهٔ API (SOCIAL_NETWORKS). */
+const SOCIAL_NETWORKS = [
+  "telegram",
+  "instagram",
+  "whatsapp",
+  "youtube",
+  "aparat",
+  "eitaa",
+  "bale",
+  "x",
+  "facebook",
+] as const;
+
+interface SocialLink {
+  network: string;
+  url: string;
+  enabled: boolean;
+}
+
+/** نرمال‌سازی مقدار site.social_links: ردیف‌های ذخیره‌شده (با ترتیبشان)
+ * + بقیهٔ شبکه‌ها در انتها — تا ویرایشگر همیشه هر ۹ شبکه را نشان دهد. */
+function normalizeSocialLinks(v: unknown): SocialLink[] {
+  const out: SocialLink[] = [];
+  const seen = new Set<string>();
+  if (Array.isArray(v)) {
+    for (const item of v) {
+      if (!item || typeof item !== "object") continue;
+      const o = item as Record<string, unknown>;
+      const network = typeof o.network === "string" ? o.network : "";
+      if (!(SOCIAL_NETWORKS as readonly string[]).includes(network) || seen.has(network)) {
+        continue;
+      }
+      seen.add(network);
+      out.push({
+        network,
+        url: typeof o.url === "string" ? o.url : "",
+        enabled: o.enabled !== false,
+      });
+    }
+  }
+  for (const network of SOCIAL_NETWORKS) {
+    if (!seen.has(network)) out.push({ network, url: "", enabled: true });
+  }
+  return out;
+}
+
+/** ویرایشگر شبکه‌های اجتماعی منوی سایت: لینک + فعال/غیرفعال + ترتیب. */
+function SocialLinksField({
+  value,
+  onChange,
+  t,
+}: {
+  value: SocialLink[];
+  onChange: (next: SocialLink[]) => void;
+  t: (key: string) => string;
+}): React.ReactElement {
+  const update = (i: number, patch: Partial<SocialLink>): void => {
+    onChange(value.map((row, j) => (j === i ? { ...row, ...patch } : row)));
+  };
+  const move = (i: number, dir: -1 | 1): void => {
+    const j = i + dir;
+    if (j < 0 || j >= value.length) return;
+    const next = [...value];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+      {value.map((row, i) => (
+        <div
+          key={row.network}
+          style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+        >
+          <input
+            type="checkbox"
+            checked={row.enabled}
+            onChange={(e) => update(i, { enabled: e.target.checked })}
+            aria-label={t(`settings.fields.network_${row.network}`)}
+          />
+          <span style={{ minWidth: "6.5rem", fontWeight: 600 }}>
+            {t(`settings.fields.network_${row.network}`)}
+          </span>
+          <input
+            className="input"
+            type="url"
+            dir="ltr"
+            style={{ flex: 1 }}
+            value={row.url}
+            placeholder={t("settings.fields.socialUrlPlaceholder")}
+            onChange={(e) => update(i, { url: e.target.value })}
+          />
+          <button
+            type="button"
+            className="btn"
+            onClick={() => move(i, -1)}
+            disabled={i === 0}
+            aria-label={t("settings.fields.socialMoveUp")}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => move(i, 1)}
+            disabled={i === value.length - 1}
+            aria-label={t("settings.fields.socialMoveDown")}
+          >
+            ↓
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Searchable checklist of all countries for auth.sms_required_countries. */
 function SmsCountriesField({
@@ -248,6 +372,8 @@ function seedValues(data: SettingsResponse): Values {
           v == null ? "" : typeof v === "string" ? v : JSON.stringify(v, null, 2);
       } else if (f.kind === "smsCountries") {
         next[f.key] = Array.isArray(v) ? v : [];
+      } else if (f.kind === "socialLinks") {
+        next[f.key] = normalizeSocialLinks(v);
       } else {
         next[f.key] = v ?? null;
       }
@@ -287,6 +413,10 @@ function buildPayload(tab: TabDef, values: Values): Record<string, unknown> {
       case "smsCountries":
         // Always sent — the empty list is a real state (email for all).
         payload[f.key] = Array.isArray(v) ? v : [];
+        break;
+      case "socialLinks":
+        // Always sent — order/enabled/url are all meaningful state.
+        payload[f.key] = normalizeSocialLinks(v);
         break;
       default: // text
         if (v !== undefined && v !== null) payload[f.key] = v;
@@ -361,6 +491,16 @@ export default function Settings(): React.ReactElement {
 
   function renderField(f: FieldDef): React.ReactElement {
     const v = values[f.key];
+    if (f.kind === "socialLinks") {
+      const rows = normalizeSocialLinks(v);
+      return (
+        <div className="field" key={f.key}>
+          <label>{t(f.labelKey)}</label>
+          <SocialLinksField value={rows} onChange={(next) => setValue(f.key, next)} t={t} />
+          <span className="hint">{t("settings.fields.socialLinksHint")}</span>
+        </div>
+      );
+    }
     if (f.kind === "smsCountries") {
       const arr = Array.isArray(v) ? (v as string[]) : [];
       return (

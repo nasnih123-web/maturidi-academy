@@ -93,6 +93,7 @@ function headerLabels(
     closeAria: tHeader("closeAria"),
     submenuAria: tHeader("submenuAria"),
     submenuExpandTemplate: tHeader.raw("submenuExpand"),
+    followUs: tHeader("followUs"),
   };
 }
 
@@ -226,7 +227,7 @@ export default async function LocaleLayout({
                 <AdhanCountdown locale={locale} settings={siteConfig.adhan} labels={adhanStripLabels} />
                 <OfflineIndicator labels={offlineLabels} />
               </div>
-              <SiteHeader locale={locale} labels={headerLabels(tHeader, tRoot, t, tAuth, tProfile)} nav={nav} />
+              <SiteHeader locale={locale} labels={headerLabels(tHeader, tRoot, t, tAuth, tProfile)} nav={nav} socials={siteConfig.socials} />
               <AudioPlayerProvider labels={miniPlayerLabels}>
                 <main id="main-content" aria-label={t("mainLandmark")}>
                   {children}

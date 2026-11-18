@@ -118,7 +118,8 @@
     "searchAria": "بحث شامل",
     "searchPlaceholder": "بحث…",
     "submenuAria": "القائمة الفرعية",
-    "submenuExpand": "فتح القائمة الفرعية لـ {label}"
+    "submenuExpand": "فتح القائمة الفرعية لـ {label}",
+    "followUs": "تابعنا"
   },
   "home": {
     "card": {
@@ -996,7 +997,13 @@
     "logout": "تسجيل الخروج",
     "phoneInvalid": "رقم الهاتف غير صحيح؛ تحقق من الدولة والرقم.",
     "emailInvalid": "البريد الإلكتروني غير صحيح.",
-    "nameInvalid": "اكتب الاسم واسم العائلة كاملين."
+    "nameInvalid": "اكتب الاسم واسم العائلة كاملين.",
+    "showPassword": "إظهار كلمة المرور",
+    "hidePassword": "إخفاء كلمة المرور",
+    "passwordStrength": "قوة كلمة المرور",
+    "strengthWeak": "ضعيفة",
+    "strengthMedium": "متوسطة",
+    "strengthStrong": "قوية"
   },
   "fatwa": {
     "metaTitle": "اسأل الفتوى | أكاديمية الماتريدي",
