@@ -27,6 +27,15 @@ class UserOut(BaseModel):
     # نه stub permissive. اعتبارسنجی مستقیم از ORM (بدون سرویس) خالی می‌ماند.
     roles: list[str] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
+    # --- فاز B: تکمیل پروفایل + گیتینگ بخش‌ها. avatar_media_id از خود
+    # ORM می‌آید؛ سه فیلد بعدی را لایهٔ سرویس پر می‌کند (محاسبه از روی
+    # فیلدهای موجود کاربر + پرچم‌های platform_settings).
+    avatar_media_id: uuid.UUID | None = None
+    profile_complete: bool = False
+    missing_profile_fields: list[str] = Field(default_factory=list)
+    # بخش‌هایی که همین حالا برای این کاربر نیازمند پروفایل کامل‌اند
+    # (زیرمجموعه‌ای از {"fatwa_question", "hifz_advanced"}).
+    profile_required_sections: list[str] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

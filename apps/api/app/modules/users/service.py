@@ -13,11 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import log_audit
 from app.core.errors import APIError
 from app.core.events import emit_event
+from app.core.platform_settings import get_typed_setting
 from app.core.security import hash_password
 from app.models.models import (
     Donation,
     FatwaMessage,
     FatwaSession,
+    MediaAsset,
     Notification,
     NotificationPreference,
     Permission,
@@ -76,12 +78,82 @@ async def roles_permissions_for(
     return result
 
 
+# ---------------------------------------------------------------------------
+# فاز B: تکمیل پروفایل و گیتینگ بخش‌ها
+#
+# «پروفایل کامل» فقط روی ستون‌های موجودِ users تعریف می‌شود: نام کامل و
+# عکس پروفایل (avatar_media_id). ستون‌های سن/جنسیت/کشور روی users وجود
+# ندارند و ساخت migration برایشان تصمیم جداگانهٔ مالک است — تا آن زمان
+# این دو فیلد تنها مبنای completeness است و با اضافه‌شدن ستون‌های تازه
+# فقط همین فهرست باید گسترش یابد.
+# ---------------------------------------------------------------------------
+
+PROFILE_COMPLETION_FIELDS: tuple[str, ...] = ("full_name", "avatar_media_id")
+
+# نگاشت بخش گیت‌شونده → کلید تنظیمات پلتفرم (پرچم json در CRM).
+PROFILE_SECTION_SETTINGS: dict[str, str] = {
+    "fatwa_question": "profile.require_for_fatwa_question",
+    "hifz_advanced": "profile.require_for_hifz_advanced",
+}
+
+
+def missing_profile_fields(user: User) -> list[str]:
+    """فیلدهای ناقص پروفایل — ترتیب ثابت PROFILE_COMPLETION_FIELDS."""
+    missing: list[str] = []
+    if not (user.full_name or "").strip():
+        missing.append("full_name")
+    if user.avatar_media_id is None:
+        missing.append("avatar_media_id")
+    return missing
+
+
+def profile_is_complete(user: User) -> bool:
+    return not missing_profile_fields(user)
+
+
+async def profile_required_sections(db: AsyncSession) -> list[str]:
+    """بخش‌هایی که ادمین در CRM برایشان تکمیل پروفایل را الزامی کرده."""
+    required: list[str] = []
+    for section, key in PROFILE_SECTION_SETTINGS.items():
+        if await get_typed_setting(db, key, False) is True:
+            required.append(section)
+    return required
+
+
+async def ensure_profile_for_section(
+    db: AsyncSession, user: User, section: str
+) -> None:
+    """Guard سمت API برای اکشن‌های بخش‌های گیت‌شونده.
+
+    اگر بخش در CRM الزامی نشده یا پروفایل کاربر کامل است، بی‌صدا رد
+    می‌شود؛ وگرنه 403 با کد پایدار profile_incomplete تا کلاینت کاربر
+    را به صفحهٔ پروفایل با next برگرداند.
+    """
+    key = PROFILE_SECTION_SETTINGS[section]
+    if await get_typed_setting(db, key, False) is not True:
+        return
+    missing = missing_profile_fields(user)
+    if missing:
+        raise APIError(
+            403,
+            "profile_incomplete",
+            "برای استفاده از این بخش، اول پروفایل‌تان را کامل کنید: "
+            + "، ".join(missing),
+        )
+
+
 async def build_user_out(db: AsyncSession, user: User) -> UserOut:
     """UserOut با نقش‌ها/مجوزهای واقعی (فاز ۲) — مبنای گیتینگ UI در CRM."""
     mapping = await roles_permissions_for(db, [user.id])
     roles, perms = mapping[user.id]
     return UserOut.model_validate(user).model_copy(
-        update={"roles": roles, "permissions": perms}
+        update={
+            "roles": roles,
+            "permissions": perms,
+            "profile_complete": profile_is_complete(user),
+            "missing_profile_fields": missing_profile_fields(user),
+            "profile_required_sections": await profile_required_sections(db),
+        }
     )
 
 
@@ -93,6 +165,8 @@ async def build_user_outs(db: AsyncSession, users: list[User]) -> list[UserOut]:
             update={
                 "roles": mapping[u.id][0],
                 "permissions": mapping[u.id][1],
+                "profile_complete": profile_is_complete(u),
+                "missing_profile_fields": missing_profile_fields(u),
             }
         )
         for u in users
@@ -197,6 +271,15 @@ async def update_me(
     if data.locale is not None:
         user.locale = data.locale
     if data.avatar_media_id is not None:
+        # FK به media_assets: شناسهٔ ناموجود روی Postgres خطای commit
+        # می‌دهد؛ همین‌جا با 422 صادقانه رد شود.
+        exists = (
+            await db.execute(
+                select(MediaAsset.id).where(MediaAsset.id == data.avatar_media_id)
+            )
+        ).scalar_one_or_none()
+        if exists is None:
+            raise APIError(422, "validation_error", "رسانهٔ عکس پروفایل یافت نشد")
         user.avatar_media_id = data.avatar_media_id
     new = {"full_name": user.full_name, "locale": user.locale}
     await emit_event(

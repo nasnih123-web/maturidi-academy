@@ -64,6 +64,11 @@ SETTING_DEFS: dict[str, dict] = {
     "donation.paypal_enabled": {"type": "json", "sensitive": False, "label": "فعال‌بودن حمایت خارجی (PayPal)"},
     "donation.paypal_account": {"type": "string", "sensitive": False, "label": "حساب PayPal حمایت (ایمیل/شناسه)"},
     "donation.paypal_instructions": {"type": "localized", "sensitive": False, "label": "راهنمای حمایت خارجی (PayPal)"},
+    # --- فاز B احراز هویت: گیتینگ تکمیل پروفایل — بخشی که پرچمش روشن
+    # است، برای کاربر واردشده با پروفایل ناقص قفل می‌شود (وب دیوار
+    # تکمیل پروفایل نشان می‌دهد و API هم همان بخش را guard می‌کند).
+    "profile.require_for_fatwa_question": {"type": "json", "sensitive": False, "label": "الزام تکمیل پروفایل برای ثبت پرسش فتوا"},
+    "profile.require_for_hifz_advanced": {"type": "json", "sensitive": False, "label": "الزام تکمیل پروفایل برای امکانات پیشرفتهٔ حفاظ (آزمون/تسمّع)"},
     "map.key": {"type": "secret", "sensitive": True, "label": "کلید نقشه"},
     # --- maps phase (overnight/w10): CRM control of the public map popup.
     # Shape: {"show_image": bool, "show_description": bool,
@@ -181,6 +186,8 @@ EMPTY_MEANS_UNSET_KEYS = frozenset({
     "donation.card_enabled",
     "donation.crypto_enabled",
     "donation.paypal_enabled",
+    "profile.require_for_fatwa_question",
+    "profile.require_for_hifz_advanced",
     # پیکربندی روش‌های دستی حمایت: خالی = هنوز تنظیم نشده
     "donation.crypto_wallets",
     "donation.card_instructions",
@@ -758,6 +765,8 @@ def _validate_json_setting(key: str, value: Any) -> Any:
     if key == "quran.active_languages":
         return _validate_active_languages(value)
     if key in ("quran.show_translation", "quran.show_tafsir", "munajat.enabled"):
+        return _validate_flag(key, value)
+    if key in ("profile.require_for_fatwa_question", "profile.require_for_hifz_advanced"):
         return _validate_flag(key, value)
     if key == "quran.highlight_mode":
         return _validate_highlight_mode(value)

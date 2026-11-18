@@ -40,6 +40,7 @@ from app.core.realtime import (
 from app.core.storage import read_capped_upload
 from app.models.models import User
 from app.modules.auth.dependencies import get_current_user, require_permission
+from app.modules.users import service as users_service
 
 from . import (
     hifz_listen_sync,
@@ -488,6 +489,9 @@ async def create_test(
     db: AsyncSession = Depends(get_db),
 ):
     """ساخت آزمون موقت (Temporary Session) با سؤال‌های فلش‌کارت."""
+    # فاز B: آزمون + تسمّع «امکانات پیشرفتهٔ حفاظ»‌اند؛ اگر CRM تکمیل
+    # پروفایل را برایشان الزامی کرده باشد، پروفایل ناقص 403 می‌گیرد.
+    await users_service.ensure_profile_for_section(db, user, "hifz_advanced")
     return HifzTestOut(
         **await hifz_testing.create_test(
             db,
@@ -821,6 +825,7 @@ async def create_tasmi_session(
     db: AsyncSession = Depends(get_db),
 ):
     """نشست روش تمرین تسمی — خودارزیابی کاربر، نه ASR."""
+    await users_service.ensure_profile_for_section(db, user, "hifz_advanced")
     return HifzTasmiOut(
         **await hifz_plan_service.create_tasmi_session(
             db,
