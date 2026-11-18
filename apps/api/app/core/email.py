@@ -75,6 +75,8 @@ async def send_email(to: str, subject: str, body_text: str, body_html: str | Non
         logger.info(
             "[DEV-EMAIL] to=%s subject=%s\n%s", to, subject, redact_secrets(body_text)
         )
+        if body_html:
+            logger.info("[DEV-EMAIL-HTML] to=%s\n%s", to, redact_secrets(body_html))
         return True
     msg = StdEmailMessage()
     msg["From"] = settings.smtp_from
