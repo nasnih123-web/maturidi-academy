@@ -100,7 +100,7 @@ _VERIFY_COPY: dict[str, _Copy] = {
             "لطفاً ایمیل‌تان را تأیید کنید."
         ),
         cta="تأیید ایمیل",
-        expiry="این لینک ۲۴ ساعت اعتبار دارد.",
+        expiry="این لینک یک ساعت اعتبار دارد.",
         fallback="اگر دکمه کار نکرد، این لینک را کپی کنید و در مرورگر باز کنید:",
         ignore="اگر این درخواست را شما نداده‌اید، این ایمیل را نادیده بگیرید.",
     ),
@@ -115,7 +115,7 @@ _VERIFY_COPY: dict[str, _Copy] = {
             "بريدك الإلكتروني بالضغط على الزر أدناه."
         ),
         cta="تأكيد البريد الإلكتروني",
-        expiry="هذا الرابط صالح لمدة 24 ساعة.",
+        expiry="هذا الرابط صالح لمدة ساعة واحدة.",
         fallback="إذا لم يعمل الزر، انسخ هذا الرابط وافتحه في متصفحك:",
         ignore="إذا لم تطلب هذا، يمكنك تجاهل هذه الرسالة بأمان.",
     ),
@@ -130,7 +130,7 @@ _VERIFY_COPY: dict[str, _Copy] = {
             "it, please verify your email address by clicking the button below."
         ),
         cta="Verify email",
-        expiry="This link is valid for 24 hours.",
+        expiry="This link is valid for 1 hour.",
         fallback="If the button doesn't work, copy this link and open it in your browser:",
         ignore="If you didn't request this, you can safely ignore this email.",
     ),
@@ -330,7 +330,7 @@ def render_verification_email(
     logo_url: str | None = None,
     name: str | None = None,
 ) -> RenderedEmail:
-    """ایمیل تأیید ایمیل — لینک ۲۴ ساعته (EMAIL_VERIFY_EXPIRE_HOURS)."""
+    """ایمیل تأیید ایمیل — لینک یک‌ساعته (EMAIL_VERIFY_EXPIRE_HOURS)."""
     copy = _VERIFY_COPY.get(locale) or _VERIFY_COPY["en"]
     return _render(
         copy,

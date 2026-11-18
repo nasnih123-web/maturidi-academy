@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import email as email_mod
 from app.core import sms as sms_mod
 from app.core.audit import log_audit
+from app.core.countries import country_iso_from_phone
 from app.core.database import ensure_aware
 from app.core.errors import APIError
 from app.core.events import emit_event
@@ -28,6 +29,7 @@ from app.core.mail_templates import (
     render_verification_email,
     resolve_email_locale,
 )
+from app.core.platform_settings import get_typed_setting
 from app.core.rate_limit import get_rate_limiter
 from app.core.secrets import decrypt_value, encrypt_value
 from app.core.security import (
@@ -70,7 +72,7 @@ from app.modules.content.legal import LEGAL_TEXT_VERSION
 logger = logging.getLogger("maturidi.auth")
 
 REFRESH_EXPIRE_DAYS = 30
-EMAIL_VERIFY_EXPIRE_HOURS = 24
+EMAIL_VERIFY_EXPIRE_HOURS = 1
 PHONE_CODE_EXPIRE_MINUTES = 5
 SETUP_TOKEN_EXPIRE_MINUTES = 60
 REGISTRATION_MARKER_EXPIRE_DAYS = 7
@@ -179,9 +181,20 @@ def _normalize_phone_digits(phone: str | None) -> str:
     return digits.removeprefix("00")
 
 
-def _is_iran_phone(phone: str | None) -> bool:
-    """قاعدهٔ کشوری فاز A: برای شمارهٔ ایران (+98) تأیید پیامکی اجباری است."""
-    return _normalize_phone_digits(phone).startswith("98")
+async def _sms_required_for_phone(db: AsyncSession, phone: str | None) -> bool:
+    """قاعدهٔ تأیید پیامکی — قابل‌تنظیم از CRM (تنظیم auth.sms_required_countries).
+
+    در فاز A این قاعده سخت‌کد بود (هر شمارهٔ ایران = پیامک اجباری)؛ حالا
+    فهرست کشورها دست مدیر است: فقط اگر کشورِ شماره در فهرست باشد تأیید
+    پیامکی هم لازم است. پیش‌فرضِ فهرست خالی است — یعنی تا وقتی مدیر
+    کشوری را اضافه نکرده، ایمیل برای همه کافی است (پنل پیامک هنوز وصل
+    نیست و کاربر ایرانی هم با ایمیل احراز می‌شود).
+    """
+    iso = country_iso_from_phone(phone)
+    if iso is None:
+        return False
+    required = await get_typed_setting(db, "auth.sms_required_countries", [])
+    return isinstance(required, list) and iso in required
 
 
 async def _pending_setup_row(
@@ -769,7 +782,7 @@ async def _registration_status_after_verify(
     if await _has_sessions(db, user.id):
         await db.commit()
         return ("already_active", None, None)
-    if _is_iran_phone(user.phone):
+    if await _sms_required_for_phone(db, user.phone):
         await db.commit()
         return ("phone_required", None, _mask_phone(user.phone))
     setup_token = await _issue_setup_token(db, user)
@@ -849,7 +862,7 @@ async def verify_email_registration(
     """تأیید ایمیل در جریان ثبت‌نام وب: (وضعیت، توکن ست‌کردن رمز، راهنمای شماره).
 
     already_active: حساب قبلاً نشست دارد — فقط تأیید ثبت می‌شود.
-    phone_required: شماره ایران است — تأیید پیامکی هم لازم است.
+    phone_required: کشور شماره در فهرست «تأیید پیامکی اجباری» CRM است — تأیید پیامکی هم لازم است.
     verified: توکن ست‌کردن رمز صادر شد.
 
     کلیک تکراری روی لینکِ مصرف‌شده (رفرش/ریماونت صفحه، یا کلیک روی پیام

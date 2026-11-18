@@ -390,3 +390,87 @@ async def test_overview_phase_c_sections(tc):
 
     # audit trail حالا ip را هم دارد
     assert all("ip" in entry for entry in data["audit_trail"])
+
+
+MANAGE_PERMS = ("users.view360", "users.manage")
+
+
+async def test_admin_suspend_and_activate(tc):
+    client = tc["client"]
+    admin = await _make_user(tc, MANAGE_PERMS)
+    email = f"susp-{_uid()}@example.com"
+    target = await _make_user(tc, (), email=email)
+    tid = target["user_id"]
+
+    # ورود سالم است
+    r = await client.post(
+        f"{BASE}/auth/login", json={"identifier": email, "password": "TestPass123"}
+    )
+    assert r.status_code == 200, r.text
+
+    # تعلیق
+    r = await client.post(f"{BASE}/admin/users/{tid}/suspend", headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["is_active"] is False
+
+    # توکن قبلی بی‌اعتبار و ورود تازه بسته است
+    r = await client.get(f"{BASE}/users/me", headers=target)
+    assert r.status_code in (401, 403)
+    r = await client.post(
+        f"{BASE}/auth/login", json={"identifier": email, "password": "TestPass123"}
+    )
+    assert r.status_code in (401, 403)
+
+    # داشبورد وضعیت معلق را نشان می‌دهد
+    r = await client.get(
+        f"{BASE}/admin/users/dashboard", params={"q": email}, headers=admin
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["items"][0]["is_active"] is False
+
+    # فعال‌سازی دوباره → ورود ممکن می‌شود
+    r = await client.post(f"{BASE}/admin/users/{tid}/activate", headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["is_active"] is True
+    r = await client.post(
+        f"{BASE}/auth/login", json={"identifier": email, "password": "TestPass123"}
+    )
+    assert r.status_code == 200, r.text
+
+
+async def test_admin_manage_requires_permission_and_not_self(tc):
+    client = tc["client"]
+    viewer = await _make_user(tc, PERMS)  # فقط view360 — بدون manage
+    target = await _make_user(tc, ())
+    r = await client.post(
+        f"{BASE}/admin/users/{target['user_id']}/suspend", headers=viewer
+    )
+    assert r.status_code == 403, r.text
+
+    admin = await _make_user(tc, MANAGE_PERMS)
+    r = await client.post(
+        f"{BASE}/admin/users/{admin['user_id']}/suspend", headers=admin
+    )
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "self_action"
+
+
+async def test_admin_delete_user(tc):
+    client = tc["client"]
+    admin = await _make_user(tc, MANAGE_PERMS)
+
+    # کاربر بی‌فعالیت: حذف کامل
+    target = await _make_user(tc, ())
+    tid = target["user_id"]
+    r = await client.delete(f"{BASE}/admin/users/{tid}", headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["deleted"] is True
+    r = await client.get(f"{BASE}/admin/users/{tid}/overview", headers=admin)
+    assert r.status_code == 404, r.text
+
+    # کاربر با حمایت مالی: حذف 409 می‌گیرد — مدیر باید تعلیق کند
+    busy = await _make_user(tc, ())
+    await _seed_activity(tc, busy["user_id"], donations=((5000, "succeeded"),))
+    r = await client.delete(f"{BASE}/admin/users/{busy['user_id']}", headers=admin)
+    assert r.status_code == 409, r.text
+    assert r.json()["error"]["code"] == "user_has_related_data"

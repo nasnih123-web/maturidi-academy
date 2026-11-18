@@ -106,7 +106,7 @@ function StatusBadges({ t, row }: { t: TFn; row: DashboardUserRow }): React.Reac
       ) : (
         <span className="badge tone-muted">{t("admin14.fProfileIncomplete")}</span>
       )}
-      {!row.is_active && <span className="badge tone-danger">inactive</span>}
+      {!row.is_active && <span className="badge tone-danger">{t("admin14.badgeSuspended")}</span>}
     </div>
   );
 }
@@ -144,12 +144,14 @@ export default function User360({ initialUserId = null }: { initialUserId?: stri
   const mut = useUserAdminMutation();
   const [rolesDraft, setRolesDraft] = React.useState("");
   const [confirmRevoke, setConfirmRevoke] = React.useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
 
   React.useEffect(() => {
     if (profile.data) setRolesDraft(profile.data.roles.join(", "));
   }, [profile.data]);
 
   const canManage = hasPermission("users.view360");
+  const canManageUsers = hasPermission("users.manage");
   const totalPages = Math.max(1, Math.ceil((dash.data?.total ?? 0) / PAGE_SIZE));
 
   const toggleSort = (key: string): void => {
@@ -189,6 +191,9 @@ export default function User360({ initialUserId = null }: { initialUserId?: stri
               <div className="row">
                 <h2 style={{ margin: 0 }}>{profile.data.display_name}</h2>
                 <span className="badge tone-info">{profile.data.status}</span>
+                {!profile.data.is_active && (
+                  <span className="badge tone-danger">{t("admin14.badgeSuspended")}</span>
+                )}
                 {profile.data.registration_status === "pending" ? (
                   <span className="badge tone-warn">{t("admin14.badgePending")}</span>
                 ) : (
@@ -480,6 +485,60 @@ export default function User360({ initialUserId = null }: { initialUserId?: stri
                 </div>
                 {mut.revokeSessions.isSuccess && <p className="ok-text">{t("admin14.uRevokeDone")}</p>}
                 {mut.revokeSessions.isError && <p className="error-text">{errText(mut.revokeSessions.error)}</p>}
+              </section>
+            )}
+
+            {canManageUsers && (
+              <section className="panel">
+                <h3>{t("admin14.uManage")}</h3>
+                <div className="row" style={{ flexWrap: "wrap" }}>
+                  {profile.data.is_active ? (
+                    <button
+                      type="button"
+                      className="btn danger"
+                      disabled={mut.suspend.isPending}
+                      onClick={() => mut.suspend.mutate(userId)}
+                    >
+                      {t("admin14.uSuspend")}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn primary"
+                      disabled={mut.activate.isPending}
+                      onClick={() => mut.activate.mutate(userId)}
+                    >
+                      {t("admin14.uActivate")}
+                    </button>
+                  )}
+                  {!confirmDelete ? (
+                    <button type="button" className="btn danger" onClick={() => setConfirmDelete(true)}>
+                      {t("admin14.uDelete")}
+                    </button>
+                  ) : (
+                    <>
+                      <span>{t("admin14.uDeleteConfirm")}</span>
+                      <button
+                        type="button"
+                        className="btn danger"
+                        disabled={mut.remove.isPending}
+                        onClick={() =>
+                          mut.remove.mutate(userId, { onSuccess: () => setUserId(null) })
+                        }
+                      >
+                        {t("admin14.uDelete")}
+                      </button>
+                      <button type="button" className="btn" onClick={() => setConfirmDelete(false)}>
+                        {t("common.cancel")}
+                      </button>
+                    </>
+                  )}
+                </div>
+                {mut.suspend.isSuccess && <p className="ok-text">{t("admin14.uSuspendDone")}</p>}
+                {mut.suspend.isError && <p className="error-text">{errText(mut.suspend.error)}</p>}
+                {mut.activate.isSuccess && <p className="ok-text">{t("admin14.uActivateDone")}</p>}
+                {mut.activate.isError && <p className="error-text">{errText(mut.activate.error)}</p>}
+                {mut.remove.isError && <p className="error-text">{errText(mut.remove.error)}</p>}
               </section>
             )}
           </>

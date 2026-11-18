@@ -22,6 +22,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.countries import COUNTRY_CODES
 from app.core.secrets import decrypt_value, encrypt_value
 from app.models.models import PlatformSetting
 
@@ -69,6 +70,10 @@ SETTING_DEFS: dict[str, dict] = {
     # تکمیل پروفایل نشان می‌دهد و API هم همان بخش را guard می‌کند).
     "profile.require_for_fatwa_question": {"type": "json", "sensitive": False, "label": "الزام تکمیل پروفایل برای ثبت پرسش فتوا"},
     "profile.require_for_hifz_advanced": {"type": "json", "sensitive": False, "label": "الزام تکمیل پروفایل برای امکانات پیشرفتهٔ حفاظ (آزمون/تسمّع)"},
+    # --- احراز هویت: فهرست کشورهای ISO که تأیید پیامکی برای ثبت‌نامشان
+    # اجباری است — پیش‌فرض خالی (ایمیل برای همه کافی است)؛ مدیر از CRM
+    # انتخاب می‌کند، مثلاً وقتی پنل پیامک وصل شد ایران را اضافه می‌کند.
+    "auth.sms_required_countries": {"type": "json", "sensitive": False, "label": "کشورهای با تأیید پیامکی اجباری (ثبت‌نام)"},
     "map.key": {"type": "secret", "sensitive": True, "label": "کلید نقشه"},
     # --- maps phase (overnight/w10): CRM control of the public map popup.
     # Shape: {"show_image": bool, "show_description": bool,
@@ -707,6 +712,24 @@ def _validate_retention_days(key: str, value: Any) -> int | None:
     return value
 
 
+def _validate_sms_required_countries(value: Any) -> list:
+    """فهرست کدهای ISO کشورهایی که تأیید پیامکی برایشان اجباری است.
+
+    خروجی canonical: یکتا، حروف بزرگ، مرتب — تا مقایسهٔ سمت ثبت‌نام
+    (عضویت ساده در فهرست) کافی باشد.
+    """
+    if isinstance(value, list):
+        out: set[str] = set()
+        for item in value:
+            if not isinstance(item, str) or item.upper() not in COUNTRY_CODES:
+                raise ValueError(
+                    f"auth.sms_required_countries: invalid country code {item!r}"
+                )
+            out.add(item.upper())
+        return sorted(out)
+    raise ValueError("auth.sms_required_countries must be a list of ISO country codes")
+
+
 def _validate_json_setting(key: str, value: Any) -> Any:
     """اعتبارسنج اختصاصی هر کلید json — خروجی canonical."""
     if key == "particles":
@@ -768,6 +791,8 @@ def _validate_json_setting(key: str, value: Any) -> Any:
         return _validate_flag(key, value)
     if key in ("profile.require_for_fatwa_question", "profile.require_for_hifz_advanced"):
         return _validate_flag(key, value)
+    if key == "auth.sms_required_countries":
+        return _validate_sms_required_countries(value)
     if key == "quran.highlight_mode":
         return _validate_highlight_mode(value)
     if key == "quran.font_size":
