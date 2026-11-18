@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import delete, select, update
 from sqlalchemy.engine import CursorResult
@@ -15,7 +15,12 @@ from app.core.errors import APIError
 from app.core.rate_limit import get_client_ip, rate_limit, trusted_proxy_set
 from app.models.models import User
 from app.modules.admin import users360_service as svc
-from app.modules.admin.control_schemas import UserOverviewOut
+from app.modules.admin import users_dashboard_service as dash_svc
+from app.modules.admin.control_schemas import (
+    UserOverviewOut,
+    UsersDashboardPageOut,
+    UsersStatsOut,
+)
 from app.modules.auth.dependencies import require_permission
 
 router = APIRouter(prefix="/api/v1/admin/users", tags=["admin-users"])
@@ -32,6 +37,55 @@ def _admin_rl_key(suffix: str):
         return f"admin:{suffix}:{get_client_ip(request, proxies) or 'unknown'}"
 
     return _key
+
+
+@router.get("/dashboard", response_model=UsersDashboardPageOut)
+async def get_users_dashboard(
+    q: str | None = Query(default=None, max_length=200),
+    status: str | None = Query(default=None),
+    profile: str | None = Query(default=None),
+    country: str | None = Query(default=None, max_length=2),
+    sort: str = Query(default="created_at"),
+    order: str = Query(default="desc"),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    user: User = Depends(_perm),
+    db: AsyncSession = Depends(get_db),
+):
+    """داشبورد کاربران CRM (فاز C) — جست‌وجو/فیلتر/مرتب‌سازی + IP و دستگاه.
+
+    status: pending|completed — profile: complete|incomplete —
+    country: کد ISO (روی کشور مؤثر: پروفایل یا شمارهٔ تأییدشده) —
+    sort: created_at|last_activity.
+    """
+    if status is not None and status not in ("pending", "completed"):
+        raise APIError(422, "bad_filter", "فیلتر وضعیت نامعتبر است")
+    if profile is not None and profile not in ("complete", "incomplete"):
+        raise APIError(422, "bad_filter", "فیلتر پروفایل نامعتبر است")
+    if sort not in ("created_at", "last_activity"):
+        raise APIError(422, "bad_filter", "مرتب‌سازی نامعتبر است")
+    if order not in ("asc", "desc"):
+        raise APIError(422, "bad_filter", "جهت مرتب‌سازی نامعتبر است")
+    return await dash_svc.list_dashboard_users(
+        db,
+        q=q,
+        status=status,
+        profile=profile,
+        country=country.upper() if country else None,
+        sort=sort,
+        order=order,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/stats", response_model=UsersStatsOut)
+async def get_users_stats(
+    user: User = Depends(_perm),
+    db: AsyncSession = Depends(get_db),
+):
+    """آمار سربرگ داشبورد کاربران (فاز C)."""
+    return await dash_svc.users_stats(db)
 
 
 @router.get("/{user_id}/overview", response_model=UserOverviewOut)
