@@ -37,6 +37,49 @@ async def _login(client, identifier, password="TestPass123", totp_code=None):
     return r.json()
 
 
+async def _set_sms_countries(tc, countries: list[str]) -> None:
+    """تنظیم فهرست «تأیید پیامکی اجباری» (auth.sms_required_countries) از مسیر واقعی API تنظیمات."""
+    from sqlalchemy import select
+
+    from app.core.security import create_access_token, hash_password
+    from app.models.models import Permission, Role, RolePermission, User, UserRole
+
+    suffix = uuid.uuid4().hex[:8]
+    async with tc["maker"]() as db:
+        perm = (
+            await db.execute(
+                select(Permission).where(Permission.key == "platform.settings")
+            )
+        ).scalar_one_or_none()
+        if perm is None:
+            perm = Permission(key="platform.settings", description="test")
+            db.add(perm)
+            await db.flush()
+        role = Role(name=f"auth_settings_{suffix}", description="test")
+        db.add(role)
+        await db.flush()
+        db.add(RolePermission(role_id=role.id, permission_id=perm.id))
+        admin = User(
+            full_name="ادمین تنظیمات",
+            email=f"auth-admin-{suffix}@example.com",
+            password_hash=hash_password("TestPass123"),
+            locale="fa",
+            is_active=True,
+            is_verified=True,
+        )
+        db.add(admin)
+        await db.flush()
+        db.add(UserRole(user_id=admin.id, role_id=role.id))
+        await db.commit()
+        token = create_access_token(str(admin.id))
+    r = await tc["client"].put(
+        f"{BASE}/admin/settings",
+        json={"settings": {"auth.sms_required_countries": countries}},
+        headers=_auth(token),
+    )
+    assert r.status_code == 200, r.text
+
+
 async def test_full_lifecycle(tc):
     client, sent = tc["client"], tc["sent"]
     email = "lifecycle@example.com"
@@ -238,6 +281,8 @@ async def test_totp_2fa(tc):
 
 
 async def test_admin_users_rbac(tc, db_session):
+    from sqlalchemy import select
+
     from app.models.models import Permission, Role, RolePermission, UserRole
 
     client = tc["client"]
@@ -245,9 +290,18 @@ async def test_admin_users_rbac(tc, db_session):
     # ساخت نقش/مجوز مستقیم در دیتابیس
     # نام نقش عمداً غیرممتاز است (نه admin/super_admin) تا این تست منطق
     # require_permission را بسنجد، نه مسیر 2FA نقش‌های ممتاز (ADR-0020).
+    # مجوز users.manage ممکن است از تست دیگری در دیتابیس مشترک مانده
+    # باشد — get-or-create تا ترتیب اجرای فایل‌ها مهم نباشد.
     role = Role(name="user_manager", description="test")
-    perm = Permission(key="users.manage", description="test")
-    db_session.add_all([role, perm])
+    perm = (
+        await db_session.execute(
+            select(Permission).where(Permission.key == "users.manage")
+        )
+    ).scalar_one_or_none()
+    if perm is None:
+        perm = Permission(key="users.manage", description="test")
+        db_session.add(perm)
+    db_session.add(role)
     await db_session.flush()
     db_session.add(RolePermission(role_id=role.id, permission_id=perm.id))
     await db_session.commit()
@@ -353,9 +407,10 @@ async def test_passwordless_registration_iran_phone_requires_sms(tc):
     client, sent = tc["client"], tc["sent"]
     email = "iranflow@example.com"
     phone = "+989121112233"
+    await _set_sms_countries(tc, ["IR"])
     await _register_passwordless(client, email, phone=phone)
 
-    # تأیید ایمیل برای شمارهٔ ایران کافی نیست
+    # وقتی ایران در فهرست «تأیید پیامکی اجباری» CRM است، تأیید ایمیل کافی نیست
     token = _last_verify_token(sent, email)
     r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": token})
     assert r.status_code == 200, r.text
@@ -530,11 +585,44 @@ async def test_register_verify_email_second_click_resumes(tc):
     await _login(client, email, password="ResumePass123")
 
 
+async def test_passwordless_registration_iran_phone_default_email_only(tc):
+    # پیش‌فرض CRM (فهرست خالی): ایمیل برای شمارهٔ ایران هم کافی است —
+    # پنل پیامک هنوز وصل نیست و مدیر هیچ کشوری را در فهرست نگذاشته.
+    client, sent = tc["client"], tc["sent"]
+    await _set_sms_countries(tc, [])
+    email = "iranemail@example.com"
+    phone = "+989121114455"
+    await _register_passwordless(client, email, phone=phone)
+
+    token = _last_verify_token(sent, email)
+    r = await client.post(f"{BASE}/auth/register/verify-email", json={"token": token})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["status"] == "verified"
+    assert out["setup_token"]
+
+
+def test_sms_required_countries_validation():
+    import pytest
+
+    from app.core.platform_settings import _validate_json_setting
+
+    assert _validate_json_setting("auth.sms_required_countries", []) == []
+    assert _validate_json_setting(
+        "auth.sms_required_countries", ["ir", "DE", "IR"]
+    ) == ["DE", "IR"]
+    with pytest.raises(ValueError):
+        _validate_json_setting("auth.sms_required_countries", ["XX"])
+    with pytest.raises(ValueError):
+        _validate_json_setting("auth.sms_required_countries", "IR")
+
+
 async def test_register_verify_email_second_click_iran_phone(tc):
-    # برای شمارهٔ ایران، کلیک دوم هم phone_required می‌ماند (نه 400)
+    # برای کشورِ داخل فهرست پیامکی، کلیک دوم هم phone_required می‌ماند (نه 400)
     client, sent = tc["client"], tc["sent"]
     email = "doubleiran@example.com"
     phone = "+989351112233"
+    await _set_sms_countries(tc, ["IR"])
     await _register_passwordless(client, email, phone=phone)
     token = _last_verify_token(sent, email)
     for _ in range(2):

@@ -1123,6 +1123,7 @@ export interface UserProfile360 {
   phone: string | null;
   roles: string[];
   status: string;
+  is_active: boolean;
   created_at: string;
   last_active_at: string | null;
   locale: string;
@@ -1176,6 +1177,7 @@ export async function getUser360(id: string): Promise<UserProfile360> {
     phone: pickString(profile, "phone") || null,
     roles: pickArr<string>(r, "roles"),
     status: pickString(profile, "status", "is_active") || "active",
+    is_active: pickBool(profile, "is_active", true),
     created_at: pickString(profile, "created_at"),
     last_active_at: pickString(profile, "last_active_at") || null,
     locale: pickString(profile, "locale") || "fa",
@@ -1274,6 +1276,18 @@ export async function setUserRoles(id: string, roles: string[]): Promise<unknown
 
 export async function revokeUserSessions(id: string): Promise<unknown> {
   return apiFetch<unknown>(`/api/v1/admin/users/${id}/sessions/revoke`, { method: "POST" });
+}
+
+export async function suspendUser(id: string): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/admin/users/${id}/suspend`, { method: "POST" });
+}
+
+export async function activateUser(id: string): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/admin/users/${id}/activate`, { method: "POST" });
+}
+
+export async function deleteUser(id: string): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/admin/users/${id}`, { method: "DELETE" });
 }
 
 /* ------------------------------------------------------------------ */

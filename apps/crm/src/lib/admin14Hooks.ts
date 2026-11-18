@@ -59,6 +59,9 @@ import {
   setRolePermissions,
   setUserRoles,
   revokeUserSessions,
+  suspendUser,
+  activateUser,
+  deleteUser,
   telegramQueueDecision,
   transitionContent,
   updateDistribution,
@@ -376,6 +379,18 @@ export function useUserAdminMutation() {
     }),
     revokeSessions: useMutation({
       mutationFn: (id: string) => revokeUserSessions(id),
+      onSettled: invalidate,
+    }),
+    suspend: useMutation({
+      mutationFn: (id: string) => suspendUser(id),
+      onSettled: invalidate,
+    }),
+    activate: useMutation({
+      mutationFn: (id: string) => activateUser(id),
+      onSettled: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => deleteUser(id),
       onSettled: invalidate,
     }),
   };

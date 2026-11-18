@@ -5,8 +5,9 @@
  * (Phase A). Consumes the token once via POST /auth/register/verify-email
  * and branches on the API's verdict:
  *  verified       → set-password form, then redirect to `next`/home;
- *  phone_required → Iranian number: SMS-code step first (the visitor
- *                   re-enters their number — the link carries no phone);
+ *  phone_required → the number's country is on the CRM SMS-required
+ *                   list: SMS-code step first (the visitor re-enters
+ *                   their number — the link carries no phone);
  *  already_active → the account already signs in; link to login;
  *  anything else  → invalid/expired link message.
  */

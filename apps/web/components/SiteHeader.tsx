@@ -2,9 +2,11 @@
 
 /**
  * SiteHeader — imperial glass header: brand, primary nav (CMS-driven with
- * nested submenus), header search, language dropdown, theme toggle, mobile
- * drawer. Pure presentation — nav entries and every user-visible string
- * arrive as props.
+ * nested submenus), language dropdown, mobile drawer. On mobile the bar
+ * keeps only brand + language + hamburger: the auth actions, the brand
+ * block and the language chips live inside the branded drawer panel, so
+ * the brand name is never truncated. Pure presentation — nav entries
+ * and every user-visible string arrive as props.
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -269,51 +271,77 @@ export function SiteHeader({
 
       {open && (
         <div id="nav-drawer" className="nav-drawer" role="dialog" aria-modal="true" aria-label={labels.mobileNavAria}>
-          <div className="header-inner">
-            <span className="brand">{labels.brandName}</span>
-            <span className="grow" />
-            <button className="icon-btn" onClick={() => setOpen(false)} aria-label={labels.closeAria}>
+          <div className="drawer-backdrop" onClick={() => setOpen(false)} />
+          <div className="drawer-panel">
+            <button className="icon-btn drawer-close" onClick={() => setOpen(false)} aria-label={labels.closeAria}>
               ✕
             </button>
-          </div>
-          <nav aria-label={labels.mobileNavAria}>
-            <ul className="nav-drawer-list">
-              {nav.map((n) => (
-                <li key={n.href} className="nav-drawer-item">
-                  <NavLink entry={{ ...n, children: [] }} isActive={isActive} />
-                  {n.children && n.children.length > 0 ? (
-                    <ul className="nav-drawer-sub">
-                      {n.children.map((k) => (
-                        <li key={k.href}>
-                          <NavLink entry={k} isActive={isActive} />
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </li>
+            <div className="drawer-brand">
+              <span className="drawer-emblem">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/logo-512.webp" alt="" width={120} height={120} />
+              </span>
+              <span className="drawer-name">{labels.brandName}</span>
+              <span className="drawer-sub">{labels.brandSub}</span>
+              <span className="drawer-orn" aria-hidden>
+                <i />
+                <b />
+                <i />
+              </span>
+            </div>
+            <div className="drawer-auth-frame">
+              {loggedIn ? (
+                <>
+                  <Link className="auth-btn auth-btn-solid" href={`/${locale}/profile`}>
+                    {labels.profile}
+                  </Link>
+                  <button type="button" className="auth-btn auth-btn-ghost" onClick={() => void logout()}>
+                    {labels.logout}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link className="auth-btn auth-btn-ghost" href={`/${locale}/login`}>
+                    {labels.signIn}
+                  </Link>
+                  <Link className="auth-btn auth-btn-solid" href={`/${locale}/register`}>
+                    {labels.signUp}
+                  </Link>
+                </>
+              )}
+            </div>
+            <nav aria-label={labels.mobileNavAria}>
+              <ul className="nav-drawer-list">
+                {nav.map((n) => (
+                  <li key={n.href} className="nav-drawer-item">
+                    <NavLink entry={{ ...n, children: [] }} isActive={isActive} />
+                    {n.children && n.children.length > 0 ? (
+                      <ul className="nav-drawer-sub">
+                        {n.children.map((k) => (
+                          <li key={k.href}>
+                            <NavLink entry={k} isActive={isActive} />
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </nav>
+            <div className="drawer-langs" role="listbox" aria-label={labels.langAria}>
+              {LOCALES.map((loc) => (
+                <Link
+                  key={loc}
+                  href={swapLocaleHref(loc)}
+                  role="option"
+                  aria-selected={loc === locale}
+                  className={loc === locale ? "on" : ""}
+                  onClick={() => setOpen(false)}
+                >
+                  {labels.langNames[loc] ?? loc}
+                </Link>
               ))}
-            </ul>
-          </nav>
-          <div className="nav-drawer-auth">
-            {loggedIn ? (
-              <>
-                <Link className="auth-btn auth-btn-ghost" href={`/${locale}/profile`}>
-                  {labels.profile}
-                </Link>
-                <button type="button" className="auth-btn auth-btn-ghost" onClick={() => void logout()}>
-                  {labels.logout}
-                </button>
-              </>
-            ) : (
-              <>
-                <Link className="auth-btn auth-btn-ghost" href={`/${locale}/login`}>
-                  {labels.signIn}
-                </Link>
-                <Link className="auth-btn auth-btn-solid" href={`/${locale}/register`}>
-                  {labels.signUp}
-                </Link>
-              </>
-            )}
+            </div>
           </div>
         </div>
       )}

@@ -1,4 +1,7 @@
-"""روتر مدیریتی کاربران — فاز ۱۴: نمای ۳۶۰°. مجوز: `users.view360`."""
+"""روتر مدیریتی کاربران — فاز ۱۴: نمای ۳۶۰°. مجوز: `users.view360`.
+
+اکشن‌های مدیریتی (تعلیق/فعال‌سازی/حذف) با مجوز جدا `users.manage`."""
+
 from __future__ import annotations
 
 import uuid
@@ -6,8 +9,9 @@ from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -196,3 +200,176 @@ async def post_revoke_sessions(
     )
     await db.commit()
     return {"user_id": str(user_id), "revoked_sessions": sess.rowcount or 0}
+
+
+_manage_perm = require_permission("users.manage")
+
+
+async def _manage_target(db: AsyncSession, actor: User, user_id: uuid.UUID) -> User:
+    """کاربر هدفِ اکشن مدیریتی + دو محافظ: روی خودت نه، روی تنها مدیر ارشد نه."""
+    from app.models.models import Role, UserRole
+
+    target = await db.get(User, user_id)
+    if target is None:
+        raise APIError(404, "user_not_found", "کاربر یافت نشد")
+    if target.id == actor.id:
+        raise APIError(422, "self_action", "نمی‌توانید این کار را روی حساب خودتان انجام دهید")
+    role_names = (await db.execute(
+        select(Role.name).join(UserRole, UserRole.role_id == Role.id)
+        .where(UserRole.user_id == target.id))).scalars().all()
+    if "super_admin" in role_names:
+        others = (await db.execute(
+            select(func.count()).select_from(UserRole)
+            .join(Role, Role.id == UserRole.role_id)
+            .join(User, User.id == UserRole.user_id)
+            .where(
+                Role.name == "super_admin",
+                UserRole.user_id != target.id,
+                User.is_active.is_(True),
+            ))).scalar_one()
+        if others == 0:
+            raise APIError(
+                422, "last_super_admin",
+                "این کاربر تنها مدیر ارشد فعال است و قابل تعلیق یا حذف نیست",
+            )
+    return target
+
+
+@router.post("/{user_id}/suspend", response_model=dict)
+@rate_limit(_admin_rl_key("user-suspend"), limit=30, window_s=60)
+async def post_suspend_user(
+    user_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(_manage_perm),
+    db: AsyncSession = Depends(get_db),
+):
+    """تعلیق کاربر: is_active=False + ابطال همهٔ نشست‌ها و رفرش‌توکن‌ها.
+
+    ورود و همهٔ مسیرهای احراز is_active را چک می‌کنند، پس تعلیق فوری و
+    کامل است؛ دادهٔ کاربر دست‌نخورده می‌ماند و با فعال‌سازی برمی‌گردد.
+    """
+    from app.core.audit import log_audit
+    from app.models.models import RefreshToken, Session
+
+    target = await _manage_target(db, user, user_id)
+    if not target.is_active:
+        return {"user_id": str(user_id), "is_active": False}
+    target.is_active = False
+    await db.execute(update(Session).where(
+        Session.user_id == user_id, Session.revoked.is_(False)).values(revoked=True))
+    await db.execute(update(RefreshToken).where(
+        RefreshToken.user_id == user_id, RefreshToken.revoked.is_(False)).values(revoked=True))
+    await log_audit(
+        db, actor_id=user.id, actor_type="admin", action="users.suspend",
+        entity_type="user", entity_id=str(user_id),
+        old_values={"is_active": True}, new_values={"is_active": False},
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return {"user_id": str(user_id), "is_active": False}
+
+
+@router.post("/{user_id}/activate", response_model=dict)
+@rate_limit(_admin_rl_key("user-activate"), limit=30, window_s=60)
+async def post_activate_user(
+    user_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(_manage_perm),
+    db: AsyncSession = Depends(get_db),
+):
+    """فعال‌سازی دوبارهٔ کاربر معلق: is_active=True (نشست تازه با ورود بعدی)."""
+    from app.core.audit import log_audit
+
+    target = await _manage_target(db, user, user_id)
+    if target.is_active:
+        return {"user_id": str(user_id), "is_active": True}
+    target.is_active = True
+    await log_audit(
+        db, actor_id=user.id, actor_type="admin", action="users.activate",
+        entity_type="user", entity_id=str(user_id),
+        old_values={"is_active": False}, new_values={"is_active": True},
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return {"user_id": str(user_id), "is_active": True}
+
+
+@router.delete("/{user_id}", response_model=dict)
+@rate_limit(_admin_rl_key("user-delete"), limit=20, window_s=60)
+async def delete_user(
+    user_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(_manage_perm),
+    db: AsyncSession = Depends(get_db),
+):
+    """حذف کامل کاربر — فقط وقتی دادهٔ وابستهٔ محتوایی ندارد.
+
+    اول ردیف‌های صرفاً حسابی (نشست، توکن‌ها، کدهای تأیید، نقش‌ها) پاک
+    می‌شوند؛ اگر هنوز ارجاعی از دادهٔ واقعی (حمایت، فتوا، حفاظ، …) باشد
+    قید FK جلوی حذف را می‌گیرد و 409 برمی‌گردد تا مدیر به‌جای حذف،
+    تعلیق کند. حذفِ حساب‌های تستی و ثبت‌نام‌های ناتمامِ بی‌فعالیت —
+    مصرف اصلی این دکمه — تمیز انجام می‌شود.
+    """
+    from app.core.audit import log_audit
+    from app.models.models import (
+        ClusterMember,
+        Donation,
+        HifzAttempt,
+        HifzTest,
+        PasswordResetToken,
+        PhoneVerificationCode,
+        RecoveryCode,
+        RefreshToken,
+        Session,
+        UserRole,
+    )
+
+    target = await _manage_target(db, user, user_id)
+    # دادهٔ محتواییِ واقعی (حمایت/حفاظ/فتوا) حذف را صریحاً 409 می‌کند —
+    # مستقل از این‌که FK دیتابیس enforce شود یا نه (SQLite تست در برابر
+    # Postgres پروداکشن). بقیهٔ ارجاع‌ها را قید FK و except زیر می‌گیرد.
+    blockers = 0
+    for blocker_model, blocker_column in (
+        (Donation, Donation.donor_id),
+        (HifzAttempt, HifzAttempt.user_id),
+        (HifzTest, HifzTest.user_id),
+        (ClusterMember, ClusterMember.user_id),
+    ):
+        blockers += (await db.execute(
+            select(func.count()).select_from(blocker_model)
+            .where(blocker_column == user_id))).scalar_one()
+    if blockers:
+        raise APIError(
+            409, "user_has_related_data",
+            "کاربر دادهٔ وابسته دارد (حمایت، فتوا، حفاظ و…)؛ به‌جای حذف، او را تعلیق کنید",
+        )
+    snapshot = {"email": target.email, "phone": target.phone, "full_name": target.full_name}
+    for model in (
+        Session,
+        RefreshToken,
+        PasswordResetToken,
+        PhoneVerificationCode,
+        RecoveryCode,
+        UserRole,
+    ):
+        await db.execute(delete(model).where(model.user_id == user_id))
+    await db.delete(target)
+    try:
+        await db.flush()
+        await log_audit(
+            db, actor_id=user.id, actor_type="admin", action="users.delete",
+            entity_type="user", entity_id=str(user_id),
+            old_values=snapshot,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise APIError(
+            409, "user_has_related_data",
+            "کاربر دادهٔ وابسته دارد (حمایت، فتوا، حفاظ و…)؛ به‌جای حذف، او را تعلیق کنید",
+        ) from None
+    return {"user_id": str(user_id), "deleted": True}

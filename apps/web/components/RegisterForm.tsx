@@ -4,8 +4,8 @@
  * RegisterForm — Phase A sign-up in three steps:
  *  1) short form: first/last name, email, phone with a country picker
  *     (flag + dial code, per-country length check — the site is global);
- *  2) verify: email link, or SMS code (Iranian +98 numbers must use SMS —
- *     the API enforces it; the UI just guides);
+ *  2) verify: email link; countries on the CRM SMS-required list also
+ *     need an SMS code (the API enforces it; the UI just guides);
  *  3) set password → signed in and redirected to `next` (or home).
  * All rules live in the API (ADR-001); this is presentation + wiring.
  */
@@ -102,7 +102,6 @@ export default function RegisterForm({
   }, [locale]);
 
   const phoneE164 = `+${country.dial}${normalizeNational(national)}`;
-  const isIran = country.iso === 'IR';
 
   const [codeSent, setCodeSent] = useState(false);
   const [code, setCode] = useState('');
@@ -227,20 +226,14 @@ export default function RegisterForm({
     return (
       <div>
         <h2 className="auth-step-title">{labels.verifyStepTitle}</h2>
-        {isIran ? (
-          <p className="page-sub">{labels.iranPhoneNote}</p>
-        ) : (
-          <>
-            <p className="page-sub">{labels.verifyEmailSent}</p>
-            <p className="auth-inline-action">
-              <button type="button" className="auth-link-btn" onClick={() => void resend()} disabled={busy}>
-                {labels.resendLink}
-              </button>
-            </p>
-            {resent ? <p className="page-sub">{labels.resendDone}</p> : null}
-            <p className="page-sub">{labels.orBySms}</p>
-          </>
-        )}
+        <p className="page-sub">{labels.verifyEmailSent}</p>
+        <p className="auth-inline-action">
+          <button type="button" className="auth-link-btn" onClick={() => void resend()} disabled={busy}>
+            {labels.resendLink}
+          </button>
+        </p>
+        {resent ? <p className="page-sub">{labels.resendDone}</p> : null}
+        <p className="page-sub">{labels.orBySms}</p>
         {error ? (
           <p className="auth-error" role="alert">
             {error}

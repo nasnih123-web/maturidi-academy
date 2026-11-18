@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Button } from "@maturidi/ui-web";
 import { apiFetch, ApiError } from "../lib/api";
 import { useI18n } from "../lib/i18n";
+import { COUNTRIES, countryFlag } from "../lib/countries";
 
 /**
  * Platform settings (super_admin only — Phase 2 spec).
@@ -22,6 +23,9 @@ import { useI18n } from "../lib/i18n";
  * - localized: trilingual object; the input edits the fa text and
  *   preserves any stored ar/en texts.
  * - json: structured value edited as JSON text (crypto wallets).
+ * - smsCountries: searchable country checklist stored as a JSON array
+ *   of ISO codes (auth.sms_required_countries) — always saved, because
+ *   the empty list is itself the meaningful "email for everyone" state.
  * - text: plain string/number input.
  *
  * Server errors are shown verbatim (they name the failing key) instead
@@ -41,7 +45,7 @@ interface SettingsResponse {
   version: number;
 }
 
-type FieldKind = "text" | "secret" | "flag" | "localized" | "json";
+type FieldKind = "text" | "secret" | "flag" | "localized" | "json" | "smsCountries";
 
 interface FieldDef {
   key: string;
@@ -138,9 +142,86 @@ const TABS: TabDef[] = [
       { key: "profile.require_for_hifz_advanced", labelKey: "settings.fields.profileRequireHifz", kind: "flag" },
     ],
   },
+  {
+    // Registration verification policy: listed countries must verify
+    // by SMS; everywhere else email is enough. Empty (the default) =
+    // no SMS requirement — the state the operator wants while no SMS
+    // panel is connected yet.
+    id: "auth",
+    titleKey: "settings.sections.auth",
+    fields: [
+      { key: "auth.sms_required_countries", labelKey: "settings.fields.smsRequiredCountries", kind: "smsCountries" },
+    ],
+  },
 ];
 
 type Values = Record<string, unknown>;
+
+/** Searchable checklist of all countries for auth.sms_required_countries. */
+function SmsCountriesField({
+  value,
+  onChange,
+  t,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+  t: (key: string) => string;
+}): React.ReactElement {
+  const [q, setQ] = React.useState("");
+  const selected = new Set(value);
+  const needle = q.trim().toLowerCase();
+  const list = COUNTRIES.filter(
+    (c) =>
+      !needle ||
+      c.nameFa.toLowerCase().includes(needle) ||
+      c.iso.toLowerCase().includes(needle),
+  );
+  const toggle = (iso: string): void => {
+    const next = new Set(selected);
+    if (next.has(iso)) next.delete(iso);
+    else next.add(iso);
+    // Keep table order so the saved list is stable and diff-friendly.
+    onChange(COUNTRIES.map((c) => c.iso).filter((code) => next.has(code)));
+  };
+  return (
+    <div>
+      <input
+        className="input"
+        type="search"
+        value={q}
+        placeholder={t("settings.fields.smsCountriesSearch")}
+        onChange={(e) => setQ(e.target.value)}
+      />
+      {value.length === 0 && <p className="hint">{t("settings.fields.smsCountriesNone")}</p>}
+      <div
+        style={{
+          maxHeight: "260px",
+          overflowY: "auto",
+          marginTop: "0.5rem",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+          gap: "0.25rem 0.75rem",
+        }}
+      >
+        {list.map((c) => (
+          <label
+            key={c.iso}
+            style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(c.iso)}
+              onChange={() => toggle(c.iso)}
+            />
+            <span>
+              {countryFlag(c.iso)} {c.nameFa} <span className="hint mono">{c.iso}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function normalizeFlag(v: unknown): boolean | null {
   if (v === true || v === "true") return true;
@@ -165,6 +246,8 @@ function seedValues(data: SettingsResponse): Values {
       } else if (f.kind === "json") {
         next[f.key] =
           v == null ? "" : typeof v === "string" ? v : JSON.stringify(v, null, 2);
+      } else if (f.kind === "smsCountries") {
+        next[f.key] = Array.isArray(v) ? v : [];
       } else {
         next[f.key] = v ?? null;
       }
@@ -200,6 +283,10 @@ function buildPayload(tab: TabDef, values: Values): Record<string, unknown> {
       }
       case "json":
         if (typeof v === "string" && v.trim() !== "") payload[f.key] = v;
+        break;
+      case "smsCountries":
+        // Always sent — the empty list is a real state (email for all).
+        payload[f.key] = Array.isArray(v) ? v : [];
         break;
       default: // text
         if (v !== undefined && v !== null) payload[f.key] = v;
@@ -274,6 +361,16 @@ export default function Settings(): React.ReactElement {
 
   function renderField(f: FieldDef): React.ReactElement {
     const v = values[f.key];
+    if (f.kind === "smsCountries") {
+      const arr = Array.isArray(v) ? (v as string[]) : [];
+      return (
+        <div className="field" key={f.key}>
+          <label>{t(f.labelKey)}</label>
+          <SmsCountriesField value={arr} onChange={(next) => setValue(f.key, next)} t={t} />
+          <span className="hint">{t("settings.fields.smsCountriesHint")}</span>
+        </div>
+      );
+    }
     if (f.kind === "flag") {
       const flag = normalizeFlag(v);
       return (

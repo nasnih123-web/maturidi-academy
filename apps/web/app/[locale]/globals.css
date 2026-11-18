@@ -348,6 +348,10 @@ img, svg { max-inline-size: 100%; }
 .auth-btn-solid { background: linear-gradient(135deg, #b8912c, #d4af37); border-color: transparent; color: #06120e; font-weight: 800; }
 .auth-btn-solid:hover { color: #06120e; filter: brightness(1.07); }
 .nav-drawer-auth { display: flex; gap: 0.6rem; padding: 1rem 1.25rem 1.5rem; }
+/* Drawer auth frame (redesign): the two auth actions inside one pill
+ * frame at the top of the drawer panel. */
+.drawer-auth-frame { margin-top: 1.1rem; display: flex; gap: 0.4rem; padding: 0.35rem; border: 2px solid rgba(212, 175, 55, 0.45); border-radius: 999px; background: rgba(0, 0, 0, 0.28); }
+.drawer-auth-frame .auth-btn { flex: 1; justify-content: center; }
 .lang-dd { position: relative; }
 .lang-btn { font-size: 0.76rem; font-weight: 750; width: auto; padding-inline: 0.65rem; gap: 0.3rem; }
 .lang-menu {
@@ -375,15 +379,17 @@ img, svg { max-inline-size: 100%; }
 @media (max-width: 768px) {
   .primary-nav { display: none; }
   .mobile-only { display: inline-flex; }
+  /* The bar keeps only brand + language + hamburger; the auth actions
+   * live inside the drawer (branded panel), so nothing competes with
+   * the brand name for the row's width. */
+  .header-auth { display: none; }
 }
-/* Narrow phones: the header row (brand + search + language + hamburger)
- * measured ~440px at 390px viewport and widened the whole page (the
- * "page zooms" symptom). Shrink the row pieces and let the brand name
- * ellipsize instead of forcing the page wider. */
+/* Narrow phones: with the auth actions moved into the drawer, the
+ * header row (brand + language + hamburger) fits comfortably and the
+ * brand name always shows in full — no ellipsis, no page widening. */
 @media (max-width: 520px) {
   .header-inner { padding: 0.5rem 0.75rem; gap: 0.5rem; }
-  .brand { font-size: 0.92rem; min-width: 0; }
-  .brand > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .brand { font-size: 0.92rem; }
   .brand-mark { width: 28px; height: 28px; }
   .brand-sub { display: none; }
   .header-actions { gap: 0.35rem; min-width: 0; }
@@ -391,12 +397,47 @@ img, svg { max-inline-size: 100%; }
   .header-search input { width: clamp(6rem, 30vw, 15rem); }
   .lang-btn { padding-inline: 0.5rem; }
 }
-.nav-drawer { position: fixed; inset: 0; z-index: 300; display: grid; grid-template-rows: auto 1fr; background: rgba(4, 16, 13, 0.92); backdrop-filter: blur(24px); animation: drawer-in var(--dur-base) var(--ease-out); }
-@keyframes drawer-in { from { opacity: 0; transform: translateY(-8px); } }
-@media (prefers-reduced-motion: reduce) { .nav-drawer { animation: none; } }
-.nav-drawer nav { display: flex; flex-direction: column; padding: 1.2rem; gap: 0.2rem; overflow-y: auto; }
-.nav-drawer nav a { padding: 0.7rem 0.9rem; border-radius: var(--radius-md); color: hsl(var(--text-primary)); text-decoration: none; font-size: 1rem; font-weight: 600; }
-.nav-drawer nav a:hover, .nav-drawer nav a[aria-current="page"] { background: rgba(212, 175, 55, 0.12); color: #e5c07b; }
+/* Mobile drawer (redesign): a branded side panel anchored at the
+ * inline-end — the hamburger's side (left in fa/ar, right in en) —
+ * over a dimmed backdrop. The brand block, the auth frame and the
+ * language chips all live in the panel; the header bar stays slim. */
+.nav-drawer { position: fixed; inset: 0; z-index: 300; }
+.drawer-backdrop { position: absolute; inset: 0; background: rgba(2, 10, 7, 0.6); backdrop-filter: blur(3px); animation: drawer-in var(--dur-base) var(--ease-out); }
+@keyframes drawer-in { from { opacity: 0; } }
+.drawer-panel {
+  position: absolute; top: 0; bottom: 0; inset-inline-end: 0;
+  width: min(84vw, 21.5rem); display: flex; flex-direction: column;
+  padding: 1.5rem 1.15rem 1.2rem; overflow-y: auto;
+  background: linear-gradient(205deg, #0d3826 0%, #07231c 55%, #051a13 100%);
+  border-inline-start: 2px solid rgba(212, 175, 55, 0.55);
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.5);
+  animation: drawer-panel-in var(--dur-base) var(--ease-out);
+}
+@keyframes drawer-panel-in { from { opacity: 0; transform: translateX(24px); } }
+:dir(rtl) .drawer-panel { animation-name: drawer-panel-in-rtl; }
+@keyframes drawer-panel-in-rtl { from { opacity: 0; transform: translateX(-24px); } }
+@media (prefers-reduced-motion: reduce) { .drawer-backdrop, .drawer-panel { animation: none; } }
+.drawer-close { position: absolute; top: 0.8rem; inset-inline-start: 0.8rem; }
+.drawer-brand { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.drawer-emblem { position: relative; width: 6.6rem; height: 6.6rem; display: flex; align-items: center; justify-content: center; }
+.drawer-emblem::before { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(212, 175, 55, 0.35); }
+.drawer-emblem::after { content: ""; position: absolute; inset: 7px; border-radius: 50%; border: 1.5px dashed rgba(212, 175, 55, 0.4); }
+.drawer-emblem img { width: 5.4rem; height: 5.4rem; border-radius: 50%; border: 3px solid #d4af37; object-fit: cover; background: #fff; box-shadow: 0 0 34px rgba(212, 175, 55, 0.45); }
+.drawer-name { margin-top: 0.7rem; font-size: 1.35rem; font-weight: 800; color: hsl(var(--text-primary)); }
+.drawer-sub { font-size: 0.72rem; font-weight: 600; color: hsl(var(--text-muted)); letter-spacing: 0.04em; }
+.drawer-orn { margin-top: 0.55rem; display: flex; align-items: center; gap: 0.45rem; }
+.drawer-orn i { display: block; width: 3.4rem; height: 2px; background: linear-gradient(90deg, rgba(212, 175, 55, 0), #d4af37); }
+.drawer-orn i:last-child { background: linear-gradient(90deg, #d4af37, rgba(212, 175, 55, 0)); }
+.drawer-orn b { width: 0.5rem; height: 0.5rem; background: #d4af37; transform: rotate(45deg); box-shadow: 0 0 8px rgba(212, 175, 55, 0.8); }
+.drawer-panel nav { display: flex; flex-direction: column; padding: 1.1rem 0 0; gap: 0.15rem; }
+.drawer-panel nav a { padding: 0.7rem 0.9rem; border-radius: var(--radius-md); color: hsl(var(--text-primary)); text-decoration: none; font-size: 1rem; font-weight: 600; }
+.drawer-panel nav a:hover, .drawer-panel nav a[aria-current="page"] { background: rgba(212, 175, 55, 0.12); color: #e5c07b; }
+.nav-drawer-item > a { display: flex; align-items: center; gap: 0.6rem; }
+.nav-drawer-item > a::before { content: ""; flex: none; width: 0.45rem; height: 0.45rem; background: rgba(212, 175, 55, 0.55); transform: rotate(45deg); }
+.nav-drawer-item > a[aria-current="page"]::before { background: #d4af37; box-shadow: 0 0 8px rgba(212, 175, 55, 0.8); }
+.drawer-langs { margin-top: auto; padding-top: 1.1rem; display: flex; gap: 0.5rem; }
+.drawer-langs a { flex: 1; display: inline-flex; align-items: center; justify-content: center; padding: 0.55rem 0.4rem; border-radius: 999px; border: 2px solid rgba(212, 175, 55, 0.3); background: rgba(255, 255, 255, 0.03); color: hsl(var(--text-secondary)); text-decoration: none; font-size: 0.85rem; font-weight: 700; }
+.drawer-langs a.on { background: linear-gradient(180deg, #e3c766, #b8912c); border-color: transparent; color: #06120e; font-weight: 800; }
 
 /* ═══ Footer ═══ */
 .site-footer { border-top: 1px solid rgba(212, 175, 55, 0.18); background: rgba(7, 35, 28, 0.55); backdrop-filter: blur(18px); margin-top: var(--section-y); }
