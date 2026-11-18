@@ -351,7 +351,12 @@ export function SiteHeader({
                         rel="noopener noreferrer"
                         aria-label={s.network}
                       >
-                        <SocialIcon network={s.network} />
+                        {s.logo ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img className="drawer-soc-img" src={s.logo} alt="" />
+                        ) : (
+                          <SocialIcon network={s.network} />
+                        )}
                       </a>
                     ))}
                 </div>

@@ -183,6 +183,39 @@ interface SocialLink {
   network: string;
   url: string;
   enabled: boolean;
+  /** لوگوی دلخواه: data-URI تصویر فشرده (≤128px) یا URL؛ خالی = آیکن آماده. */
+  logo: string;
+}
+
+/** تصویر انتخاب‌شده را روی canvas تا حداکثر ۱۲۸px کوچک و به data-URI
+ * فشرده تبدیل می‌کند تا داخل همان تنظیم ذخیره شود (بدون نیاز به آپلود
+ * جدا). اگر حتی در ۶۴px هم از سقف سرور بزرگ‌تر شد، رشتهٔ خالی برمی‌گردد. */
+function fileToLogoDataUri(file: File, done: (uri: string) => void): void {
+  const objectUrl = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    URL.revokeObjectURL(objectUrl);
+    for (const size of [128, 96, 64]) {
+      const scale = Math.min(1, size / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) break;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const uri = canvas.toDataURL("image/webp", 0.85);
+      if (uri.startsWith("data:image/") && uri.length <= 60000) {
+        done(uri);
+        return;
+      }
+    }
+    done("");
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(objectUrl);
+    done("");
+  };
+  img.src = objectUrl;
 }
 
 /** نرمال‌سازی مقدار site.social_links: ردیف‌های ذخیره‌شده (با ترتیبشان)
@@ -203,11 +236,12 @@ function normalizeSocialLinks(v: unknown): SocialLink[] {
         network,
         url: typeof o.url === "string" ? o.url : "",
         enabled: o.enabled !== false,
+        logo: typeof o.logo === "string" ? o.logo : "",
       });
     }
   }
   for (const network of SOCIAL_NETWORKS) {
-    if (!seen.has(network)) out.push({ network, url: "", enabled: true });
+    if (!seen.has(network)) out.push({ network, url: "", enabled: true, logo: "" });
   }
   return out;
 }
@@ -222,6 +256,7 @@ function SocialLinksField({
   onChange: (next: SocialLink[]) => void;
   t: (key: string) => string;
 }): React.ReactElement {
+  const [logoError, setLogoError] = React.useState("");
   const update = (i: number, patch: Partial<SocialLink>): void => {
     onChange(value.map((row, j) => (j === i ? { ...row, ...patch } : row)));
   };
@@ -231,6 +266,17 @@ function SocialLinksField({
     const next = [...value];
     [next[i], next[j]] = [next[j], next[i]];
     onChange(next);
+  };
+  const pickLogo = (i: number, file: File | undefined): void => {
+    if (!file) return;
+    fileToLogoDataUri(file, (uri) => {
+      if (uri) {
+        setLogoError("");
+        update(i, { logo: uri });
+      } else {
+        setLogoError(t("settings.fields.socialLogoTooLarge"));
+      }
+    });
   };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -248,6 +294,41 @@ function SocialLinksField({
           <span style={{ minWidth: "6.5rem", fontWeight: 600 }}>
             {t(`settings.fields.network_${row.network}`)}
           </span>
+          {row.logo ? (
+            <img
+              src={row.logo}
+              alt=""
+              style={{
+                width: "1.9rem",
+                height: "1.9rem",
+                borderRadius: "50%",
+                objectFit: "contain",
+                border: "1px solid rgba(212,175,55,0.5)",
+              }}
+            />
+          ) : null}
+          <label className="btn" style={{ cursor: "pointer", whiteSpace: "nowrap" }}>
+            {t("settings.fields.socialLogo")}
+            <input
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                pickLogo(i, e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          {row.logo ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => update(i, { logo: "" })}
+              aria-label={t("settings.fields.socialLogoRemove")}
+            >
+              ×
+            </button>
+          ) : null}
           <input
             className="input"
             type="url"
@@ -277,6 +358,9 @@ function SocialLinksField({
           </button>
         </div>
       ))}
+      {logoError ? (
+        <div style={{ color: "#e57373", fontSize: "0.85rem" }}>{logoError}</div>
+      ) : null}
     </div>
   );
 }

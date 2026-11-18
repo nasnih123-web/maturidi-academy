@@ -446,6 +446,7 @@ img, svg { max-inline-size: 100%; }
 .drawer-socials-row { display: flex; justify-content: center; gap: 0.65rem; flex-wrap: wrap; }
 .drawer-soc { width: 2.9rem; height: 2.9rem; border-radius: 50%; border: 2px solid rgba(212, 175, 55, 0.65); background: radial-gradient(circle at 32% 28%, rgba(212, 175, 55, 0.28), rgba(0, 0, 0, 0.3) 68%); display: inline-flex; align-items: center; justify-content: center; color: #ede6d6; box-shadow: 0 0 16px rgba(212, 175, 55, 0.22), inset 0 0 10px rgba(212, 175, 55, 0.12); transition: transform var(--dur-fast) ease, background var(--dur-fast) ease; }
 .drawer-soc:hover { transform: translateY(-2px); background: linear-gradient(180deg, #e3c766, #b8912c); color: #06120e; }
+.drawer-soc-img { width: 68%; height: 68%; object-fit: contain; border-radius: 50%; }
 
 /* ═══ Footer ═══ */
 .site-footer { border-top: 1px solid rgba(212, 175, 55, 0.18); background: rgba(7, 35, 28, 0.55); backdrop-filter: blur(18px); margin-top: var(--section-y); }
