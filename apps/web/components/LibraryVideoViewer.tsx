@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { resolveStreamUrl, LibraryClientError } from '@/lib/library-client';
 import { formatDuration } from '@/lib/library';
+import { reportActivity } from '@/lib/activity';
 
 export interface VideoViewerChapter {
   title: string;
@@ -70,17 +71,50 @@ export function LibraryVideoViewer({
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-    const onTime = () => setCurrentTime(el.currentTime);
+    // Activity tracking for the CRM 360° timeline: one media_play per
+    // item, plus media_progress every ~30 s actually watched.
+    let played = false;
+    let last = el.currentTime;
+    let accum = 0;
+    const onPlay = () => {
+      if (played) return;
+      played = true;
+      last = el.currentTime;
+      reportActivity('media_play', {
+        title,
+        refId: itemId,
+        meta: { media_kind: 'video' },
+      });
+    };
+    const onTime = () => {
+      setCurrentTime(el.currentTime);
+      const delta = el.currentTime - last;
+      last = el.currentTime;
+      if (!el.paused && delta > 0 && delta < 3) {
+        accum += delta;
+        if (accum >= 30) {
+          const seconds = Math.floor(accum);
+          accum = 0;
+          reportActivity('media_progress', {
+            title,
+            refId: itemId,
+            meta: { media_kind: 'video', seconds_delta: seconds },
+          });
+        }
+      }
+    };
     const onDur = () => setDuration(Number.isFinite(el.duration) ? el.duration : 0);
+    el.addEventListener('play', onPlay);
     el.addEventListener('timeupdate', onTime);
     el.addEventListener('loadedmetadata', onDur);
     el.addEventListener('durationchange', onDur);
     return () => {
+      el.removeEventListener('play', onPlay);
       el.removeEventListener('timeupdate', onTime);
       el.removeEventListener('loadedmetadata', onDur);
       el.removeEventListener('durationchange', onDur);
     };
-  }, [src]);
+  }, [src, itemId, title]);
 
   const seekTo = (seconds: number | null) => {
     const el = videoRef.current;

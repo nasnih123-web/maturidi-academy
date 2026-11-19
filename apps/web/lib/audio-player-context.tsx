@@ -15,11 +15,14 @@ import {
   Suspense,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 import { useAudioEngine, type AudioEngineState } from './hooks/useAudioEngine';
+import { reportActivity } from './activity';
 
 export interface AudioTrack {
   id: string;
@@ -82,6 +85,47 @@ export function AudioPlayerProvider({
   const [track, setTrack] = useState<AudioTrack | null>(null);
   const engineApi = useAudioEngine();
   const { state, load, play, pause, toggle, seek, seekBy, setRate, unload } = engineApi;
+
+  // Activity tracking for the CRM 360° timeline: one media_play per
+  // track load, plus media_progress every ~30 s actually listened.
+  const playedKeyRef = useRef<string | null>(null);
+  const lastTimeRef = useRef(0);
+  const accumRef = useRef(0);
+  useEffect(() => {
+    if (!track) {
+      playedKeyRef.current = null;
+      lastTimeRef.current = 0;
+      accumRef.current = 0;
+      return;
+    }
+    const key = `${track.id}|${track.streamUrl}`;
+    if (state.status === 'playing' && playedKeyRef.current !== key) {
+      playedKeyRef.current = key;
+      lastTimeRef.current = state.currentTime;
+      accumRef.current = 0;
+      reportActivity('media_play', {
+        title: track.title,
+        refId: track.id,
+        meta: { media_kind: 'audio' },
+      });
+      return;
+    }
+    if (playedKeyRef.current !== key) return;
+    const delta = state.currentTime - lastTimeRef.current;
+    lastTimeRef.current = state.currentTime;
+    if (state.status === 'playing' && delta > 0 && delta < 3) {
+      accumRef.current += delta;
+      if (accumRef.current >= 30) {
+        const seconds = Math.floor(accumRef.current);
+        accumRef.current = 0;
+        reportActivity('media_progress', {
+          title: track.title,
+          refId: track.id,
+          meta: { media_kind: 'audio', seconds_delta: seconds },
+        });
+      }
+    }
+  }, [track, state.status, state.currentTime]);
 
   const loadTrack = useCallback(
     (t: AudioTrack) => {

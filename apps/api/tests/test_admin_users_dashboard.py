@@ -456,21 +456,33 @@ async def test_admin_manage_requires_permission_and_not_self(tc):
 
 
 async def test_admin_delete_user(tc):
+    """حذف = انتقال به سطل زباله (نرم) — با یا بی سابقه.
+
+    پوشش کامل چرخهٔ سطل (فهرست سطل، بازیابی، حذف دائمی، ناشناس‌شدن
+    حمایت) در test_admin_user_trash_activity.py است؛ این‌جا قرارداد
+    پایهٔ همان دکمهٔ حذف قدیمی نگه داشته می‌شود.
+    """
     client = tc["client"]
     admin = await _make_user(tc, MANAGE_PERMS)
 
-    # کاربر بی‌فعالیت: حذف کامل
+    # کاربر بی‌فعالیت: به سطل می‌رود، نمای ۳۶۰° با پرچم سطل برمی‌گردد
     target = await _make_user(tc, ())
     tid = target["user_id"]
     r = await client.delete(f"{BASE}/admin/users/{tid}", headers=admin)
     assert r.status_code == 200, r.text
-    assert r.json()["deleted"] is True
+    assert r.json()["trashed"] is True
     r = await client.get(f"{BASE}/admin/users/{tid}/overview", headers=admin)
-    assert r.status_code == 404, r.text
+    assert r.status_code == 200, r.text
+    assert r.json()["profile"]["is_trashed"] is True
 
-    # کاربر با حمایت مالی: حذف 409 می‌گیرد — مدیر باید تعلیق کند
+    # کاربر با حمایت مالی هم بدون 409 به سطل می‌رود و سابقه‌اش می‌ماند
     busy = await _make_user(tc, ())
     await _seed_activity(tc, busy["user_id"], donations=((5000, "succeeded"),))
     r = await client.delete(f"{BASE}/admin/users/{busy['user_id']}", headers=admin)
-    assert r.status_code == 409, r.text
-    assert r.json()["error"]["code"] == "user_has_related_data"
+    assert r.status_code == 200, r.text
+    assert r.json()["trashed"] is True
+    r = await client.get(
+        f"{BASE}/admin/users/{busy['user_id']}/overview", headers=admin
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["donations"]["count"] == 1

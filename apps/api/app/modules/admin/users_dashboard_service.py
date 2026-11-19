@@ -205,12 +205,16 @@ async def _hydrate_rows(db: AsyncSession, users: list[User]) -> list[dict]:
                     "hifz_tests": hifz_test_counts.get(user.id, 0),
                     "donations": donation_counts.get(user.id, 0),
                 },
+                "deleted_at": _iso(user.deleted_at),
+                "deleted_by": str(user.deleted_by) if user.deleted_by else None,
             }
         )
     return out
 
 
 def _apply_filters(stmt, *, q, status, profile):
+    # کاربران سطل زباله هرگز در فهرست اصلی نیستند (فهرست جدا دارند).
+    stmt = stmt.where(User.deleted_at.is_(None))
     if q:
         like = f"%{q.strip()}%"
         stmt = stmt.where(
@@ -315,21 +319,37 @@ async def list_dashboard_users(
 
 
 async def users_stats(db: AsyncSession) -> dict:
-    """آمار سربرگ داشبورد: کل، در انتظار، کامل‌شده، تأییدشده، پروفایل کامل."""
-    total = (await db.execute(select(func.count()).select_from(User))).scalar_one()
+    """آمار سربرگ داشبورد: کل، در انتظار، کامل‌شده، تأییدشده، پروفایل کامل.
+
+    همهٔ شمارش‌ها کاربران سطل زباله را کنار می‌گذارند؛ شمارش سطل جدا
+    برمی‌گردد تا CRM روی تب سطل نشانش دهد.
+    """
+    alive = User.deleted_at.is_(None)
+    total = (
+        await db.execute(select(func.count()).select_from(User).where(alive))
+    ).scalar_one()
     pending = (
         await db.execute(
-            select(func.count()).select_from(User).where(pending_marker_exists())
+            select(func.count()).select_from(User)
+            .where(alive, pending_marker_exists())
         )
     ).scalar_one()
     verified = (
         await db.execute(
-            select(func.count()).select_from(User).where(User.is_verified.is_(True))
+            select(func.count()).select_from(User)
+            .where(alive, User.is_verified.is_(True))
         )
     ).scalar_one()
     complete = (
         await db.execute(
-            select(func.count()).select_from(User).where(PROFILE_COMPLETE_COND)
+            select(func.count()).select_from(User)
+            .where(alive, PROFILE_COMPLETE_COND)
+        )
+    ).scalar_one()
+    trashed = (
+        await db.execute(
+            select(func.count()).select_from(User)
+            .where(User.deleted_at.is_not(None))
         )
     ).scalar_one()
     return {
@@ -338,4 +358,45 @@ async def users_stats(db: AsyncSession) -> dict:
         "completed": total - pending,
         "verified": verified,
         "profile_complete": complete,
+        "trashed": trashed,
+    }
+
+
+async def list_trashed_users(
+    db: AsyncSession,
+    *,
+    q: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    """فهرست سطل زباله — کاربران حذف نرم‌شده با سابقهٔ دست‌نخورده.
+
+    ترتیب: تازه‌ترین حذف اول. ردیف‌ها همان شکل داشبوردند تا CRM با
+    همان جدول رندرشان کند؛ deleted_at/deleted_by همراهشان است.
+    """
+    base = select(User).where(User.deleted_at.is_not(None))
+    if q:
+        like = f"%{q.strip()}%"
+        base = base.where(
+            or_(
+                User.full_name.ilike(like),
+                User.email.ilike(like),
+                User.phone.ilike(like),
+            )
+        )
+    total = (
+        await db.execute(select(func.count()).select_from(base.subquery()))
+    ).scalar_one()
+    page_users = list(
+        (
+            await db.execute(
+                base.order_by(User.deleted_at.desc()).offset(offset).limit(limit)
+            )
+        ).scalars().all()
+    )
+    return {
+        "items": await _hydrate_rows(db, page_users),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
     }

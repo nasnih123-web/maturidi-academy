@@ -67,6 +67,15 @@ class User(Base):
     date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
     gender: Mapped[str | None] = mapped_column(String(16), nullable=True)
     country_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    # سطل زباله (حذف نرم): deleted_at ست یعنی کاربر در سطل زباله است —
+    # ردیف و همهٔ سابقه‌اش می‌ماند، ورودش بسته است (is_active=False هم
+    # زمان حذف ست می‌شود) و فقط حذف دائمی از داخل سطل ردیف را پاک می‌کند.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     # سکرت TOTP — رمزنگاری‌شده (envelope فاز ۰ §۳) به‌صورت رشتهٔ JSON، نه plaintext
@@ -81,6 +90,28 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class UserActivityEvent(Base):
+    """رویداد رفتاری کاربر که جدول اختصاصی ندارد (پخش صوت/ویدیو، دانلود
+    کتابخانه و…) — فید خط زمانی نمای ۳۶۰° در CRM. kind فهرست بسته است
+    (لایهٔ سرویس activity اعتبارسنجی می‌کند)؛ meta جزئیات سبک رویداد
+    است (مثلاً media_kind/seconds/item_id) و هرگز secret ندارد."""
+
+    __tablename__ = "user_activity_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(48), index=True)
+    title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    ref_type: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    ref_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    meta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
 
 
 class Role(Base):

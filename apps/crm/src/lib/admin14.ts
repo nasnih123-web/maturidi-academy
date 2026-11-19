@@ -1157,6 +1157,22 @@ export interface UserProfile360 {
     tasmi_sessions: number;
     recent_attempts: { id: string; surah: number; status: string; engine: string; created_at: string }[];
   };
+  // نمای ۳۶۰° تازه: آواتار، سطل زباله، رسانه، خط زمانی و نقشهٔ فعالیت
+  is_verified: boolean;
+  avatar_url: string | null;
+  is_trashed: boolean;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  media_activity: { plays: number; seconds: number; downloads: number };
+  activity_timeline: UserActivityEvent[];
+  activity_heatmap: { date: string; count: number }[];
+}
+
+export interface UserActivityEvent {
+  kind: string;
+  module: string; // account | hifz | lms | library | media | fatwa | finance | social
+  at: string;
+  data: Record<string, unknown>;
 }
 
 export async function getUser360(id: string): Promise<UserProfile360> {
@@ -1190,13 +1206,13 @@ export async function getUser360(id: string): Promise<UserProfile360> {
     lms_progress: {
       enrolled: nOf(lms, "enrolled"),
       completed: nOf(lms, "completed"),
-      certificates: nOf(lms, "certificates"),
+      certificates: nOf(lms, "certificates_count", "certificates"),
       xp: nOf(lms, "xp"),
     },
     library_activity: {
       checkouts: nOf(lib, "checkouts"),
       bookmarks: nOf(lib, "bookmarks"),
-      uploads: nOf(lib, "uploads"),
+      uploads: nOf(lib, "uploads", "items_created"),
     },
     social_activity: {
       posts: nOf(soc, "posts"),
@@ -1205,9 +1221,9 @@ export async function getUser360(id: string): Promise<UserProfile360> {
       reports_received: nOf(soc, "reports_received"),
     },
     fatwa_activity: {
-      questions: nOf(fw, "questions"),
-      answers: nOf(fw, "answers"),
-      submissions: nOf(fw, "submissions"),
+      questions: nOf(fw, "questions", "cluster_questions_asked"),
+      answers: nOf(fw, "answers", "clusters_answered"),
+      submissions: nOf(fw, "submissions_count") || readList<unknown>(fw.submissions).length,
     },
     recent_notifications: pickArr<Record<string, unknown>>(r, "recent_notifications", "notifications").map((n) => ({
       id: pickString(n, "id"),
@@ -1263,6 +1279,32 @@ export async function getUser360(id: string): Promise<UserProfile360> {
         }),
       };
     })(),
+    is_verified: pickBool(profile, "is_verified", false),
+    avatar_url: pickString(profile, "avatar_url") || null,
+    is_trashed: pickBool(profile, "is_trashed", false),
+    deleted_at: pickString(profile, "deleted_at") || null,
+    deleted_by: pickString(profile, "deleted_by") || null,
+    media_activity: (() => {
+      const m = asRecord(r.media);
+      return {
+        plays: pickNum(m, "plays") ?? 0,
+        seconds: pickNum(m, "seconds") ?? 0,
+        downloads: pickNum(m, "downloads") ?? 0,
+      };
+    })(),
+    activity_timeline: readList<unknown>(r.activity_timeline).map((x) => {
+      const er = asRecord(x);
+      return {
+        kind: pickString(er, "kind"),
+        module: pickString(er, "module"),
+        at: pickString(er, "at"),
+        data: asRecord(er.data),
+      };
+    }),
+    activity_heatmap: readList<unknown>(r.activity_heatmap).map((x) => {
+      const hr = asRecord(x);
+      return { date: pickString(hr, "date"), count: pickNum(hr, "count") ?? 0 };
+    }),
   };
 }
 
@@ -1287,7 +1329,16 @@ export async function activateUser(id: string): Promise<unknown> {
 }
 
 export async function deleteUser(id: string): Promise<unknown> {
+  // حذف نرم است: کاربر به سطل زباله می‌رود و سابقه‌اش می‌ماند.
   return apiFetch<unknown>(`/api/v1/admin/users/${id}`, { method: "DELETE" });
+}
+
+export async function restoreUser(id: string): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/admin/users/${id}/restore`, { method: "POST" });
+}
+
+export async function permanentDeleteUser(id: string): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/admin/users/${id}/permanent`, { method: "DELETE" });
 }
 
 /* ------------------------------------------------------------------ */
@@ -1335,6 +1386,8 @@ export interface DashboardUserRow {
   registration: DashboardDevice | null;
   last_activity: DashboardDevice | null;
   counts: { fatwa_questions: number; hifz_sessions: number; hifz_tests: number; donations: number };
+  deleted_at: string | null;
+  deleted_by: string | null;
 }
 
 function parseDashboardUser(raw: unknown): DashboardUserRow {
@@ -1362,6 +1415,8 @@ function parseDashboardUser(raw: unknown): DashboardUserRow {
       hifz_tests: pickNum(counts, "hifz_tests") ?? 0,
       donations: pickNum(counts, "donations") ?? 0,
     },
+    deleted_at: pickString(r, "deleted_at") || null,
+    deleted_by: pickString(r, "deleted_by") || null,
   };
 }
 
@@ -1395,6 +1450,7 @@ export interface UsersStats {
   completed: number;
   verified: number;
   profile_complete: number;
+  trashed: number;
 }
 
 export async function getUsersStats(): Promise<UsersStats> {
@@ -1406,6 +1462,20 @@ export async function getUsersStats(): Promise<UsersStats> {
     completed: pickNum(r, "completed") ?? 0,
     verified: pickNum(r, "verified") ?? 0,
     profile_complete: pickNum(r, "profile_complete") ?? 0,
+    trashed: pickNum(r, "trashed") ?? 0,
+  };
+}
+
+export async function listUsersTrash(
+  params: { q?: string; limit?: number; offset?: number } = {},
+): Promise<{ items: DashboardUserRow[]; total: number; limit: number; offset: number }> {
+  const raw = await apiFetch<unknown>(`/api/v1/admin/users/trash${q(params as Record<string, string | number | undefined>)}`);
+  const r = asRecord(raw);
+  return {
+    items: readList<unknown>(raw).map(parseDashboardUser),
+    total: pickNum(r, "total") ?? 0,
+    limit: pickNum(r, "limit") ?? params.limit ?? 20,
+    offset: pickNum(r, "offset") ?? params.offset ?? 0,
   };
 }
 

@@ -16,6 +16,7 @@
 import { useMemo, useState } from 'react';
 import { paginateTranscript } from '@/lib/library';
 import { resolveStreamUrl, LibraryClientError } from '@/lib/library-client';
+import { reportActivity } from '@/lib/activity';
 
 export interface PdfViewerChapter {
   title: string;
@@ -84,6 +85,7 @@ export function LibraryPdfViewer({ itemId, title, previewUrl, transcript, chapte
     try {
       const url = await resolveStreamUrl(itemId);
       window.open(url, '_blank', 'noopener');
+      reportActivity('library_download', { title, refId: itemId, meta: { media_kind: 'pdf' } });
       setDlState('idle');
     } catch (err) {
       if (err instanceof LibraryClientError) setDlState('error');

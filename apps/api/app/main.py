@@ -90,6 +90,7 @@ from app.modules.social.router import (
 )
 from app.modules.sync.router import sync_router
 from app.modules.telegram.router import telegram_router
+from app.modules.activity.router import router as activity_router
 from app.modules.users.router import router as users_router
 from app.modules.voice.router import (
     admin_voice_router,
@@ -256,6 +257,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 app.include_router(auth_router)
 app.include_router(users_router)
+app.include_router(activity_router)
 app.include_router(meta_router)
 app.include_router(admin_router)
 app.include_router(admin_content_router)

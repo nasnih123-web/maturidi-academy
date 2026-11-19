@@ -2327,3 +2327,131 @@ button.linklike {
    * MediaManager, Settings, Fatwa, LMS, …) stack to one column on phones. */
   .crm-main [style*="1fr 1fr"] { grid-template-columns: 1fr !important; }
 }
+
+/* ---------- User 360° v2 (hero / stats / heatmap / timeline / trash) ---------- */
+@keyframes u360-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes u360-spin { to { transform: rotate(360deg); } }
+@keyframes u360-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, .45); } 55% { box-shadow: 0 0 0 8px rgba(212, 175, 55, 0); } }
+@keyframes u360-grow { from { width: 0; } }
+@keyframes u360-pop { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: scale(1); } }
+.u360-rise { animation: u360-rise .6s cubic-bezier(.2, .8, .25, 1) both; }
+
+.u360-hero {
+  position: relative; display: flex; gap: 1.4rem; align-items: center;
+  border: 1px solid rgba(212, 175, 55, .45); border-radius: 18px;
+  background: linear-gradient(160deg, rgba(212, 175, 55, .09), rgba(4, 16, 13, .35) 55%);
+  padding: 1.3rem 1.4rem; margin-bottom: 1rem; overflow: hidden;
+}
+.u360-avatar-wrap { position: relative; width: 118px; height: 118px; flex: none; }
+.u360-avatar-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 0deg, #d4af37, rgba(212, 175, 55, .05) 32%, #e5c07b 52%, rgba(212, 175, 55, .05) 74%, #d4af37);
+  animation: u360-spin 9s linear infinite;
+}
+.u360-avatar-ring2 { position: absolute; inset: 5px; border-radius: 50%; background: #07231c; }
+.u360-avatar {
+  position: absolute; inset: 9px; border-radius: 50%; overflow: hidden;
+  background: radial-gradient(120% 120% at 30% 20%, #17573d, #0a2e21 70%);
+  display: flex; align-items: center; justify-content: center;
+  color: #e5c07b; font-size: 2rem; font-weight: 800;
+}
+.u360-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.u360-avatar-badge {
+  position: absolute; bottom: 3px; inset-inline-end: 3px; z-index: 2;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: linear-gradient(180deg, #e3c766, #b8912c); color: #06120e;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .95rem; font-weight: 800; border: 3px solid #07231c;
+}
+.u360-hero-main { flex: 1; min-width: 0; }
+.u360-hero-name { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.u360-hero-name h2 { margin: 0; font-size: 1.55rem; }
+.u360-hero-sub { margin-top: .3rem; opacity: .75; font-size: .92rem; }
+.u360-chips { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .8rem; }
+.u360-chip {
+  border: 1px solid rgba(212, 175, 55, .35); background: rgba(255, 255, 255, .04);
+  border-radius: 9px; padding: .28rem .65rem; font-size: .83rem; font-weight: 700;
+}
+.u360-chip b { color: #e5c07b; }
+.u360-hero-side {
+  width: 220px; flex: none; border-inline-start: 1px dashed rgba(212, 175, 55, .3);
+  padding-inline-start: 1.1rem; display: flex; flex-direction: column; gap: .5rem;
+}
+.u360-bar { height: 9px; border-radius: 99px; background: rgba(255, 255, 255, .09); overflow: hidden; }
+.u360-bar i {
+  display: block; height: 100%; border-radius: 99px;
+  background: linear-gradient(90deg, #b8912c, #e3c766);
+  animation: u360-grow 1.2s .2s cubic-bezier(.2, .8, .25, 1) both;
+}
+.u360-trashed .u360-avatar-ring { animation: none; background: rgba(255, 255, 255, .18); }
+.u360-trashed .u360-avatar { filter: grayscale(.8); }
+
+.u360-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr)); gap: .8rem; margin-bottom: 1rem; }
+.u360-stat {
+  border: 1px solid var(--x-border, rgba(212, 175, 55, .25)); border-radius: 14px;
+  background: linear-gradient(165deg, rgba(255, 255, 255, .045), rgba(4, 16, 13, .3));
+  padding: .95rem 1.05rem .85rem;
+}
+.u360-stat .top { display: flex; align-items: center; gap: .55rem; }
+.u360-mono {
+  width: 38px; height: 38px; border-radius: 11px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.05rem; font-weight: 800; color: #06120e;
+}
+.u360-m-hifz { background: linear-gradient(160deg, #e3c766, #b8912c); }
+.u360-m-lms { background: linear-gradient(160deg, #8fd0ff, #4a90c2); }
+.u360-m-lib { background: linear-gradient(160deg, #c3a6ff, #7d5fd0); }
+.u360-m-fatwa { background: linear-gradient(160deg, #ffb08a, #e07b4a); }
+.u360-m-account { background: linear-gradient(160deg, #9fe8bb, #3fae6a); }
+.u360-m-media { background: linear-gradient(160deg, #ff9ecb, #d05f96); }
+.u360-m-finance { background: linear-gradient(160deg, #ffe08a, #d0a53f); }
+.u360-m-social { background: linear-gradient(160deg, #8affd1, #2fae86); }
+.u360-stat .name { font-weight: 800; }
+.u360-stat .num { margin-top: .5rem; font-size: 1.6rem; font-weight: 800; }
+.u360-stat .num small { font-size: .85rem; opacity: .6; font-weight: 700; }
+.u360-stat .sub { margin-top: .15rem; font-size: .82rem; opacity: .65; font-weight: 700; }
+.u360-stat .u360-bar { margin-top: .6rem; height: 7px; }
+
+.u360-heat { display: grid; grid-template-rows: repeat(7, 13px); grid-auto-flow: column; gap: 4px; margin-top: .8rem; direction: ltr; overflow-x: auto; padding-bottom: .3rem; }
+.u360-heat i { width: 13px; height: 13px; border-radius: 3.5px; background: rgba(255, 255, 255, .07); animation: u360-pop .45s both; }
+.u360-heat .l1 { background: rgba(212, 175, 55, .35); }
+.u360-heat .l2 { background: rgba(212, 175, 55, .62); }
+.u360-heat .l3 { background: #d4af37; }
+.u360-heat .l4 { background: #2ecc71; }
+
+.u360-tl { position: relative; margin-top: .4rem; }
+.u360-tl::before {
+  content: ''; position: absolute; top: 10px; bottom: 6px; inset-inline-start: 21px;
+  width: 3px; border-radius: 3px;
+  background: linear-gradient(180deg, #d4af37, rgba(212, 175, 55, .1));
+}
+.u360-day { margin: 1rem 0 .2rem; font-weight: 800; color: #e5c07b; font-size: .9rem; }
+.u360-day:first-child { margin-top: .2rem; }
+.u360-ev { display: flex; gap: .8rem; padding: .5rem 0; position: relative; align-items: flex-start; }
+.u360-ev .ic {
+  width: 45px; height: 45px; flex: none; border-radius: 50%; z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem; font-weight: 800; color: #06120e; border: 3px solid #06231b;
+  animation: u360-pulse 3.6s infinite;
+}
+.u360-ev .body { flex: 1; min-width: 0; border-bottom: 1px solid rgba(255, 255, 255, .05); padding-bottom: .55rem; }
+.u360-ev:last-child .body { border-bottom: none; }
+.u360-ev .t { font-weight: 800; }
+.u360-ev .d { margin-top: .1rem; font-size: .85rem; opacity: .62; font-weight: 700; word-break: break-word; }
+.u360-ev .when { font-size: .8rem; color: rgba(229, 192, 123, .85); font-weight: 800; white-space: nowrap; padding-top: .25rem; }
+
+.u360-tabs { display: flex; gap: .5rem; margin-bottom: 1rem; }
+.u360-tab {
+  border: 1px solid rgba(212, 175, 55, .35); background: rgba(255, 255, 255, .03);
+  color: inherit; border-radius: 999px; padding: .45rem 1.1rem;
+  font-weight: 800; cursor: pointer; font-size: .92rem;
+}
+.u360-tab.active { background: linear-gradient(180deg, #e3c766, #b8912c); color: #06120e; border-color: transparent; }
+.u360-tab .cnt {
+  display: inline-block; min-width: 1.5rem; text-align: center;
+  background: rgba(0, 0, 0, .22); border-radius: 999px; padding: 0 .4rem; margin-inline-start: .4rem;
+}
+@media (max-width: 760px) {
+  .u360-hero { flex-direction: column; align-items: flex-start; }
+  .u360-hero-side { width: 100%; border-inline-start: none; padding-inline-start: 0; border-top: 1px dashed rgba(212, 175, 55, .3); padding-top: .8rem; }
+}
