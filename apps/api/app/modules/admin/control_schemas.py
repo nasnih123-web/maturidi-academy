@@ -306,6 +306,10 @@ class UserOverviewOut(BaseModel):
     sessions: list[dict[str, Any]] = Field(default_factory=list)
     donations: dict[str, Any] = Field(default_factory=dict)
     hifz: dict[str, Any] = Field(default_factory=dict)
+    # خط زمانی فعالیت کل سامانه + نقشهٔ فعالیت ۸۴ روز اخیر
+    activity_timeline: list[dict[str, Any]] = Field(default_factory=list)
+    activity_heatmap: list[dict[str, Any]] = Field(default_factory=list)
+    media: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -350,6 +354,9 @@ class DashboardUserOut(BaseModel):
     registration: DashboardDeviceOut | None = None
     last_activity: DashboardDeviceOut | None = None
     counts: DashboardCountsOut = Field(default_factory=DashboardCountsOut)
+    # سطل زباله: فقط در فهرست سطل پر می‌شوند.
+    deleted_at: str | None = None
+    deleted_by: str | None = None
 
 
 class UsersDashboardPageOut(BaseModel):
@@ -365,6 +372,7 @@ class UsersStatsOut(BaseModel):
     completed: int
     verified: int
     profile_complete: int
+    trashed: int = 0
 
 
 # ---------------------------------------------------------------------------

@@ -1460,10 +1460,15 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 .auth-error { color: #e08080; font-size: 0.85rem; margin: 0; }
 /* Password field with show/hide eye + strength meter (set-password and
  * login forms). The eye sits at the inline-end of the input. */
-.pw-field { position: relative; display: block; }
-.pw-field input { width: 100%; padding-inline-end: 2.6rem; }
-.pw-eye { position: absolute; inset-inline-end: 0.35rem; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border: 0; border-radius: 50%; background: transparent; color: rgba(237, 230, 214, 0.65); cursor: pointer; }
-.pw-eye:hover { color: #e5c07b; background: rgba(212, 175, 55, 0.12); }
+/* The wrapper IS the field: border/background live on the flex row, the
+ * input is borderless inside it and the eye is a real flex item — so the
+ * password dots can never run underneath the button, and the generic
+ * .auth-form button chrome (gold box) is fully neutralised on the eye. */
+.pw-field { display: flex; align-items: center; border: 1px solid rgba(212, 175, 55, 0.3); border-radius: var(--radius-sm); background: rgba(7, 35, 28, 0.7); }
+.pw-field:focus-within { border-color: rgba(212, 175, 55, 0.65); }
+.auth-form .pw-field input { flex: 1; min-width: 0; width: auto; border: 0; background: transparent; padding: 0.6rem 0.8rem; }
+.auth-form .pw-field .pw-eye { position: static; transform: none; flex: none; display: inline-flex; align-items: center; justify-content: center; width: 2.2rem; height: 2.2rem; margin-inline-end: 0.15rem; padding: 0; border: 0; border-radius: 50%; background: transparent; color: rgba(237, 230, 214, 0.65); cursor: pointer; }
+.auth-form .pw-field .pw-eye:hover { color: #e5c07b; background: rgba(212, 175, 55, 0.12); }
 .pw-strength { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.45rem; }
 .pw-bar { flex: 1; height: 0.4rem; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
 .pw-bar i { display: block; height: 100%; border-radius: 999px; transition: width 0.25s ease, background 0.25s ease; }

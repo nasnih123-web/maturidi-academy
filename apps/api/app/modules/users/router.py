@@ -216,3 +216,45 @@ async def mark_notification_read(
 ):
     row = await service.mark_notification_read(db, user, notification_id)
     return MyNotificationOut.model_validate(row)
+
+
+@router.get("/users/avatar-by-ref")
+async def avatar_by_ref(
+    key: str,
+    exp: int,
+    sig: str,
+    purpose: str = "",
+    db: AsyncSession = Depends(get_db),
+):
+    """سرو عکس پروفایل با URL امضاشدهٔ کوتاه‌مدت (§۶) — الگوی کتابخانه.
+
+    امضا جای احراز هویت را می‌گیرد و باید هم‌منظور avatar باشد؛ کلید
+    باید دقیقاً کلید یک MediaAsset باشد (از آپلود آواتار ساخته شده).
+    مصرف‌کننده: نمای ۳۶۰° در CRM (و هر نمایش آیندهٔ آواتار در وب).
+    """
+    from fastapi.responses import Response
+    from sqlalchemy import select
+
+    from app.core.errors import APIError
+    from app.core.storage import SIGNED_PURPOSE_AVATAR, get_storage
+    from app.models.models import MediaAsset
+
+    storage = get_storage()
+    verify = getattr(storage, "verify_download_sig", None)
+    read_bytes = getattr(storage, "read_bytes", None)
+    if (
+        verify is None
+        or read_bytes is None
+        or purpose != SIGNED_PURPOSE_AVATAR
+        or not verify(key, exp, sig, purpose)
+    ):
+        raise APIError(403, "invalid_signature", "امضای دانلود نامعتبر یا منقضی است")
+    asset = (
+        await db.execute(
+            select(MediaAsset).where(MediaAsset.storage_key == key)
+        )
+    ).scalars().first()
+    if asset is None:
+        raise APIError(404, "not_found", "فایل یافت نشد")
+    data = await read_bytes(key)
+    return Response(content=data, media_type=asset.mime_type)

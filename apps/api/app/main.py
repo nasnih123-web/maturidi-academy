@@ -30,6 +30,7 @@ from app.core.middleware import (
 )
 from app.core.realtime import websocket_endpoint
 from app.core.storage import ensure_storage_ready, validate_builds_storage
+from app.modules.activity.router import router as activity_router
 from app.modules.admin.builds_router import router as admin_builds_router
 from app.modules.admin.connections_router import router as admin_connections_router
 from app.modules.admin.content_center_router import router as admin_content_router
@@ -256,6 +257,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 app.include_router(auth_router)
 app.include_router(users_router)
+app.include_router(activity_router)
 app.include_router(meta_router)
 app.include_router(admin_router)
 app.include_router(admin_content_router)

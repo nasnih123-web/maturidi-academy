@@ -27,6 +27,7 @@ SIGNED_PURPOSE_GENERIC = "download"
 SIGNED_PURPOSE_LIBRARY = "library"
 SIGNED_PURPOSE_CERTIFICATE = "lms-certificate"
 SIGNED_PURPOSE_VOICE_TTS = "voice-tts"  # Pass 4 / A3: دانلود صوت TTS محلی
+SIGNED_PURPOSE_AVATAR = "avatar"  # عکس پروفایل کاربر — نمایش در CRM/وب
 
 
 # ---------------------------------------------------------------------------

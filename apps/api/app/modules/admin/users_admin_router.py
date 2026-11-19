@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any, cast
 
@@ -28,6 +29,7 @@ from app.modules.admin.control_schemas import (
 from app.modules.auth.dependencies import require_permission
 
 router = APIRouter(prefix="/api/v1/admin/users", tags=["admin-users"])
+logger = logging.getLogger(__name__)
 _perm = require_permission("users.view360")
 
 
@@ -90,6 +92,18 @@ async def get_users_stats(
 ):
     """آمار سربرگ داشبورد کاربران (فاز C)."""
     return await dash_svc.users_stats(db)
+
+
+@router.get("/trash", response_model=UsersDashboardPageOut)
+async def get_users_trash(
+    q: str | None = Query(default=None, max_length=200),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    user: User = Depends(_perm),
+    db: AsyncSession = Depends(get_db),
+):
+    """سطل زبالهٔ کاربران — حذف نرم‌شده‌ها با سابقهٔ کامل و دست‌نخورده."""
+    return await dash_svc.list_trashed_users(db, q=q, limit=limit, offset=offset)
 
 
 @router.get("/{user_id}/overview", response_model=UserOverviewOut)
@@ -304,72 +318,233 @@ async def delete_user(
     user: User = Depends(_manage_perm),
     db: AsyncSession = Depends(get_db),
 ):
-    """حذف کامل کاربر — فقط وقتی دادهٔ وابستهٔ محتوایی ندارد.
+    """حذف نرم — انتقال کاربر به سطل زباله (با یا بی سابقه، فرقی ندارد).
 
-    اول ردیف‌های صرفاً حسابی (نشست، توکن‌ها، کدهای تأیید، نقش‌ها) پاک
-    می‌شوند؛ اگر هنوز ارجاعی از دادهٔ واقعی (حمایت، فتوا، حفاظ، …) باشد
-    قید FK جلوی حذف را می‌گیرد و 409 برمی‌گردد تا مدیر به‌جای حذف،
-    تعلیق کند. حذفِ حساب‌های تستی و ثبت‌نام‌های ناتمامِ بی‌فعالیت —
-    مصرف اصلی این دکمه — تمیز انجام می‌شود.
+    ردیف کاربر و همهٔ سابقه‌اش (حمایت، فتوا، حفاظ، …) دست‌نخورده
+    می‌ماند؛ فقط deleted_at/deleted_by ست، حساب غیرفعال و نشست‌ها
+    باطل می‌شوند تا ورود ممکن نباشد. برگشت با «بازیابی» از سطل است
+    و نابودی کامل فقط با حذف دائمی از داخل سطل.
     """
     from app.core.audit import log_audit
-    from app.models.models import (
-        ClusterMember,
-        Donation,
-        HifzAttempt,
-        HifzTest,
-        PasswordResetToken,
-        PhoneVerificationCode,
-        RecoveryCode,
-        RefreshToken,
-        Session,
-        UserRole,
-    )
+    from app.models.models import RefreshToken, Session
 
     target = await _manage_target(db, user, user_id)
-    # دادهٔ محتواییِ واقعی (حمایت/حفاظ/فتوا) حذف را صریحاً 409 می‌کند —
-    # مستقل از این‌که FK دیتابیس enforce شود یا نه (SQLite تست در برابر
-    # Postgres پروداکشن). بقیهٔ ارجاع‌ها را قید FK و except زیر می‌گیرد.
-    blockers = 0
-    for blocker_model, blocker_column in (
-        (Donation, Donation.donor_id),
-        (HifzAttempt, HifzAttempt.user_id),
-        (HifzTest, HifzTest.user_id),
-        (ClusterMember, ClusterMember.user_id),
-    ):
-        blockers += (await db.execute(
-            select(func.count()).select_from(blocker_model)
-            .where(blocker_column == user_id))).scalar_one()
-    if blockers:
+    if target.deleted_at is not None:
+        return {
+            "user_id": str(user_id), "trashed": True,
+            "deleted_at": target.deleted_at.isoformat(),
+        }
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC)
+    target.deleted_at = now
+    target.deleted_by = user.id
+    target.is_active = False
+    await db.execute(update(Session).where(
+        Session.user_id == user_id, Session.revoked.is_(False)).values(revoked=True))
+    await db.execute(update(RefreshToken).where(
+        RefreshToken.user_id == user_id, RefreshToken.revoked.is_(False)).values(revoked=True))
+    await log_audit(
+        db, actor_id=user.id, actor_type="admin", action="users.trash",
+        entity_type="user", entity_id=str(user_id),
+        old_values={"is_active": True, "deleted_at": None},
+        new_values={"is_active": False, "deleted_at": now.isoformat()},
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return {
+        "user_id": str(user_id), "trashed": True,
+        "deleted_at": now.isoformat(),
+    }
+
+
+@router.post("/{user_id}/restore", response_model=dict)
+@rate_limit(_admin_rl_key("user-restore"), limit=30, window_s=60)
+async def post_restore_user(
+    user_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(_manage_perm),
+    db: AsyncSession = Depends(get_db),
+):
+    """بازیابی از سطل زباله: deleted_at پاک و حساب دوباره فعال می‌شود.
+
+    سابقه در تمام مدت حذف نرم سر جایش بوده، پس بازیابی چیزی جز
+    برگرداندن همین دو پرچم نیست؛ نشست تازه با ورود بعدی ساخته می‌شود.
+    """
+    from app.core.audit import log_audit
+
+    target = await db.get(User, user_id)
+    if target is None:
+        raise APIError(404, "user_not_found", "کاربر یافت نشد")
+    if target.deleted_at is None:
+        return {"user_id": str(user_id), "is_trashed": False, "restored": False}
+    target.deleted_at = None
+    target.deleted_by = None
+    target.is_active = True
+    await log_audit(
+        db, actor_id=user.id, actor_type="admin", action="users.restore",
+        entity_type="user", entity_id=str(user_id),
+        old_values={"is_active": False},
+        new_values={"is_active": True},
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await db.commit()
+    return {"user_id": str(user_id), "is_trashed": False, "restored": True}
+
+
+# جدول‌هایی که ارجاع nullableشان به کاربر در حذف دائمی «ناشناس» می‌شود
+# (ردیف می‌ماند، شخص جدا می‌شود) تا حساب‌وکتاب مالی و محتوای عمومی
+# با رفتن یک کاربر فرو نریزد. بقیهٔ ارجاع‌ها واقعاً پاک می‌شوند.
+_ANONYMIZE_TABLES = {
+    "donations", "payment_intents", "library_items", "question_clusters",
+}
+
+
+async def _purge_user_graph(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """حذف بازگشتی همهٔ ردیف‌های وابسته به کاربر از گراف FK مدل‌ها.
+
+    برای هر جدولی که به users ارجاع دارد: اگر جدول در فهرست ناشناس‌سازی
+    است و ستون nullable، ارجاع NULL می‌شود؛ وگرنه ردیف‌ها — بعد از
+    پاک‌کردن بازگشتی فرزندانشان — حذف می‌شوند. در پایان خود ردیف
+    کاربر پاک می‌شود. فایل‌های مدیای متعلق به کاربر هم بهترین‌تلاش
+    از storage حذف می‌شوند.
+    """
+    from app.core.database import Base
+    from app.models.models import MediaAsset
+
+    meta = Base.metadata
+    users_table = meta.tables["users"]
+
+    # ارجاع آواتار خود کاربر اول خنثی می‌شود تا پاک‌کردن ردیف مدیای
+    # آواتار در میانهٔ گراف به ردیف کاربر گره نخورد.
+    await db.execute(
+        update(users_table)
+        .where(users_table.c.id == user_id)
+        .values(avatar_media_id=None)
+    )
+
+    assets = (
+        await db.execute(
+            select(MediaAsset).where(MediaAsset.owner_id == user_id)
+        )
+    ).scalars().all()
+    if assets:
+        try:
+            from app.core.storage import get_storage
+
+            storage = get_storage()
+            for asset in assets:
+                for key in (asset.storage_key, asset.thumbnail_key):
+                    if key:
+                        try:
+                            await storage.delete_object(key)
+                        except Exception:  # noqa: BLE001 — حذف فایل best-effort است
+                            logger.debug("purge: delete_object skipped for %s", key)
+        except Exception:
+            logger.debug("purge: storage cleanup skipped", exc_info=True)
+
+    async def purge(table, col_name: str, values: set, seen: set) -> None:
+        marker = (table.name, col_name, tuple(sorted(str(v) for v in values)))
+        if marker in seen or not values:
+            return
+        seen.add(marker)
+        pk_cols = list(table.primary_key.columns)
+        if len(pk_cols) == 1:
+            pk = pk_cols[0]
+            child_ids = set(
+                (
+                    await db.execute(
+                        select(pk).where(table.c[col_name].in_(values))
+                    )
+                ).scalars().all()
+            )
+            if child_ids:
+                for child in meta.tables.values():
+                    if child is table or child is users_table:
+                        continue
+                    for c in child.c:
+                        for fk in c.foreign_keys:
+                            if fk.column.table is table and fk.column.name == pk.name:
+                                if c.nullable and child.name in _ANONYMIZE_TABLES:
+                                    await db.execute(
+                                        update(child)
+                                        .where(c.in_(child_ids))
+                                        .values({c.name: None})
+                                    )
+                                else:
+                                    await purge(child, c.name, child_ids, seen)
+        await db.execute(delete(table).where(table.c[col_name].in_(values)))
+
+    for table in meta.tables.values():
+        if table is users_table:
+            continue
+        for c in table.c:
+            for fk in c.foreign_keys:
+                if fk.column.table is users_table:
+                    if c.nullable and table.name in _ANONYMIZE_TABLES:
+                        await db.execute(
+                            update(table).where(c == user_id).values({c.name: None})
+                        )
+                    else:
+                        await purge(table, c.name, {user_id}, set())
+    # ارجاع‌های داخل خود users: deleted_by دیگران به این کاربر + آواتار خودش
+    await db.execute(
+        update(users_table)
+        .where(users_table.c.deleted_by == user_id)
+        .values(deleted_by=None)
+    )
+    await db.execute(
+        update(users_table)
+        .where(users_table.c.id == user_id)
+        .values(avatar_media_id=None)
+    )
+    await db.execute(delete(users_table).where(users_table.c.id == user_id))
+
+
+@router.delete("/{user_id}/permanent", response_model=dict)
+@rate_limit(_admin_rl_key("user-delete-permanent"), limit=10, window_s=60)
+async def delete_user_permanent(
+    user_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(_manage_perm),
+    db: AsyncSession = Depends(get_db),
+):
+    """حذف دائمی از سطل زباله — کاربر و همهٔ دادهٔ وابسته‌اش پاک می‌شود.
+
+    فقط برای کاربری که همین حالا در سطل است. استثنای آگاهانه: ردیف‌های
+    مالی (حمایت‌ها) و محتوای کتابخانه/خوشه‌ها ناشناس می‌شوند (ارجاع
+    به کاربر NULL) تا جمع کمپین‌ها و محتوای عمومی با حذف یک شخص
+    به‌هم نریزد؛ خود شخص دیگر هیچ‌جا قابل ردیابی نیست.
+    """
+    from app.core.audit import log_audit
+
+    target = await _manage_target(db, user, user_id)
+    if target.deleted_at is None:
         raise APIError(
-            409, "user_has_related_data",
-            "کاربر دادهٔ وابسته دارد (حمایت، فتوا، حفاظ و…)؛ به‌جای حذف، او را تعلیق کنید",
+            422, "not_trashed",
+            "حذف دائمی فقط از داخل سطل زباله ممکن است؛ اول کاربر را حذف (منتقل به سطل) کنید",
         )
-    snapshot = {"email": target.email, "phone": target.phone, "full_name": target.full_name}
-    for model in (
-        Session,
-        RefreshToken,
-        PasswordResetToken,
-        PhoneVerificationCode,
-        RecoveryCode,
-        UserRole,
-    ):
-        await db.execute(delete(model).where(model.user_id == user_id))
-    await db.delete(target)
+    snapshot = {
+        "email": target.email, "phone": target.phone,
+        "full_name": target.full_name,
+        "deleted_at": target.deleted_at.isoformat(),
+    }
+    await log_audit(
+        db, actor_id=user.id, actor_type="admin", action="users.delete_permanent",
+        entity_type="user", entity_id=str(user_id),
+        old_values=snapshot,
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
     try:
-        await db.flush()
-        await log_audit(
-            db, actor_id=user.id, actor_type="admin", action="users.delete",
-            entity_type="user", entity_id=str(user_id),
-            old_values=snapshot,
-            ip=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-        )
+        await _purge_user_graph(db, user_id)
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise APIError(
-            409, "user_has_related_data",
-            "کاربر دادهٔ وابسته دارد (حمایت، فتوا، حفاظ و…)؛ به‌جای حذف، او را تعلیق کنید",
+            409, "user_purge_blocked",
+            "حذف دائمی به‌خاطر ارجاع دادهٔ ناشناخته کامل نشد؛ کاربر در سطل باقی ماند",
         ) from None
-    return {"user_id": str(user_id), "deleted": True}
+    return {"user_id": str(user_id), "deleted": True, "permanent": True}

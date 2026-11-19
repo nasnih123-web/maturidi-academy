@@ -62,6 +62,9 @@ import {
   suspendUser,
   activateUser,
   deleteUser,
+  restoreUser,
+  permanentDeleteUser,
+  listUsersTrash,
   telegramQueueDecision,
   transitionContent,
   updateDistribution,
@@ -95,6 +98,7 @@ export const admin14Keys = {
   tgDedupe: ["admin14", "telegram", "dedupe"] as const,
   users: (f: { q?: string; role?: string }) => ["admin14", "users", JSON.stringify(f)] as const,
   usersDashboard: (f: unknown) => ["admin14", "users-dashboard", JSON.stringify(f)] as const,
+  usersTrash: (f: unknown) => ["admin14", "users-trash", JSON.stringify(f)] as const,
   usersStats: ["admin14", "users-stats"] as const,
   user360: (id: string) => ["admin14", "user360", id] as const,
   userAudit: (id: string) => ["admin14", "user-audit", id] as const,
@@ -334,6 +338,14 @@ export function useUsersDashboard(params: {
   });
 }
 
+export function useUsersTrash(params: { q?: string; limit?: number; offset?: number }) {
+  return useQuery({
+    queryKey: admin14Keys.usersTrash(params),
+    queryFn: () => listUsersTrash(params),
+    retry: false,
+  });
+}
+
 export function useUsersStats() {
   return useQuery({
     queryKey: admin14Keys.usersStats,
@@ -391,6 +403,14 @@ export function useUserAdminMutation() {
     }),
     remove: useMutation({
       mutationFn: (id: string) => deleteUser(id),
+      onSettled: invalidate,
+    }),
+    restore: useMutation({
+      mutationFn: (id: string) => restoreUser(id),
+      onSettled: invalidate,
+    }),
+    permanentRemove: useMutation({
+      mutationFn: (id: string) => permanentDeleteUser(id),
       onSettled: invalidate,
     }),
   };

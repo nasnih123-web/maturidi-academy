@@ -104,7 +104,9 @@ def test_profile_identity_migration_up_down_up(monkeypatch, tmp_path):
         command.upgrade(cfg, "head")
         assert new_cols <= _users_columns(db_file)
 
-        command.downgrade(cfg, "-1")
+        # تا درست زیر مهاجرت هویت پروفایل (c2b0cc7d091a) پایین می‌رویم —
+        # «-1» کافی نیست چون بعد از فاز B مهاجرت‌های دیگری هم آمده‌اند.
+        command.downgrade(cfg, "d7e8f9a0b1c2")
         assert not (new_cols & _users_columns(db_file))
 
         command.upgrade(cfg, "head")
