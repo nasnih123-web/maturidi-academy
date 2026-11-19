@@ -95,7 +95,7 @@ async def _avatar_url(db: AsyncSession, user: User) -> str | None:
             download_path="/api/v1/users/avatar-by-ref",
             purpose=SIGNED_PURPOSE_AVATAR,
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 — آواتار نباید اورویو را بشکند
         return None
 
 

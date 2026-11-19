@@ -30,6 +30,7 @@ from app.core.middleware import (
 )
 from app.core.realtime import websocket_endpoint
 from app.core.storage import ensure_storage_ready, validate_builds_storage
+from app.modules.activity.router import router as activity_router
 from app.modules.admin.builds_router import router as admin_builds_router
 from app.modules.admin.connections_router import router as admin_connections_router
 from app.modules.admin.content_center_router import router as admin_content_router
@@ -90,7 +91,6 @@ from app.modules.social.router import (
 )
 from app.modules.sync.router import sync_router
 from app.modules.telegram.router import telegram_router
-from app.modules.activity.router import router as activity_router
 from app.modules.users.router import router as users_router
 from app.modules.voice.router import (
     admin_voice_router,

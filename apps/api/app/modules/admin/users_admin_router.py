@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any, cast
 
@@ -28,6 +29,7 @@ from app.modules.admin.control_schemas import (
 from app.modules.auth.dependencies import require_permission
 
 router = APIRouter(prefix="/api/v1/admin/users", tags=["admin-users"])
+logger = logging.getLogger(__name__)
 _perm = require_permission("users.view360")
 
 
@@ -438,10 +440,10 @@ async def _purge_user_graph(db: AsyncSession, user_id: uuid.UUID) -> None:
                     if key:
                         try:
                             await storage.delete_object(key)
-                        except Exception:
-                            pass
+                        except Exception:  # noqa: BLE001 — حذف فایل best-effort است
+                            logger.debug("purge: delete_object skipped for %s", key)
         except Exception:
-            pass
+            logger.debug("purge: storage cleanup skipped", exc_info=True)
 
     async def purge(table, col_name: str, values: set, seen: set) -> None:
         marker = (table.name, col_name, tuple(sorted(str(v) for v in values)))
