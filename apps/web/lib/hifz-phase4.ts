@@ -79,6 +79,48 @@ export function surahAyahCount(surah: number): number | null {
   return SURAH_AYAH_COUNTS[surah - 1];
 }
 
+/** One position in the Quran (surah + ayah), for ayah-by-ayah navigation. */
+export interface HifzPosition {
+  surah: number;
+  ayah: number;
+}
+
+/**
+ * Next ayah in the whole Quran, crossing surah boundaries
+ * (user 2026-11-20): the "آیهٔ بعد" button must keep advancing
+ * ayah by ayah through all 114 surahs, not stop at the end of
+ * the current surah. Returns null only at the last ayah of the
+ * Quran (114:6). `ayahCount` is the current surah's ayah count
+ * (the study page's state, from the server).
+ */
+export function nextAyahPosition(
+  surah: number,
+  ayah: number,
+  ayahCount: number,
+): HifzPosition | null {
+  if (ayahCount > 0 && ayah >= ayahCount) {
+    if (surah >= 114) return null;
+    return { surah: surah + 1, ayah: 1 };
+  }
+  return { surah, ayah: ayah + 1 };
+}
+
+/**
+ * Previous ayah in the whole Quran, crossing surah boundaries
+ * (mirror of nextAyahPosition): from the first ayah of a surah
+ * back to the last ayah of the previous surah. Returns null
+ * only at the first ayah of the Quran (1:1).
+ */
+export function prevAyahPosition(surah: number, ayah: number): HifzPosition | null {
+  if (ayah <= 1) {
+    if (surah <= 1) return null;
+    const prevCount = surahAyahCount(surah - 1);
+    if (prevCount === null) return null;
+    return { surah: surah - 1, ayah: prevCount };
+  }
+  return { surah, ayah: ayah - 1 };
+}
+
 /** Latin digits (0–9) → Eastern Arabic digits (٠–٩); other chars kept. */
 export function toEasternArabicDigitsText(text: string): string {
   return [...text]
