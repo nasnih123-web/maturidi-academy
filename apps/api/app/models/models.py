@@ -1432,6 +1432,42 @@ class UserVideoProgress(Base):
     )
 
 
+class ItemSubtitle(Base):
+    """زیرنویس زمان‌دار (WebVTT) هر آیتم ویدیویی، به‌ازای هر زبان — فاز ۳ ویدیوها.
+
+    یک ردیف برای هر (آیتم، زبان)؛ متن VTT فقط وقتی status=ready پر است.
+    status: pending | processing | ready | failed — شکست همیشه با دلیل
+    صریح در error ثبت می‌شود؛ زیرنویس جعلی هرگز ساخته نمی‌شود. آیتم‌های
+    خارجی (یوتیوب) ردیف زیرنویس ندارند — کپشن خود یوتیوب داخل embed است.
+    """
+
+    __tablename__ = "item_subtitles"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("library_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    lang: Mapped[str] = mapped_column(String(8), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), default="pending", index=True
+    )  # pending | processing | ready | failed
+    vtt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint("item_id", "lang", name="uq_item_subtitles_item_lang"),
+    )
+
+
 class LibraryItemVersion(Base):
     """نسخهٔ بایگانی‌شدهٔ آیتم کتابخانه — ویرایش نسخهٔ قبلی را بایگانی می‌کند، نه حذف."""
 

@@ -10,7 +10,9 @@
  * تماشا (resume) — برای کاربر واردشده از endpoint پیشرفت سرور و برای
  * مهمان از localStorage. گزارش فعالیت (media_play/media_progress)
  * دقیقاً هم‌معنای LibraryVideoViewer است تا خط زمانی CRM نشکند.
- * زیرنویس عمداً این‌جا نیست — فاز ۳ ترک‌های واقعی را اضافه می‌کند.
+ * زیرنویس (فاز ۳): ترک‌های WebVTT آماده از API با <track> بومی رندر
+ * می‌شوند و دکمهٔ CC + منوی زبان (پیش‌فرض از تنظیم CRM) حالت
+ * showing/hidden ترک‌ها را مدیریت می‌کند؛ رندر cue بومی مرورگر است.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -42,6 +44,14 @@ export interface ProVideoPlayerLabels {
   cancel: string;
   rewind: string;
   forward: string;
+  subtitles: string;
+  subtitlesOff: string;
+}
+
+export interface ProVideoSubtitleTrack {
+  lang: string;
+  /** Absolute WebVTT URL on the API origin. */
+  url: string;
 }
 
 export interface ProVideoPlayerSettings {
@@ -62,6 +72,10 @@ interface Props {
   nextUrl: string | null;
   nextTitle: string | null;
   labels: ProVideoPlayerLabels;
+  /** Ready WebVTT tracks (phase 3); empty → no CC UI at all. */
+  subtitles?: ProVideoSubtitleTrack[];
+  /** CRM default subtitle language; used when that track exists. */
+  subtitleDefaultLang?: string;
 }
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -93,6 +107,7 @@ const PATHS = {
   muted: 'M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4zM16 9.5l5 5m0-5l-5 5',
   gear: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1-1.55 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.55-1H3a2 2 0 110-4h.09A1.7 1.7 0 005.64 8.9a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34h.09A1.7 1.7 0 0011 3.09V3a2 2 0 114 0v.09c0 .68.4 1.3 1 1.55.61.26 1.32.1 1.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87v.09c.26.6.87 1 1.55 1H22a2 2 0 110 4h-.09c-.68 0-1.3.4-1.51 1z',
   pip: 'M3 5.5A1.5 1.5 0 014.5 4h15A1.5 1.5 0 0121 5.5v9a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 14.5v-9zM11 11.5h7.5v4H11z',
+  cc: 'M3.5 6A1.5 1.5 0 015 4.5h14A1.5 1.5 0 0120.5 6v12A1.5 1.5 0 0119 19.5H5A1.5 1.5 0 013.5 18V6zM10.4 10a2.6 2.6 0 100 4M17 10a2.6 2.6 0 100 4',
   fullscreen: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
   exitFullscreen: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
   check: 'M4.5 12.5l5 5L19.5 7',
@@ -108,6 +123,8 @@ export function ProVideoPlayer({
   nextUrl,
   nextTitle,
   labels,
+  subtitles = [],
+  subtitleDefaultLang,
 }: Props) {
   const router = useRouter();
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -123,6 +140,8 @@ export function ProVideoPlayer({
   const [muted, setMuted] = useState(false);
   const [rate, setRate] = useState(1);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [ccOpen, setCcOpen] = useState(false);
+  const [ccLang, setCcLang] = useState<string | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [pipSupported, setPipSupported] = useState(false);
@@ -262,6 +281,49 @@ export function ProVideoPlayer({
       typeof document !== 'undefined' && Boolean(document.pictureInPictureEnabled),
     );
   }, []);
+
+  // ------------------------------------------------------------------
+  // زیرنویس: زبان پیش‌فرض هر آیتم + اعمال mode روی ترک‌های بومی
+  // ------------------------------------------------------------------
+
+  const defaultCcLang =
+    subtitles.find((t) => t.lang === subtitleDefaultLang)?.lang ?? null;
+
+  useEffect(() => {
+    setCcLang(
+      subtitles.find((t) => t.lang === subtitleDefaultLang)?.lang ?? null,
+    );
+    setCcOpen(false);
+    // فقط با عوض شدن آیتم/ترک‌ها ریست می‌شود، نه با هر رندر
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemId, subtitles]);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || !src) return;
+    const apply = () => {
+      const tracks = el.textTracks;
+      for (let i = 0; i < tracks.length; i += 1) {
+        const tr = tracks[i];
+        tr.mode = ccLang && tr.language === ccLang ? 'showing' : 'hidden';
+      }
+    };
+    apply();
+    el.addEventListener('loadedmetadata', apply);
+    return () => el.removeEventListener('loadedmetadata', apply);
+  }, [src, ccLang, subtitles]);
+
+  const langName = useCallback(
+    (code: string) => {
+      try {
+        const dn = new Intl.DisplayNames([locale], { type: 'language' });
+        return dn.of(code === 'dari' ? 'fa-AF' : code) ?? code;
+      } catch {
+        return code;
+      }
+    },
+    [locale],
+  );
 
   // ------------------------------------------------------------------
   // رویدادهای ویدیو: وضعیت، فعالیت، resume و ذخیرهٔ دوره‌ای
@@ -556,6 +618,11 @@ export function ProVideoPlayer({
       case 'm':
         toggleMute();
         break;
+      case 'c':
+        if (subtitles.length > 0) {
+          setCcLang((cur) => (cur ? null : (defaultCcLang ?? subtitles[0].lang)));
+        }
+        break;
       default:
         break;
     }
@@ -595,7 +662,6 @@ export function ProVideoPlayer({
         </div>
       ) : src ? (
         <>
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video
             ref={videoRef}
             className="vp-el"
@@ -603,9 +669,21 @@ export function ProVideoPlayer({
             poster={posterUrl ?? undefined}
             preload="metadata"
             playsInline
+            crossOrigin="anonymous"
             aria-label={title}
             onClick={onFrameClick}
-          />
+          >
+            {subtitles.map((tr) => (
+              <track
+                key={tr.lang}
+                kind="subtitles"
+                src={tr.url}
+                srcLang={tr.lang}
+                label={langName(tr.lang)}
+                default={tr.lang === defaultCcLang}
+              />
+            ))}
+          </video>
 
           {!playing && countdown === null && (
             <button
@@ -747,6 +825,65 @@ export function ProVideoPlayer({
                 {formatDuration(currentTime, locale)} / {formatDuration(duration, locale)}
               </span>
               <span className="vp-spacer" />
+              {subtitles.length > 0 && (
+                <div className="vp-menu-wrap">
+                  <button
+                    type="button"
+                    className={`vp-btn${ccLang ? ' vp-cc-on' : ''}`}
+                    aria-label={labels.subtitles}
+                    aria-expanded={ccOpen}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setCcOpen((v) => !v);
+                      setMenuOpen(false);
+                    }}
+                  >
+                    <Icon d={PATHS.cc} />
+                  </button>
+                  {ccOpen && (
+                    <>
+                      <div
+                        className="vp-menu-backdrop"
+                        onClick={() => setCcOpen(false)}
+                      />
+                      <div className="vp-menu" role="menu">
+                        <p className="vp-menu-head">{labels.subtitles}</p>
+                        <button
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={ccLang === null}
+                          className={`vp-mi${ccLang === null ? ' vp-on' : ''}`}
+                          onClick={() => {
+                            setCcLang(null);
+                            setCcOpen(false);
+                          }}
+                        >
+                          <span>{labels.subtitlesOff}</span>
+                          {ccLang === null ? <Icon d={PATHS.check} /> : null}
+                        </button>
+                        {subtitles.map((tr) => (
+                          <button
+                            key={tr.lang}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={ccLang === tr.lang}
+                            className={`vp-mi${ccLang === tr.lang ? ' vp-on' : ''}`}
+                            onClick={() => {
+                              setCcLang(tr.lang);
+                              setCcOpen(false);
+                            }}
+                          >
+                            <span>{langName(tr.lang)}</span>
+                            {ccLang === tr.lang ? (
+                              <Icon d={PATHS.check} />
+                            ) : null}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="vp-menu-wrap">
                 <button
                   type="button"
@@ -754,7 +891,10 @@ export function ProVideoPlayer({
                   aria-label={labels.settings}
                   aria-expanded={menuOpen}
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setMenuOpen((v) => !v)}
+                  onClick={() => {
+                    setMenuOpen((v) => !v);
+                    setCcOpen(false);
+                  }}
                 >
                   <Icon d={PATHS.gear} />
                 </button>

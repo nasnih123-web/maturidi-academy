@@ -155,6 +155,8 @@ export default async function VideoWatchPage({
     cancel: t('player.cancel'),
     rewind: t('player.rewind'),
     forward: t('player.forward'),
+    subtitles: t('player.subtitles'),
+    subtitlesOff: t('player.subtitlesOff'),
   };
   const panoLabels = {
     loading: tLib('pano.loading'),
@@ -199,6 +201,8 @@ export default async function VideoWatchPage({
               nextUrl={nextUrl}
               nextTitle={nextTitle}
               labels={playerLabels}
+              subtitles={watch.subtitles}
+              subtitleDefaultLang={settings.subtitleDefaultLang}
             />
           )}
           <h1 className="vid-watch-title">{title}</h1>

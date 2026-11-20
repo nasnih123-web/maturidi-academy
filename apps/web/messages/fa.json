@@ -1854,7 +1854,9 @@
       "playNow": "پخش الان",
       "cancel": "لغو",
       "rewind": "۱۰ ثانیه عقب",
-      "forward": "۱۰ ثانیه جلو"
+      "forward": "۱۰ ثانیه جلو",
+      "subtitles": "زیرنویس",
+      "subtitlesOff": "خاموش"
     }
   },
   "places": {

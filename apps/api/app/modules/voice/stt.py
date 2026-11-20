@@ -106,6 +106,65 @@ class FasterWhisperSTT:
                 {"reason": type(exc).__name__},
             )
 
+    async def transcribe_segments(
+        self,
+        audio_bytes: bytes,
+        *,
+        lang: str | None = None,
+        task: str = "transcribe",
+        timeout_s: float | None = None,
+    ) -> dict:
+        """رونویسی با سگمنت‌های زمان‌دار — برای زیرنویس WebVTT (فاز ۳ ویدیوها).
+
+        task="translate" خروجی انگلیسی whisper است (ترجمهٔ داخلی خود مدل).
+        -> {"segments": [{"start","end","text"}], "language", "duration_s"}
+        """
+        import io
+
+        def _run() -> dict:
+            model = self._get_model()
+            segments, info = model.transcribe(
+                io.BytesIO(audio_bytes),
+                language=lang,  # None → تشخیص خودکار whisper
+                task=task,
+                vad_filter=True,
+            )
+            out: list[dict] = []
+            end = 0.0
+            for seg in segments:
+                out.append(
+                    {
+                        "start": float(seg.start),
+                        "end": float(seg.end),
+                        "text": seg.text.strip(),
+                    }
+                )
+                end = max(end, float(seg.end))
+            return {
+                "segments": out,
+                "language": info.language,
+                "duration_s": round(end or float(info.duration or 0.0), 2),
+            }
+
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(_run), timeout=timeout_s or STT_TIMEOUT_S
+            )
+        except TimeoutError:
+            raise APIError(
+                503, "stt_timeout",
+                "رونویسی بیش از حد طول کشید؛ لطفاً فایل کوتاه‌تری بفرستید",
+                {"timeout_s": timeout_s or STT_TIMEOUT_S},
+            )
+        except APIError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — مدل/باینری خراب یا ناموجود؛ صادقانه
+            raise APIError(
+                503, "stt_unavailable",
+                "سرویس رونویسی گفتار در دسترس نیست",
+                {"reason": type(exc).__name__},
+            )
+
 
 def get_stt_provider(configured: str) -> STTProvider | None:
     """None یعنی STT در دسترس نیست (فراخواننده خطای صادقانه می‌دهد)."""

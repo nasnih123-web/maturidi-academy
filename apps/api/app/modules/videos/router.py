@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,12 +19,14 @@ from app.modules.auth.dependencies import get_current_user, require_permission
 from . import service
 from .schemas import (
     AdminPlaylistOut,
+    AdminSubtitleItemOut,
     CandidateOut,
     PlaylistCreateIn,
     PlaylistItemAddIn,
     PlaylistOrderIn,
     PlaylistOut,
     PlaylistUpdateIn,
+    SubtitleGenerateOut,
     VideoItemOut,
     VideoListOut,
     VideoProgressIn,
@@ -110,6 +112,18 @@ async def get_watch(
 ):
     """جزئیات تماشا: آیتم + stream امضاشده + زمینهٔ لیست پخش + مشابه‌ها."""
     return await service.get_watch(db, item_id, user=user, playlist_id=playlist)
+
+
+@videos_router.get("/{item_id}/subtitles/{lang}.vtt")
+async def get_subtitle_file(
+    item_id: uuid.UUID,
+    lang: str,
+    db: AsyncSession = Depends(get_db),
+    user: User | None = Depends(_optional_user),
+):
+    """فایل WebVTT یک ترک ready — فقط برای آیتم عمومیِ قابل‌مشاهده."""
+    vtt = await service.get_subtitle_vtt(db, item_id, lang, user=user)
+    return Response(content=vtt, media_type="text/vtt")
 
 
 @videos_router.get("/{item_id}/progress", response_model=VideoProgressOut)
@@ -261,6 +275,35 @@ async def admin_reorder_playlist_items(
     ip, ua = _client(request)
     return await service.reorder_playlist_items(
         db, playlist_id, body.item_ids, actor=user, ip=ip, user_agent=ua
+    )
+
+
+@admin_videos_router.get(
+    "/subtitles", response_model=list[AdminSubtitleItemOut]
+)
+async def admin_subtitle_statuses(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(_can_library),
+):
+    """وضعیت زیرنویس تازه‌ترین ویدیوهای آپلودی برای کارت CRM."""
+    return await service.admin_subtitle_statuses(db)
+
+
+@admin_videos_router.post(
+    "/{item_id}/subtitles/generate",
+    response_model=SubtitleGenerateOut,
+    status_code=202,
+)
+async def admin_generate_subtitles(
+    item_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(_can_library),
+):
+    """تریگر تولید زیرنویس: ردیف‌ها pending و جاب روی صف media می‌رود."""
+    ip, ua = _client(request)
+    return await service.request_subtitle_generation(
+        db, item_id, actor=user, ip=ip, user_agent=ua
     )
 
 

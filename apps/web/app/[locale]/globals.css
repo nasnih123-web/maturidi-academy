@@ -1874,6 +1874,8 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
 .vp-frame:fullscreen { border-radius: 0; border: none; aspect-ratio: auto; inline-size: 100%; block-size: 100%; }
 .vp-hide { cursor: none; }
 .vp-el { inline-size: 100%; block-size: 100%; display: block; background: #020807; }
+.vp-el::cue { background: rgba(7, 35, 28, 0.85); color: #f7f1de; font-size: 1.05rem; line-height: 1.7; }
+.vp-btn.vp-cc-on { color: #e5c07b; box-shadow: inset 0 -2px 0 #d4af37; }
 .vp-status { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 0.9rem; align-items: center; justify-content: center; color: #ede6d6; font-size: 0.95rem; margin: 0; padding: 1rem; text-align: center; }
 .vp-retry { background: linear-gradient(135deg, #b8912c, #d4af37); color: #06120e; border: none; font: inherit; font-weight: 800; font-size: 0.9rem; padding: 0.55rem 1.4rem; border-radius: 999px; cursor: pointer; min-block-size: 2.5rem; }
 .vp-center { position: absolute; top: 50%; left: 50%; translate: -50% -50%; inline-size: 4.6rem; block-size: 4.6rem; border-radius: 50%; border: 1.5px solid rgba(229, 192, 123, 0.85); background: rgba(6, 18, 14, 0.55); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 3; }

@@ -116,6 +116,45 @@ export function listCandidates(q: string): Promise<VideoCandidate[]> {
   return apiFetch<VideoCandidate[]>(`${BASE}/candidates${qs}`);
 }
 
+/* ------------------------- subtitles (phase 3) ---------------------- */
+
+export type SubtitleStatus =
+  | "ready"
+  | "pending"
+  | "processing"
+  | "failed"
+  | "missing";
+
+export interface AdminSubtitleItem {
+  id: string;
+  kind: string;
+  title: LocalizedText | null;
+  workflow_status: string;
+  visibility: string;
+  created_at: string;
+  /** Per-language status for all five subtitle languages. */
+  subtitles: Record<string, SubtitleStatus>;
+}
+
+export interface SubtitleGenerateResult {
+  item_id: string;
+  statuses: Record<string, string>;
+  enqueued: boolean;
+}
+
+export function fetchSubtitleStatuses(): Promise<AdminSubtitleItem[]> {
+  return apiFetch<AdminSubtitleItem[]>(`${BASE}/subtitles`);
+}
+
+export function generateSubtitles(
+  itemId: string,
+): Promise<SubtitleGenerateResult> {
+  return apiFetch<SubtitleGenerateResult>(
+    `${BASE}/${itemId}/subtitles/generate`,
+    { method: "POST" },
+  );
+}
+
 /* ------------------------- videos.* settings ------------------------ */
 
 export interface VideosSettingsValues {
