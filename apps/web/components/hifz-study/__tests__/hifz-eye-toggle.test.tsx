@@ -131,17 +131,24 @@ describe('Hifz eye button (user 2026-11-12)', () => {
       study,
       /if \(eyeHidden && !revealedWords\.has\(eyeKey\)\) \{/,
     );
-    assert.match(study, /className="hifz-line-word hifz-line-word-eye-hidden"/);
+    assert.match(
+      study,
+      /'hifz-line-word',\s*\n\s*'hifz-line-word-eye-hidden',\s*\n\s*useGlyphShown \? 'hifz-line-word-glyph' : '',/ ,
+    );
     // The eye's placeholder carries no dotted line; the old dotted
     // class is kept only for the script-hide paths (listen mode).
-    // The border is transparent but keeps the old widths (1px sides,
-    // 2px bottom) so the hidden placeholder has byte-identical
-    // geometry to the round-1 dotted box (same line breaks and
-    // word positions).
+    // Layout-shift fix (user 2026-11-20) supersedes the round-2
+    // transparent border: the border added 2px of width and 3px of
+    // height vs the revealed word (which has no border), and the
+    // generic button rule's 44px min-height / 1rem font made the
+    // hidden word 44px tall at 16px while revealed is 16.5px — so
+    // lines collapsed and markers jumped on reveal. The placeholder
+    // now inherits the line font, has no min-height, no border and
+    // display:inline, exactly its revealed box.
     const css = readCss();
     assert.match(
       css,
-      /\.quran-hifz-study \.hifz-line-word-eye-hidden \{[^}]*border: 1px solid transparent; border-bottom-width: 2px;[^}]*appearance: none;[^}]*\}/,
+      /\.quran-hifz-study \.hifz-line-word-eye-hidden \{[^}]*border: 0;[^}]*font: inherit; min-height: 0; display: inline;[^}]*\}/,
     );
     assert.match(
       css,

@@ -2811,24 +2811,14 @@ export function QuranHifzStudy({
       // spans.
       if (eyeApplies && slot.index >= 0 && eyeCoversWord(slot.surah, slot.ayah)) {
         const eyeKey = `${slot.surah}:${slot.ayah}:${slot.index}`;
-        if (eyeHidden && !revealedWords.has(eyeKey)) {
-          return (
-            <button
-              type="button"
-              key={key}
-              className="hifz-line-word hifz-line-word-eye-hidden"
-              onClick={() => {
-                if (wordTapSuppressed()) return;
-                setRevealedWords((prev) => new Set(prev).add(eyeKey));
-              }}
-              aria-label={labels.showScript}
-              data-word-key={eyeKey}
-              data-qul-id={slot.qulId}
-            >
-              <span aria-hidden="true">{renderTajweedText(slot.text)}</span>
-            </button>
-          );
-        }
+                // Layout-shift fix (user 2026-11-20): the hidden placeholder
+        // renders exactly what the revealed word renders — V4 glyph
+        // iff the revealed word is a glyph, else Tanzil text — so
+        // revealing changes only visibility, never the box. A COLR
+        // glyph ignores `color: transparent`, so the glyph content
+        // hides with `visibility: hidden` on its inner span (the
+        // button stays clickable); text hides via the transparent
+        // color rule on .hifz-line-word-eye-hidden.
         const useGlyphShown =
           fontLoaded === true &&
           shouldUseV4Glyph(slot.glyph, {
@@ -2837,6 +2827,39 @@ export function QuranHifzStudy({
             status: null,
             listenNow: false,
           });
+if (eyeHidden && !revealedWords.has(eyeKey)) {
+          return (
+            <button
+              type="button"
+              key={key}
+              className={[
+                'hifz-line-word',
+                'hifz-line-word-eye-hidden',
+                useGlyphShown ? 'hifz-line-word-glyph' : '',
+              ].join(' ')}
+              onClick={() => {
+                if (wordTapSuppressed()) return;
+                setRevealedWords((prev) => new Set(prev).add(eyeKey));
+              }}
+              aria-label={labels.showScript}
+              data-word-key={eyeKey}
+              data-qul-id={slot.qulId}
+            >
+              {useGlyphShown ? (
+                <span aria-hidden="true" style={{ visibility: 'hidden' }}>
+                  {renderV4Glyph(slot, fontFamily)}
+                </span>
+              ) : (
+                <span aria-hidden="true">{renderTajweedText(slot.text)}</span>
+              )}
+              {slot.pauseAfter ? (
+                <span className="hifz-word-pause" aria-hidden="true">
+                  {slot.pauseAfter}
+                </span>
+              ) : null}
+            </button>
+          );
+        }
         return (
           <span
             key={key}
@@ -2918,28 +2941,6 @@ export function QuranHifzStudy({
       !revealedWords.has(wordKey);
     const scriptConcealsWritten =
       !eyeApplies && scriptHidden && wordKey !== null && !revealedWords.has(wordKey);
-    if (eyeConcealsWritten || scriptConcealsWritten) {
-      return (
-        <button
-          type="button"
-          key={key}
-          className={
-            eyeConcealsWritten
-              ? 'hifz-line-word hifz-line-word-eye-hidden'
-              : 'hifz-line-word hifz-line-word-concealed'
-          }
-          onClick={() => {
-            if (wordTapSuppressed()) return;
-            setRevealedWords((prev) => new Set(prev).add(wordKey));
-          }}
-          aria-label={labels.showScript}
-          data-word-key={wordKey}
-          data-qul-id={slot.qulId}
-        >
-          <span aria-hidden="true">{renderTajweedText(slot.text)}</span>
-        </button>
-      );
-    }
     const isPractice = practiceWord?.ayah === slot.ayah && practiceWord?.index === slot.index;
     // The newest word just heard is GREEN when correct, RED when
     // wrong and YELLOW-highlighted when it is a tashkeel error
@@ -2977,6 +2978,10 @@ export function QuranHifzStudy({
     // the newest live word and wrong/close/skipped grades stay text
     // because their signal IS the ink colour, and the listen-now
     // word stays text so the green highlight reads.
+    // (Hoisted above the concealment branches: the eye's hidden
+    // placeholder renders exactly this same glyph/text decision —
+    // layout-shift fix, user 2026-11-20 — so revealing a written
+    // word changes only its visibility, never its box.)
     const useGlyph =
       fontLoaded === true &&
       shouldUseV4Glyph(slot.glyph, {
@@ -2985,6 +2990,57 @@ export function QuranHifzStudy({
         status: w.status,
         listenNow: isListenNow,
       });
+    if (eyeConcealsWritten) {
+      return (
+        <button
+          type="button"
+          key={key}
+          className={[
+            'hifz-line-word',
+            'hifz-line-word-eye-hidden',
+            useGlyph ? 'hifz-line-word-glyph' : '',
+          ].join(' ')}
+          onClick={() => {
+            if (wordTapSuppressed()) return;
+            setRevealedWords((prev) => new Set(prev).add(wordKey));
+          }}
+          aria-label={labels.showScript}
+          data-word-key={wordKey}
+          data-qul-id={slot.qulId}
+        >
+          {useGlyph ? (
+            <span aria-hidden="true" style={{ visibility: 'hidden' }}>
+              {renderV4Glyph(slot, fontFamily)}
+            </span>
+          ) : (
+            <span aria-hidden="true">{renderTajweedText(slot.text)}</span>
+          )}
+          {slot.pauseAfter ? (
+            <span className="hifz-word-pause" aria-hidden="true">
+              {slot.pauseAfter}
+            </span>
+          ) : null}
+        </button>
+      );
+    }
+    if (scriptConcealsWritten) {
+      return (
+        <button
+          type="button"
+          key={key}
+          className="hifz-line-word hifz-line-word-concealed"
+          onClick={() => {
+            if (wordTapSuppressed()) return;
+            setRevealedWords((prev) => new Set(prev).add(wordKey));
+          }}
+          aria-label={labels.showScript}
+          data-word-key={wordKey}
+          data-qul-id={slot.qulId}
+        >
+          <span aria-hidden="true">{renderTajweedText(slot.text)}</span>
+        </button>
+      );
+    }
     return (
       <span
         key={key}
@@ -3294,7 +3350,18 @@ export function QuranHifzStudy({
   ) => (
     <section
       key={key}
-      className="hifz-line-page"
+      // Page-1 fidelity (user 2026-11-20): the Fatiha page gets
+      // its own larger text size (see the --fatiha rule) — the
+      // header is the surah-1 header in either render path (the
+      // V2 path carries surah: 1; the fallback path carries only
+      // the name text, matched here).
+      className={
+        lines.some(
+          (l) => l.kind === 'header' && (l.surah === 1 || l.text.includes('الفاتحة')),
+        )
+          ? 'hifz-line-page hifz-line-page--fatiha'
+          : 'hifz-line-page'
+      }
       aria-label={labels.title}
       onTouchStart={displayMode === 'mushaf' ? onPageTouchStart : undefined}
       onTouchEnd={displayMode === 'mushaf' ? onPageTouchEnd : undefined}
@@ -3304,7 +3371,16 @@ export function QuranHifzStudy({
           carries surah + page | juz | hizb, and the footer below
           carries the page number. Removing it frees 32.5px of
           vertical budget for the 16.5px text size; no meta is lost. */}
-      {lines.map((line) => {
+      {/* Page-1 fidelity (user 2026-11-20): a line that ends a
+          surah is NOT justified — in the print it ends naturally
+          (right-aligned), so it never stretches across the full
+          width with giant gaps (Fatiha's last line had 132px
+          gaps). Two signals: the next line is a surah header
+          (the surah ends mid-page), or this is the section's
+          last text line and its last marker is the current
+          surah's final ayah (the surah ends exactly at the
+          page end, as on p.1). */}
+      {lines.map((line, li) => {
         if (line.kind === 'header') {
           // Tarteel (2026-11-08): the surah-name SVG is calligraphy
           // ONLY — the file holds no frame (verified byte-for-byte
@@ -3339,6 +3415,24 @@ export function QuranHifzStudy({
                       setFailedStudyHeaders((prev) => new Set(prev).add(headerSurah))
                     }
                   />
+                </span>
+              </p>
+            );
+          }
+          // Page-1 fidelity (user 2026-11-20): Surah 1 has no SVG
+          // in the QUL header set (002–114 only), so the Fatiha
+          // header fell back to plain text with rules. It renders
+          // the same ornate frame as every other surah, with the
+          // name set in the Uthmanic font inside the cartouche —
+          // the printed form سُورَةُ الْفَاتِحَةِ (same pattern as
+          // the Kahf frame in the p293 reference, سُورَةُ الْكَهْفِ;
+          // the line data carries only the unvocalised
+          // «سورة الفاتحة», so the vocalised form is written here).
+          if (headerSurah === 1 || line.text.includes('الفاتحة')) {
+            return (
+              <p key={line.key} className="hifz-line hifz-line-header hifz-line-header--svg">
+                <span className="hifz-surah-frame">
+                  <span className="hifz-surah-frame-name">سُورَةُ الْفَاتِحَةِ</span>
                 </span>
               </p>
             );
@@ -3407,8 +3501,24 @@ export function QuranHifzStudy({
             </p>
           );
         }
+        const nextIsHeader = lines[li + 1]?.kind === 'header';
+        const isLastTextLine = lines
+          .slice(li + 1)
+          .every((l) => l.kind === 'header' || l.kind === 'basmala');
+        const lastSlot = line.slots[line.slots.length - 1];
+        const endsSurah =
+          nextIsHeader === true ||
+          (isLastTextLine &&
+            lastSlot !== undefined &&
+            lastSlot.kind === 'marker' &&
+            lastSlot.surah === surah &&
+            lastSlot.ayah === ayahCount);
         return (
-          <p key={line.key} className="hifz-line" dir="rtl">
+          <p
+            key={line.key}
+            className={endsSurah ? 'hifz-line hifz-line--surah-end' : 'hifz-line'}
+            dir="rtl"
+          >
             {line.slots.flatMap((slot, si) => {
               const node =
                 slot.kind === 'marker' ? (
