@@ -324,7 +324,11 @@ async def test_watch_playlist_context_and_related(tc):
     related_ids = [i["id"] for i in body["related"]]
     assert v2 not in related_ids  # خودش هرگز در مشابه‌ها نیست
     assert related_ids[0] == other  # برچسب مشترک اول صف است
-    assert v1 in related_ids and v3 in related_ids
+    assert v1 in related_ids  # عضو دیگر گروه برچسب مشترک هم هست
+    assert len(related_ids) <= 8  # سقف مشابه‌ها
+    # v3 (بدون برچسب مشترک و قدیمی‌تر) ممکن است با ویدیوهای تازه‌ترِ
+    # بی‌ربط از فهرست ۸تایی بیرون بماند — رفتار درستِ «اول مشترک‌ها،
+    # بعد تازه‌ترین‌ها» است و حضورش تضمین نمی‌شود.
 
     # پارامتر صریح playlist همان زمینه را برمی‌گرداند؛ لبه‌ها prev/next خالی
     r = await client.get(f"{BASE}/videos/{v1}?playlist={pl['id']}")

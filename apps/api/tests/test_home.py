@@ -17,6 +17,7 @@ EXPECTED_KEYS = [
     "quran_of_day",
     "suggested_lessons",
     "fresh_library",
+    "videos",
     "community",
     "nearby_map",
     "donation_banner",
@@ -84,7 +85,7 @@ async def test_home_sections_ten_in_order(tc):
     assert set(body.keys()) == {"theme", "sections"}
     assert body["theme"] is None  # هیچ کلید theme.* تنظیم نشده
     assert [s["key"] for s in body["sections"]] == EXPECTED_KEYS
-    assert [s["order"] for s in body["sections"]] == list(range(1, 11))
+    assert [s["order"] for s in body["sections"]] == list(range(1, 12))
     assert all(s["visible"] for s in body["sections"])
     hero = body["sections"][0]
     assert hero["title"] == {
@@ -98,7 +99,7 @@ async def test_home_sections_ten_in_order(tc):
     assert fatwa["data"] is None
     assert fatwa["empty"]["title"]["fa"] == "به‌زودی"
     assert fatwa["empty"]["hint"]["en"] == "This section will be available soon."
-    donate = body["sections"][8]
+    donate = body["sections"][9]
     assert donate["data"] == {"cta_url": "/donate"}
 
 
@@ -109,7 +110,7 @@ async def test_home_hidden_section_excluded(tc):
     assert r.status_code == 200, r.text
     keys = [s["key"] for s in r.json()["sections"]]
     assert "hidden_ghost" not in keys
-    assert keys == EXPECTED_KEYS  # ترتیب ۱۰ بخش اصلی دست‌نخورده
+    assert keys == EXPECTED_KEYS  # ترتیب ۱۱ بخش اصلی دست‌نخورده
 
 
 async def test_home_theme_overrides(tc):
