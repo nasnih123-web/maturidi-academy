@@ -3350,7 +3350,18 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
   ) => (
     <section
       key={key}
-      className="hifz-line-page"
+      // Page-1 fidelity (user 2026-11-20): the Fatiha page gets
+      // its own larger text size (see the --fatiha rule) — the
+      // header is the surah-1 header in either render path (the
+      // V2 path carries surah: 1; the fallback path carries only
+      // the name text, matched here).
+      className={
+        lines.some(
+          (l) => l.kind === 'header' && (l.surah === 1 || l.text.includes('الفاتحة')),
+        )
+          ? 'hifz-line-page hifz-line-page--fatiha'
+          : 'hifz-line-page'
+      }
       aria-label={labels.title}
       onTouchStart={displayMode === 'mushaf' ? onPageTouchStart : undefined}
       onTouchEnd={displayMode === 'mushaf' ? onPageTouchEnd : undefined}
@@ -3360,7 +3371,16 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
           carries surah + page | juz | hizb, and the footer below
           carries the page number. Removing it frees 32.5px of
           vertical budget for the 16.5px text size; no meta is lost. */}
-      {lines.map((line) => {
+      {/* Page-1 fidelity (user 2026-11-20): a line that ends a
+          surah is NOT justified — in the print it ends naturally
+          (right-aligned), so it never stretches across the full
+          width with giant gaps (Fatiha's last line had 132px
+          gaps). Two signals: the next line is a surah header
+          (the surah ends mid-page), or this is the section's
+          last text line and its last marker is the current
+          surah's final ayah (the surah ends exactly at the
+          page end, as on p.1). */}
+      {lines.map((line, li) => {
         if (line.kind === 'header') {
           // Tarteel (2026-11-08): the surah-name SVG is calligraphy
           // ONLY — the file holds no frame (verified byte-for-byte
@@ -3395,6 +3415,24 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
                       setFailedStudyHeaders((prev) => new Set(prev).add(headerSurah))
                     }
                   />
+                </span>
+              </p>
+            );
+          }
+          // Page-1 fidelity (user 2026-11-20): Surah 1 has no SVG
+          // in the QUL header set (002–114 only), so the Fatiha
+          // header fell back to plain text with rules. It renders
+          // the same ornate frame as every other surah, with the
+          // name set in the Uthmanic font inside the cartouche —
+          // the printed form سُورَةُ الْفَاتِحَةِ (same pattern as
+          // the Kahf frame in the p293 reference, سُورَةُ الْكَهْفِ;
+          // the line data carries only the unvocalised
+          // «سورة الفاتحة», so the vocalised form is written here).
+          if (headerSurah === 1 || line.text.includes('الفاتحة')) {
+            return (
+              <p key={line.key} className="hifz-line hifz-line-header hifz-line-header--svg">
+                <span className="hifz-surah-frame">
+                  <span className="hifz-surah-frame-name">سُورَةُ الْفَاتِحَةِ</span>
                 </span>
               </p>
             );
@@ -3463,8 +3501,24 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
             </p>
           );
         }
+        const nextIsHeader = lines[li + 1]?.kind === 'header';
+        const isLastTextLine = lines
+          .slice(li + 1)
+          .every((l) => l.kind === 'header' || l.kind === 'basmala');
+        const lastSlot = line.slots[line.slots.length - 1];
+        const endsSurah =
+          nextIsHeader === true ||
+          (isLastTextLine &&
+            lastSlot !== undefined &&
+            lastSlot.kind === 'marker' &&
+            lastSlot.surah === surah &&
+            lastSlot.ayah === ayahCount);
         return (
-          <p key={line.key} className="hifz-line" dir="rtl">
+          <p
+            key={line.key}
+            className={endsSurah ? 'hifz-line hifz-line--surah-end' : 'hifz-line'}
+            dir="rtl"
+          >
             {line.slots.flatMap((slot, si) => {
               const node =
                 slot.kind === 'marker' ? (
