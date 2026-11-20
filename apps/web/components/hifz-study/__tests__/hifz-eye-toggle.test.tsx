@@ -135,6 +135,8 @@ describe('Hifz eye button (user 2026-11-12)', () => {
       study,
       /'hifz-line-word',\s*\n\s*'hifz-line-word-eye-hidden',\s*\n\s*useGlyphShown \? 'hifz-line-word-glyph' : '',/ ,
     );
+    // The eye's placeholder carries no dotted line; the old dotted
+    // class is kept only for the script-hide paths (listen mode).
     // Layout-shift fix (user 2026-11-20) supersedes the round-2
     // transparent border: the border added 2px of width and 3px of
     // height vs the revealed word (which has no border), and the
