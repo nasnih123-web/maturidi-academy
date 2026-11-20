@@ -259,6 +259,123 @@ async def test_seed_polish_defaults(tc, db_session):
 
 
 # ---------------------------------------------------------------------------
+# تعمیر اسلات videos در home.sections نصب‌های قدیمی
+# ---------------------------------------------------------------------------
+
+_LEGACY_HOME_SLOT_IDS = (
+    "live_status",
+    "latest_fatwas",
+    "quran_of_day",
+    "suggested_lessons",
+    "fresh_library",
+    "community",
+    "nearby_map",
+    "donation_banner",
+    "footer",
+)
+
+
+def _legacy_home_sections() -> list:
+    # شکل مقدار ذخیره‌شدهٔ نصب‌های قدیمی (مثل production): همان ۹ اسلات
+    # پیش‌فرض قدیمی، بدون videos و با واریانت یکسان برای همه
+    return [
+        {"id": key, "variant": "slider-classic", "enabled": True}
+        for key in _LEGACY_HOME_SLOT_IDS
+    ]
+
+
+async def _stage_home_sections(db_session, value) -> None:
+    from app.core.platform_settings import (
+        encode_setting_value,
+        reset_settings_cache,
+        stage_setting,
+    )
+
+    await stage_setting(
+        db_session,
+        "home.sections",
+        encode_setting_value("json", value, "home.sections"),
+    )
+    await db_session.commit()
+    reset_settings_cache()
+
+
+async def _read_home_sections(db_session):
+    from app.core.platform_settings import get_typed_setting, reset_settings_cache
+
+    reset_settings_cache()
+    return await get_typed_setting(db_session, "home.sections")
+
+
+async def test_seed_home_sections_legacy_repair_inserts_videos(db_session):
+    from app.seed import seed_platform_settings_defaults
+
+    legacy = _legacy_home_sections()
+    await _stage_home_sections(db_session, legacy)
+
+    await seed_platform_settings_defaults(db_session)
+    await db_session.commit()
+
+    sections = await _read_home_sections(db_session)
+    expected = (
+        legacy[:5]
+        + [{"id": "videos", "variant": "videos", "enabled": True}]
+        + legacy[5:]
+    )
+    assert sections == expected
+    assert [s["id"] for s in sections].index("videos") == 5
+
+
+async def test_seed_home_sections_repair_idempotent(db_session):
+    from app.seed import seed_platform_settings_defaults
+
+    await _stage_home_sections(db_session, _legacy_home_sections())
+
+    await seed_platform_settings_defaults(db_session)
+    await db_session.commit()
+    first = await _read_home_sections(db_session)
+
+    await seed_platform_settings_defaults(db_session)
+    await db_session.commit()
+    second = await _read_home_sections(db_session)
+
+    assert second == first
+    assert [s["id"] for s in second].count("videos") == 1
+
+
+async def test_seed_home_sections_customized_untouched(db_session):
+    from app.seed import seed_platform_settings_defaults
+
+    # یک اسلات حذف شده → چیدمان سفارشی‌شده؛ نباید دست بخورد
+    missing_one = _legacy_home_sections()[:-1]
+    await _stage_home_sections(db_session, missing_one)
+    await seed_platform_settings_defaults(db_session)
+    await db_session.commit()
+    assert await _read_home_sections(db_session) == missing_one
+
+    # یک اسلات ناشناختهٔ اضافه → چیدمان سفارشی‌شده؛ نباید دست بخورد
+    with_extra = _legacy_home_sections() + [
+        {"id": "custom_slot", "variant": "slider-classic", "enabled": True}
+    ]
+    await _stage_home_sections(db_session, with_extra)
+    await seed_platform_settings_defaults(db_session)
+    await db_session.commit()
+    assert await _read_home_sections(db_session) == with_extra
+
+
+async def test_seed_home_sections_with_videos_untouched(db_session):
+    from app.seed import seed_platform_settings_defaults
+
+    already = _legacy_home_sections() + [
+        {"id": "videos", "variant": "slider-classic", "enabled": True}
+    ]
+    await _stage_home_sections(db_session, already)
+    await seed_platform_settings_defaults(db_session)
+    await db_session.commit()
+    assert await _read_home_sections(db_session) == already
+
+
+# ---------------------------------------------------------------------------
 # آپلود فونت
 # ---------------------------------------------------------------------------
 
