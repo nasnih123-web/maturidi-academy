@@ -19,6 +19,8 @@ export interface VideoSliderItem {
   image: string | null;
   kindLabel: string;
   inPlaylist: boolean;
+  /** External (YouTube) video — gets the «یوتیوب» thumb badge. */
+  isExternal: boolean;
   href: string;
 }
 
@@ -34,6 +36,7 @@ export function VideosSlider({
   viewAllHref,
   viewAllLabel,
   playlistLabel,
+  externalLabel,
   prevLabel,
   nextLabel,
 }: {
@@ -44,6 +47,7 @@ export function VideosSlider({
   viewAllHref: string;
   viewAllLabel: string;
   playlistLabel: string;
+  externalLabel: string;
   prevLabel: string;
   nextLabel: string;
 }): React.ReactElement | null {
@@ -114,6 +118,9 @@ export function VideosSlider({
                   </span>
                   {item.inPlaylist ? (
                     <span className="vid-thumb-pltag">{playlistLabel}</span>
+                  ) : null}
+                  {item.isExternal ? (
+                    <span className="vid-thumb-ext">{externalLabel}</span>
                   ) : null}
                   {item.duration ? (
                     <span className="vid-thumb-dur" dir="ltr">

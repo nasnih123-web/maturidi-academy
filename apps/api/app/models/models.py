@@ -1273,7 +1273,10 @@ class LibraryItem(Base):
     title: Mapped[dict] = mapped_column(JSONB, nullable=False)  # LocalizedText
     description: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # LocalizedText
     cover_media_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    media_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    media_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # ویدیوی خارجی (یوتیوب): URL کانونیک watch — فقط برای kind=video و فقط
+    # وقتی media_key خالی است؛ آپلود فایل همیشه برنده است و این را پاک می‌کند.
+    external_url: Mapped[str | None] = mapped_column(String(600), nullable=True)
     scholar_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id"), nullable=True, index=True
     )

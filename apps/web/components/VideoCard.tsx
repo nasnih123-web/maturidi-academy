@@ -16,6 +16,8 @@ export interface VideoCardItem {
   kindLabel: string;
   /** «لیست پخش» tag — shown when the video belongs to a published playlist. */
   playlistLabel: string | null;
+  /** «یوتیوب» badge — shown for external (YouTube) videos. */
+  externalLabel: string | null;
   href: string;
 }
 
@@ -39,6 +41,9 @@ export function VideoCard({ item }: { item: VideoCardItem }) {
           </span>
           {item.playlistLabel ? (
             <span className="vid-thumb-pltag">{item.playlistLabel}</span>
+          ) : null}
+          {item.externalLabel ? (
+            <span className="vid-thumb-ext">{item.externalLabel}</span>
           ) : null}
           {item.durationLabel ? (
             <span className="vid-thumb-dur" dir="ltr">

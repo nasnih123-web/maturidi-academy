@@ -31,6 +31,7 @@ from app.models.models import (
 )
 from app.modules.library import service as library_service
 
+from . import youtube
 from .schemas import VIDEO_KINDS
 
 _RELATED_SCAN_CAP = 300
@@ -78,18 +79,41 @@ async def _published_memberships(
     return out
 
 
+def _external_fields(item: LibraryItem) -> tuple[str | None, str | None]:
+    """(external_url کانونیک، embed_url) — برای آیتم آپلودی هر دو None."""
+    if not item.external_url:
+        return None, None
+    video_id = youtube.parse_youtube_video_id(item.external_url)
+    if video_id is None:  # دادهٔ قدیمی/دستی — لینک هست ولی امبد ساخته نمی‌شود
+        return item.external_url, None
+    return item.external_url, youtube.embed_url(video_id)
+
+
+async def _cover_url(item: LibraryItem) -> str | None:
+    """کاور امضاشده؛ برای آیتم خارجیِ بدون کاور، بندانگشتی یوتیوب."""
+    url = await library_service._signed_url(item.cover_media_key)
+    if url is None and item.external_url:
+        video_id = youtube.parse_youtube_video_id(item.external_url)
+        if video_id is not None:
+            url = youtube.thumbnail_url(video_id)
+    return url
+
+
 async def _items_out(db: AsyncSession, items: list[LibraryItem]) -> list[dict]:
     names = await _scholar_names(db, [i.scholar_id for i in items])
     memberships = await _published_memberships(db, [i.id for i in items])
     out: list[dict] = []
     for item in items:
+        external_url, embed_url = _external_fields(item)
         out.append(
             {
                 "id": item.id,
                 "kind": item.kind,
                 "title": item.title,
                 "description": item.description,
-                "cover_url": await library_service._signed_url(item.cover_media_key),
+                "cover_url": await _cover_url(item),
+                "external_url": external_url,
+                "embed_url": embed_url,
                 "duration_seconds": item.duration_seconds,
                 "scholar_id": item.scholar_id,
                 "scholar_name": names.get(item.scholar_id) if item.scholar_id else None,
@@ -179,7 +203,7 @@ async def _playlist_out(
     shown = ordered if item_limit is None else ordered[:item_limit]
     cover_url = await library_service._signed_url(playlist.cover_media_key)
     if cover_url is None and ordered:
-        cover_url = await library_service._signed_url(ordered[0].cover_media_key)
+        cover_url = await _cover_url(ordered[0])
     names = await _scholar_names(db, [playlist.scholar_id])
     return {
         "id": playlist.id,
@@ -295,7 +319,8 @@ async def get_watch(
     base = (await _items_out(db, [item]))[0]
     return {
         "item": base,
-        "stream_url": detail["media_url"],
+        # آیتم خارجی فایل ندارد — پخش فقط از embed_url داخل item است
+        "stream_url": None if item.external_url else detail["media_url"],
         "playlist": await _playlist_context(db, item, user, playlist_id),
         "related": await _related(db, item, user),
     }
@@ -352,8 +377,13 @@ async def _find_progress(
 async def get_video_progress(
     db: AsyncSession, user: User, item_id: uuid.UUID
 ) -> dict:
-    """موقعیت ذخیره‌شدهٔ همین کاربر؛ نبود ردیف یعنی position null (نه ۴۰۴)."""
-    await _get_video_item_or_error(db, item_id)
+    """موقعیت ذخیره‌شدهٔ همین کاربر؛ نبود ردیف یعنی position null (نه ۴۰۴).
+
+    ویدیوی خارجی (یوتیوب) هرگز ردیف پیشرفت ندارد — همان payload خالی.
+    """
+    item = await _get_video_item_or_error(db, item_id)
+    if item.external_url:
+        return _progress_out(None, item_id)
     return _progress_out(await _find_progress(db, user, item_id), item_id)
 
 
@@ -366,7 +396,13 @@ async def save_video_progress(
     duration_seconds: float | None,
 ) -> dict:
     """آپسرت موقعیت پخش کاربر جاری روی ویدیو — ردیف برگشتی مال همین کاربر است."""
-    await _get_video_item_or_error(db, item_id)
+    item = await _get_video_item_or_error(db, item_id)
+    if item.external_url:
+        raise APIError(
+            422,
+            "external_video",
+            "ویدیوی خارجی (یوتیوب) موقعیت پخش ذخیره نمی‌کند",
+        )
     row = await _find_progress(db, user, item_id)
     if row is None:
         row = UserVideoProgress(

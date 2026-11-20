@@ -160,6 +160,8 @@ export interface LibraryItem {
   source_ref: string;
   cover_url: string;
   media_url: string;
+  /** External (YouTube) canonical watch URL — null for uploaded items. */
+  external_url: string | null;
   settings: LibrarySettings;
   created_at: string;
   updated_at: string;
@@ -369,6 +371,7 @@ export function parseLibraryItem(raw: unknown): LibraryItem | null {
     source_ref: parseStr(r.source_ref),
     cover_url: parseStr(r.cover_url),
     media_url: parseStr(r.media_url),
+    external_url: parseOptStr(r.external_url),
     settings: parseSettings(r.settings),
     created_at: parseStr(r.created_at),
     updated_at: parseStr(r.updated_at),
@@ -536,6 +539,8 @@ export interface LibraryMetadata {
   transcript_status: TranscriptStatus;
   ocr_text: string;
   duration_seconds: number | null;
+  /** YouTube link for external videos (kind=video, no file). */
+  external_url?: string | null;
   settings: LibrarySettings;
 }
 
@@ -577,6 +582,7 @@ export function metadataFromItem(item: LibraryItem): LibraryMetadata {
     transcript_status: item.transcript_status,
     ocr_text: item.ocr_text,
     duration_seconds: item.duration_seconds,
+    external_url: item.external_url,
     settings: { ...item.settings, chapters: item.settings.chapters?.map((c) => ({ ...c })) },
   };
 }
@@ -614,6 +620,17 @@ export function buildCreateForm(
   form.append("file", file, file.name);
   form.append("metadata", JSON.stringify(toApiMetadata(metadata)));
   if (cover) form.append("cover", cover, cover.name);
+  return form;
+}
+
+/**
+ * Build the create body for an external (YouTube) video: metadata only,
+ * no file part. The metadata must carry `external_url`; the API creates
+ * the item without any upload (and without the ClamAV scan gate).
+ */
+export function buildCreateLinkForm(metadata: LibraryMetadata): FormData {
+  const form = new FormData();
+  form.append("metadata", JSON.stringify(toApiMetadata(metadata)));
   return form;
 }
 

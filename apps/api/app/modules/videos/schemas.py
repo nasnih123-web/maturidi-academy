@@ -29,6 +29,10 @@ class VideoItemOut(BaseModel):
     title: LocalizedText
     description: LocalizedText | None
     cover_url: str | None = None
+    # ویدیوی خارجی (یوتیوب): external_url کانونیک + embed آمادهٔ iframe؛
+    # برای آیتم‌های آپلودی هر دو null و پخش از stream_url است
+    external_url: str | None = None
+    embed_url: str | None = None
     duration_seconds: int | None
     scholar_id: uuid.UUID | None
     scholar_name: str | None = None

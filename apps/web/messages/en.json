@@ -179,7 +179,8 @@
     },
     "viewAllLabel": "View all",
     "videosViewAll": "View all videos",
-    "videosPlaylist": "Playlist"
+    "videosPlaylist": "Playlist",
+    "videosExternal": "YouTube"
   },
   "searchPage": {
     "errorDescription": "Could not reach the server. Please try again.",
@@ -1816,6 +1817,7 @@
     "videoCount": "{count} videos",
     "totalDuration": "Total {duration}",
     "playlistTag": "Playlist",
+    "externalBadge": "YouTube",
     "viewAll": "View all videos",
     "noVideos": "No videos have been published yet.",
     "noVideosHint": "New video lessons will appear here soon.",

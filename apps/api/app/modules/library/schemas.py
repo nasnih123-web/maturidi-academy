@@ -47,6 +47,8 @@ class LibraryItemOut(BaseModel):
     mime_type: str | None
     source_type: str
     source_ref: dict | None
+    # ویدیوی خارجی (یوتیوب) — برای آیتم‌های آپلودی همیشه null است
+    external_url: str | None = None
     created_at: datetime
     updated_at: datetime
     published_at: datetime | None
@@ -72,10 +74,17 @@ class SearchOut(BaseModel):
 
 
 class LibraryItemMetaIn(BaseModel):
-    """متادیتای JSON همراه آپلود multipart."""
+    """متادیتای JSON همراه آپلود multipart.
+
+    title در اسکیما اختیاری است تا مسیر لینک خارجی بتواند آن را از
+    oEmbed یوتیوب پر کند؛ سرویس در پایان هر دو مسیر عنوان را الزام
+    می‌کند (۴۲۲ title_required) — برای آپلود یعنی دقیقاً رفتار قبلی.
+    """
 
     kind: ItemKind
-    title: LocalizedText
+    title: LocalizedText | None = None
+    # لینک یوتیوب (فقط kind=video و فقط وقتی فایلی آپلود نمی‌شود)
+    external_url: str | None = Field(default=None, max_length=600)
     description: LocalizedText | None = None
     scholar_id: uuid.UUID | None = None
     topic_tags: list[str] = Field(default_factory=list)
@@ -102,6 +111,8 @@ class LibraryItemUpdateIn(BaseModel):
     include_in_fatwa_rag: bool | None = None
     download_policy: dict | None = None
     duration_seconds: int | None = None
+    # لینک یوتیوب — null صریح یعنی پاک‌کردن لینک (فقط آیتم بدون فایل)
+    external_url: str | None = None
     note: str | None = Field(default=None, description="یادداشت نسخه‌بندی")
 
 

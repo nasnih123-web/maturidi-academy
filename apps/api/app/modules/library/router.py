@@ -231,21 +231,31 @@ async def admin_get_item(
 async def create_item(
     request: Request,
     metadata: str = Form(description="متادیتای JSON (LibraryItemMetaIn)"),
-    file: UploadFile = File(description="فایل رسانه"),
+    file: UploadFile | None = File(
+        default=None,
+        description="فایل رسانه (برای ویدیوی لینکی یوتیوب لازم نیست)",
+    ),
     cover: UploadFile | None = File(default=None, description="کاور اختیاری"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(_can_library),
 ):
-    """آپلود آیتم — اعتبارسنجی magic-byte + پسوند پیش از هر پردازش (§۷)."""
+    """آپلود آیتم — اعتبارسنجی magic-byte + پسوند پیش از هر پردازش (§۷).
+
+    بدون فایل فقط با متادیتای external_url معتبر است (ویدیوی یوتیوب)؛
+    سرویس نبود هر دو را ۴۲۲ می‌کند.
+    """
     ip, ua = _client(request)
     try:
         meta = LibraryItemMetaIn.model_validate(json.loads(metadata))
     except Exception as exc:
         raise APIError(422, "invalid_metadata", f"متادیتای JSON نامعتبر است: {exc}")
     # خواندن جریانی با سقف حجم (§۷): فایل غول‌پیکر هرگز کامل در RAM بار نمی‌شود
-    content = await service.read_upload_capped(
-        file, service.upload_limit_for_kind(meta.kind)
-    )
+    content, filename = None, None
+    if file is not None:
+        content = await service.read_upload_capped(
+            file, service.upload_limit_for_kind(meta.kind)
+        )
+        filename = file.filename
     cover_content, cover_filename = None, None
     if cover is not None:
         cover_content = await service.read_upload_capped(
@@ -254,7 +264,7 @@ async def create_item(
         cover_filename = cover.filename
     return _out(
         await service.create_item(
-            db, meta.model_dump(), content, file.filename,
+            db, meta.model_dump(), content, filename,
             actor=user, cover_content=cover_content, cover_filename=cover_filename,
             ip=ip, user_agent=ua,
         )

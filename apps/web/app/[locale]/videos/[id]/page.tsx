@@ -8,6 +8,7 @@ import { ApiError } from '@/lib/api';
 import { formatDuration } from '@/lib/library';
 import { pickText } from '@/lib/localize';
 import { ProVideoPlayer } from '@/components/ProVideoPlayer';
+import { YouTubeEmbed } from '@/components/YouTubeEmbed';
 import {
   VideoWatchSidebar,
   type SidebarVideoRow,
@@ -171,7 +172,9 @@ export default async function VideoWatchPage({
     <div className="page-wrap">
       <div className="vid-watch-layout" data-side={settings.sidebarSide}>
         <main className="vid-watch-main">
-          {item.kind === 'video_360' ? (
+          {item.embed_url ? (
+            <YouTubeEmbed itemId={item.id} title={title} embedUrl={item.embed_url} />
+          ) : item.kind === 'video_360' ? (
             <Suspense fallback={<p className="lib-status">…</p>}>
               <LibraryPanoViewer
                 itemId={item.id}

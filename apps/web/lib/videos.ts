@@ -23,6 +23,10 @@ export interface VideoItem {
   title: LocalizedText | null;
   description: LocalizedText | null;
   cover_url: string | null;
+  /** External (YouTube) video: canonical watch URL + nocookie embed URL.
+   *  Both null for uploaded items, which play via the watch stream_url. */
+  external_url: string | null;
+  embed_url: string | null;
   duration_seconds: number | null;
   scholar_id: string | null;
   scholar_name: string | null;

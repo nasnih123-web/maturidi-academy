@@ -4326,6 +4326,8 @@ button.mushaf-dk-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
 .vid-thumb-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 3rem; height: 3rem; border-radius: 50%; background: rgba(6, 18, 14, 0.55); border: 1.5px solid rgba(212, 175, 55, 0.75); display: flex; align-items: center; justify-content: center; }
 .vid-thumb-dur { position: absolute; bottom: 0.55rem; inset-inline-end: 0.55rem; background: rgba(6, 18, 14, 0.78); color: #ede6d6; font-size: 0.72rem; font-weight: 700; padding: 0.12rem 0.5rem; border-radius: 0.45rem; }
 .vid-thumb-pltag { position: absolute; top: 0.55rem; inset-inline-start: 0.55rem; background: linear-gradient(135deg, #b8912c, #d4af37); color: #06120e; font-size: 0.7rem; font-weight: 800; padding: 0.18rem 0.6rem; border-radius: 999px; }
+.vid-thumb-ext { position: absolute; top: 0.55rem; inset-inline-end: 0.55rem; background: rgba(6, 18, 14, 0.82); color: #e5c07b; border: 1px solid rgba(212, 175, 55, 0.55); font-size: 0.7rem; font-weight: 800; padding: 0.14rem 0.55rem; border-radius: 999px; }
+.yt-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 .vid-thumb-plcount { position: absolute; bottom: 0.55rem; inset-inline-end: 0.55rem; background: rgba(212, 175, 55, 0.92); color: #06120e; font-size: 0.72rem; font-weight: 800; padding: 0.15rem 0.55rem; border-radius: 0.45rem; }
 
 /* Homepage band */

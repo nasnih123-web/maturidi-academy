@@ -7,6 +7,7 @@ import { EMPTY_L10N, type LocalizedText } from "../lib/contentApi";
 import LocalizedInput from "../components/LocalizedInput";
 import {
   buildCreateForm,
+  buildCreateLinkForm,
   defaultMetadata,
   errText,
   useCreateLibraryItem,
@@ -478,23 +479,31 @@ function UploadPanel({
 }): React.ReactElement {
   const { t } = useI18n();
   const createMut = useCreateLibraryItem();
+  const [source, setSource] = React.useState<"upload" | "youtube">("upload");
   const [file, setFile] = React.useState<File | null>(null);
+  const [url, setUrl] = React.useState("");
   const [title, setTitle] = React.useState<LocalizedText>({ ...EMPTY_L10N });
   const [playlistId, setPlaylistId] = React.useState<string>("");
   const [done, setDone] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const submit = async () => {
-    if (!file) return;
+    if (source === "upload" && !file) return;
+    if (source === "youtube" && !url.trim()) return;
     setError(null);
     try {
       const metadata = { ...defaultMetadata("video"), title };
-      const item = await createMut.mutateAsync(buildCreateForm(file, metadata, null));
+      const form =
+        source === "youtube"
+          ? buildCreateLinkForm({ ...metadata, external_url: url.trim() })
+          : buildCreateForm(file as File, metadata, null);
+      const item = await createMut.mutateAsync(form);
       if (playlistId) {
         await addPlaylistItem(playlistId, item.id);
       }
       setDone(true);
       setFile(null);
+      setUrl("");
       setTitle({ ...EMPTY_L10N });
       onDone();
     } catch (err) {
@@ -511,15 +520,43 @@ function UploadPanel({
         <p className="hint">{t("videos.uploadHint")}</p>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem", marginTop: "0.6rem" }}>
           <div className="field">
-            <label htmlFor="vid-file">{t("videos.fileLabel")}</label>
-            <input
-              id="vid-file"
+            <label htmlFor="vid-source">{t("videos.sourceLabel")}</label>
+            <select
+              id="vid-source"
               className="input"
-              type="file"
-              accept="video/*"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
+              value={source}
+              onChange={(e) => setSource(e.target.value as "upload" | "youtube")}
+            >
+              <option value="upload">{t("videos.sourceUpload")}</option>
+              <option value="youtube">{t("videos.sourceYoutube")}</option>
+            </select>
           </div>
+          {source === "upload" ? (
+            <div className="field">
+              <label htmlFor="vid-file">{t("videos.fileLabel")}</label>
+              <input
+                id="vid-file"
+                className="input"
+                type="file"
+                accept="video/*"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+          ) : (
+            <div className="field">
+              <label htmlFor="vid-url">{t("videos.youtubeUrlLabel")}</label>
+              <input
+                id="vid-url"
+                className="input"
+                type="url"
+                dir="ltr"
+                placeholder="https://www.youtube.com/watch?v=…"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+              />
+              <p className="hint">{t("videos.youtubeUrlHint")}</p>
+            </div>
+          )}
           <LocalizedInput
             id="vid-title"
             label={t("videos.titleFa")}
@@ -547,8 +584,11 @@ function UploadPanel({
           {error ? <p className="form-error">{error}</p> : null}
           {done ? <p className="hint">{t("videos.uploadedOk")}</p> : null}
           <div>
-            <Button onClick={() => void submit()} disabled={!file || createMut.isPending}>
-              {t("videos.uploadBtn")}
+            <Button
+              onClick={() => void submit()}
+              disabled={(source === "upload" ? !file : !url.trim()) || createMut.isPending}
+            >
+              {source === "youtube" ? t("videos.linkBtn") : t("videos.uploadBtn")}
             </Button>
           </div>
         </div>
