@@ -111,6 +111,16 @@ export default async function ProfilePage({
     dobYear: t('dobYear'),
     dobEquivalentGregorian: t('dobEquivalentGregorian'),
     dobEquivalentJalali: t('dobEquivalentJalali'),
+    memberSince: t('memberSince'),
+    tabSessions: t('tabSessions'),
+    sessionsEmpty: t('sessionsEmpty'),
+    sessionsLoadFailed: t('sessionsLoadFailed'),
+    sessionIp: t('sessionIp'),
+    sessionLastActive: t('sessionLastActive'),
+    sessionStarted: t('sessionStarted'),
+    sessionRevoke: t('sessionRevoke'),
+    sessionRevoked: t('sessionRevoked'),
+    sessionUnknownDevice: t('sessionUnknownDevice'),
   };
 
   return (

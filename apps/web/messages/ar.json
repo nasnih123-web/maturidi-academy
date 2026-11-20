@@ -2199,6 +2199,16 @@
     "dobMonth": "الشهر",
     "dobYear": "السنة",
     "dobEquivalentGregorian": "المعادل الميلادي: {date}",
-    "dobEquivalentJalali": "المعادل الشمسي: {date}"
+    "dobEquivalentJalali": "المعادل الشمسي: {date}",
+    "memberSince": "عضو منذ",
+    "tabSessions": "الجلسات",
+    "sessionsEmpty": "لا توجد جلسات مسجلة.",
+    "sessionsLoadFailed": "تعذر تحميل الجلسات.",
+    "sessionIp": "عنوان IP",
+    "sessionLastActive": "آخر نشاط",
+    "sessionStarted": "بداية الجلسة",
+    "sessionRevoke": "إنهاء الجلسة",
+    "sessionRevoked": "منتهية",
+    "sessionUnknownDevice": "جهاز غير معروف"
   }
 }

@@ -37,10 +37,28 @@ export interface MeProfile {
   profile_complete: boolean;
   missing_profile_fields: string[];
   profile_required_sections: string[];
+  created_at: string;
 }
 
 export async function fetchMe(): Promise<MeProfile> {
   return authJson<MeProfile>('/api/v1/users/me');
+}
+
+export interface MySession {
+  id: string;
+  device_info: string | null;
+  ip: string | null;
+  last_active_at: string;
+  revoked: boolean;
+  created_at: string;
+}
+
+export async function fetchMySessions(): Promise<MySession[]> {
+  return authJson<MySession[]>('/api/v1/users/me/sessions');
+}
+
+export async function revokeMySession(id: string): Promise<void> {
+  await authJson(`/api/v1/users/me/sessions/${id}`, { method: 'DELETE' });
 }
 
 export async function updateMe(patch: {

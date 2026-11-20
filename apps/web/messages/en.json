@@ -2199,6 +2199,16 @@
     "dobMonth": "Month",
     "dobYear": "Year",
     "dobEquivalentGregorian": "Gregorian equivalent: {date}",
-    "dobEquivalentJalali": "Jalali equivalent: {date}"
+    "dobEquivalentJalali": "Jalali equivalent: {date}",
+    "memberSince": "Member since",
+    "tabSessions": "Sessions",
+    "sessionsEmpty": "No sessions recorded.",
+    "sessionsLoadFailed": "Could not load sessions.",
+    "sessionIp": "IP address",
+    "sessionLastActive": "Last active",
+    "sessionStarted": "Started",
+    "sessionRevoke": "End session",
+    "sessionRevoked": "Ended",
+    "sessionUnknownDevice": "Unknown device"
   }
 }

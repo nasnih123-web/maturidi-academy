@@ -31,6 +31,9 @@ import {
   enable2fa,
   fetch2faStatus,
   fetchMe,
+  fetchMySessions,
+  revokeMySession,
+  type MySession,
   regenerateRecoveryCodes,
   setup2fa,
   updateMe,
@@ -39,6 +42,7 @@ import {
   type TwoFAStatus,
 } from '@/lib/profile-client';
 import DateOfBirthField from '@/components/DateOfBirthField';
+import { toJalali } from '@/lib/jalali';
 
 export interface ProfileLabels {
   title: string;
@@ -106,6 +110,16 @@ export interface ProfileLabels {
   dobYear: string;
   dobEquivalentGregorian: string;
   dobEquivalentJalali: string;
+  memberSince: string;
+  tabSessions: string;
+  sessionsEmpty: string;
+  sessionsLoadFailed: string;
+  sessionIp: string;
+  sessionLastActive: string;
+  sessionStarted: string;
+  sessionRevoke: string;
+  sessionRevoked: string;
+  sessionUnknownDevice: string;
 }
 
 interface ProfileSettingsProps {
@@ -142,7 +156,37 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
   const [twofaBusy, setTwofaBusy] = useState(false);
   const [twofaError, setTwofaError] = useState(false);
   const [twofaNotice, setTwofaNotice] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'personal' | 'security'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'security' | 'sessions'>('personal');
+  const [sessions, setSessions] = useState<MySession[] | null>(null);
+  const [sessionsError, setSessionsError] = useState(false);
+  const [sessionBusy, setSessionBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeTab !== 'sessions' || sessions !== null) return;
+    let cancelled = false;
+    fetchMySessions()
+      .then((list) => {
+        if (!cancelled) setSessions(list);
+      })
+      .catch(() => {
+        if (!cancelled) setSessionsError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, sessions]);
+
+  async function endSession(id: string) {
+    setSessionBusy(id);
+    try {
+      await revokeMySession(id);
+      setSessions((prev) => prev?.map((s) => (s.id === id ? { ...s, revoked: true } : s)) ?? null);
+    } catch {
+      setSessionsError(true);
+    } finally {
+      setSessionBusy(null);
+    }
+  }
 
   const load = useCallback(async () => {
     if (!isLoggedIn()) {
@@ -334,6 +378,13 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
       .slice(0, 2)
       .map((w) => w[0] ?? '')
       .join('') || '?';
+  const memberDate = new Date(me.created_at);
+  const memberSinceYear = numFmt.format(locale === 'en' ? memberDate.getFullYear() : toJalali(memberDate).y);
+  const fmtDateTime = (iso: string) =>
+    new Intl.DateTimeFormat(locale === 'fa' ? 'fa-IR' : locale === 'ar' ? 'ar' : 'en-GB', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(iso));
 
   return (
     <div className="pf3-layout">
@@ -406,8 +457,8 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
             <dd>{countryCode ? (countryNames?.of(countryCode) ?? countryCode) : '—'}</dd>
           </div>
           <div>
-            <dt>{labels.language}</dt>
-            <dd>{localeSel === 'fa' ? 'فارسی' : localeSel === 'ar' ? 'العربية' : 'English'}</dd>
+            <dt>{labels.memberSince}</dt>
+            <dd>{memberSinceYear}</dd>
           </div>
           <div>
             <dt>{labels.securityTitle}</dt>
@@ -462,6 +513,15 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
             onClick={() => setActiveTab('security')}
           >
             {labels.securityTitle}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'sessions'}
+            className={`pf3-tab${activeTab === 'sessions' ? ' on' : ''}`}
+            onClick={() => setActiveTab('sessions')}
+          >
+            {labels.tabSessions}
           </button>
         </div>
 
@@ -668,6 +728,53 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
         </>
       )}
         </div>}
+        {activeTab === 'sessions' && (
+          <div className="pf3-security">
+            {sessionsError && (
+              <p className="auth-error" role="alert">
+                {labels.sessionsLoadFailed}
+              </p>
+            )}
+            {!sessions && !sessionsError && <p className="auth-loading">{labels.loading}</p>}
+            {sessions && sessions.length === 0 && <p className="page-sub">{labels.sessionsEmpty}</p>}
+            {sessions && sessions.length > 0 && (
+              <ul className="pf3-sessions">
+                {sessions.map((s) => (
+                  <li key={s.id} className="pf3-session">
+                    <div className="pf3-session-main">
+                      <div className="pf3-session-device">{s.device_info || labels.sessionUnknownDevice}</div>
+                      <div className="pf3-session-meta">
+                        {s.ip && (
+                          <span>
+                            {labels.sessionIp}: <span dir="ltr">{s.ip}</span>
+                          </span>
+                        )}
+                        <span>
+                          {labels.sessionStarted}: {fmtDateTime(s.created_at)}
+                        </span>
+                        <span>
+                          {labels.sessionLastActive}: {fmtDateTime(s.last_active_at)}
+                        </span>
+                      </div>
+                    </div>
+                    {s.revoked ? (
+                      <span className="pf3-session-off">{labels.sessionRevoked}</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="pf3-session-btn"
+                        disabled={sessionBusy === s.id}
+                        onClick={() => void endSession(s.id)}
+                      >
+                        {labels.sessionRevoke}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </section>
     </div>
   );

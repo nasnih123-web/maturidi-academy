@@ -2199,6 +2199,16 @@
     "dobMonth": "ماه",
     "dobYear": "سال",
     "dobEquivalentGregorian": "معادل میلادی: {date}",
-    "dobEquivalentJalali": "معادل شمسی: {date}"
+    "dobEquivalentJalali": "معادل شمسی: {date}",
+    "memberSince": "عضویت از",
+    "tabSessions": "نشست‌ها",
+    "sessionsEmpty": "نشست فعالی ثبت نشده است.",
+    "sessionsLoadFailed": "بارگذاری نشست‌ها ممکن نشد.",
+    "sessionIp": "نشانی IP",
+    "sessionLastActive": "آخرین فعالیت",
+    "sessionStarted": "شروع نشست",
+    "sessionRevoke": "بستن نشست",
+    "sessionRevoked": "بسته‌شده",
+    "sessionUnknownDevice": "دستگاه ناشناس"
   }
 }

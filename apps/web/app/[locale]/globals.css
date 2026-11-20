@@ -4211,3 +4211,11 @@ button.mushaf-dk-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
   .pf3-grid { grid-template-columns: 1fr; }
   .pf3-main { width: 100%; }
 }
+
+.pf3-sessions { list-style: none; display: flex; flex-direction: column; gap: 0.6rem; }
+.pf3-session { display: flex; justify-content: space-between; align-items: center; gap: 1rem; border: 1px solid rgba(212, 175, 55, 0.25); border-radius: var(--radius-md); padding: 0.7rem 0.9rem; background: rgba(0, 0, 0, 0.16); }
+.pf3-session-main { min-width: 0; }
+.pf3-session-device { font-weight: 800; font-size: 0.85rem; word-break: break-all; }
+.pf3-session-meta { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; font-size: 0.72rem; color: rgba(237, 230, 214, 0.6); font-weight: 700; margin-top: 0.25rem; }
+.pf3-session-btn { flex: none; border: 1.5px solid rgba(240, 120, 120, 0.5); color: #f0a0a0; background: none; border-radius: 0.6rem; padding: 0.35rem 0.8rem; font-size: 0.75rem; font-weight: 800; cursor: pointer; font-family: inherit; }
+.pf3-session-off { flex: none; font-size: 0.72rem; font-weight: 800; color: rgba(237, 230, 214, 0.5); border: 1.5px dashed rgba(237, 230, 214, 0.3); padding: 0.2rem 0.6rem; border-radius: 999px; }
