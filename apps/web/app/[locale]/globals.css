@@ -3144,20 +3144,7 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
      the study is present the page background is white. */
   body:has(.quran-hifz-study) { background: #ffffff; }
   /* Fixed page (2026-11-10, user directive: «صفحه باید ثابت باشه
-     نتونیم اسکرول کنیم») + layout-shift
-   fix (user 2026-11-20): the eye's hidden words are INVISIBLE
-   placeholders — no dotted box, no dotted line — but still tappable
-   (one tap reveals one word). They must occupy EXACTLY the revealed
-   word's box: revealing a word changes only its visibility, never
-   its size or position, so no line reflows and no ayah-end marker
-   (۝) moves while reading. Measured on mushaf p.1 (393px): before
-   this fix a hidden word was a 44px-tall, 16px button (the generic
-   `.quran-hifz-study button` rule: min-height 44px, font-size 1rem)
-   with a 1px/2px transparent border, while the revealed word was a
-   16.5px inline span — so a line holding a hidden word was 45px
-   tall and collapsed to 36.6px when its last hidden word was
-   revealed (markers jumped up 5-6px), and mid-line markers slid
-   +7-8px sideways from the width delta (hidden text + padding + document must not scroll in mushaf
+     نتونیم اسکرول کنیم»): the document must not scroll in mushaf
      mode on mobile — header + 15-line page + toolbar in one view.
      overflow: clip (NOT hidden): hidden still lets a script scroll
      the page (window.scrollTo / scrollIntoView keep working — the
