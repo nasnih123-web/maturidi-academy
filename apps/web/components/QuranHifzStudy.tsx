@@ -2811,24 +2811,14 @@ export function QuranHifzStudy({
       // spans.
       if (eyeApplies && slot.index >= 0 && eyeCoversWord(slot.surah, slot.ayah)) {
         const eyeKey = `${slot.surah}:${slot.ayah}:${slot.index}`;
-        if (eyeHidden && !revealedWords.has(eyeKey)) {
-          return (
-            <button
-              type="button"
-              key={key}
-              className="hifz-line-word hifz-line-word-eye-hidden"
-              onClick={() => {
-                if (wordTapSuppressed()) return;
-                setRevealedWords((prev) => new Set(prev).add(eyeKey));
-              }}
-              aria-label={labels.showScript}
-              data-word-key={eyeKey}
-              data-qul-id={slot.qulId}
-            >
-              <span aria-hidden="true">{renderTajweedText(slot.text)}</span>
-            </button>
-          );
-        }
+                // Layout-shift fix (user 2026-11-20): the hidden placeholder
+        // renders exactly what the revealed word renders — V4 glyph
+        // iff the revealed word is a glyph, else Tanzil text — so
+        // revealing changes only visibility, never the box. A COLR
+        // glyph ignores `color: transparent`, so the glyph content
+        // hides with `visibility: hidden` on its inner span (the
+        // button stays clickable); text hides via the transparent
+        // color rule on .hifz-line-word-eye-hidden.
         const useGlyphShown =
           fontLoaded === true &&
           shouldUseV4Glyph(slot.glyph, {
@@ -2837,6 +2827,39 @@ export function QuranHifzStudy({
             status: null,
             listenNow: false,
           });
+if (eyeHidden && !revealedWords.has(eyeKey)) {
+          return (
+            <button
+              type="button"
+              key={key}
+              className={[
+                'hifz-line-word',
+                'hifz-line-word-eye-hidden',
+                useGlyphShown ? 'hifz-line-word-glyph' : '',
+              ].join(' ')}
+              onClick={() => {
+                if (wordTapSuppressed()) return;
+                setRevealedWords((prev) => new Set(prev).add(eyeKey));
+              }}
+              aria-label={labels.showScript}
+              data-word-key={eyeKey}
+              data-qul-id={slot.qulId}
+            >
+              {useGlyphShown ? (
+                <span aria-hidden="true" style={{ visibility: 'hidden' }}>
+                  {renderV4Glyph(slot, fontFamily)}
+                </span>
+              ) : (
+                <span aria-hidden="true">{renderTajweedText(slot.text)}</span>
+              )}
+              {slot.pauseAfter ? (
+                <span className="hifz-word-pause" aria-hidden="true">
+                  {slot.pauseAfter}
+                </span>
+              ) : null}
+            </button>
+          );
+        }
         return (
           <span
             key={key}
@@ -2918,28 +2941,6 @@ export function QuranHifzStudy({
       !revealedWords.has(wordKey);
     const scriptConcealsWritten =
       !eyeApplies && scriptHidden && wordKey !== null && !revealedWords.has(wordKey);
-    if (eyeConcealsWritten || scriptConcealsWritten) {
-      return (
-        <button
-          type="button"
-          key={key}
-          className={
-            eyeConcealsWritten
-              ? 'hifz-line-word hifz-line-word-eye-hidden'
-              : 'hifz-line-word hifz-line-word-concealed'
-          }
-          onClick={() => {
-            if (wordTapSuppressed()) return;
-            setRevealedWords((prev) => new Set(prev).add(wordKey));
-          }}
-          aria-label={labels.showScript}
-          data-word-key={wordKey}
-          data-qul-id={slot.qulId}
-        >
-          <span aria-hidden="true">{renderTajweedText(slot.text)}</span>
-        </button>
-      );
-    }
     const isPractice = practiceWord?.ayah === slot.ayah && practiceWord?.index === slot.index;
     // The newest word just heard is GREEN when correct, RED when
     // wrong and YELLOW-highlighted when it is a tashkeel error
@@ -2977,6 +2978,10 @@ export function QuranHifzStudy({
     // the newest live word and wrong/close/skipped grades stay text
     // because their signal IS the ink colour, and the listen-now
     // word stays text so the green highlight reads.
+    // (Hoisted above the concealment branches: the eye's hidden
+    // placeholder renders exactly this same glyph/text decision —
+    // layout-shift fix, user 2026-11-20 — so revealing a written
+    // word changes only its visibility, never its box.)
     const useGlyph =
       fontLoaded === true &&
       shouldUseV4Glyph(slot.glyph, {
@@ -2985,6 +2990,57 @@ export function QuranHifzStudy({
         status: w.status,
         listenNow: isListenNow,
       });
+    if (eyeConcealsWritten) {
+      return (
+        <button
+          type="button"
+          key={key}
+          className=[
+            'hifz-line-word',
+            'hifz-line-word-eye-hidden',
+            useGlyph ? 'hifz-line-word-glyph' : '',
+          ].join(' ')}
+          onClick={() => {
+            if (wordTapSuppressed()) return;
+            setRevealedWords((prev) => new Set(prev).add(wordKey));
+          }}
+          aria-label={labels.showScript}
+          data-word-key={wordKey}
+          data-qul-id={slot.qulId}
+        >
+          {useGlyph ? (
+            <span aria-hidden="true" style={{ visibility: 'hidden' }}>
+              {renderV4Glyph(slot, fontFamily)}
+            </span>
+          ) : (
+            <span aria-hidden="true">{renderTajweedText(slot.text)}</span>
+          )}
+          {slot.pauseAfter ? (
+            <span className="hifz-word-pause" aria-hidden="true">
+              {slot.pauseAfter}
+            </span>
+          ) : null}
+        </button>
+      );
+    }
+    if (scriptConcealsWritten) {
+      return (
+        <button
+          type="button"
+          key={key}
+          className="hifz-line-word hifz-line-word-concealed"
+          onClick={() => {
+            if (wordTapSuppressed()) return;
+            setRevealedWords((prev) => new Set(prev).add(wordKey));
+          }}
+          aria-label={labels.showScript}
+          data-word-key={wordKey}
+          data-qul-id={slot.qulId}
+        >
+          <span aria-hidden="true">{renderTajweedText(slot.text)}</span>
+        </button>
+      );
+    }
     return (
       <span
         key={key}
