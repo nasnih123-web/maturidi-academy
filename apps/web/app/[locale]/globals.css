@@ -2668,8 +2668,12 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
 }
 .quran-hifz-study .hifz-line-page { background: #F9F7F8; color: #1c1710; border: none; border-top: 1px solid #e5e0d5; border-bottom: 1px solid #e5e0d5; border-radius: 0; box-shadow: none; padding: 1.25rem 1.5rem 1.5rem; margin-bottom: 0; touch-action: pan-y; }
 .quran-hifz-study .hifz-line-caption { text-align: center; font-family: system-ui, sans-serif; font-size: 0.85rem; color: #6b655a; margin: 0 0 1rem; }
-.quran-hifz-study .hifz-line { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: clamp(1.25rem, 4.2vw, 2.1rem); line-height: 2.1; text-align: right; text-align-last: right; margin: 0; padding: 0.15rem 0; border-bottom: 1px solid rgba(0,0,0,0.10); }
-.quran-hifz-study .hifz-line:last-child { border-bottom: none; }
+.quran-hifz-study .hifz-line { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: clamp(1.25rem, 4.2vw, 2.1rem); line-height: 2.1; text-align: right; text-align-last: right; margin: 0; padding: 0.15rem 0; }
+/* Page-1 fidelity (user 2026-11-20): the printed mushaf has NO
+   rules between lines — the old border-bottom drew one under
+   every line. (The page container keeps its own top/bottom
+   border; the plain-text surah header keeps its rules as the
+   SVG-failure fallback.) */
 .quran-hifz-study .hifz-line-header { text-align: center; text-align-last: center; font-size: 0.85em; color: #6b655a; border-top: 1px solid #e5e0d5; border-bottom: 1px solid #e5e0d5; padding: 0.4rem 0; margin: 0.5rem 0; }
 /* Phase-1 hifz fix: the surah header is the surah-name
    calligraphy SVG (same asset as the reader's V2 page) — the file
@@ -2696,6 +2700,11 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
    removed, not layered on. */
 .quran-hifz-study .hifz-surah-frame { display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 16320 / 2000; margin: 0 auto; box-sizing: border-box; background: #FCFBF7 url("/quran/surah-headers/sura-border.svg") center / 100% 100% no-repeat; }
 .quran-hifz-study .hifz-surah-frame img { display: block; height: 88%; width: auto; max-width: 94%; }
+/* Page-1 fidelity (user 2026-11-20): the Fatiha name inside the
+   frame (no surah-001.svg exists). Same Uthmanic script as the
+   printed header, sized to the cartouche like the SVG names
+   (the Baqarah name img is 88% of the frame height). */
+.quran-hifz-study .hifz-surah-frame-name { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: 1.5rem; line-height: 1; color: #1c1710; }
 /* (The .hifz-line-basmala rule lives AFTER the mobile media query
    below: same specificity as .hifz-line, so file order decides —
    before Wave 1 the later mobile rule's font-size: 1rem /
@@ -2988,7 +2997,17 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
      would stretch the gaps to ~70px. text-align-last (not plain
      justify) does the work — each mushaf line is its own last
      line (probe 2: void 93px -> 1px). */
-  .quran-hifz-study .hifz-line:not(.hifz-line-header):not(.hifz-line-basmala) { text-align: justify; text-align-last: justify; }
+  .quran-hifz-study .hifz-line:not(.hifz-line-header):not(.hifz-line-basmala):not(.hifz-line--surah-end) { text-align: justify; text-align-last: justify; }
+  /* Page-1 fidelity (user 2026-11-20): Fatiha's text larger, like
+     the printed mushaf. Measured on p.1 (393px, eye open): the
+     tightest Fatiha line (L3/L4, 224px natural at 16.5px) caps the
+     size at 26.5px — 27px wraps L4 — so 26px keeps 1px of margin
+     and the line breaks stay identical (same 7 lines, same words
+     per line). A uniform size cannot grow: the global binding
+     line (p584 L2) caps it at 16.93px, so the larger size is
+     scoped to page 1 only. Desktop untouched (its clamp() size
+     stays); the header frame and the Basmala SVG are excluded. */
+  .quran-hifz-study .hifz-line-page--fatiha .hifz-line:not(.hifz-line-header):not(.hifz-line-basmala) { font-size: 26px; }
   .quran-hifz-study .hifz-header { padding-bottom: 0; }
 }
 /* Fill the screen between the sticky top bar and the fixed
@@ -3784,7 +3803,12 @@ body:has(.quran-hifz-study .recitation-toolbar) .site-footer {
 /* Tarteel display sheet — nass mode: scrolling Uthmani text, one
    ayah per row, rosette at the end; same font as the page lines. */
 .quran-hifz-study .hifz-nass { padding: 0 1rem 1rem; }
-.quran-hifz-study .hifz-nass-ayah { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: clamp(1.25rem, 4.2vw, 2.1rem); line-height: 2.1; text-align: justify; text-align-last: justify; margin: 0; padding: 0.15rem 0; border-bottom: 1px solid rgba(0,0,0,0.10); }
+.quran-hifz-study .hifz-nass-ayah { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: clamp(1.25rem, 4.2vw, 2.1rem); line-height: 2.1; text-align: justify; text-align-last: justify; margin: 0; padding: 0.15rem 0; }
+/* Page-1 fidelity (user 2026-11-20): the printed mushaf has NO
+   rules between lines — the old border-bottom drew one under
+   every line. (The page container keeps its own top/bottom
+   border; the plain-text surah header keeps its rules as the
+   SVG-failure fallback.) */
 /* Nass-mode regression fix (2026-11-11, live p359 after PR #126):
    each ayah paragraph is a run of adjacent inline word spans with
    NO whitespace between them, so there is no line-break opportunity
