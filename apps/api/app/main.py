@@ -92,6 +92,10 @@ from app.modules.social.router import (
 from app.modules.sync.router import sync_router
 from app.modules.telegram.router import telegram_router
 from app.modules.users.router import router as users_router
+from app.modules.videos.router import (
+    admin_videos_router,
+    videos_router,
+)
 from app.modules.voice.router import (
     admin_voice_router,
     voice_router,
@@ -286,6 +290,8 @@ app.include_router(public_cert_router)
 app.include_router(admin_lms_router)
 app.include_router(library_router)
 app.include_router(admin_library_router)
+app.include_router(videos_router)
+app.include_router(admin_videos_router)
 app.include_router(social_router)
 app.include_router(admin_social_router)
 app.include_router(moderation_router)
