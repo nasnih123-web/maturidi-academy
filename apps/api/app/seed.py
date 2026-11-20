@@ -427,6 +427,52 @@ async def seed_platform_settings_defaults(db: AsyncSession) -> list[str]:
     if seeded:
         bump_settings_version(seeded)
         await db.flush()
+    # تعمیر نصب‌های قدیمی: home.sections در نصب‌های قدیمی پیش از ساخته‌شدن
+    # بخش «ویدیوها» ذخیره شده و این seed فقط کلیدِ غایب را پر می‌کند، پس
+    # اسلات videos هرگز به مقدار موجود نمی‌رسد و نوار ویدیوهای صفحهٔ خانه
+    # رندر نمی‌شود. فقط وقتی مجموعهٔ اسلات‌ها دقیقاً همان چیدمان پیش‌فرض
+    # قدیمیِ دست‌نخورده است، اسلات را یک بار بعد از fresh_library درج
+    # می‌کنیم — چیدمان سفارشی‌شدهٔ ادمین هرگز تغییر نمی‌کند.
+    legacy_home_slot_ids = {
+        "live_status",
+        "latest_fatwas",
+        "quran_of_day",
+        "suggested_lessons",
+        "fresh_library",
+        "community",
+        "nearby_map",
+        "donation_banner",
+        "footer",
+    }
+    raw_home_sections = await get_setting(db, "home.sections")
+    if raw_home_sections is not None:
+        try:
+            parsed_home_sections = json.loads(raw_home_sections)
+        except (json.JSONDecodeError, ValueError):
+            parsed_home_sections = None
+        if (
+            isinstance(parsed_home_sections, list)
+            and len(parsed_home_sections) == len(legacy_home_slot_ids)
+            and all(
+                isinstance(entry, dict) and isinstance(entry.get("id"), str)
+                for entry in parsed_home_sections
+            )
+            and {entry["id"] for entry in parsed_home_sections} == legacy_home_slot_ids
+        ):
+            repaired_home_sections: list[Any] = []
+            for entry in parsed_home_sections:
+                repaired_home_sections.append(entry)
+                if entry["id"] == "fresh_library":
+                    repaired_home_sections.append(
+                        {"id": "videos", "variant": "videos", "enabled": True}
+                    )
+            await stage_setting(
+                db,
+                "home.sections",
+                encode_setting_value("json", repaired_home_sections, "home.sections"),
+            )
+            bump_settings_version(["home.sections"])
+            await db.flush()
     return seeded
     """upsert idempotent بخش‌های خانه بر اساس key.
 
