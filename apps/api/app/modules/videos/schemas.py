@@ -15,6 +15,10 @@ LocalizedText = dict[str, str]
 
 VIDEO_KINDS: tuple[str, ...] = ("video", "video_360")
 
+# زبان‌های مجاز زیرنویس خودکار (فاز ۳) — هم‌مجموعهٔ اعتبارسنج
+# videos.subtitle_langs در platform_settings.
+SUBTITLE_LANGS: tuple[str, ...] = ("fa", "ar", "en", "ur", "dari")
+
 
 class PlaylistRef(BaseModel):
     """ارجاع سبک به لیست پخش منتشرشده (عضویت‌های یک ویدیو)."""
@@ -74,11 +78,46 @@ class PlaylistContextOut(BaseModel):
     items: list[VideoItemOut] = Field(default_factory=list)
 
 
+class SubtitleTrackOut(BaseModel):
+    """ترک زیرنویس آمادهٔ یک ویدیو — url مسیر نسبی endpoint فایل VTT است
+    (کلاینت وب آن را با base API کامل می‌کند)."""
+
+    lang: str
+    url: str
+
+
 class WatchOut(BaseModel):
     item: VideoItemOut
     stream_url: str | None = None
     playlist: PlaylistContextOut | None = None
     related: list[VideoItemOut] = Field(default_factory=list)
+    # فقط ترک‌های ready؛ وقتی videos.subtitles_enabled خاموش است خالی است
+    subtitles: list[SubtitleTrackOut] = Field(default_factory=list)
+
+
+class SubtitleGenerateOut(BaseModel):
+    """نتیجهٔ درخواست تولید زیرنویس: وضعیت pending هر زبان هدف.
+
+    enqueued=False یعنی صف/ورکر در دسترس نبود و ردیف‌ها pending می‌مانند
+    (صادقانه — تولیدی ادعا نمی‌شود که اتفاق نیفتاده).
+    """
+
+    item_id: uuid.UUID
+    statuses: dict[str, str]
+    enqueued: bool
+
+
+class AdminSubtitleItemOut(BaseModel):
+    """وضعیت زیرنویس هر ویدیوی آپلودی برای کارت CRM — هر پنج زبان همیشه
+    حاضرند؛ نبود ردیف یعنی وضعیت "missing"."""
+
+    id: uuid.UUID
+    kind: str
+    title: LocalizedText
+    workflow_status: str
+    visibility: str
+    created_at: datetime
+    subtitles: dict[str, str]
 
 
 class PlaylistCreateIn(BaseModel):

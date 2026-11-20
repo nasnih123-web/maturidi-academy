@@ -1854,7 +1854,9 @@
       "playNow": "Play now",
       "cancel": "Cancel",
       "rewind": "Back 10 seconds",
-      "forward": "Forward 10 seconds"
+      "forward": "Forward 10 seconds",
+      "subtitles": "Subtitles",
+      "subtitlesOff": "Off"
     }
   },
   "places": {

@@ -1854,7 +1854,9 @@
       "playNow": "التشغيل الآن",
       "cancel": "إلغاء",
       "rewind": "رجوع ١٠ ثوانٍ",
-      "forward": "تقديم ١٠ ثوانٍ"
+      "forward": "تقديم ١٠ ثوانٍ",
+      "subtitles": "الترجمة",
+      "subtitlesOff": "إيقاف"
     }
   },
   "places": {

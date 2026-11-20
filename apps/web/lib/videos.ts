@@ -61,11 +61,19 @@ export interface VideoPlaylistContext {
   items: VideoItem[];
 }
 
+export interface SubtitleTrack {
+  lang: string;
+  /** Absolute URL of the WebVTT file (API path absolutized here). */
+  url: string;
+}
+
 export interface VideoWatch {
   item: VideoItem;
   stream_url: string | null;
   playlist: VideoPlaylistContext | null;
   related: VideoItem[];
+  /** Ready subtitle tracks only; empty when subtitles are disabled. */
+  subtitles: SubtitleTrack[];
 }
 
 export interface VideoListResponse {
@@ -146,5 +154,11 @@ export async function getVideoWatch(
     stream_url: body.stream_url ?? null,
     playlist: body.playlist ?? null,
     related: Array.isArray(body.related) ? body.related : [],
+    subtitles: (Array.isArray(body.subtitles) ? body.subtitles : []).map(
+      (tr) => ({
+        lang: tr.lang,
+        url: tr.url.startsWith('http') ? tr.url : apiUrl(tr.url),
+      }),
+    ),
   };
 }

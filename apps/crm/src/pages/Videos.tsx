@@ -16,7 +16,9 @@ import {
   addPlaylistItem,
   createPlaylist,
   deletePlaylist,
+  fetchSubtitleStatuses,
   fetchVideosSettings,
+  generateSubtitles,
   listCandidates,
   listPlaylists,
   removePlaylistItem,
@@ -30,10 +32,10 @@ import {
 
 /**
  * Videos admin — playlists over library video items + the `videos.*`
- * platform settings. The videos themselves live in the library: the
- * upload here reuses the library create flow (multipart → draft), and
- * publishing/editing happens in MediaManager. No subtitle-status card
- * (phase 3) and no invented data.
+ * platform settings + the phase-3 subtitle status card. The videos
+ * themselves live in the library: the upload here reuses the library
+ * create flow (multipart → draft), and publishing/editing happens in
+ * MediaManager.
  */
 
 function pickTitle(text: LocalizedText | null, locale: Locale): string {
@@ -317,6 +319,8 @@ export default function Videos(): React.ReactElement {
           </Card>
 
           <VideosSettingsCard />
+
+          <SubtitlesCard />
         </>
       )}
     </div>
@@ -735,6 +739,118 @@ function VideosSettingsCard(): React.ReactElement {
             </div>
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* subtitle status card (phase 3)                                      */
+/* ------------------------------------------------------------------ */
+
+function SubtitlesCard(): React.ReactElement {
+  const { t, locale } = useI18n();
+  const queryClient = useQueryClient();
+  const subsQuery = useQuery({
+    queryKey: ["videos-subtitles"],
+    queryFn: fetchSubtitleStatuses,
+    // وضعیت‌ها در طول تولید عوض می‌شوند — رفرش ملایم دوره‌ای
+    refetchInterval: 15000,
+  });
+  const [genError, setGenError] = React.useState<string | null>(null);
+  const genMut = useMutation({
+    mutationFn: (id: string) => generateSubtitles(id),
+    onSuccess: () => {
+      setGenError(null);
+      void queryClient.invalidateQueries({ queryKey: ["videos-subtitles"] });
+    },
+    onError: (err) => setGenError(errText(err)),
+  });
+
+  const langLabel = (l: string): string =>
+    t(
+      `videos.lang${l === "fa" ? "Fa" : l === "ar" ? "Ar" : l === "en" ? "En" : l === "ur" ? "Ur" : "Dari"}`,
+    );
+
+  const chip = (status: string): React.ReactElement => {
+    if (status === "ready") {
+      return <Badge tone="success">{t("videos.subReady")}</Badge>;
+    }
+    if (status === "pending" || status === "processing") {
+      return <Badge tone="warning">{t("videos.subWorking")}</Badge>;
+    }
+    return <Badge>{t("videos.subMissing")}</Badge>;
+  };
+
+  const cellStyle: React.CSSProperties = {
+    padding: "0.45rem 0.6rem",
+    borderBottom: "1px solid var(--border, #e3ddcb)",
+    textAlign: "start",
+    whiteSpace: "nowrap",
+  };
+
+  const items = subsQuery.data ?? [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("videos.subtitlesTitle")}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.7rem" }}>
+          <p className="hint" style={{ margin: 0 }}>
+            {t("videos.subtitlesHint")}
+          </p>
+          {subsQuery.isLoading ? (
+            <p className="hint">{t("videos.loading")}</p>
+          ) : subsQuery.isError ? (
+            <p className="form-error">{t("videos.error")}</p>
+          ) : items.length === 0 ? (
+            <p className="hint">{t("videos.subtitlesEmpty")}</p>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{ borderCollapse: "collapse", inlineSize: "100%" }}
+              >
+                <thead>
+                  <tr>
+                    <th style={cellStyle}>{t("videos.subColVideo")}</th>
+                    {SUBTITLE_LANGS.map((l) => (
+                      <th key={l} style={cellStyle}>
+                        {langLabel(l)}
+                      </th>
+                    ))}
+                    <th style={cellStyle} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.id}>
+                      <td style={{ ...cellStyle, whiteSpace: "normal" }}>
+                        {pickTitle(item.title, locale) || item.id}
+                      </td>
+                      {SUBTITLE_LANGS.map((l) => (
+                        <td key={l} style={cellStyle}>
+                          {chip(item.subtitles[l] ?? "missing")}
+                        </td>
+                      ))}
+                      <td style={cellStyle}>
+                        <Button
+                          variant="ghost"
+                          disabled={genMut.isPending}
+                          onClick={() => genMut.mutate(item.id)}
+                        >
+                          {t("videos.subGenerate")}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {genError ? <p className="form-error">{genError}</p> : null}
+        </div>
       </CardContent>
     </Card>
   );

@@ -30,6 +30,9 @@ from app.modules.projects import due_cron as _pms_due_cron  # noqa: F401
 # ثبت جاب‌های صف telegram فاز ۱۱ (درون‌ریزی کانال + انتشار)
 from app.modules.telegram import jobs as _telegram_jobs  # noqa: F401
 
+# ثبت جاب زیرنویس ویدیوها (صف media — فاز ۳ ویدیوها)
+from app.modules.videos import tasks as _videos_tasks  # noqa: F401
+
 
 async def _media_startup(ctx: dict) -> None:
     """گیت آمادگی زنجیرهٔ ابزار رسانه (B-04 — ADR-0027).

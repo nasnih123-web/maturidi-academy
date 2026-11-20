@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import log_audit
 from app.core.errors import APIError
 from app.models.models import (
+    ItemSubtitle,
     LibraryItem,
     User,
     UserVideoProgress,
@@ -31,8 +32,9 @@ from app.models.models import (
 )
 from app.modules.library import service as library_service
 
+from . import subtitles as subs
 from . import youtube
-from .schemas import VIDEO_KINDS
+from .schemas import SUBTITLE_LANGS, VIDEO_KINDS
 
 _RELATED_SCAN_CAP = 300
 
@@ -304,6 +306,30 @@ async def _related(
     return await _items_out(db, rows[:limit])
 
 
+async def _subtitle_tracks(
+    db: AsyncSession, item: LibraryItem
+) -> list[dict]:
+    """ترک‌های زیرنویس ready برای payload تماشا — فقط آیتم آپلودی و فقط
+    وقتی سوییچ CRM (videos.subtitles_enabled) روشن است."""
+    if item.external_url:
+        return []
+    if not await subs.subtitles_enabled(db):
+        return []
+    stmt = select(ItemSubtitle).where(
+        ItemSubtitle.item_id == item.id, ItemSubtitle.status == "ready"
+    )
+    rows = list((await db.execute(stmt)).scalars().all())
+    order = {lang: i for i, lang in enumerate(SUBTITLE_LANGS)}
+    rows.sort(key=lambda r: order.get(r.lang, len(order)))
+    return [
+        {
+            "lang": r.lang,
+            "url": f"/api/v1/videos/{item.id}/subtitles/{r.lang}.vtt",
+        }
+        for r in rows
+    ]
+
+
 async def get_watch(
     db: AsyncSession,
     item_id: uuid.UUID,
@@ -323,7 +349,35 @@ async def get_watch(
         "stream_url": None if item.external_url else detail["media_url"],
         "playlist": await _playlist_context(db, item, user, playlist_id),
         "related": await _related(db, item, user),
+        "subtitles": await _subtitle_tracks(db, item),
     }
+
+
+async def get_subtitle_vtt(
+    db: AsyncSession,
+    item_id: uuid.UUID,
+    lang: str,
+    *,
+    user: User | None,
+) -> str:
+    """متن VTT یک ترک ready — آیتم باید برای همین فراخواننده عمومی باشد
+    (همان قواعد visibility کتابخانه)؛ هر حالت دیگر ۴۰۴ است."""
+    visible = await _visible_items_by_ids(db, user, [item_id])
+    item = visible.get(item_id)
+    if item is None or item.external_url:
+        raise APIError(404, "subtitle_not_found", "زیرنویس یافت نشد")
+    row = (
+        await db.execute(
+            select(ItemSubtitle).where(
+                ItemSubtitle.item_id == item_id,
+                ItemSubtitle.lang == lang,
+                ItemSubtitle.status == "ready",
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None or not row.vtt:
+        raise APIError(404, "subtitle_not_found", "زیرنویس یافت نشد")
+    return row.vtt
 
 
 # ---------------------------------------------------------------------------
@@ -727,6 +781,103 @@ async def reorder_playlist_items(
     await db.commit()
     await db.refresh(playlist)
     return await _admin_playlist_out(db, playlist)
+
+
+async def request_subtitle_generation(
+    db: AsyncSession,
+    item_id: uuid.UUID,
+    *,
+    actor: User,
+    ip: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
+    """تریگر تولید زیرنویس (CRM): ردیف‌های زبان‌های هدف pending می‌شوند
+    و جاب generate_subtitles روی صف media می‌رود. صف در دسترس نباشد
+    enqueued=False برمی‌گردد و ردیف‌ها pending می‌مانند (نه خطای پنهان)."""
+    item = await db.get(LibraryItem, item_id)
+    if item is None:
+        raise APIError(404, "item_not_found", "آیتم یافت نشد")
+    if item.kind not in VIDEO_KINDS:
+        raise APIError(
+            422,
+            "not_a_video",
+            "زیرنویس خودکار فقط برای آیتم‌های ویدیویی است",
+            {"kind": item.kind},
+        )
+    if item.external_url:
+        raise APIError(
+            422,
+            "external_video",
+            "ویدیوی خارجی (یوتیوب) زیرنویس خودکار ندارد؛ "
+            "کپشن داخل خود یوتیوب است",
+        )
+    if not item.media_key:
+        raise APIError(
+            422, "no_media_file", "این آیتم فایل رسانه‌ای ندارد"
+        )
+    langs = await subs.target_langs(db)
+    statuses = await subs.reset_rows(db, item.id, langs)
+    await log_audit(
+        db,
+        actor_id=actor.id,
+        actor_type="admin",
+        action="videos.subtitles.generate",
+        entity_type="library_item",
+        entity_id=str(item.id),
+        new_values={"langs": langs},
+        ip=ip,
+        user_agent=user_agent,
+    )
+    await db.commit()
+    enqueued = await library_service._enqueue_media_job(
+        "generate_subtitles", item.id
+    )
+    return {"item_id": item.id, "statuses": statuses, "enqueued": enqueued}
+
+
+async def admin_subtitle_statuses(
+    db: AsyncSession, *, limit: int = 30
+) -> list[dict]:
+    """تازه‌ترین ویدیوهای آپلودی + وضعیت زیرنویس هر پنج زبان — کارت CRM.
+
+    آیتم خارجی (یوتیوب) عمداً نیست: زیرنویس ندارد. نبود ردیف برای یک
+    زبان یعنی "missing"؛ وضعیت ردیف عیناً گزارش می‌شود.
+    """
+    stmt = (
+        select(LibraryItem)
+        .where(
+            LibraryItem.kind.in_(VIDEO_KINDS),
+            LibraryItem.external_url.is_(None),
+            LibraryItem.media_key.is_not(None),
+        )
+        .order_by(LibraryItem.created_at.desc(), LibraryItem.id.desc())
+        .limit(limit)
+    )
+    items = list((await db.execute(stmt)).scalars().all())
+    by_item: dict[uuid.UUID, dict[str, str]] = {}
+    if items:
+        sstmt = select(ItemSubtitle).where(
+            ItemSubtitle.item_id.in_([i.id for i in items])
+        )
+        for row in (await db.execute(sstmt)).scalars().all():
+            by_item.setdefault(row.item_id, {})[row.lang] = row.status
+    out: list[dict] = []
+    for item in items:
+        have = by_item.get(item.id, {})
+        out.append(
+            {
+                "id": item.id,
+                "kind": item.kind,
+                "title": item.title,
+                "workflow_status": item.workflow_status,
+                "visibility": item.visibility,
+                "created_at": item.created_at,
+                "subtitles": {
+                    lang: have.get(lang, "missing") for lang in SUBTITLE_LANGS
+                },
+            }
+        )
+    return out
 
 
 async def list_candidates(
