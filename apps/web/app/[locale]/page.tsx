@@ -16,6 +16,11 @@ import {
 import { buildHomeLabels } from "@/lib/home-labels";
 import { getFatwaListServer } from "@/lib/fatwa-topics";
 import { getArticleListServer } from "@/lib/articles";
+import { getVideos } from "@/lib/videos";
+import { formatDuration } from "@/lib/library";
+import { pickText } from "@/lib/localize";
+import type { VideoSliderItem } from "@/components/sections/VideosSlider";
+import type { VideoSliderData } from "@/components/HomeSections";
 import { themeCssText } from "@/lib/theme";
 import { ArticlesSlider } from "@/components/ArticlesSlider";
 import { HomeSections, HomeSectionRenderer } from "@/components/HomeSections";
@@ -84,12 +89,13 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
   const t = await getTranslations({ locale, namespace: "home" });
   const tContent = await getTranslations({ locale, namespace: "content" });
   const tArticles = await getTranslations({ locale, namespace: "articles" });
+  const tLib = await getTranslations({ locale, namespace: "library" });
 
   let sections: HomeSection[] = [];
   let themeCss = "";
   let apiFailed = false;
 
-  const [homeRes, announcements, banners, calTheme, quotes, siteConfig, fatwaRes, articlesRes] = await Promise.all([
+  const [homeRes, announcements, banners, calTheme, quotes, siteConfig, fatwaRes, articlesRes, videosRes] = await Promise.all([
     getHomeSections().then(
       (res) => ({ ok: true as const, res }),
       () => ({ ok: false as const }),
@@ -120,6 +126,13 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
       page: 1,
       perPage: 10,
     }).then(
+      (res) => ({ ok: true as const, res }),
+      () => ({ ok: false as const }),
+    ),
+    // Homepage videos band — latest 8 published videos from the videos
+    // endpoint (never section JSON). Non-throwing: on failure the band
+    // renders nothing.
+    getVideos({ limit: 8 }).then(
       (res) => ({ ok: true as const, res }),
       () => ({ ok: false as const }),
     ),
@@ -165,6 +178,25 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
   }
 
   const quoteViews = getScholarQuoteViews(quotes, locale);
+
+  // Videos band input — latest published videos + the CRM toggle
+  // (`videos.home_enabled`). On API failure the band renders nothing.
+  const videoItems: VideoSliderItem[] = videosRes.ok
+    ? videosRes.res.items.map((v) => ({
+        id: v.id,
+        title: pickText(v.title, locale) || v.id,
+        scholar: v.scholar_name,
+        duration: formatDuration(v.duration_seconds, locale) || null,
+        image: v.cover_url,
+        kindLabel: tLib(`kinds.${v.kind}`),
+        inPlaylist: v.playlists.length > 0,
+        href: `/${locale}/videos/${encodeURIComponent(v.id)}`,
+      }))
+    : [];
+  const videoSlider: VideoSliderData = {
+    items: videoItems,
+    enabled: siteConfig.videos.homeEnabled,
+  };
 
   // Slider items mapped once for both homepage render paths.
   const fatwaSliderItems = fatwaRes.ok
@@ -243,6 +275,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
                 labels={homeLabels}
                 heroOverride={heroOverride}
                 fatwaSliderItems={fatwaSliderItems}
+                videoSlider={videoSlider}
                 afterCommunity={articlesSlider}
               />
             </>
@@ -253,6 +286,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
               labels={homeLabels}
               heroOverride={heroOverride}
               fatwaSliderItems={fatwaSliderItems}
+              videoSlider={videoSlider}
               afterCommunity={articlesSlider}
             />
           )}

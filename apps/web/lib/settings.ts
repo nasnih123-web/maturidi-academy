@@ -202,6 +202,8 @@ export interface SiteConfig {
    * same rule with 403 profile_incomplete).
    */
   profileGating: ProfileGatingSettings;
+  /** Videos section settings (CRM keys `videos.*`) — see VideosSettings. */
+  videos: VideosSettings;
   /**
    * Social links for the drawer footer (CRM setting `site.social_links`):
    * ordered; the header renders only entries that are enabled AND have a
@@ -214,6 +216,38 @@ export interface ProfileGatingSettings {
   fatwaQuestion: boolean;
   hifzAdvanced: boolean;
 }
+
+/**
+ * Videos section settings (CRM keys `videos.*`): display + player +
+ * automatic-subtitle preferences. All are public/non-sensitive; the
+ * player/subtitle ones are consumed by later phases but parsed here so
+ * the config shape is complete from phase 1.
+ */
+export interface VideosSettings {
+  homeEnabled: boolean;
+  sidebarSide: 'left' | 'right';
+  autoplayNext: boolean;
+  resumePlayback: boolean;
+  playerSpeed: boolean;
+  playerPip: boolean;
+  relatedEnabled: boolean;
+  subtitleDefaultLang: string;
+  subtitlesEnabled: boolean;
+  subtitleLangs: string[];
+}
+
+export const DEFAULT_VIDEOS: VideosSettings = {
+  homeEnabled: true,
+  sidebarSide: 'left',
+  autoplayNext: true,
+  resumePlayback: true,
+  playerSpeed: true,
+  playerPip: true,
+  relatedEnabled: true,
+  subtitleDefaultLang: 'fa',
+  subtitlesEnabled: true,
+  subtitleLangs: ['fa', 'ar', 'en', 'ur', 'dari'],
+};
 
 export interface SocialLinkSetting {
   network: string;
@@ -246,6 +280,7 @@ export function defaultSiteConfig(): SiteConfig {
     munajat: { ...DEFAULT_MUNAJAT },
     adhan: { ...DEFAULT_ADHAN },
     profileGating: { fatwaQuestion: false, hifzAdvanced: false },
+    videos: { ...DEFAULT_VIDEOS, subtitleLangs: [...DEFAULT_VIDEOS.subtitleLangs] },
     socials: [],
   };
 }
@@ -532,6 +567,31 @@ function parseAdhanSettings(get: (key: string) => unknown): AdhanSettings {
   };
 }
 
+const VIDEO_SUBTITLE_LANGS = ['fa', 'ar', 'en', 'ur', 'dari'];
+
+function parseVideosSettings(get: (key: string) => unknown): VideosSettings {
+  const side = get('videos.sidebar_side');
+  const defLang = get('videos.subtitle_default_lang');
+  const langs = strList(get('videos.subtitle_langs')).filter((l) =>
+    VIDEO_SUBTITLE_LANGS.includes(l),
+  );
+  return {
+    homeEnabled: bool(get('videos.home_enabled'), true),
+    sidebarSide: side === 'right' ? 'right' : 'left',
+    autoplayNext: bool(get('videos.autoplay_next'), true),
+    resumePlayback: bool(get('videos.resume_playback'), true),
+    playerSpeed: bool(get('videos.player_speed'), true),
+    playerPip: bool(get('videos.player_pip'), true),
+    relatedEnabled: bool(get('videos.related_enabled'), true),
+    subtitleDefaultLang:
+      typeof defLang === 'string' && VIDEO_SUBTITLE_LANGS.includes(defLang)
+        ? defLang
+        : 'fa',
+    subtitlesEnabled: bool(get('videos.subtitles_enabled'), true),
+    subtitleLangs: langs.length > 0 ? langs : [...DEFAULT_VIDEOS.subtitleLangs],
+  };
+}
+
 function parsePlacesPopup(v: unknown): PlacesPopupSettings {
   const o = asObject(v);
   if (!o) return { ...DEFAULT_PLACES_POPUP };
@@ -602,6 +662,7 @@ export function parseSiteConfig(body: unknown): SiteConfig {
     fatwaQuestion: bool(get('profile.require_for_fatwa_question'), false),
     hifzAdvanced: bool(get('profile.require_for_hifz_advanced'), false),
   };
+  cfg.videos = parseVideosSettings(get);
   cfg.socials = parseSocialLinks(get('site.social_links'));
 
   return cfg;

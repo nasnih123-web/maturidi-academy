@@ -17,6 +17,7 @@ export const SPECS: Record<string, SectionSpec> = {
   latest_fatwas: { type: 'fatwa', template: 'typographic', layout: 'slider' },
   suggested_lessons: { type: 'course', template: 'academy', layout: 'slider' },
   fresh_library: { type: 'book', template: 'shelf', layout: 'shelf' },
+  videos: { type: 'video', template: 'cinematic', layout: 'slider' },
   community: { type: 'community', template: 'discussion', layout: 'grid' },
 };
 
@@ -39,6 +40,9 @@ const DEDICATED_KEYS = new Set([
   'nearby_map',
   'donation_banner',
   'footer',
+  // videos renders its bespoke band (VideosSlider) fed by the videos
+  // endpoint — slot variants must not hijack it (same as latest_fatwas).
+  'videos',
 ]);
 
 export function isVariantEligibleSection(key: string): boolean {

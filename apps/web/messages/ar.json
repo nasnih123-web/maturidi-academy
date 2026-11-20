@@ -177,7 +177,9 @@
       "hijri": "التاريخ الهجري",
       "solar": "التاريخ الشمسي"
     },
-    "viewAllLabel": "عرض الكل"
+    "viewAllLabel": "عرض الكل",
+    "videosViewAll": "عرض كل الفيديوهات",
+    "videosPlaylist": "قائمة تشغيل"
   },
   "searchPage": {
     "errorDescription": "تعذّر الاتصال بالخادم. حاول مجدداً.",
@@ -1793,6 +1795,40 @@
       "notFoundTitle": "غير موجود",
       "notFoundBody": "هذا العمل غير موجود أو غير منشور.",
       "backToLibrary": "العودة إلى المكتبة"
+    }
+  },
+  "videos": {
+    "metaTitle": "الفيديوهات",
+    "metaDescription": "دروس ومحاضرات مرئية لأكاديمية الماتريدي، مصنفة في قوائم تشغيل",
+    "itemMetaTitle": "{title}",
+    "title": "الفيديوهات",
+    "subtitle": "دروس ومحاضرات مرئية، مصنفة في قوائم تشغيل",
+    "untitled": "بدون عنوان",
+    "chips": {
+      "all": "الكل",
+      "newest": "الأحدث",
+      "playlists": "قوائم التشغيل"
+    },
+    "allVideos": "كل الفيديوهات",
+    "newestFirst": "الأحدث أولاً",
+    "playlistPrefix": "قائمة التشغيل",
+    "viewPlaylist": "عرض قائمة التشغيل",
+    "videoCount": "{count} فيديو",
+    "totalDuration": "المجموع {duration}",
+    "playlistTag": "قائمة تشغيل",
+    "viewAll": "عرض كل الفيديوهات",
+    "noVideos": "لم يُنشر أي فيديو بعد.",
+    "noVideosHint": "ستظهر الدروس المرئية الجديدة هنا قريباً.",
+    "loadFailed": "تعذر جلب المعلومات.",
+    "retry": "إعادة المحاولة",
+    "notFoundTitle": "لم يتم العثور على هذا الفيديو",
+    "notFoundBody": "قد لا يكون الفيديو منشوراً أو قد يكون الوصول إليه محدوداً.",
+    "backToVideos": "العودة إلى الفيديوهات",
+    "watch": {
+      "playlistTitle": "قائمة التشغيل",
+      "videoOf": "الفيديو {position} من {total}",
+      "relatedTitle": "فيديوهات مشابهة",
+      "nowPlaying": "يُعرض الآن"
     }
   },
   "places": {

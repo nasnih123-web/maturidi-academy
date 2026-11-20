@@ -177,7 +177,9 @@
       "hijri": "تاریخ هجری قمری",
       "solar": "تاریخ شمسی"
     },
-    "viewAllLabel": "مشاهدهٔ همه"
+    "viewAllLabel": "مشاهدهٔ همه",
+    "videosViewAll": "نمایش همهٔ ویدیوها",
+    "videosPlaylist": "لیست پخش"
   },
   "searchPage": {
     "errorDescription": "ارتباط با سرور برقرار نشد. لطفاً دوباره تلاش کنید.",
@@ -1793,6 +1795,40 @@
       "notFoundTitle": "موردی یافت نشد",
       "notFoundBody": "این اثر وجود ندارد یا منتشر نشده است.",
       "backToLibrary": "بازگشت به کتابخانه"
+    }
+  },
+  "videos": {
+    "metaTitle": "ویدیوها",
+    "metaDescription": "درس‌ها و سخنرانی‌های تصویری آکادمی ماتریدی، دسته‌بندی‌شده در لیست‌های پخش",
+    "itemMetaTitle": "{title}",
+    "title": "ویدیوها",
+    "subtitle": "درس‌ها و سخنرانی‌های تصویری، دسته‌بندی‌شده در لیست‌های پخش",
+    "untitled": "بدون عنوان",
+    "chips": {
+      "all": "همه",
+      "newest": "تازه‌ترین",
+      "playlists": "لیست‌های پخش"
+    },
+    "allVideos": "همهٔ ویدیوها",
+    "newestFirst": "تازه‌ترین‌ها اول",
+    "playlistPrefix": "لیست پخش",
+    "viewPlaylist": "مشاهدهٔ لیست پخش",
+    "videoCount": "{count} ویدیو",
+    "totalDuration": "مجموع {duration}",
+    "playlistTag": "لیست پخش",
+    "viewAll": "نمایش همهٔ ویدیوها",
+    "noVideos": "هنوز ویدیویی منتشر نشده است.",
+    "noVideosHint": "به‌زودی درس‌های تصویری تازه این‌جا قرار می‌گیرند.",
+    "loadFailed": "دریافت اطلاعات ممکن نشد.",
+    "retry": "تلاش دوباره",
+    "notFoundTitle": "این ویدیو یافت نشد",
+    "notFoundBody": "ممکن است ویدیو منتشر نشده باشد یا دسترسی به آن محدود باشد.",
+    "backToVideos": "بازگشت به ویدیوها",
+    "watch": {
+      "playlistTitle": "لیست پخش",
+      "videoOf": "ویدیوی {position} از {total}",
+      "relatedTitle": "ویدیوهای مشابه",
+      "nowPlaying": "در حال پخش"
     }
   },
   "places": {
