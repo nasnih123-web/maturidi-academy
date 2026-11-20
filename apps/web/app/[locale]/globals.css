@@ -3803,12 +3803,7 @@ body:has(.quran-hifz-study .recitation-toolbar) .site-footer {
 /* Tarteel display sheet — nass mode: scrolling Uthmani text, one
    ayah per row, rosette at the end; same font as the page lines. */
 .quran-hifz-study .hifz-nass { padding: 0 1rem 1rem; }
-.quran-hifz-study .hifz-nass-ayah { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: clamp(1.25rem, 4.2vw, 2.1rem); line-height: 2.1; text-align: justify; text-align-last: justify; margin: 0; padding: 0.15rem 0; }
-/* Page-1 fidelity (user 2026-11-20): the printed mushaf has NO
-   rules between lines — the old border-bottom drew one under
-   every line. (The page container keeps its own top/bottom
-   border; the plain-text surah header keeps its rules as the
-   SVG-failure fallback.) */
+.quran-hifz-study .hifz-nass-ayah { font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: clamp(1.25rem, 4.2vw, 2.1rem); line-height: 2.1; text-align: justify; text-align-last: justify; margin: 0; padding: 0.15rem 0; border-bottom: 1px solid rgba(0,0,0,0.10); }
 /* Nass-mode regression fix (2026-11-11, live p359 after PR #126):
    each ayah paragraph is a run of adjacent inline word spans with
    NO whitespace between them, so there is no line-break opportunity
