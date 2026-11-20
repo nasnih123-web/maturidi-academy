@@ -38,6 +38,7 @@ from app.models.models import (
     User,
     UserRole,
 )
+from app.modules.videos import youtube
 
 from .schemas import AI_SCOPES
 
@@ -306,6 +307,7 @@ def _snapshot_of(item: LibraryItem) -> dict:
         "description": item.description,
         "topic_tags": item.topic_tags,
         "media_key": item.media_key,
+        "external_url": item.external_url,
         "cover_media_key": item.cover_media_key,
         "visibility": item.visibility,
         "scholar_id": str(item.scholar_id) if item.scholar_id else None,
@@ -341,6 +343,7 @@ def _to_out(item: LibraryItem, *, media_url: str | None, cover_url: str | None) 
         "mime_type": item.mime_type,
         "source_type": item.source_type,
         "source_ref": item.source_ref,
+        "external_url": item.external_url,
         "created_at": item.created_at,
         "updated_at": item.updated_at,
         "published_at": item.published_at,
@@ -441,10 +444,138 @@ async def _scan_upload_or_audit(
         raise
 
 
+def _canonical_external_url(kind: str, raw: str) -> str:
+    """اعتبارسنجی لینک خارجی → URL کانونیک watch یوتیوب.
+
+    قاعدهٔ فایل/لینک: لینک خارجی فقط برای kind=video و فقط روی آیتمی
+    که فایل ندارد؛ آپلود فایل همیشه برنده است و لینک را پاک می‌کند.
+    """
+    if kind != "video":
+        raise APIError(
+            422,
+            "external_url_not_allowed",
+            "لینک خارجی فقط برای ویدیو مجاز است",
+            {"kind": kind},
+        )
+    video_id = youtube.parse_youtube_video_id(raw)
+    if video_id is None:
+        raise APIError(422, "invalid_youtube_url", "لینک یوتیوب معتبر نیست")
+    return youtube.canonical_watch_url(video_id)
+
+
+def _usable_title(title: object) -> bool:
+    """عنوان قابل‌استفاده = دیکشنری با دست‌کم یک مقدار متنی غیرخالی."""
+    return isinstance(title, dict) and any(
+        isinstance(v, str) and v.strip() for v in title.values()
+    )
+
+
+async def _external_title(meta_title: object, canonical_url: str) -> dict:
+    """عنوان آیتم خارجی: عنوان دستی، وگرنه عنوان oEmbed در هر سه زبان.
+
+    واکشی عنوان best-effort است؛ اگر عنوان دستی داده شده باشد هرگز
+    صدا زده نمی‌شود و خطای oEmbed هم ساخت را نمی‌شکند. بدون هر دو →
+    ۴۲۲ title_required (همان الزام عنوانِ مسیر آپلود).
+    """
+    if _usable_title(meta_title):
+        assert isinstance(meta_title, dict)
+        return dict(meta_title)
+    fetched = await youtube.fetch_youtube_title(canonical_url)
+    if fetched:
+        return {"fa": fetched, "ar": fetched, "en": fetched}
+    raise APIError(
+        422,
+        "title_required",
+        "عنوان ویدیو از یوتیوب به‌دست نیامد؛ عنوان را دستی وارد کنید",
+    )
+
+
+async def _create_external_item(
+    db: AsyncSession,
+    meta: dict,
+    external_url: str,
+    *,
+    actor: User,
+    cover_content: bytes | None,
+    cover_filename: str | None,
+    ip: str | None,
+    user_agent: str | None,
+    initial_status: str,
+    source_type: str,
+    source_ref: dict | None,
+) -> dict:
+    """ساخت آیتم ویدیویی خارجی (یوتیوب) — بدون فایل: نه اسکن ClamAV،
+    نه ذخیره‌سازی، نه صف پردازش؛ media_key خالی می‌ماند."""
+    kind = meta["kind"]
+    title = await _external_title(meta.get("title"), external_url)
+
+    cover_key: str | None = None
+    if cover_content:
+        await _scan_upload_or_audit(
+            db, actor=actor, data=cover_content, filename=cover_filename,
+            ip=ip, user_agent=user_agent,
+        )
+        cext, cmime = _validate_cover(cover_filename, cover_content)
+        cover_key = f"library/covers/{uuid.uuid4().hex}{cext}"
+        await get_storage().put_object(cover_key, cover_content, cmime)
+
+    item = LibraryItem(
+        kind=kind,
+        title=title,
+        description=meta.get("description"),
+        cover_media_key=cover_key,
+        media_key=None,
+        external_url=external_url,
+        scholar_id=meta.get("scholar_id"),
+        topic_tags=list(meta.get("topic_tags") or []),
+        related_lesson_id=meta.get("related_lesson_id"),
+        religious_place_ref=meta.get("religious_place_ref"),
+        visibility=meta.get("visibility", "registered"),
+        workflow_status=initial_status,
+        version=1,
+        ai_scopes=list(meta.get("ai_scopes") or []),
+        include_in_fatwa_rag=bool(meta.get("include_in_fatwa_rag", False)),
+        download_policy=meta.get("download_policy"),
+        duration_seconds=meta.get("duration_seconds"),
+        file_size_bytes=None,
+        mime_type=None,
+        source_type=source_type,
+        source_ref=source_ref,
+        created_by=actor.id,
+    )
+    db.add(item)
+    await db.flush()
+
+    await emit_event(
+        db,
+        aggregate_type="library_item",
+        aggregate_id=str(item.id),
+        event_type="library.item.created",
+        payload={"kind": kind, "visibility": item.visibility,
+                 "source_type": source_type, "external_url": external_url},
+    )
+    await log_audit(
+        db,
+        actor_id=actor.id,
+        actor_type="admin",
+        action="library.item.create",
+        entity_type="library_item",
+        entity_id=str(item.id),
+        new_values={
+            "kind": kind, "visibility": item.visibility,
+            "external_url": external_url,
+        },
+        ip=ip, user_agent=user_agent,
+    )
+    await db.commit()
+    await db.refresh(item)
+    return await _item_out_with_urls(db, item, actor)
+
+
 async def create_item(
     db: AsyncSession,
     meta: dict,
-    content: bytes,
+    content: bytes | None,
     filename: str | None,
     *,
     actor: User,
@@ -457,6 +588,23 @@ async def create_item(
     source_type: str = "upload",
     source_ref: dict | None = None,
 ) -> dict:
+    # مسیر لینک خارجی: فقط وقتی فایلی نیامده — فایل همیشه برنده است و
+    # اگر هر دو برسند، external_url نادیده گرفته می‌شود.
+    if content is None and meta.get("external_url"):
+        external_url = _canonical_external_url(
+            meta["kind"], str(meta["external_url"])
+        )
+        return await _create_external_item(
+            db, meta, external_url,
+            actor=actor, cover_content=cover_content,
+            cover_filename=cover_filename, ip=ip, user_agent=user_agent,
+            initial_status=initial_status, source_type=source_type,
+            source_ref=source_ref,
+        )
+    if content is None:
+        raise APIError(422, "file_required", "فایل رسانه الزامی است")
+    if not _usable_title(meta.get("title")):
+        raise APIError(422, "title_required", "عنوان الزامی است")
     # اسکن ویروس پیش از هر اعتبارسنجی/ذخیره‌ای (C-01 — fail-closed)
     await _scan_upload_or_audit(
         db, actor=actor, data=content, filename=filename,
@@ -771,6 +919,22 @@ async def update_item(
             ip=ip, user_agent=user_agent,
         )
 
+    # لینک خارجی در وصله: پیش از بایگانی اعتبارسنجی می‌شود تا رد شدن
+    # نسخه نسازد. قاعدهٔ فایل/لینک: روی آیتم فایل‌دار لینک مجاز نیست و
+    # فایل تازهٔ همین ویرایش هم برنده است (لینک نادیده/پاک می‌شود).
+    external_in_patch = "external_url" in patch
+    external_value: str | None = None
+    if external_in_patch and patch["external_url"] is not None and new_content is None:
+        if item.media_key is not None:
+            raise APIError(
+                422,
+                "external_url_not_allowed",
+                "این آیتم فایل دارد؛ لینک خارجی فقط روی آیتم بدون فایل مجاز است",
+            )
+        external_value = _canonical_external_url(
+            item.kind, str(patch["external_url"])
+        )
+
     await _archive_version(db, item, actor.id, patch.get("note"))
 
     if new_content is not None:
@@ -779,6 +943,7 @@ async def update_item(
         media_key = f"library/{item.kind}/{uuid.uuid4().hex}{ext}"
         await storage.put_object(media_key, new_content, mime)
         item.media_key = media_key
+        item.external_url = None  # فایل برنده است — لینک خارجی پاک می‌شود
         item.file_size_bytes = len(new_content)
         item.mime_type = mime
         # محتوای عوض‌شده → transcript/OCR قبلی دیگر معتبر نیست؛ ایندکس AI کهنه می‌شود
@@ -801,6 +966,10 @@ async def update_item(
                                           "religious_place_ref", "download_policy",
                                           "duration_seconds"):
             setattr(item, field, None)  # پاک‌سازی صریح nullableها مجاز است
+
+    if external_in_patch and new_content is None:
+        # مقدار اعتبارسنجی‌شده یا None صریح (پاک‌کردن لینک)
+        item.external_url = external_value
 
     item.version = (item.version or 0) + 1
     item.updated_at = _utcnow()
@@ -930,6 +1099,7 @@ async def revert_version(
     item.description = snap.get("description", item.description)
     item.topic_tags = snap.get("topic_tags", item.topic_tags)
     item.media_key = snap.get("media_key", item.media_key)
+    item.external_url = snap.get("external_url", item.external_url)
     item.cover_media_key = snap.get("cover_media_key", item.cover_media_key)
     item.visibility = snap.get("visibility", item.visibility)
     item.scholar_id = uuid.UUID(snap["scholar_id"]) if snap.get("scholar_id") else None

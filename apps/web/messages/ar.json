@@ -179,7 +179,8 @@
     },
     "viewAllLabel": "عرض الكل",
     "videosViewAll": "عرض كل الفيديوهات",
-    "videosPlaylist": "قائمة تشغيل"
+    "videosPlaylist": "قائمة تشغيل",
+    "videosExternal": "يوتيوب"
   },
   "searchPage": {
     "errorDescription": "تعذّر الاتصال بالخادم. حاول مجدداً.",
@@ -1816,6 +1817,7 @@
     "videoCount": "{count} فيديو",
     "totalDuration": "المجموع {duration}",
     "playlistTag": "قائمة تشغيل",
+    "externalBadge": "يوتيوب",
     "viewAll": "عرض كل الفيديوهات",
     "noVideos": "لم يُنشر أي فيديو بعد.",
     "noVideosHint": "ستظهر الدروس المرئية الجديدة هنا قريباً.",

@@ -190,6 +190,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         image: v.cover_url,
         kindLabel: tLib(`kinds.${v.kind}`),
         inPlaylist: v.playlists.length > 0,
+        isExternal: Boolean(v.external_url),
         href: `/${locale}/videos/${encodeURIComponent(v.id)}`,
       }))
     : [];

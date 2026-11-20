@@ -56,6 +56,8 @@ export interface HomeSectionsLabels {
   /** Videos band labels (home namespace): «نمایش همهٔ ویدیوها» + «لیست پخش». */
   videosViewAll: string;
   videosPlaylist: string;
+  /** «یوتیوب» badge for external videos in the band. */
+  videosExternal: string;
 }
 
 /**
@@ -193,6 +195,7 @@ export function HomeSectionRenderer({
                 viewAllHref={`/${locale}/videos`}
                 viewAllLabel={labels.videosViewAll}
                 playlistLabel={labels.videosPlaylist}
+                externalLabel={labels.videosExternal}
                 prevLabel={labels.card.sliderPrev}
                 nextLabel={labels.card.sliderNext}
               />

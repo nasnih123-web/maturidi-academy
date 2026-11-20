@@ -59,6 +59,7 @@ export function buildHomeLabels(t: T): HomeSectionsLabels {
     mapLink: t('mapLink'),
     videosViewAll: t('videosViewAll'),
     videosPlaylist: t('videosPlaylist'),
+    videosExternal: t('videosExternal'),
     search: buildSearchLabels(t),
     emptyFallback: t('emptyFallback'),
     donateCtaLabel: t('donateCtaLabel'),

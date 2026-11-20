@@ -179,7 +179,8 @@
     },
     "viewAllLabel": "مشاهدهٔ همه",
     "videosViewAll": "نمایش همهٔ ویدیوها",
-    "videosPlaylist": "لیست پخش"
+    "videosPlaylist": "لیست پخش",
+    "videosExternal": "یوتیوب"
   },
   "searchPage": {
     "errorDescription": "ارتباط با سرور برقرار نشد. لطفاً دوباره تلاش کنید.",
@@ -1816,6 +1817,7 @@
     "videoCount": "{count} ویدیو",
     "totalDuration": "مجموع {duration}",
     "playlistTag": "لیست پخش",
+    "externalBadge": "یوتیوب",
     "viewAll": "نمایش همهٔ ویدیوها",
     "noVideos": "هنوز ویدیویی منتشر نشده است.",
     "noVideosHint": "به‌زودی درس‌های تصویری تازه این‌جا قرار می‌گیرند.",
