@@ -123,6 +123,7 @@ import {
   accuracyPillTone,
   clampRepeatCount,
   nextAyahPosition,
+  nextPeekAyahPosition,
   parseStoredHifzSettings,
   prevAyahPosition,
   validatePracticeRange,
@@ -1357,6 +1358,12 @@ export function QuranHifzStudy({
     displayMode === 'mushaf' &&
     (pageFailed || (pageReady && textsSettled && unplacedGroups.length > 0));
 
+  // Pending «« cross-surah advance (whole Quran): after the
+  // button navigates to the next surah's first ayah, the words of
+  // that ayah are revealed by the effect below once its texts
+  // arrive. Cleared if the user navigates elsewhere first.
+  const pendingPeekAdvanceRef = useRef<{ surah: number; ayah: number } | null>(null);
+
   // Next unwritten word, scanning from the selected ayah onward.
   const peekTarget = useMemo(() => {
     const texts = textsBySurah[surah];
@@ -1369,6 +1376,20 @@ export function QuranHifzStudy({
     }
     return null;
   }, [textsBySurah, surah, ayah, ayahCount, wallKeys]);
+
+  // «« (show next ayah) cross-surah advance: when nothing is left
+  // unwritten from the current ayah to the end of this surah
+  // (peekTarget is null), the next ayah to show is the first ayah
+  // of the NEXT surah — the whole Quran, not just this surah.
+  // Null while there is still something to reveal in this surah,
+  // while this surah's texts are still loading, and at the last
+  // ayah of the Quran (114:6). The single-word « button keeps
+  // using peekTarget alone and stays surah-limited.
+  const peekAyahNext = useMemo(() => {
+    const texts = textsBySurah[surah];
+    if (!texts) return null;
+    return nextPeekAyahPosition(surah, ayahCount, peekTarget !== null);
+  }, [peekTarget, textsBySurah, surah, ayahCount]);
 
   const ensureAttempt = useCallback(async (): Promise<string | null> => {
     // An attempt belongs to one surah: a stale attempt from another
@@ -2187,17 +2208,62 @@ export function QuranHifzStudy({
     await revealWords(peekTarget.ayah, [peekTarget.index], 'word');
   }, [peekTarget, revealWords]);
 
-  // Reveal the rest of the CURRENT ayah: from the next unwritten
-  // word to the end of that same ayah — never into the next ayah.
+  // Reveal the rest of the next ayah with unwritten words: from
+  // the next unwritten word to the end of that same ayah. When
+  // nothing is left unwritten to the end of this surah, advance to
+  // the first ayah of the NEXT surah and reveal it (whole Quran):
+  // repeated presses walk ayah by ayah through all 114 surahs.
+  // The single-word « button (peekNext) is untouched and stays
+  // surah-limited (user decision 2026-11-20).
   const peekAyah = useCallback(async () => {
-    if (!peekTarget) return;
-    const words = (textsBySurah[surah]?.[peekTarget.ayah] ?? '').split(/\s+/).filter(Boolean);
-    const indices: number[] = [];
-    for (let i = peekTarget.index; i < words.length; i += 1) {
-      if (!wallKeys.has(`${peekTarget.ayah}:${i}`)) indices.push(i);
+    if (peekTarget) {
+      const words = (textsBySurah[surah]?.[peekTarget.ayah] ?? '').split(/\s+/).filter(Boolean);
+      const indices: number[] = [];
+      for (let i = peekTarget.index; i < words.length; i += 1) {
+        if (!wallKeys.has(`${peekTarget.ayah}:${i}`)) indices.push(i);
+      }
+      await revealWords(peekTarget.ayah, indices, 'ayah');
+      return;
     }
-    await revealWords(peekTarget.ayah, indices, 'ayah');
-  }, [peekTarget, textsBySurah, surah, wallKeys, revealWords]);
+    if (!peekAyahNext) return;
+    // Surah boundary: the same reset as the page-nav «آیهٔ بعد»
+    // button (PR #165) — the new surah's first ayah is revealed by
+    // the pending-advance effect below once its texts arrive.
+    pendingPeekAdvanceRef.current = { surah: peekAyahNext.surah, ayah: peekAyahNext.ayah };
+    setSurah(peekAyahNext.surah);
+    setEyeScope({ kind: 'surah', target: peekAyahNext.surah });
+    setEyeHidden(true);
+    setRevealedWords(new Set());
+    setAyah(peekAyahNext.ayah);
+  }, [peekTarget, peekAyahNext, textsBySurah, surah, wallKeys, revealWords]);
+
+  // Reveal the next ayah after a «« cross-surah advance, once its
+  // texts (and wall keys) have arrived, through the same
+  // revealWords path (kind 'ayah') so scoring and attempt
+  // accounting are unchanged. Clears the pending target if the
+  // user navigates elsewhere first, so a stale target can never
+  // reveal a different ayah later.
+  useEffect(() => {
+    const pending = pendingPeekAdvanceRef.current;
+    if (!pending) return;
+    if (pending.surah !== surah || pending.ayah !== ayah) {
+      pendingPeekAdvanceRef.current = null;
+      return;
+    }
+    const texts = textsBySurah[surah];
+    if (!texts) return;
+    const words = (texts[pending.ayah] ?? '').split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      pendingPeekAdvanceRef.current = null;
+      return;
+    }
+    pendingPeekAdvanceRef.current = null;
+    const indices: number[] = [];
+    for (let i = 0; i < words.length; i += 1) {
+      if (!wallKeys.has(`${pending.ayah}:${i}`)) indices.push(i);
+    }
+    void revealWords(pending.ayah, indices, 'ayah');
+  }, [textsBySurah, surah, ayah, wallKeys, revealWords]);
 
   const disputeWord = useCallback(
     async (scoreId: string) => {
@@ -4130,7 +4196,7 @@ export function QuranHifzStudy({
           <button
             type="button"
             className="tool-button"
-            disabled={!peekTarget}
+            disabled={!peekTarget && !peekAyahNext}
             onClick={() => void peekAyah()}
             aria-label={labels.peekAyah}
             title={labels.peekAyahHint}

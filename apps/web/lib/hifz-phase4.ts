@@ -121,6 +121,30 @@ export function prevAyahPosition(surah: number, ayah: number): HifzPosition | nu
   return { surah, ayah: ayah - 1 };
 }
 
+/**
+ * Next ayah for the «« (show next ayah) toolbar button when the
+ * current surah is fully revealed from the current ayah onward:
+ * the first ayah of the NEXT surah, so repeated presses walk ayah
+ * by ayah through the whole Quran (user 2026-11-20 — the button
+ * used to stop after 6–7 ayahs, one surah). `hasPeekTarget` is
+ * whether an unwritten word remains in this surah (the button
+ * reveals that instead); `ayahCount` is the current surah's ayah
+ * count. Returns null while there is still something to reveal
+ * in this surah, while the surah's texts are still loading
+ * (ayahCount <= 0), and at the last ayah of the Quran (114:6).
+ * The single-word « button never uses this — it stays
+ * surah-limited (user decision 2026-11-20).
+ */
+export function nextPeekAyahPosition(
+  surah: number,
+  ayahCount: number,
+  hasPeekTarget: boolean,
+): HifzPosition | null {
+  if (hasPeekTarget) return null;
+  if (ayahCount <= 0) return null;
+  return nextAyahPosition(surah, ayahCount, ayahCount);
+}
+
 /** Latin digits (0–9) → Eastern Arabic digits (٠–٩); other chars kept. */
 export function toEasternArabicDigitsText(text: string): string {
   return [...text]

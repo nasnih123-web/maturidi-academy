@@ -13,6 +13,7 @@ import {
   accuracyPillTone,
   clampRepeatCount,
   nextAyahPosition,
+  nextPeekAyahPosition,
   normalizeNumericInput,
   parseNumericInput,
   parseStoredHifzSettings,
@@ -147,6 +148,44 @@ describe('nextAyahPosition / prevAyahPosition (cross-surah, user 2026-11-20)', (
 
   it('does not need a loaded ayah count to advance within a surah', () => {
     assert.deepEqual(nextAyahPosition(2, 5, 0), { surah: 2, ayah: 6 });
+  });
+});
+
+describe('nextPeekAyahPosition («« show next ayah, whole Quran, user 2026-11-20)', () => {
+  it('at Fatiha 1:7 fully revealed advances to Baqarah 2:1', () => {
+    // The reported case: the «« button showed at most 6–7 ayahs
+    // (one surah) then went faded and stopped.
+    assert.deepEqual(nextPeekAyahPosition(1, 7, false), { surah: 2, ayah: 1 });
+  });
+
+  it('crosses a surah boundary near the end of the Quran: 113:5 → 114:1', () => {
+    assert.deepEqual(nextPeekAyahPosition(113, 5, false), { surah: 114, ayah: 1 });
+  });
+
+  it('at 114:6 fully revealed there is no next ayah (button disabled)', () => {
+    assert.equal(nextPeekAyahPosition(114, 6, false), null);
+  });
+
+  it('does not advance while an unwritten word remains in this surah', () => {
+    // The button reveals the rest of that ayah instead; it only
+    // crosses a surah boundary once the surah is fully revealed.
+    assert.equal(nextPeekAyahPosition(1, 7, true), null);
+    assert.equal(nextPeekAyahPosition(2, 286, true), null);
+    assert.equal(nextPeekAyahPosition(114, 6, true), null);
+  });
+
+  it('does not advance while the surah texts are still loading', () => {
+    assert.equal(nextPeekAyahPosition(1, 0, false), null);
+    assert.equal(nextPeekAyahPosition(2, 0, false), null);
+  });
+
+  it('advances from the first ayah of the next surah, not from the current ayah', () => {
+    // All ayahs from the current one to the end of the surah are
+    // already revealed, so the next ayah to show is the next
+    // surah's first ayah — even when the current ayah is not the
+    // surah's last (e.g. Fatiha 1:1 with 1:1–1:7 all revealed).
+    assert.deepEqual(nextPeekAyahPosition(1, 7, false), { surah: 2, ayah: 1 });
+    assert.deepEqual(nextPeekAyahPosition(2, 286, false), { surah: 3, ayah: 1 });
   });
 });
 
