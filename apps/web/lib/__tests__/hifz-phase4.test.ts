@@ -12,9 +12,11 @@ import {
   accuracyPillClass,
   accuracyPillTone,
   clampRepeatCount,
+  nextAyahPosition,
   normalizeNumericInput,
   parseNumericInput,
   parseStoredHifzSettings,
+  prevAyahPosition,
   surahAyahCount,
   toEasternArabicDigitsText,
   validatePracticeRange,
@@ -107,6 +109,44 @@ describe('SURAH_AYAH_COUNTS / surahAyahCount (numeric-input max)', () => {
     assert.equal(surahAyahCount(0), null);
     assert.equal(surahAyahCount(115), null);
     assert.equal(surahAyahCount(1.5), null);
+  });
+});
+
+describe('nextAyahPosition / prevAyahPosition (cross-surah, user 2026-11-20)', () => {
+  it('advances within a surah', () => {
+    assert.deepEqual(nextAyahPosition(1, 1, 7), { surah: 1, ayah: 2 });
+    assert.deepEqual(nextAyahPosition(2, 100, 286), { surah: 2, ayah: 101 });
+    assert.deepEqual(prevAyahPosition(2, 2), { surah: 2, ayah: 1 });
+    assert.deepEqual(prevAyahPosition(114, 6), { surah: 114, ayah: 5 });
+  });
+
+  it('crosses a surah boundary forward: last ayah of a surah → first ayah of the next', () => {
+    // Fatiha 1:7 → Baqarah 2:1 (the reported case: the button used
+    // to stop at the end of the surah).
+    assert.deepEqual(nextAyahPosition(1, 7, 7), { surah: 2, ayah: 1 });
+    assert.deepEqual(nextAyahPosition(2, 286, 286), { surah: 3, ayah: 1 });
+  });
+
+  it('crosses a surah boundary near the end of the Quran', () => {
+    // Falaq 113:5 → Nas 114:1, and the very last ayah has no next.
+    assert.deepEqual(nextAyahPosition(113, 5, 5), { surah: 114, ayah: 1 });
+    assert.equal(nextAyahPosition(114, 6, 6), null);
+  });
+
+  it('crosses a surah boundary backward: first ayah of a surah → last ayah of the previous', () => {
+    // Baqarah 2:1 → Fatiha 1:7; Nas 114:1 → Falaq 113:5.
+    assert.deepEqual(prevAyahPosition(2, 1), { surah: 1, ayah: 7 });
+    assert.deepEqual(prevAyahPosition(114, 1), { surah: 113, ayah: 5 });
+    assert.deepEqual(prevAyahPosition(3, 1), { surah: 2, ayah: 286 });
+  });
+
+  it('stops only at the ends of the Quran (1:1 backward, 114:6 forward)', () => {
+    assert.equal(prevAyahPosition(1, 1), null);
+    assert.equal(nextAyahPosition(114, 6, 6), null);
+  });
+
+  it('does not need a loaded ayah count to advance within a surah', () => {
+    assert.deepEqual(nextAyahPosition(2, 5, 0), { surah: 2, ayah: 6 });
   });
 });
 
