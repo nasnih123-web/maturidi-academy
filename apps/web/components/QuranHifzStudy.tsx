@@ -2995,7 +2995,7 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
         <button
           type="button"
           key={key}
-          className=[
+          className={[
             'hifz-line-word',
             'hifz-line-word-eye-hidden',
             useGlyph ? 'hifz-line-word-glyph' : '',
