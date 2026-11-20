@@ -122,7 +122,9 @@ import {
   accuracyPillClass,
   accuracyPillTone,
   clampRepeatCount,
+  nextAyahPosition,
   parseStoredHifzSettings,
+  prevAyahPosition,
   validatePracticeRange,
   type HifzUserSettings,
 } from '@/lib/hifz-phase4';
@@ -3528,8 +3530,24 @@ export function QuranHifzStudy({
           <span className="hifz-page-nav">
             <button
               type="button"
-              disabled={ayah <= 1}
-              onClick={() => setAyah((a) => Math.max(1, a - 1))}
+              disabled={prevAyahPosition(surah, ayah) === null}
+              onClick={() => {
+                const prev = prevAyahPosition(surah, ayah);
+                if (!prev) return;
+                if (prev.surah !== surah) {
+                  // Surah boundary: a surah selection — carry the
+                  // target ayah across the surah-change reset (the
+                  // resume pattern: the effect resets ayah to 1
+                  // unless resumeAyahRef carries it), and reset
+                  // the eye scope to the new surah, hidden.
+                  resumeAyahRef.current = prev.ayah;
+                  setSurah(prev.surah);
+                  setEyeScope({ kind: 'surah', target: prev.surah });
+                  setEyeHidden(true);
+                  setRevealedWords(new Set());
+                }
+                setAyah(prev.ayah);
+              }}
             >
               {labels.prevAyah}
             </button>
@@ -3546,8 +3564,23 @@ export function QuranHifzStudy({
             </select>
             <button
               type="button"
-              disabled={ayahCount > 0 && ayah >= ayahCount}
-              onClick={() => setAyah((a) => (ayahCount > 0 ? Math.min(ayahCount, a + 1) : a + 1))}
+              disabled={nextAyahPosition(surah, ayah, ayahCount) === null}
+              onClick={() => {
+                const next = nextAyahPosition(surah, ayah, ayahCount);
+                if (!next) return;
+                if (next.surah !== surah) {
+                  // Surah boundary: a surah selection — the next
+                  // ayah is the first ayah of the next surah, so
+                  // the surah-change effect's reset to ayah 1
+                  // already lands on it; reset the eye scope to
+                  // the new surah, hidden, like the surah picker.
+                  setSurah(next.surah);
+                  setEyeScope({ kind: 'surah', target: next.surah });
+                  setEyeHidden(true);
+                  setRevealedWords(new Set());
+                }
+                setAyah(next.ayah);
+              }}
             >
               {labels.nextAyah}
             </button>
