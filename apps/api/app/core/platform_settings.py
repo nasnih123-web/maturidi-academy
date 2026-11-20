@@ -75,6 +75,20 @@ SETTING_DEFS: dict[str, dict] = {
     # انتخاب می‌کند، مثلاً وقتی پنل پیامک وصل شد ایران را اضافه می‌کند.
     "auth.sms_required_countries": {"type": "json", "sensitive": False, "label": "کشورهای با تأیید پیامکی اجباری (ثبت‌نام)"},
     "site.social_links": {"type": "json", "sensitive": False, "label": "شبکه‌های اجتماعی سایت (لینک‌ها و ترتیب نمایش در منو)"},
+    # --- بخش ویدیوها: نمایش، پخش‌کننده و زیرنویس خودکار — همه از CRM
+    # کنترل می‌شوند و وب آن‌ها را از /settings/public می‌خواند. تنظیمات
+    # پخش‌کننده/زیرنویس در فازهای بعد مصرف می‌شوند؛ ثبتشان از حالا عمدی
+    # است تا CRM یک‌جا همهٔ کنترل‌ها را داشته باشد.
+    "videos.home_enabled": {"type": "json", "sensitive": False, "label": "نمایش سکشن ویدیو در صفحهٔ اصلی"},
+    "videos.sidebar_side": {"type": "json", "sensitive": False, "label": "موقعیت سایدبار صفحهٔ تماشا (left|right)"},
+    "videos.autoplay_next": {"type": "json", "sensitive": False, "label": "پخش خودکار ویدیوی بعدی در لیست پخش"},
+    "videos.resume_playback": {"type": "json", "sensitive": False, "label": "ادامهٔ پخش از جای قبلی"},
+    "videos.player_speed": {"type": "json", "sensitive": False, "label": "نمایش کنترل سرعت در پخش‌کننده"},
+    "videos.player_pip": {"type": "json", "sensitive": False, "label": "تصویر در تصویر (PiP) در پخش‌کننده"},
+    "videos.related_enabled": {"type": "json", "sensitive": False, "label": "نمایش ویدیوهای مشابه در صفحهٔ تماشا"},
+    "videos.subtitle_default_lang": {"type": "json", "sensitive": False, "label": "زبان پیش‌فرض زیرنویس (fa|ar|en|ur|dari)"},
+    "videos.subtitles_enabled": {"type": "json", "sensitive": False, "label": "ساخت خودکار زیرنویس برای ویدیوها"},
+    "videos.subtitle_langs": {"type": "json", "sensitive": False, "label": "زبان‌های زیرنویس خودکار"},
     "map.key": {"type": "secret", "sensitive": True, "label": "کلید نقشه"},
     # --- maps phase (overnight/w10): CRM control of the public map popup.
     # Shape: {"show_image": bool, "show_description": bool,
@@ -294,6 +308,7 @@ HOME_SECTION_VARIANTS = (
     "quran_of_day",
     "suggested_lessons",
     "fresh_library",
+    "videos",
     "community",
     "nearby_map",
     "donation_banner",
@@ -821,6 +836,26 @@ def _validate_social_links(value: Any) -> list:
     return out
 
 
+#: زبان‌های مجاز زیرنویس خودکار بخش ویدیوها — دری در عمل با مدل
+#: فارسی پوشش داده می‌شود، ولی به‌عنوان انتخاب مستقل در CRM هست.
+VIDEO_SUBTITLE_LANGS = ("fa", "ar", "en", "ur", "dari")
+
+
+def _validate_subtitle_langs(value: Any) -> list:
+    """زبان‌های زیرنویس خودکار — زیرمجموعهٔ پنج زبان مجاز، بدون تکرار."""
+    if not isinstance(value, list):
+        raise TypeError("videos.subtitle_langs must be a list")
+    out: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or item not in VIDEO_SUBTITLE_LANGS:
+            raise ValueError(
+                f"videos.subtitle_langs: unsupported language {item!r}"
+            )
+        if item not in out:
+            out.append(item)
+    return out
+
+
 def _validate_json_setting(key: str, value: Any) -> Any:
     """اعتبارسنج اختصاصی هر کلید json — خروجی canonical."""
     if key == "particles":
@@ -886,6 +921,29 @@ def _validate_json_setting(key: str, value: Any) -> Any:
         return _validate_sms_required_countries(value)
     if key == "site.social_links":
         return _validate_social_links(value)
+    # --- بخش ویدیوها: پرچم‌ها + enumها + زبان‌های زیرنویس ---
+    if key in (
+        "videos.home_enabled",
+        "videos.autoplay_next",
+        "videos.resume_playback",
+        "videos.player_speed",
+        "videos.player_pip",
+        "videos.related_enabled",
+        "videos.subtitles_enabled",
+    ):
+        return _validate_flag(key, value)
+    if key == "videos.sidebar_side":
+        if value not in ("left", "right"):
+            raise ValueError("videos.sidebar_side must be one of left|right")
+        return value
+    if key == "videos.subtitle_default_lang":
+        if value not in VIDEO_SUBTITLE_LANGS:
+            raise ValueError(
+                "videos.subtitle_default_lang must be one of fa|ar|en|ur|dari"
+            )
+        return value
+    if key == "videos.subtitle_langs":
+        return _validate_subtitle_langs(value)
     if key == "quran.highlight_mode":
         return _validate_highlight_mode(value)
     if key == "quran.font_size":

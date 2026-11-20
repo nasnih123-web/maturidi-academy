@@ -19,6 +19,7 @@ import Finance from "./pages/Finance";
 import LMS from "./pages/LMS";
 import Login from "./pages/Login";
 import MediaManager from "./pages/MediaManager";
+import Videos from "./pages/Videos";
 import Moderation from "./pages/Moderation";
 import FatwaSubmissions from "./pages/FatwaSubmissions";
 import Clusters from "./pages/Clusters";
@@ -90,6 +91,7 @@ export default function App(): React.ReactElement {
             <Route path="calculators" element={<Calculators />} />
             <Route path="lms" element={<LMS />} />
             <Route path="media" element={<MediaManager />} />
+            <Route path="videos" element={<Videos />} />
             <Route path="quran" element={<Quran />} />
             <Route path="adhan" element={<Adhan />} />
             <Route path="telegram" element={<Telegram />} />

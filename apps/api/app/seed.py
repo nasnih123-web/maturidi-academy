@@ -171,8 +171,19 @@ HOME_SECTIONS_SEED: list[dict] = [
         **_SOON,
     },
     {
-        "key": "community",
+        "key": "videos",
         "sort_order": 7,
+        "title": _L("ویدیوها", "الفيديوهات", "Videos"),
+        "subtitle": _L(
+            "درس‌ها و سخنرانی‌های تصویری، در لیست‌های پخش",
+            "دروس ومحاضرات مرئية في قوائم تشغيل",
+            "Video lessons and lectures, in playlists",
+        ),
+        "data": None,
+    },
+    {
+        "key": "community",
+        "sort_order": 8,
         "title": _L("جامعه", "المجتمع", "Community"),
         "subtitle": _L(
             "همراه با دیگر دانشجویان",
@@ -184,7 +195,7 @@ HOME_SECTIONS_SEED: list[dict] = [
     },
     {
         "key": "nearby_map",
-        "sort_order": 8,
+        "sort_order": 9,
         "title": _L("اماکن", "الأماكن", "Places"),
         "subtitle": _L(
             "مساجد و مراکز آموزشی نزدیک شما",
@@ -196,7 +207,7 @@ HOME_SECTIONS_SEED: list[dict] = [
     },
     {
         "key": "donation_banner",
-        "sort_order": 9,
+        "sort_order": 10,
         "title": _L("حمایت از آکادمی", "ادعم الأكاديمية", "Support the Academy"),
         "subtitle": _L(
             "با حمایت شما، آموزش رایگان می‌ماند",
@@ -207,7 +218,7 @@ HOME_SECTIONS_SEED: list[dict] = [
     },
     {
         "key": "footer",
-        "sort_order": 10,
+        "sort_order": 11,
         "title": _L("آکادمی ماتریدی", "أكاديمية الماتريدي", "Maturidi Academy"),
         "subtitle": None,
         "data": None,
@@ -274,6 +285,7 @@ async def seed_platform_settings_defaults(db: AsyncSession) -> list[str]:
                 "quran_of_day",
                 "suggested_lessons",
                 "fresh_library",
+                "videos",
                 "community",
                 "nearby_map",
                 "donation_banner",

@@ -177,7 +177,9 @@
       "hijri": "Hijri date",
       "solar": "Solar date"
     },
-    "viewAllLabel": "View all"
+    "viewAllLabel": "View all",
+    "videosViewAll": "View all videos",
+    "videosPlaylist": "Playlist"
   },
   "searchPage": {
     "errorDescription": "Could not reach the server. Please try again.",
@@ -1793,6 +1795,40 @@
       "notFoundTitle": "Not found",
       "notFoundBody": "This item does not exist or is not published.",
       "backToLibrary": "Back to library"
+    }
+  },
+  "videos": {
+    "metaTitle": "Videos",
+    "metaDescription": "Video lessons and lectures of Maturidi Academy, organised in playlists",
+    "itemMetaTitle": "{title}",
+    "title": "Videos",
+    "subtitle": "Video lessons and lectures, organised in playlists",
+    "untitled": "Untitled",
+    "chips": {
+      "all": "All",
+      "newest": "Newest",
+      "playlists": "Playlists"
+    },
+    "allVideos": "All videos",
+    "newestFirst": "Newest first",
+    "playlistPrefix": "Playlist",
+    "viewPlaylist": "View playlist",
+    "videoCount": "{count} videos",
+    "totalDuration": "Total {duration}",
+    "playlistTag": "Playlist",
+    "viewAll": "View all videos",
+    "noVideos": "No videos have been published yet.",
+    "noVideosHint": "New video lessons will appear here soon.",
+    "loadFailed": "Could not load the information.",
+    "retry": "Retry",
+    "notFoundTitle": "This video was not found",
+    "notFoundBody": "The video may be unpublished, or access to it may be restricted.",
+    "backToVideos": "Back to videos",
+    "watch": {
+      "playlistTitle": "Playlist",
+      "videoOf": "Video {position} of {total}",
+      "relatedTitle": "Related videos",
+      "nowPlaying": "Now playing"
     }
   },
   "places": {

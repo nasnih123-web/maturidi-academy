@@ -15,7 +15,7 @@
 import { Fragment, type ReactNode } from 'react';
 import type { HomeSection } from '@/lib/types';
 import type { HomeSlotSetting, HeroSettings } from '@/lib/settings';
-import { HomeSectionRenderer, type FatwaSliderItem, type HomeSectionsLabels } from '../HomeSections';
+import { HomeSectionRenderer, type FatwaSliderItem, type HomeSectionsLabels, type VideoSliderData } from '../HomeSections';
 import { isVariantEligibleSection } from './specs';
 import { VariantRenderer, isVariantId } from './VariantRenderer';
 
@@ -26,6 +26,7 @@ export function SectionSlot({
   labels,
   heroOverride,
   fatwaSliderItems,
+  videoSlider,
 }: {
   section: HomeSection;
   slot: HomeSlotSetting;
@@ -33,10 +34,13 @@ export function SectionSlot({
   labels: HomeSectionsLabels;
   heroOverride: HeroSettings | null;
   fatwaSliderItems?: FatwaSliderItem[] | null;
+  videoSlider?: VideoSliderData | null;
 }) {
   // The fatwa slider always comes from the public published-topics
   // endpoint — a variant must not silently revert it to section JSON.
-  if (section.key === 'latest_fatwas') {
+  // The videos band is the same shape (live endpoint + CRM toggle), so
+  // it also bypasses slot variants.
+  if (section.key === 'latest_fatwas' || section.key === 'videos') {
     return (
       <HomeSectionRenderer
         section={section}
@@ -44,6 +48,7 @@ export function SectionSlot({
         labels={labels}
         heroOverride={heroOverride}
         fatwaSliderItems={fatwaSliderItems}
+        videoSlider={videoSlider}
       />
     );
   }
@@ -61,6 +66,7 @@ export function SectionSlot({
       labels={labels}
       heroOverride={heroOverride}
       fatwaSliderItems={fatwaSliderItems}
+      videoSlider={videoSlider}
     />
   );
 }
@@ -79,6 +85,7 @@ export function ComposedSections({
   labels,
   heroOverride,
   fatwaSliderItems,
+  videoSlider,
   afterCommunity,
 }: {
   sections: HomeSection[];
@@ -87,6 +94,7 @@ export function ComposedSections({
   labels: HomeSectionsLabels;
   heroOverride: HeroSettings | null;
   fatwaSliderItems?: FatwaSliderItem[] | null;
+  videoSlider?: VideoSliderData | null;
   /**
    * Block rendered immediately after the community section (in slots
    * order), e.g. the recent-articles slider. When no community slot
@@ -119,6 +127,7 @@ export function ComposedSections({
               labels={labels}
               heroOverride={heroOverride}
               fatwaSliderItems={fatwaSliderItems}
+              videoSlider={videoSlider}
             />
             {slot.id === "community" ? afterCommunity : null}
           </Fragment>

@@ -19,6 +19,7 @@
  */
 import { Fragment, type ReactNode } from "react";
 import type { HomeSection } from "@/lib/types";
+import { VideosSlider, type VideoSliderItem } from "./sections/VideosSlider";
 import { pickText } from "@/lib/localize";
 import {
   getContentItems,
@@ -52,6 +53,9 @@ export interface HomeSectionsLabels {
   donateCtaLabel: string;
   /** next-intl label for a section "view all" CTA without an API label. */
   viewAllLabel: string;
+  /** Videos band labels (home namespace): «نمایش همهٔ ویدیوها» + «لیست پخش». */
+  videosViewAll: string;
+  videosPlaylist: string;
 }
 
 /**
@@ -66,6 +70,13 @@ export interface FatwaSliderItem {
   category: string | null;
   image: string | null;
   href: string;
+}
+
+/** Videos band input (built by the page from GET /api/v1/videos). */
+export interface VideoSliderData {
+  items: VideoSliderItem[];
+  /** CRM setting `videos.home_enabled` — false hides the band entirely. */
+  enabled: boolean;
 }
 
 export interface HomeSectionsProps {
@@ -84,6 +95,11 @@ export interface HomeSectionsProps {
    */
   fatwaSliderItems?: FatwaSliderItem[] | null;
   /**
+   * Latest published videos for the `videos` band. Null (or omitted)
+   * renders nothing for that section — never section JSON.
+   */
+  videoSlider?: VideoSliderData | null;
+  /**
    * Block rendered immediately after the community section (in section
    * order), e.g. the recent-articles slider. When no community section
    * renders (invisible or absent), it is appended at the end so it
@@ -98,12 +114,14 @@ export function HomeSectionRenderer({
   labels,
   heroOverride,
   fatwaSliderItems,
+  videoSlider,
 }: {
   section: HomeSection;
   locale: string;
   labels: HomeSectionsLabels;
   heroOverride?: HeroSettings | null;
   fatwaSliderItems?: FatwaSliderItem[] | null;
+  videoSlider?: VideoSliderData | null;
 }) {
   const id = `home-section-${section.key}`;
   const title = pickText(section.title, locale);
@@ -152,6 +170,31 @@ export function HomeSectionRenderer({
                 locale={locale}
                 labels={labels.status}
                 statusLine={getStatusLine(section.data, locale)}
+              />
+            );
+          case "videos":
+            // Bespoke band fed by GET /api/v1/videos (latest 8) + the
+            // CRM `videos.home_enabled` toggle. Hidden when disabled
+            // or empty — never falls back to section JSON.
+            if (
+              !videoSlider ||
+              !videoSlider.enabled ||
+              videoSlider.items.length === 0
+            ) {
+              return null;
+            }
+            return (
+              <VideosSlider
+                key={section.key}
+                sectionId={id}
+                title={title}
+                subtitle={subtitle}
+                items={videoSlider.items}
+                viewAllHref={`/${locale}/videos`}
+                viewAllLabel={labels.videosViewAll}
+                playlistLabel={labels.videosPlaylist}
+                prevLabel={labels.card.sliderPrev}
+                nextLabel={labels.card.sliderNext}
               />
             );
           case "quran_of_day": {
@@ -270,7 +313,7 @@ export function HomeSectionRenderer({
         }
 }
 
-export function HomeSections({ sections, locale, labels, heroOverride, fatwaSliderItems, afterCommunity }: HomeSectionsProps) {
+export function HomeSections({ sections, locale, labels, heroOverride, fatwaSliderItems, videoSlider, afterCommunity }: HomeSectionsProps) {
   const ordered = [...sections]
     .filter((s) => s.visible !== false)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -286,6 +329,7 @@ export function HomeSections({ sections, locale, labels, heroOverride, fatwaSlid
             labels={labels}
             heroOverride={heroOverride}
             fatwaSliderItems={fatwaSliderItems}
+            videoSlider={videoSlider}
           />
           {section.key === "community" ? afterCommunity : null}
         </Fragment>

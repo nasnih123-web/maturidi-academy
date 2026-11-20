@@ -1328,6 +1328,67 @@ class LibraryItem(Base):
     )
 
 
+class VideoPlaylist(Base):
+    """لیست پخش ویدیو — بخش ویدیوها.
+
+    ویدیوها همان آیتم‌های کتابخانه‌اند (kind=video|video_360)؛ لیست پخش
+    فقط گروه‌بندی و ترتیب است و محتوای تازه‌ای نمی‌سازد. انتشار لیست از
+    انتشار آیتم جداست: لیست منتشرنشده (is_published=False) در هیچ
+    endpoint عمومی دیده نمی‌شود و آیتم‌هایش هم فقط وقتی دیده می‌شوند که
+    خودشان طبق قواعد عمومی کتابخانه قابل‌مشاهده باشند.
+    """
+
+    __tablename__ = "video_playlists"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    title: Mapped[dict] = mapped_column(JSONB, nullable=False)  # LocalizedText
+    description: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # LocalizedText
+    # کلید storage — هرگز URL عمومی؛ انتظار می‌رود کلید کاور یکی از
+    # آیتم‌های کتابخانه باشد تا از مسیر signed کتابخانه قابل ارائه شود.
+    cover_media_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    scholar_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True, index=True
+    )
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class VideoPlaylistItem(Base):
+    """عضویت یک آیتم ویدیویی در لیست پخش، با ترتیب (position)."""
+
+    __tablename__ = "video_playlist_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    playlist_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("video_playlists.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("library_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "playlist_id", "item_id", name="uq_video_playlist_items_playlist_item"
+        ),
+    )
+
+
 class LibraryItemVersion(Base):
     """نسخهٔ بایگانی‌شدهٔ آیتم کتابخانه — ویرایش نسخهٔ قبلی را بایگانی می‌کند، نه حذف."""
 

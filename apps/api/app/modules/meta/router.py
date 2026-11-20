@@ -47,6 +47,18 @@ _PUBLIC_SETTING_KEYS = (
     # شبکه‌های اجتماعی منوی سایت — CRM لینک/فعال/ترتیب را مدیریت
     # می‌کند و وب فقط شبکه‌های دارای لینکِ فعال را رندر می‌کند.
     "site.social_links",
+    # بخش ویدیوها — تنظیمات نمایشی غیرحساس؛ وب از همین‌ها سکشن خانه،
+    # سایدبار صفحهٔ تماشا و رفتار پخش‌کننده را می‌خواند.
+    "videos.home_enabled",
+    "videos.sidebar_side",
+    "videos.autoplay_next",
+    "videos.resume_playback",
+    "videos.player_speed",
+    "videos.player_pip",
+    "videos.related_enabled",
+    "videos.subtitle_default_lang",
+    "videos.subtitles_enabled",
+    "videos.subtitle_langs",
 )
 
 _PUBLIC_DEFAULTS: dict[str, object] = {
@@ -71,6 +83,16 @@ _PUBLIC_DEFAULTS: dict[str, object] = {
     "profile.require_for_fatwa_question": False,
     "profile.require_for_hifz_advanced": False,
     "site.social_links": [],
+    "videos.home_enabled": True,
+    "videos.sidebar_side": "left",
+    "videos.autoplay_next": True,
+    "videos.resume_playback": True,
+    "videos.player_speed": True,
+    "videos.player_pip": True,
+    "videos.related_enabled": True,
+    "videos.subtitle_default_lang": "fa",
+    "videos.subtitles_enabled": True,
+    "videos.subtitle_langs": ["fa", "ar", "en", "ur", "dari"],
 }
 
 

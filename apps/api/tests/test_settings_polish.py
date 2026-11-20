@@ -234,7 +234,7 @@ async def test_seed_polish_defaults(tc, db_session):
     }
 
     sections = await get_typed_setting(db_session, "home.sections")
-    assert isinstance(sections, list) and len(sections) == 9
+    assert isinstance(sections, list) and len(sections) == 10
     assert all(s["enabled"] is True and s["id"] and s["variant"] for s in sections)
     assert sections[0]["id"] == "live_status"
 
@@ -424,6 +424,18 @@ async def test_settings_public_returns_whitelisted_keys(tc, db_session):
         # شبکه‌های اجتماعی منوی سایت — CRM لینک‌ها را مدیریت می‌کند و
         # وب ردیف آیکون‌ها را از همین کلید رندر می‌کند (public by design).
         "site.social_links",
+        # بخش ویدیوها — تنظیمات نمایشی غیرحساس (سکشن خانه، سایدبار
+        # تماشا، پخش‌کننده و زیرنویس) که وب از CRM می‌خواند.
+        "videos.home_enabled",
+        "videos.sidebar_side",
+        "videos.autoplay_next",
+        "videos.resume_playback",
+        "videos.player_speed",
+        "videos.player_pip",
+        "videos.related_enabled",
+        "videos.subtitle_default_lang",
+        "videos.subtitles_enabled",
+        "videos.subtitle_langs",
     }
     assert set(body["settings"].keys()) == expected
     # هیچ کلید حساسی لو نرفته
