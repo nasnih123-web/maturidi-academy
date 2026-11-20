@@ -1829,6 +1829,30 @@
       "videoOf": "Video {position} of {total}",
       "relatedTitle": "Related videos",
       "nowPlaying": "Now playing"
+    },
+    "player": {
+      "play": "Play",
+      "pause": "Pause",
+      "mute": "Mute",
+      "unmute": "Unmute",
+      "volume": "Volume",
+      "seek": "Seek",
+      "settings": "Settings",
+      "speed": "Playback speed",
+      "autoplayNext": "Autoplay next video",
+      "pip": "Picture in picture",
+      "fullscreen": "Fullscreen",
+      "exitFullscreen": "Exit fullscreen",
+      "loading": "Preparing video…",
+      "failed": "Video playback failed.",
+      "retry": "Retry",
+      "resumeFrom": "Resume from {time}",
+      "nextUp": "Next video",
+      "startsIn": "Starts in {seconds} seconds",
+      "playNow": "Play now",
+      "cancel": "Cancel",
+      "rewind": "Back 10 seconds",
+      "forward": "Forward 10 seconds"
     }
   },
   "places": {

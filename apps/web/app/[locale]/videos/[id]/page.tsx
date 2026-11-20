@@ -7,7 +7,7 @@ import { getSiteConfig } from '@/lib/settings';
 import { ApiError } from '@/lib/api';
 import { formatDuration } from '@/lib/library';
 import { pickText } from '@/lib/localize';
-import { LibraryVideoViewer } from '@/components/LibraryVideoViewer';
+import { ProVideoPlayer } from '@/components/ProVideoPlayer';
 import {
   VideoWatchSidebar,
   type SidebarVideoRow,
@@ -42,12 +42,16 @@ export async function generateMetadata({
 }
 
 /**
- * Watch page — player (existing LibraryVideoViewer / pano viewer; the
- * viewer itself reports media_play/media_progress activity, exactly as
- * on the library detail page), title/scholar/description below, and a
- * sidebar with the current playlist + related videos. Sidebar side is
- * the CRM setting `videos.sidebar_side` (default left, as designed);
- * related renders only when `videos.related_enabled` is on.
+ * Watch page — professional player for kind=video (ProVideoPlayer:
+ * custom controls, resume, autoplay-next; it reports
+ * media_play/media_progress activity with the same semantics as the
+ * library viewer) and the pano viewer for video_360. Title/scholar/
+ * description below, and a sidebar with the current playlist + related
+ * videos. Sidebar side is the CRM setting `videos.sidebar_side`
+ * (default left, as designed); related renders only when
+ * `videos.related_enabled` is on. Player behaviour switches come from
+ * the same public settings (`videos.player_*` / `autoplay_next` /
+ * `resume_playback`).
  */
 export default async function VideoWatchPage({
   params,
@@ -116,13 +120,40 @@ export default async function VideoWatchPage({
     ? watch.related.map((r) => toRow(r, item.id))
     : [];
 
-  const videoLabels = {
-    loadingVideo: tLib('player.loadingVideo'),
-    videoFailed: tLib('player.videoFailed'),
-    retry: tLib('retry'),
-    chaptersTitle: tLib('chaptersTitle'),
-    captionsNote: tLib('captionsNote'),
-    seekToChapter: tLib('seekToChapter'),
+  const nextItem = ctx?.next_item_id
+    ? ctx.items.find((r) => r.id === ctx.next_item_id) ?? null
+    : null;
+  const nextUrl =
+    ctx && ctx.next_item_id
+      ? `/${locale}/videos/${encodeURIComponent(ctx.next_item_id)}?playlist=${encodeURIComponent(ctx.playlist.id)}`
+      : null;
+  const nextTitle = nextItem
+    ? pickText(nextItem.title, locale) || t('untitled')
+    : null;
+
+  const playerLabels = {
+    play: t('player.play'),
+    pause: t('player.pause'),
+    mute: t('player.mute'),
+    unmute: t('player.unmute'),
+    volume: t('player.volume'),
+    seek: t('player.seek'),
+    settings: t('player.settings'),
+    speed: t('player.speed'),
+    autoplayNext: t('player.autoplayNext'),
+    pip: t('player.pip'),
+    fullscreen: t('player.fullscreen'),
+    exitFullscreen: t('player.exitFullscreen'),
+    loading: t('player.loading'),
+    failed: t('player.failed'),
+    retry: t('player.retry'),
+    resumeFrom: t('player.resumeFrom'),
+    nextUp: t('player.nextUp'),
+    startsIn: t('player.startsIn'),
+    playNow: t('player.playNow'),
+    cancel: t('player.cancel'),
+    rewind: t('player.rewind'),
+    forward: t('player.forward'),
   };
   const panoLabels = {
     loading: tLib('pano.loading'),
@@ -150,14 +181,21 @@ export default async function VideoWatchPage({
               />
             </Suspense>
           ) : (
-            <LibraryVideoViewer
+            <ProVideoPlayer
               itemId={item.id}
               title={title}
+              streamUrl={watch.stream_url}
               posterUrl={item.cover_url}
-              chapters={[]}
-              captionsUrl={null}
               locale={locale}
-              labels={videoLabels}
+              settings={{
+                playerSpeed: settings.playerSpeed,
+                playerPip: settings.playerPip,
+                autoplayNext: settings.autoplayNext,
+                resumePlayback: settings.resumePlayback,
+              }}
+              nextUrl={nextUrl}
+              nextTitle={nextTitle}
+              labels={playerLabels}
             />
           )}
           <h1 className="vid-watch-title">{title}</h1>
