@@ -2763,24 +2763,36 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
 .quran-hifz-study .hifz-line-word-concealed { border-bottom: 2px dotted #8a8378; cursor: pointer; background: transparent; }
 .quran-hifz-study .hifz-line-word-concealed,
 .quran-hifz-study .hifz-line-word-concealed * { color: transparent !important; }
-/* Round 2 (user 2026-11-12 «کادرهای نقطه‌چین را حذف کن»): the
-   eye's hidden words are INVISIBLE placeholders — no dotted box,
-   no dotted line — but still tappable (one tap reveals one word).
-   The native button face draws a 1px border on three sides
-   (measured computed: 1px solid rgba(0,0,0,0.3)) and the old rule
-   only overrode the bottom to dotted, so the full rounded box
-   appeared. border: 0 + appearance: none removes it — but the
-   border also contributed 2px of width per word, so removing it
-   shifted every word ~2px (measured: same line breaks, same right
-   edge, width -2). A TRANSPARENT border of the old widths (1px
-   sides, 2px bottom) keeps the geometry byte-identical while
-   staying invisible. display stays
-   inline-block for mushaf words (their current computed display),
-   so the layout is unchanged; the wall button keeps its own
-   inline-flex (it has no .hifz-line-word). The old dotted class
-   stays for the script-hide paths (listen mode). */
-.quran-hifz-study .hifz-line-word-eye-hidden { border: 1px solid transparent; border-bottom-width: 2px; background: transparent; cursor: pointer; appearance: none; -webkit-appearance: none; }
-.quran-hifz-study .hifz-line-word.hifz-line-word-eye-hidden { display: inline-block; }
+/* Round 2 (user 2026-11-12 «کادرهای نقطه‌چین را حذف کن») + layout-shift
+   fix (user 2026-11-20): the eye's hidden words are INVISIBLE
+   placeholders — no dotted box, no dotted line — but still tappable
+   (one tap reveals one word). They must occupy EXACTLY the revealed
+   word's box: revealing a word changes only its visibility, never
+   its size or position, so no line reflows and no ayah-end marker
+   (۝) moves while reading. Measured on mushaf p.1 (393px): before
+   this fix a hidden word was a 44px-tall, 16px button (the generic
+   `.quran-hifz-study button` rule: min-height 44px, font-size 1rem)
+   with a 1px/2px transparent border, while the revealed word was a
+   16.5px inline span — so a line holding a hidden word was 45px
+   tall and collapsed to 36.6px when its last hidden word was
+   revealed (markers jumped up 5-6px), and mid-line markers slid
+   +7-8px sideways from the width delta (hidden text + padding +
+   border vs the V4 glyph advance). The fix, all in this rule:
+   `font: inherit` (the line's 16.5px, not 1rem), `min-height: 0`
+   (not the 44px tap target), `border: 0` (the old transparent
+   border added 2px of width and 3px of height vs the revealed
+   word), `display: inline` (revealed words are inline spans).
+   Padding and end-margin are deliberately NOT set here: the
+   `.hifz-line-word` / `.hifz-line-word-glyph` rules below supply
+   them, so a glyph placeholder gets padding 0 / margin 0 and a
+   text placeholder gets 0.25rem / 0.25em — exactly its revealed
+   state. The TSX renders the same content as the revealed word
+   (V4 glyph when the revealed word is a glyph, else Tanzil text);
+   a COLR glyph ignores `color: transparent`, so the glyph content
+   is hidden with `visibility: hidden` on its inner span instead.
+   The old dotted class stays for the script-hide paths (listen
+   mode), which keep their deliberate dotted cue. */
+.quran-hifz-study .hifz-line-word-eye-hidden { border: 0; border-radius: 0; background: transparent; cursor: pointer; appearance: none; -webkit-appearance: none; font: inherit; min-height: 0; display: inline; }
 .quran-hifz-study .hifz-line-word-eye-hidden,
 .quran-hifz-study .hifz-line-word-eye-hidden * { color: transparent !important; }
 .quran-hifz-study.hifz-hide-markers .hifz-line-marker { visibility: hidden; }
@@ -3113,7 +3125,20 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
      the study is present the page background is white. */
   body:has(.quran-hifz-study) { background: #ffffff; }
   /* Fixed page (2026-11-10, user directive: «صفحه باید ثابت باشه
-     نتونیم اسکرول کنیم»): the document must not scroll in mushaf
+     نتونیم اسکرول کنیم») + layout-shift
+   fix (user 2026-11-20): the eye's hidden words are INVISIBLE
+   placeholders — no dotted box, no dotted line — but still tappable
+   (one tap reveals one word). They must occupy EXACTLY the revealed
+   word's box: revealing a word changes only its visibility, never
+   its size or position, so no line reflows and no ayah-end marker
+   (۝) moves while reading. Measured on mushaf p.1 (393px): before
+   this fix a hidden word was a 44px-tall, 16px button (the generic
+   `.quran-hifz-study button` rule: min-height 44px, font-size 1rem)
+   with a 1px/2px transparent border, while the revealed word was a
+   16.5px inline span — so a line holding a hidden word was 45px
+   tall and collapsed to 36.6px when its last hidden word was
+   revealed (markers jumped up 5-6px), and mid-line markers slid
+   +7-8px sideways from the width delta (hidden text + padding + document must not scroll in mushaf
      mode on mobile — header + 15-line page + toolbar in one view.
      overflow: clip (NOT hidden): hidden still lets a script scroll
      the page (window.scrollTo / scrollIntoView keep working — the
