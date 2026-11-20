@@ -132,6 +132,26 @@ class AdminPlaylistOut(BaseModel):
     updated_at: datetime
 
 
+class VideoProgressIn(BaseModel):
+    """ذخیرهٔ موقعیت پخش — position منفی نامعتبر است (۴۲۲ خودکار)."""
+
+    position_seconds: float = Field(ge=0)
+    duration_seconds: float | None = Field(default=None, ge=0)
+
+
+class VideoProgressOut(BaseModel):
+    """موقعیت ذخیره‌شدهٔ کاربر جاری روی یک ویدیو.
+
+    وقتی هنوز ردیفی نیست، position_seconds/duration_seconds/updated_at
+    هر سه null برمی‌گردند (۲۰۰ — «پیشرفتی نیست» خطا نیست).
+    """
+
+    item_id: uuid.UUID
+    position_seconds: float | None
+    duration_seconds: float | None
+    updated_at: datetime | None
+
+
 class CandidateOut(BaseModel):
     """آیتم ویدیویی کتابخانه برای انتخاب‌گر CRM (همهٔ وضعیت‌های گردش‌کار)."""
 

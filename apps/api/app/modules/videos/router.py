@@ -27,6 +27,8 @@ from .schemas import (
     PlaylistUpdateIn,
     VideoItemOut,
     VideoListOut,
+    VideoProgressIn,
+    VideoProgressOut,
     WatchOut,
 )
 
@@ -108,6 +110,33 @@ async def get_watch(
 ):
     """جزئیات تماشا: آیتم + stream امضاشده + زمینهٔ لیست پخش + مشابه‌ها."""
     return await service.get_watch(db, item_id, user=user, playlist_id=playlist)
+
+
+@videos_router.get("/{item_id}/progress", response_model=VideoProgressOut)
+async def get_video_progress(
+    item_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """موقعیت پخش ذخیره‌شدهٔ کاربر جاری روی این ویدیو (یا position null)."""
+    return await service.get_video_progress(db, user, item_id)
+
+
+@videos_router.put("/{item_id}/progress", response_model=VideoProgressOut)
+async def save_video_progress(
+    item_id: uuid.UUID,
+    body: VideoProgressIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """آپسرت موقعیت پخش کاربر جاری — برای ادامهٔ تماشا در پلیر."""
+    return await service.save_video_progress(
+        db,
+        user,
+        item_id,
+        position_seconds=body.position_seconds,
+        duration_seconds=body.duration_seconds,
+    )
 
 
 # ---------------------------------------------------------------------------

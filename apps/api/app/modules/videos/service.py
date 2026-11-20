@@ -22,7 +22,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import log_audit
 from app.core.errors import APIError
-from app.models.models import LibraryItem, User, VideoPlaylist, VideoPlaylistItem
+from app.models.models import (
+    LibraryItem,
+    User,
+    UserVideoProgress,
+    VideoPlaylist,
+    VideoPlaylistItem,
+)
 from app.modules.library import service as library_service
 
 from .schemas import VIDEO_KINDS
@@ -293,6 +299,91 @@ async def get_watch(
         "playlist": await _playlist_context(db, item, user, playlist_id),
         "related": await _related(db, item, user),
     }
+
+
+# ---------------------------------------------------------------------------
+# عمومی: موقعیت پخش کاربر (ادامهٔ تماشا)
+# ---------------------------------------------------------------------------
+
+
+async def _get_video_item_or_error(
+    db: AsyncSession, item_id: uuid.UUID
+) -> LibraryItem:
+    """آیتم باید وجود داشته باشد (۴۰۴) و ویدیویی باشد (۴۲۲ not_a_video)."""
+    item = await db.get(LibraryItem, item_id)
+    if item is None:
+        raise APIError(404, "item_not_found", "آیتم یافت نشد")
+    if item.kind not in VIDEO_KINDS:
+        raise APIError(
+            422,
+            "not_a_video",
+            "موقعیت پخش فقط برای آیتم‌های ویدیویی است",
+            {"kind": item.kind},
+        )
+    return item
+
+
+def _progress_out(row: UserVideoProgress | None, item_id: uuid.UUID) -> dict:
+    if row is None:
+        return {
+            "item_id": item_id,
+            "position_seconds": None,
+            "duration_seconds": None,
+            "updated_at": None,
+        }
+    return {
+        "item_id": row.item_id,
+        "position_seconds": row.position_seconds,
+        "duration_seconds": row.duration_seconds,
+        "updated_at": row.updated_at,
+    }
+
+
+async def _find_progress(
+    db: AsyncSession, user: User, item_id: uuid.UUID
+) -> UserVideoProgress | None:
+    stmt = select(UserVideoProgress).where(
+        UserVideoProgress.user_id == user.id,
+        UserVideoProgress.item_id == item_id,
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def get_video_progress(
+    db: AsyncSession, user: User, item_id: uuid.UUID
+) -> dict:
+    """موقعیت ذخیره‌شدهٔ همین کاربر؛ نبود ردیف یعنی position null (نه ۴۰۴)."""
+    await _get_video_item_or_error(db, item_id)
+    return _progress_out(await _find_progress(db, user, item_id), item_id)
+
+
+async def save_video_progress(
+    db: AsyncSession,
+    user: User,
+    item_id: uuid.UUID,
+    *,
+    position_seconds: float,
+    duration_seconds: float | None,
+) -> dict:
+    """آپسرت موقعیت پخش کاربر جاری روی ویدیو — ردیف برگشتی مال همین کاربر است."""
+    await _get_video_item_or_error(db, item_id)
+    row = await _find_progress(db, user, item_id)
+    if row is None:
+        row = UserVideoProgress(
+            user_id=user.id,
+            item_id=item_id,
+            position_seconds=position_seconds,
+            duration_seconds=duration_seconds,
+        )
+        db.add(row)
+    else:
+        row.position_seconds = position_seconds
+        if duration_seconds is not None:
+            row.duration_seconds = duration_seconds
+        row.updated_at = _utcnow()
+    await db.commit()
+    await db.refresh(row)
+    return _progress_out(row, item_id)
 
 
 # ---------------------------------------------------------------------------

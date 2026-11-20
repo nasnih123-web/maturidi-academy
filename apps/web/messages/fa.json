@@ -1829,6 +1829,30 @@
       "videoOf": "ویدیوی {position} از {total}",
       "relatedTitle": "ویدیوهای مشابه",
       "nowPlaying": "در حال پخش"
+    },
+    "player": {
+      "play": "پخش",
+      "pause": "توقف",
+      "mute": "بی‌صدا کردن",
+      "unmute": "با صدا",
+      "volume": "بلندی صدا",
+      "seek": "موقعیت پخش",
+      "settings": "تنظیمات",
+      "speed": "سرعت پخش",
+      "autoplayNext": "پخش خودکار ویدیوی بعدی",
+      "pip": "تصویر در تصویر",
+      "fullscreen": "تمام‌صفحه",
+      "exitFullscreen": "خروج از تمام‌صفحه",
+      "loading": "در حال آماده‌سازی ویدیو…",
+      "failed": "پخش ویدیو ممکن نشد.",
+      "retry": "تلاش دوباره",
+      "resumeFrom": "ادامه از {time}",
+      "nextUp": "ویدیوی بعدی",
+      "startsIn": "شروع در {seconds} ثانیه",
+      "playNow": "پخش الان",
+      "cancel": "لغو",
+      "rewind": "۱۰ ثانیه عقب",
+      "forward": "۱۰ ثانیه جلو"
     }
   },
   "places": {

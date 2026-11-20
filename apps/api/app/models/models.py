@@ -1389,6 +1389,46 @@ class VideoPlaylistItem(Base):
     )
 
 
+class UserVideoProgress(Base):
+    """موقعیت پخش هر کاربر روی هر ویدیو — ادامهٔ تماشا (resume) در پلیر حرفه‌ای.
+
+    یک ردیف برای هر (کاربر، آیتم)؛ فقط خود کاربر ردیف خودش را می‌خواند و
+    می‌نویسد (endpointها همیشه با user جاری scope می‌شوند). position به
+    ثانیه است (Float — دقت زیرثانیه برای seek لازم است) و duration آخرین
+    مدت شناخته‌شدهٔ ویدیوست تا کلاینت بتواند «نزدیک پایان» را تشخیص دهد.
+    """
+
+    __tablename__ = "user_video_progress"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("library_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    position_seconds: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "item_id", name="uq_user_video_progress_user_item"
+        ),
+    )
+
+
 class LibraryItemVersion(Base):
     """نسخهٔ بایگانی‌شدهٔ آیتم کتابخانه — ویرایش نسخهٔ قبلی را بایگانی می‌کند، نه حذف."""
 
