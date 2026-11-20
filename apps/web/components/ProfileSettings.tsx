@@ -31,6 +31,9 @@ import {
   enable2fa,
   fetch2faStatus,
   fetchMe,
+  fetchMySessions,
+  revokeMySession,
+  type MySession,
   regenerateRecoveryCodes,
   setup2fa,
   updateMe,
@@ -38,6 +41,8 @@ import {
   type MeProfile,
   type TwoFAStatus,
 } from '@/lib/profile-client';
+import DateOfBirthField from '@/components/DateOfBirthField';
+import { toJalali } from '@/lib/jalali';
 
 export interface ProfileLabels {
   title: string;
@@ -92,6 +97,29 @@ export interface ProfileLabels {
   twofaFailed: string;
   twofaEnabledDone: string;
   twofaDisabledDone: string;
+  verified: string;
+  completeness: string;
+  twofaShortOn: string;
+  twofaShortOff: string;
+  dobJalali: string;
+  dobGregorian: string;
+  dobAutoJalali: string;
+  dobAutoGregorian: string;
+  dobDay: string;
+  dobMonth: string;
+  dobYear: string;
+  dobEquivalentGregorian: string;
+  dobEquivalentJalali: string;
+  memberSince: string;
+  tabSessions: string;
+  sessionsEmpty: string;
+  sessionsLoadFailed: string;
+  sessionIp: string;
+  sessionLastActive: string;
+  sessionStarted: string;
+  sessionRevoke: string;
+  sessionRevoked: string;
+  sessionUnknownDevice: string;
 }
 
 interface ProfileSettingsProps {
@@ -128,6 +156,37 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
   const [twofaBusy, setTwofaBusy] = useState(false);
   const [twofaError, setTwofaError] = useState(false);
   const [twofaNotice, setTwofaNotice] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'personal' | 'security' | 'sessions'>('personal');
+  const [sessions, setSessions] = useState<MySession[] | null>(null);
+  const [sessionsError, setSessionsError] = useState(false);
+  const [sessionBusy, setSessionBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeTab !== 'sessions' || sessions !== null) return;
+    let cancelled = false;
+    fetchMySessions()
+      .then((list) => {
+        if (!cancelled) setSessions(list);
+      })
+      .catch(() => {
+        if (!cancelled) setSessionsError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, sessions]);
+
+  async function endSession(id: string) {
+    setSessionBusy(id);
+    try {
+      await revokeMySession(id);
+      setSessions((prev) => prev?.map((s) => (s.id === id ? { ...s, revoked: true } : s)) ?? null);
+    } catch {
+      setSessionsError(true);
+    } finally {
+      setSessionBusy(null);
+    }
+  }
 
   const load = useCallback(async () => {
     if (!isLoggedIn()) {
@@ -301,21 +360,130 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
   if (loadError) return <p className="auth-error" role="alert">{labels.loadFailed}</p>;
   if (!me) return <p className="auth-loading">{labels.loading}</p>;
 
+  const totalProfileFields = 5;
+  const missingFields = me.missing_profile_fields;
+  const completenessPct = me.profile_complete
+    ? 100
+    : Math.round(((totalProfileFields - missingFields.length) / totalProfileFields) * 100);
+  const donutC = 2 * Math.PI * 31;
+  const numFmt = new Intl.NumberFormat(
+    locale === 'fa' ? 'fa-IR' : locale === 'ar' ? 'ar-EG' : 'en-US',
+    { useGrouping: false },
+  );
+  const pctText = locale === 'en' ? `${completenessPct}%` : `${numFmt.format(completenessPct)}٪`;
+  const initials =
+    me.full_name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0] ?? '')
+      .join('') || '?';
+  const memberDate = new Date(me.created_at);
+  const memberSinceYear = numFmt.format(locale === 'en' ? memberDate.getFullYear() : toJalali(memberDate).y);
+  const fmtDateTime = (iso: string) =>
+    new Intl.DateTimeFormat(locale === 'fa' ? 'fa-IR' : locale === 'ar' ? 'ar' : 'en-GB', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(iso));
+
   return (
-    <div>
-      <section aria-live="polite">
-        {me.profile_complete ? (
-          <p className="soc-status" role="status">{labels.completeTitle}</p>
-        ) : (
-          <>
-            <p className="soc-status" role="status">{labels.incompleteTitle}</p>
-            <p className="page-sub">{labels.missingIntro}</p>
-            <ul>
-              {me.missing_profile_fields.map((f) => (
-                <li key={f}>{labels.fieldLabels[f] ?? f}</li>
-              ))}
-            </ul>
-          </>
+    <div className="pf3-layout">
+      <aside className="pf3-rail">
+        <div className="pf3-avatar-wrap">
+          <div className="pf3-avatar-ring" />
+          <div className="pf3-avatar-ring2" />
+          {avatarPreview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className="pf3-avatar-img" src={avatarPreview} alt="" />
+          ) : (
+            <div className="pf3-avatar-fallback" aria-hidden="true">
+              {initials}
+            </div>
+          )}
+          <label className="pf3-cam" title={labels.avatarUpload}>
+            ✎
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(e) => void pickAvatar(e)}
+              disabled={avatarBusy}
+              hidden
+            />
+          </label>
+        </div>
+        <h2 className="pf3-name">{me.full_name}</h2>
+        <p className="pf3-mail" dir="ltr">
+          {me.email ?? ''}
+        </p>
+        {me.is_verified && <span className="pf3-verified">✓ {labels.verified}</span>}
+
+        <div className="pf3-donut-zone">
+          <div className="pf3-donut" role="img" aria-label={`${labels.completeness}: ${pctText}`}>
+            <svg width="64" height="64" viewBox="0 0 74 74">
+              <circle cx="37" cy="37" r="31" fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="7" />
+              <circle
+                cx="37"
+                cy="37"
+                r="31"
+                fill="none"
+                stroke="#d4af37"
+                strokeWidth="7"
+                strokeLinecap="round"
+                strokeDasharray={donutC}
+                strokeDashoffset={donutC * (1 - completenessPct / 100)}
+              />
+            </svg>
+            <span className="pf3-pct">{pctText}</span>
+          </div>
+          <div>
+            <div className="pf3-donut-title">{labels.completeness}</div>
+            {me.profile_complete ? (
+              <div className="pf3-donut-sub">{labels.completeTitle}</div>
+            ) : (
+              <div className="pf3-missing">
+                {missingFields.map((f) => (
+                  <span key={f} className="pf3-mchip">
+                    {labels.fieldLabels[f] ?? f}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <dl className="pf3-stats">
+          <div>
+            <dt>{labels.country}</dt>
+            <dd>{countryCode ? (countryNames?.of(countryCode) ?? countryCode) : '—'}</dd>
+          </div>
+          <div>
+            <dt>{labels.memberSince}</dt>
+            <dd>{memberSinceYear}</dd>
+          </div>
+          <div>
+            <dt>{labels.securityTitle}</dt>
+            <dd>{twofa ? (twofa.enabled ? labels.twofaShortOn : labels.twofaShortOff) : '…'}</dd>
+          </div>
+        </dl>
+
+        <label className="pf3-upload-btn">
+          {labels.avatarUpload}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={(e) => void pickAvatar(e)}
+            disabled={avatarBusy}
+            hidden
+          />
+        </label>
+        <p className="pf3-up-note">
+          {me.avatar_media_id ? labels.avatarSet : labels.avatarMissing} · {labels.avatarHint}
+        </p>
+        {avatarBusy && <p className="page-sub">{labels.avatarUploading}</p>}
+        {avatarError && (
+          <p className="auth-error" role="alert">
+            {labels.avatarUploadFailed}
+          </p>
         )}
         {me.profile_complete && next && (
           <p>
@@ -324,128 +492,143 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
             </Link>
           </p>
         )}
-      </section>
+      </aside>
 
-      <h2 className="auth-step-title">{labels.personalTitle}</h2>
-      <form onSubmit={savePersonal} className="auth-form">
-        <label>
-          <span>{labels.fullName}</span>
-          <input
-            type="text"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            autoComplete="name"
-            required
-            minLength={2}
-          />
-        </label>
-        <label>
-          <span>{labels.email}</span>
-          <input type="email" value={me.email ?? ''} readOnly dir="ltr" />
-        </label>
-        <label>
-          <span>{labels.phone}</span>
-          <input
-            type="tel"
-            value={phone}
-            onChange={(e) => {
-              const next = e.target.value;
-              setPhone(next);
-              // Keep the country in step when it was derived from the
-              // phone (or unset): a new number means a new phone country.
-              const derived = countryIsoFromPhone(next);
-              if (derived && (countryCode === '' || countryCode === countryIso)) {
-                setCountryCode(derived);
-              }
-            }}
-            placeholder="+989120000000"
-            dir="ltr"
-          />
-        </label>
-        <label>
-          <span>{labels.dateOfBirth}</span>
-          <input
-            type="date"
-            value={dob}
-            onChange={(e) => setDob(e.target.value)}
-            dir="ltr"
-          />
-        </label>
-        <label>
-          <span>{labels.gender}</span>
-          <select value={gender} onChange={(e) => setGender(e.target.value)}>
-            <option value="">{labels.genderPlaceholder}</option>
-            <option value="male">{labels.genderMale}</option>
-            <option value="female">{labels.genderFemale}</option>
-          </select>
-        </label>
-        <label>
-          <span>{labels.country}</span>
-          <select
-            value={countryLocked ? (countryIso ?? '') : countryCode}
-            onChange={(e) => setCountryCode(e.target.value)}
-            disabled={countryLocked}
+      <section className="pf3-main">
+        <div className="pf3-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'personal'}
+            className={`pf3-tab${activeTab === 'personal' ? ' on' : ''}`}
+            onClick={() => setActiveTab('personal')}
           >
-            <option value="">{labels.countryPlaceholder}</option>
-            {COUNTRIES.map((c) => (
-              <option key={c.iso} value={c.iso}>
-                {flagEmoji(c.iso)} {countryNames?.of(c.iso) ?? c.iso}
-              </option>
-            ))}
-          </select>
-          {countryLocked && <span className="page-sub">{labels.countryFromPhone}</span>}
-        </label>
-        <label>
-          <span>{labels.language}</span>
-          <select value={localeSel} onChange={(e) => setLocaleSel(e.target.value)}>
-            <option value="fa">فارسی</option>
-            <option value="ar">العربية</option>
-            <option value="en">English</option>
-          </select>
-        </label>
-        {saveError && (
-          <p className="auth-error" role="alert">{labels.saveFailed}</p>
-        )}
-        <button type="submit" disabled={saving}>
-          {saving ? labels.saving : labels.save}
-        </button>
-        {saved && <p className="page-sub">{labels.saved}</p>}
-      </form>
+            {labels.personalTitle}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'security'}
+            className={`pf3-tab${activeTab === 'security' ? ' on' : ''}`}
+            onClick={() => setActiveTab('security')}
+          >
+            {labels.securityTitle}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'sessions'}
+            className={`pf3-tab${activeTab === 'sessions' ? ' on' : ''}`}
+            onClick={() => setActiveTab('sessions')}
+          >
+            {labels.tabSessions}
+          </button>
+        </div>
 
-      <h2 className="auth-step-title">{labels.avatarTitle}</h2>
-      <p className="page-sub">{me.avatar_media_id ? labels.avatarSet : labels.avatarMissing}</p>
-      {avatarPreview && (
-        <p>
-          {/* پیش‌نمایش محلیِ همان فایلی که کاربر انتخاب کرده — API فقط
-              شناسهٔ رسانه را برمی‌گرداند، نه URL عمومی. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={avatarPreview}
-            alt=""
-            width={96}
-            height={96}
-            style={{ borderRadius: '50%', objectFit: 'cover' }}
-          />
-        </p>
-      )}
-      <div className="auth-form">
-        <label>
-          <span>{labels.avatarUpload}</span>
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            onChange={(e) => void pickAvatar(e)}
-            disabled={avatarBusy}
-          />
-        </label>
-        <p className="page-sub">{labels.avatarHint}</p>
-        {avatarBusy && <p className="page-sub">{labels.avatarUploading}</p>}
-        {avatarError && (
-          <p className="auth-error" role="alert">{labels.avatarUploadFailed}</p>
-        )}
-      </div>
+        {activeTab === 'personal' && (
+          <form onSubmit={savePersonal} className="auth-form pf3-form">
+            <div className="pf3-grid">
+              <label>
+                <span>{labels.fullName}</span>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  autoComplete="name"
+                  required
+                  minLength={2}
+                />
+              </label>
+              <label>
+                <span>{labels.email}</span>
+                <input type="email" value={me.email ?? ''} readOnly dir="ltr" />
+              </label>
+              <label>
+                <span>{labels.phone}</span>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => {
+                    const nextPhone = e.target.value;
+                    setPhone(nextPhone);
+                    const derived = countryIsoFromPhone(nextPhone);
+                    if (derived && (countryCode === '' || countryCode === countryIso)) {
+                      setCountryCode(derived);
+                    }
+                  }}
+                  placeholder="+989120000000"
+                  dir="ltr"
+                />
+              </label>
+              <label>
+                <span>{labels.gender}</span>
+                <select value={gender} onChange={(e) => setGender(e.target.value)}>
+                  <option value="">{labels.genderPlaceholder}</option>
+                  <option value="male">{labels.genderMale}</option>
+                  <option value="female">{labels.genderFemale}</option>
+                </select>
+              </label>
+            </div>
 
-      <h2 className="auth-step-title">{labels.securityTitle}</h2>
+            <DateOfBirthField
+              value={dob}
+              onChange={setDob}
+              locale={locale}
+              countryCode={countryCode}
+              labels={{
+                title: labels.dateOfBirth,
+                jalali: labels.dobJalali,
+                gregorian: labels.dobGregorian,
+                autoJalali: labels.dobAutoJalali,
+                autoGregorian: labels.dobAutoGregorian,
+                day: labels.dobDay,
+                month: labels.dobMonth,
+                year: labels.dobYear,
+                equivalentGregorian: labels.dobEquivalentGregorian,
+                equivalentJalali: labels.dobEquivalentJalali,
+              }}
+            />
+
+            <div className="pf3-grid">
+              <label>
+                <span>{labels.country}</span>
+                <select
+                  value={countryLocked ? (countryIso ?? '') : countryCode}
+                  onChange={(e) => setCountryCode(e.target.value)}
+                  disabled={countryLocked}
+                >
+                  <option value="">{labels.countryPlaceholder}</option>
+                  {COUNTRIES.map((c) => (
+                    <option key={c.iso} value={c.iso}>
+                      {flagEmoji(c.iso)} {countryNames?.of(c.iso) ?? c.iso}
+                    </option>
+                  ))}
+                </select>
+                {countryLocked && <span className="page-sub">{labels.countryFromPhone}</span>}
+              </label>
+              <label>
+                <span>{labels.language}</span>
+                <select value={localeSel} onChange={(e) => setLocaleSel(e.target.value)}>
+                  <option value="fa">فارسی</option>
+                  <option value="ar">العربية</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+            </div>
+
+            {saveError && (
+              <p className="auth-error" role="alert">
+                {labels.saveFailed}
+              </p>
+            )}
+            <button type="submit" disabled={saving}>
+              {saving ? labels.saving : labels.save}
+            </button>
+            {saved && <p className="page-sub">{labels.saved}</p>}
+          </form>
+        )}
+
+        {activeTab === 'security' && <div className="pf3-security">
       {twofaNotice && <p className="page-sub">{twofaNotice}</p>}
       {twofaError && (
         <p className="auth-error" role="alert">{labels.twofaFailed}</p>
@@ -544,6 +727,55 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
           </form>
         </>
       )}
+        </div>}
+        {activeTab === 'sessions' && (
+          <div className="pf3-security">
+            {sessionsError && (
+              <p className="auth-error" role="alert">
+                {labels.sessionsLoadFailed}
+              </p>
+            )}
+            {!sessions && !sessionsError && <p className="auth-loading">{labels.loading}</p>}
+            {sessions && sessions.length === 0 && <p className="page-sub">{labels.sessionsEmpty}</p>}
+            {sessions && sessions.length > 0 && (
+              <ul className="pf3-sessions">
+                {sessions.map((s) => (
+                  <li key={s.id} className="pf3-session">
+                    <div className="pf3-session-main">
+                      <div className="pf3-session-device">{s.device_info || labels.sessionUnknownDevice}</div>
+                      <div className="pf3-session-meta">
+                        {s.ip && (
+                          <span>
+                            {labels.sessionIp}: <span dir="ltr">{s.ip}</span>
+                          </span>
+                        )}
+                        <span>
+                          {labels.sessionStarted}: {fmtDateTime(s.created_at)}
+                        </span>
+                        <span>
+                          {labels.sessionLastActive}: {fmtDateTime(s.last_active_at)}
+                        </span>
+                      </div>
+                    </div>
+                    {s.revoked ? (
+                      <span className="pf3-session-off">{labels.sessionRevoked}</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="pf3-session-btn"
+                        disabled={sessionBusy === s.id}
+                        onClick={() => void endSession(s.id)}
+                      >
+                        {labels.sessionRevoke}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

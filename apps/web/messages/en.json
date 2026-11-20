@@ -2186,6 +2186,29 @@
       "date_of_birth": "Date of birth",
       "gender": "Gender",
       "country_code": "Country"
-    }
+    },
+    "verified": "Verified account",
+    "completeness": "Profile completeness",
+    "twofaShortOn": "On",
+    "twofaShortOff": "Off",
+    "dobJalali": "Jalali",
+    "dobGregorian": "Gregorian",
+    "dobAutoJalali": "Auto: Jalali",
+    "dobAutoGregorian": "Auto: Gregorian",
+    "dobDay": "Day",
+    "dobMonth": "Month",
+    "dobYear": "Year",
+    "dobEquivalentGregorian": "Gregorian equivalent: {date}",
+    "dobEquivalentJalali": "Jalali equivalent: {date}",
+    "memberSince": "Member since",
+    "tabSessions": "Sessions",
+    "sessionsEmpty": "No sessions recorded.",
+    "sessionsLoadFailed": "Could not load sessions.",
+    "sessionIp": "IP address",
+    "sessionLastActive": "Last active",
+    "sessionStarted": "Started",
+    "sessionRevoke": "End session",
+    "sessionRevoked": "Ended",
+    "sessionUnknownDevice": "Unknown device"
   }
 }

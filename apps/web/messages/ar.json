@@ -2186,6 +2186,29 @@
       "date_of_birth": "تاريخ الميلاد",
       "gender": "الجنس",
       "country_code": "الدولة"
-    }
+    },
+    "verified": "حساب موثّق",
+    "completeness": "اكتمال الملف الشخصي",
+    "twofaShortOn": "مفعّل",
+    "twofaShortOff": "غير مفعّل",
+    "dobJalali": "شمسي",
+    "dobGregorian": "ميلادي",
+    "dobAutoJalali": "تلقائي: شمسي",
+    "dobAutoGregorian": "تلقائي: ميلادي",
+    "dobDay": "اليوم",
+    "dobMonth": "الشهر",
+    "dobYear": "السنة",
+    "dobEquivalentGregorian": "المعادل الميلادي: {date}",
+    "dobEquivalentJalali": "المعادل الشمسي: {date}",
+    "memberSince": "عضو منذ",
+    "tabSessions": "الجلسات",
+    "sessionsEmpty": "لا توجد جلسات مسجلة.",
+    "sessionsLoadFailed": "تعذر تحميل الجلسات.",
+    "sessionIp": "عنوان IP",
+    "sessionLastActive": "آخر نشاط",
+    "sessionStarted": "بداية الجلسة",
+    "sessionRevoke": "إنهاء الجلسة",
+    "sessionRevoked": "منتهية",
+    "sessionUnknownDevice": "جهاز غير معروف"
   }
 }
