@@ -4156,3 +4156,58 @@ button.mushaf-dk-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
   .quran-reading-panel { display: none; }
   .quran-reading-spread { display: block; }
 }
+
+
+/* ---------- profile concept 3 (rail + tabs + calendar-aware DOB) ---------- */
+.pf3-shell { max-width: 1080px; }
+.pf3-layout { display: flex; gap: 1.1rem; align-items: flex-start; margin-top: 1rem; }
+.pf3-rail { width: 300px; flex: none; border: 1px solid rgba(212, 175, 55, 0.35); border-radius: var(--radius-lg); background: rgba(7, 35, 28, 0.55); padding: 1.3rem 1.1rem; text-align: center; }
+.pf3-avatar-wrap { position: relative; width: 108px; height: 108px; margin: 0 auto 0.6rem; }
+.pf3-avatar-ring { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, #d4af37, rgba(212, 175, 55, 0.06) 32%, #e5c07b 52%, rgba(212, 175, 55, 0.06) 74%, #d4af37); animation: pf3-spin 9s linear infinite; }
+.pf3-avatar-ring2 { position: absolute; inset: 4px; border-radius: 50%; background: #07231c; }
+@keyframes pf3-spin { to { transform: rotate(360deg); } }
+.pf3-avatar-img { position: absolute; inset: 8px; width: calc(100% - 16px); height: calc(100% - 16px); border-radius: 50%; object-fit: cover; }
+.pf3-avatar-fallback { position: absolute; inset: 8px; border-radius: 50%; background: radial-gradient(120% 120% at 30% 20%, #17573d, #0a2e21 70%); display: flex; align-items: center; justify-content: center; font-size: 1.9rem; font-weight: 800; color: #e5c07b; }
+.pf3-cam { position: absolute; bottom: 2px; inset-inline-end: 2px; width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(180deg, #e3c766, #b8912c); color: #06120e; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; border: 3px solid #07231c; cursor: pointer; z-index: 2; }
+.pf3-name { font-size: 1.25rem; font-weight: 800; }
+.pf3-mail { color: rgba(237, 230, 214, 0.6); font-size: 0.8rem; font-weight: 700; }
+.pf3-verified { display: inline-block; margin-top: 0.45rem; color: #7be2a8; font-size: 0.72rem; font-weight: 800; border: 1.5px solid rgba(46, 204, 113, 0.45); padding: 0.1rem 0.6rem; border-radius: 999px; background: rgba(46, 204, 113, 0.08); }
+.pf3-donut-zone { display: flex; align-items: center; gap: 0.8rem; margin-top: 1rem; padding-top: 1rem; border-top: 1.5px dashed rgba(212, 175, 55, 0.28); text-align: start; }
+.pf3-donut { position: relative; width: 64px; height: 64px; flex: none; }
+.pf3-donut svg { transform: rotate(-90deg); }
+.pf3-pct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; font-weight: 800; color: #e5c07b; }
+.pf3-donut-title { font-size: 0.85rem; font-weight: 800; }
+.pf3-donut-sub { font-size: 0.75rem; color: rgba(237, 230, 214, 0.6); font-weight: 700; }
+.pf3-missing { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+.pf3-mchip { color: #f0b429; border: 1.5px dashed rgba(240, 180, 41, 0.55); border-radius: 999px; padding: 0 0.55rem; font-size: 0.7rem; font-weight: 700; }
+.pf3-stats { margin-top: 1rem; padding-top: 0.8rem; border-top: 1.5px dashed rgba(212, 175, 55, 0.28); }
+.pf3-stats > div { display: flex; justify-content: space-between; padding: 0.3rem 0; font-size: 0.82rem; }
+.pf3-stats dt { color: rgba(237, 230, 214, 0.6); font-weight: 700; }
+.pf3-stats dd { font-weight: 800; }
+.pf3-upload-btn { display: block; margin-top: 0.9rem; border: 1.5px solid rgba(212, 175, 55, 0.55); color: #e5c07b; border-radius: 0.7rem; padding: 0.55rem 0; font-size: 0.85rem; font-weight: 800; background: rgba(212, 175, 55, 0.08); cursor: pointer; text-align: center; }
+.pf3-up-note { margin-top: 0.45rem; font-size: 0.7rem; color: rgba(237, 230, 214, 0.5); font-weight: 700; }
+.pf3-main { flex: 1; min-width: 0; border: 1px solid rgba(212, 175, 55, 0.35); border-radius: var(--radius-lg); background: rgba(7, 35, 28, 0.55); overflow: hidden; }
+.pf3-tabs { display: flex; gap: 0.25rem; padding: 0.8rem 1rem 0; border-bottom: 1.5px solid rgba(212, 175, 55, 0.25); }
+.pf3-tab { padding: 0.5rem 1.1rem; font-size: 0.9rem; font-weight: 800; color: rgba(237, 230, 214, 0.55); background: none; border: 0; border-radius: 0.7rem 0.7rem 0 0; cursor: pointer; font-family: inherit; }
+.pf3-tab.on { color: #06120e; background: linear-gradient(180deg, #e3c766, #cfa63a); }
+.pf3-form, .pf3-security { padding: 1.1rem 1.2rem 1.3rem; }
+.pf3-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1.1rem; }
+.pf3-dob { border: 1.5px solid rgba(212, 175, 55, 0.3); border-radius: 0.9rem; padding: 0.8rem 0.9rem; background: rgba(0, 0, 0, 0.16); margin: 0.2rem 0 1rem; }
+.pf3-dob-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.pf3-dob-title { font-size: 0.88rem; font-weight: 800; }
+.pf3-auto-badge { color: #e5c07b; font-size: 0.68rem; font-weight: 800; border: 1.5px solid rgba(212, 175, 55, 0.5); padding: 0 0.5rem; border-radius: 999px; background: rgba(212, 175, 55, 0.1); }
+.pf3-dob-spacer { flex: 1; }
+.pf3-seg { display: inline-flex; border: 1.5px solid rgba(212, 175, 55, 0.35); border-radius: 0.6rem; overflow: hidden; }
+.pf3-seg button { padding: 0.28rem 0.9rem; font-size: 0.78rem; font-weight: 800; color: rgba(237, 230, 214, 0.55); background: rgba(0, 0, 0, 0.18); border: 0; cursor: pointer; font-family: inherit; }
+.pf3-seg button.on { background: linear-gradient(180deg, #cfa63a, #b8912c); color: #06120e; }
+.pf3-dob-row { display: flex; gap: 0.5rem; }
+.pf3-dob-col { flex: 1; display: flex; flex-direction: column; gap: 0.3rem; }
+.pf3-dob-col > span { font-size: 0.72rem; font-weight: 700; color: rgba(237, 230, 214, 0.6); }
+.pf3-dob-col select { width: 100%; }
+.pf3-dob-hint { margin-top: 0.5rem; font-size: 0.75rem; color: rgba(237, 230, 214, 0.55); font-weight: 700; }
+@media (max-width: 880px) {
+  .pf3-layout { flex-direction: column; }
+  .pf3-rail { width: 100%; }
+  .pf3-grid { grid-template-columns: 1fr; }
+  .pf3-main { width: 100%; }
+}

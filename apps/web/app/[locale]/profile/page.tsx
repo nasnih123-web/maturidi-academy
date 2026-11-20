@@ -98,11 +98,24 @@ export default async function ProfilePage({
     twofaFailed: t('twofaFailed'),
     twofaEnabledDone: t('twofaEnabledDone'),
     twofaDisabledDone: t('twofaDisabledDone'),
+    verified: t('verified'),
+    completeness: t('completeness'),
+    twofaShortOn: t('twofaShortOn'),
+    twofaShortOff: t('twofaShortOff'),
+    dobJalali: t('dobJalali'),
+    dobGregorian: t('dobGregorian'),
+    dobAutoJalali: t('dobAutoJalali'),
+    dobAutoGregorian: t('dobAutoGregorian'),
+    dobDay: t('dobDay'),
+    dobMonth: t('dobMonth'),
+    dobYear: t('dobYear'),
+    dobEquivalentGregorian: t('dobEquivalentGregorian'),
+    dobEquivalentJalali: t('dobEquivalentJalali'),
   };
 
   return (
     <div className="page-wrap">
-      <div className="auth-card">
+      <div className="auth-card pf3-shell">
         <h1 className="page-title">{t('title')}</h1>
         <p className="page-sub">{t('subtitle')}</p>
         <ProfileSettings locale={locale} labels={labels} next={next} />

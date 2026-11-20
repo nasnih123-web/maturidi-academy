@@ -2186,6 +2186,19 @@
       "date_of_birth": "تاريخ الميلاد",
       "gender": "الجنس",
       "country_code": "الدولة"
-    }
+    },
+    "verified": "حساب موثّق",
+    "completeness": "اكتمال الملف الشخصي",
+    "twofaShortOn": "مفعّل",
+    "twofaShortOff": "غير مفعّل",
+    "dobJalali": "شمسي",
+    "dobGregorian": "ميلادي",
+    "dobAutoJalali": "تلقائي: شمسي",
+    "dobAutoGregorian": "تلقائي: ميلادي",
+    "dobDay": "اليوم",
+    "dobMonth": "الشهر",
+    "dobYear": "السنة",
+    "dobEquivalentGregorian": "المعادل الميلادي: {date}",
+    "dobEquivalentJalali": "المعادل الشمسي: {date}"
   }
 }

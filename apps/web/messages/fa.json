@@ -2186,6 +2186,19 @@
       "date_of_birth": "تاریخ تولد",
       "gender": "جنسیت",
       "country_code": "کشور"
-    }
+    },
+    "verified": "حساب تأییدشده",
+    "completeness": "کامل‌بودن پروفایل",
+    "twofaShortOn": "فعال",
+    "twofaShortOff": "غیرفعال",
+    "dobJalali": "شمسی",
+    "dobGregorian": "میلادی",
+    "dobAutoJalali": "خودکار: شمسی",
+    "dobAutoGregorian": "خودکار: میلادی",
+    "dobDay": "روز",
+    "dobMonth": "ماه",
+    "dobYear": "سال",
+    "dobEquivalentGregorian": "معادل میلادی: {date}",
+    "dobEquivalentJalali": "معادل شمسی: {date}"
   }
 }
