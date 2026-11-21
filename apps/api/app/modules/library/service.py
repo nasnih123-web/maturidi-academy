@@ -18,6 +18,7 @@ import re
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 from sqlalchemy import Text, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -444,8 +445,33 @@ async def _scan_upload_or_audit(
         raise
 
 
+# پسوندهای مجاز لینک مستقیم فایل ویدیو (پخش با پلیر بومی سایت)
+_DIRECT_FILE_EXTENSIONS = (".mp4", ".webm", ".m4v", ".mov")
+
+
+def _direct_file_url(raw: str) -> str | None:
+    """لینک مستقیم فایل ویدیو — https + مسیری ختم‌شده به پسوند ویدیو.
+
+    کوئری/فرگمنت در بررسی پسوند نادیده گرفته می‌شود؛ مقدار برگشتی همان
+    URL داده‌شده است (فقط فاصله‌های دو سر بریده می‌شود). هر چیز دیگری
+    None است تا فراخواننده ردش کند.
+    """
+    if not raw or not isinstance(raw, str):
+        return None
+    try:
+        parsed = urlparse(raw.strip())
+    except ValueError:
+        return None
+    if parsed.scheme != "https" or not parsed.hostname:
+        return None
+    if parsed.path.lower().endswith(_DIRECT_FILE_EXTENSIONS):
+        return raw.strip()
+    return None
+
+
 def _canonical_external_url(kind: str, raw: str) -> str:
-    """اعتبارسنجی لینک خارجی → URL کانونیک watch یوتیوب.
+    """اعتبارسنجی لینک خارجی → URL کانونیک watch یوتیوب، یا لینک مستقیم
+    فایل ویدیو (https با پسوند mp4/webm/m4v/mov) عیناً.
 
     قاعدهٔ فایل/لینک: لینک خارجی فقط برای kind=video و فقط روی آیتمی
     که فایل ندارد؛ آپلود فایل همیشه برنده است و لینک را پاک می‌کند.
@@ -458,9 +484,16 @@ def _canonical_external_url(kind: str, raw: str) -> str:
             {"kind": kind},
         )
     video_id = youtube.parse_youtube_video_id(raw)
-    if video_id is None:
-        raise APIError(422, "invalid_youtube_url", "لینک یوتیوب معتبر نیست")
-    return youtube.canonical_watch_url(video_id)
+    if video_id is not None:
+        return youtube.canonical_watch_url(video_id)
+    direct = _direct_file_url(raw)
+    if direct is not None:
+        return direct
+    raise APIError(
+        422,
+        "invalid_youtube_url",
+        "لینک معتبر نیست؛ لینک یوتیوب یا لینک مستقیم فایل ویدیو بدهید",
+    )
 
 
 def _usable_title(title: object) -> bool:
@@ -471,7 +504,7 @@ def _usable_title(title: object) -> bool:
 
 
 async def _external_title(meta_title: object, canonical_url: str) -> dict:
-    """عنوان آیتم خارجی: عنوان دستی، وگرنه عنوان oEmbed در هر سه زبان.
+    """عنوان آیتم خارجی: عنوان دستی، وگرنه (فقط یوتیوب) عنوان oEmbed در هر سه زبان.
 
     واکشی عنوان best-effort است؛ اگر عنوان دستی داده شده باشد هرگز
     صدا زده نمی‌شود و خطای oEmbed هم ساخت را نمی‌شکند. بدون هر دو →
@@ -480,13 +513,16 @@ async def _external_title(meta_title: object, canonical_url: str) -> dict:
     if _usable_title(meta_title):
         assert isinstance(meta_title, dict)
         return dict(meta_title)
-    fetched = await youtube.fetch_youtube_title(canonical_url)
-    if fetched:
-        return {"fa": fetched, "ar": fetched, "en": fetched}
+    # oEmbed فقط برای یوتیوب است؛ لینک مستقیم فایل عنوان خودکار ندارد
+    # و عنوان دستی برایش الزامی است (همان ۴۲۲ مسیرِ بی‌عنوان).
+    if youtube.parse_youtube_video_id(canonical_url) is not None:
+        fetched = await youtube.fetch_youtube_title(canonical_url)
+        if fetched:
+            return {"fa": fetched, "ar": fetched, "en": fetched}
     raise APIError(
         422,
         "title_required",
-        "عنوان ویدیو از یوتیوب به‌دست نیامد؛ عنوان را دستی وارد کنید",
+        "عنوان ویدیو به‌دست نیامد؛ عنوان را دستی وارد کنید",
     )
 
 
@@ -504,7 +540,7 @@ async def _create_external_item(
     source_type: str,
     source_ref: dict | None,
 ) -> dict:
-    """ساخت آیتم ویدیویی خارجی (یوتیوب) — بدون فایل: نه اسکن ClamAV،
+    """ساخت آیتم ویدیویی خارجی (یوتیوب یا لینک مستقیم فایل) — بدون فایل: نه اسکن ClamAV،
     نه ذخیره‌سازی، نه صف پردازش؛ media_key خالی می‌ماند."""
     kind = meta["kind"]
     title = await _external_title(meta.get("title"), external_url)
