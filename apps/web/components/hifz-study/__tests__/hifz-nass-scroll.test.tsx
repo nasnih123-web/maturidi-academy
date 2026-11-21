@@ -62,10 +62,10 @@ describe('nass scroll wiring (QuranHifzStudy nass branch)', () => {
     assert.match(src, /v2Index === undefined \? \(\s*<p className="hifz-line-loading">/);
   });
 
-    it('the scroll range is the whole Quran from the V2 index (user 2026-11-21), not one surah', () => {
-          const src = readStudy();
-          assert.match(src, /v2WholeQuranPageRange\(v2Index\)/);
-          assert.doesNotMatch(src, /v2SurahPageRange\(v2Index, surah, ayahCount\)/);
+  it('the scroll range is the whole Quran from the V2 index (user 2026-11-21), not one surah', () => {
+    const src = readStudy();
+    assert.match(src, /v2WholeQuranPageRange\(v2Index\)/);
+    assert.doesNotMatch(src, /v2SurahPageRange\(v2Index, surah, ayahCount\)/);
   });
 });
 
@@ -82,10 +82,10 @@ describe('nass scroll sections (HifzNassScroll)', () => {
   it('each section paints in its own page family, never the active page family', () => {
     const src = readScroll();
     assert.match(src, /qcfV4Provider\.familyForPage\(page\)\?\.family/);
-        assert.match(
-                src,
-                /return renderPageSection\(\n\s*page - 1,\n\s*render\.renderLines,\n\s*`nass-scroll-p\$\{page\}`,\n\s*\{\n\s*loaded: fontLoaded,\n\s*family: family,\n\s*\},\n\s*observeSection,\n\s*\);/,
-              );
+    assert.match(
+      src,
+      /return renderPageSection\(\n\s*page - 1,\n\s*render\.renderLines,\n\s*`nass-scroll-p\$\{page\}`,\n\s*\{\n\s*loaded: fontLoaded,\n\s*family: fontFamily,\n\s*\},\n\s*observeSection,\n\s*\);/,
+    );
   });
 
   it('the header page is prepended when the ayah-1 page carries no header (spill surahs)', () => {
