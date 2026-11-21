@@ -279,9 +279,9 @@ function HifzNassScrollPage(props: HifzNassScrollPageProps) {
   // seconds, before the user even scrolls (user 2026-11-21: Fatiha
   // p.1, and Baqarah p.2 in the same screenshot — pinning only the
   // active page left the next visible page broken). The active page
-// is covered too: its inView starts true. When a page leaves
-// view, the pin is released and its font may be evicted; its
-// observer reloads it on re-entry.
+  // is covered too: its inView starts true. When a page leaves
+  // view, the pin is released and its font may be evicted; its
+  // observer reloads it on re-entry.
   useEffect(() => {
     if (!inView || !fontFamily) return;
     protectMushafFontFamily(fontFamily);
