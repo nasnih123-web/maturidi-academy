@@ -32,15 +32,24 @@ import {
   fetch2faStatus,
   fetchMe,
   fetchMySessions,
+  fetchQuranBookmarks,
+  fetchSavedFatwas,
+  fetchSavedItems,
   revokeMySession,
   type MySession,
   regenerateRecoveryCodes,
   setup2fa,
+  unsaveFatwa,
+  unsaveLibraryItem,
   updateMe,
   uploadAvatar,
   type MeProfile,
+  type SavedFatwa,
+  type SavedLibraryItem,
   type TwoFAStatus,
 } from '@/lib/profile-client';
+import { pickText } from '@/lib/localize';
+import { bookmarkHref, type Bookmark } from '@/lib/quran-bookmarks';
 import DateOfBirthField from '@/components/DateOfBirthField';
 import { toJalali } from '@/lib/jalali';
 
@@ -112,6 +121,18 @@ export interface ProfileLabels {
   dobEquivalentJalali: string;
   memberSince: string;
   tabSessions: string;
+  tabSaved: string;
+  savedVideosTitle: string;
+  savedLessonsTitle: string;
+  savedFatwasTitle: string;
+  savedBookmarksTitle: string;
+  savedEmpty: string;
+  savedVideosEmpty: string;
+  savedLessonsEmpty: string;
+  savedFatwasEmpty: string;
+  savedBookmarksEmpty: string;
+  savedLoadFailed: string;
+  savedRemove: string;
   sessionsEmpty: string;
   sessionsLoadFailed: string;
   sessionIp: string;
@@ -156,10 +177,17 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
   const [twofaBusy, setTwofaBusy] = useState(false);
   const [twofaError, setTwofaError] = useState(false);
   const [twofaNotice, setTwofaNotice] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'personal' | 'security' | 'sessions'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'security' | 'sessions' | 'saved'>('personal');
   const [sessions, setSessions] = useState<MySession[] | null>(null);
   const [sessionsError, setSessionsError] = useState(false);
   const [sessionBusy, setSessionBusy] = useState<string | null>(null);
+  const [savedData, setSavedData] = useState<{
+    items: SavedLibraryItem[];
+    fatwas: SavedFatwa[];
+    bookmarks: Bookmark[];
+  } | null>(null);
+  const [savedError, setSavedError] = useState(false);
+  const [unsaveBusy, setUnsaveBusy] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeTab !== 'sessions' || sessions !== null) return;
@@ -175,6 +203,49 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
       cancelled = true;
     };
   }, [activeTab, sessions]);
+
+  useEffect(() => {
+    if (activeTab !== 'saved' || savedData !== null) return;
+    let cancelled = false;
+    Promise.all([fetchSavedItems(), fetchSavedFatwas(), fetchQuranBookmarks()])
+      .then(([items, fatwas, bookmarks]) => {
+        if (!cancelled) setSavedData({ items, fatwas, bookmarks });
+      })
+      .catch(() => {
+        if (!cancelled) setSavedError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, savedData]);
+
+  async function removeSavedItem(id: string) {
+    setUnsaveBusy(id);
+    try {
+      await unsaveLibraryItem(id);
+      setSavedData((prev) =>
+        prev ? { ...prev, items: prev.items.filter((i) => i.id !== id) } : prev,
+      );
+    } catch {
+      setSavedError(true);
+    } finally {
+      setUnsaveBusy(null);
+    }
+  }
+
+  async function removeSavedFatwa(id: string) {
+    setUnsaveBusy(id);
+    try {
+      await unsaveFatwa(id);
+      setSavedData((prev) =>
+        prev ? { ...prev, fatwas: prev.fatwas.filter((f) => f.id !== id) } : prev,
+      );
+    } catch {
+      setSavedError(true);
+    } finally {
+      setUnsaveBusy(null);
+    }
+  }
 
   async function endSession(id: string) {
     setSessionBusy(id);
@@ -385,6 +456,18 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
       dateStyle: 'medium',
       timeStyle: 'short',
     }).format(new Date(iso));
+  const fmtDate = (iso: string) =>
+    new Intl.DateTimeFormat(locale === 'fa' ? 'fa-IR' : locale === 'ar' ? 'ar' : 'en-GB', {
+      dateStyle: 'medium',
+    }).format(new Date(iso));
+  const savedVideos =
+    savedData?.items.filter((i) => i.kind === 'video' || i.kind === 'video_360') ?? [];
+  const savedLessons =
+    savedData?.items.filter((i) => i.kind !== 'video' && i.kind !== 'video_360') ?? [];
+  const savedTotal =
+    (savedData?.items.length ?? 0) +
+    (savedData?.fatwas.length ?? 0) +
+    (savedData?.bookmarks.length ?? 0);
 
   return (
     <div className="pf3-layout">
@@ -522,6 +605,15 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
             onClick={() => setActiveTab('sessions')}
           >
             {labels.tabSessions}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'saved'}
+            className={`pf3-tab${activeTab === 'saved' ? ' on' : ''}`}
+            onClick={() => setActiveTab('saved')}
+          >
+            {labels.tabSaved}
           </button>
         </div>
 
@@ -775,7 +867,194 @@ export default function ProfileSettings({ locale, labels, next }: ProfileSetting
             )}
           </div>
         )}
+        {activeTab === 'saved' && (
+          <div className="pf3-security">
+            {savedError && (
+              <p className="auth-error" role="alert">
+                {labels.savedLoadFailed}
+              </p>
+            )}
+            {!savedData && !savedError && <p className="auth-loading">{labels.loading}</p>}
+            {savedData && savedTotal === 0 && <p className="page-sub">{labels.savedEmpty}</p>}
+            {savedData && savedTotal > 0 && (
+              <>
+                <div className="pf3-saved-section">
+                  <h3 className="pf3-saved-title">
+                    {labels.savedVideosTitle}
+                    <span className="pf3-saved-count">{numFmt.format(savedVideos.length)}</span>
+                  </h3>
+                  {savedVideos.length === 0 ? (
+                    <p className="page-sub">{labels.savedVideosEmpty}</p>
+                  ) : (
+                    <ul className="pf3-saved-list">
+                      {savedVideos.map((it) => (
+                        <SavedItemRow
+                          key={it.id}
+                          item={it}
+                          locale={locale}
+                          href={`/${locale}/videos/${it.id}`}
+                          dateLabel={fmtDate(it.published_at ?? it.created_at)}
+                          removeLabel={labels.savedRemove}
+                          busy={unsaveBusy === it.id}
+                          onRemove={() => void removeSavedItem(it.id)}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="pf3-saved-section">
+                  <h3 className="pf3-saved-title">
+                    {labels.savedLessonsTitle}
+                    <span className="pf3-saved-count">{numFmt.format(savedLessons.length)}</span>
+                  </h3>
+                  {savedLessons.length === 0 ? (
+                    <p className="page-sub">{labels.savedLessonsEmpty}</p>
+                  ) : (
+                    <ul className="pf3-saved-list">
+                      {savedLessons.map((it) => (
+                        <SavedItemRow
+                          key={it.id}
+                          item={it}
+                          locale={locale}
+                          href={`/${locale}/library/${it.id}`}
+                          dateLabel={fmtDate(it.published_at ?? it.created_at)}
+                          removeLabel={labels.savedRemove}
+                          busy={unsaveBusy === it.id}
+                          onRemove={() => void removeSavedItem(it.id)}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="pf3-saved-section">
+                  <h3 className="pf3-saved-title">
+                    {labels.savedFatwasTitle}
+                    <span className="pf3-saved-count">{numFmt.format(savedData.fatwas.length)}</span>
+                  </h3>
+                  {savedData.fatwas.length === 0 ? (
+                    <p className="page-sub">{labels.savedFatwasEmpty}</p>
+                  ) : (
+                    <ul className="pf3-saved-list">
+                      {savedData.fatwas.map((f) => (
+                        <li key={f.id} className="pf3-saved-row">
+                          <Link href={`/${locale}/fatwa/${f.id}`} className="pf3-saved-link">
+                            {f.featured_image_url ? (
+                              <span className="pf3-saved-thumb">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={f.featured_image_url} alt="" loading="lazy" />
+                              </span>
+                            ) : null}
+                            <span className="pf3-saved-info">
+                              <span className="pf3-saved-name">
+                                {pickText(f.title, locale) || '—'}
+                              </span>
+                              <span className="pf3-saved-meta">
+                                {[
+                                  f.category ? pickText(f.category.title, locale) : '',
+                                  f.published_at ? fmtDate(f.published_at) : '',
+                                ]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              </span>
+                            </span>
+                          </Link>
+                          <button
+                            type="button"
+                            className="pf3-saved-remove"
+                            disabled={unsaveBusy === f.id}
+                            onClick={() => void removeSavedFatwa(f.id)}
+                          >
+                            {labels.savedRemove}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="pf3-saved-section">
+                  <h3 className="pf3-saved-title">
+                    {labels.savedBookmarksTitle}
+                    <span className="pf3-saved-count">{numFmt.format(savedData.bookmarks.length)}</span>
+                  </h3>
+                  {savedData.bookmarks.length === 0 ? (
+                    <p className="page-sub">{labels.savedBookmarksEmpty}</p>
+                  ) : (
+                    <ul className="pf3-saved-list">
+                      {savedData.bookmarks.map((b) => (
+                        <li key={b.id} className="pf3-saved-row">
+                          <Link href={bookmarkHref(b, locale)} className="pf3-saved-link">
+                            <span className="pf3-saved-info">
+                              <span className="pf3-saved-name">{b.label || '—'}</span>
+                            </span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </section>
     </div>
+  );
+}
+
+const KIND_ICONS: Record<string, string> = {
+  video: '▶',
+  video_360: '🌐',
+  audio: '🎧',
+  pdf: '📄',
+  mindmap: '🗺',
+};
+
+function SavedItemRow({
+  item,
+  locale,
+  href,
+  dateLabel,
+  removeLabel,
+  busy,
+  onRemove,
+}: {
+  item: SavedLibraryItem;
+  locale: string;
+  href: string;
+  dateLabel: string;
+  removeLabel: string;
+  busy: boolean;
+  onRemove: () => void;
+}) {
+  return (
+    <li className="pf3-saved-row">
+      <Link href={href} className="pf3-saved-link">
+        <span className="pf3-saved-thumb">
+          {item.cover_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={item.cover_url} alt="" loading="lazy" />
+          ) : (
+            <span aria-hidden="true">{KIND_ICONS[item.kind] ?? '🔖'}</span>
+          )}
+        </span>
+        <span className="pf3-saved-info">
+          <span className="pf3-saved-name">{pickText(item.title, locale) || '—'}</span>
+          <span className="pf3-saved-meta">
+            {[item.scholar_name ?? '', dateLabel].filter(Boolean).join(' · ')}
+          </span>
+        </span>
+      </Link>
+      <button
+        type="button"
+        className="pf3-saved-remove"
+        disabled={busy}
+        onClick={onRemove}
+      >
+        {removeLabel}
+      </button>
+    </li>
   );
 }
