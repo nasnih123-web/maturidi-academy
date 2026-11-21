@@ -6,6 +6,7 @@
     * in one continuous scroll, no page-flipping. Eye conceal, peek,
      * grading and tap-to-practice come free through the passed
       * renderPageSection/renderLineWord.*
+       *
  * Each page section owns its loading state (its V2 chunk, its V4
  * glyph map, its per-page font) with lazy loading as it nears the
  * viewport (IntersectionObserver) + neighbour preload. A section
@@ -265,6 +266,7 @@ function HifzNassScrollPage(props: HifzNassScrollPageProps) {
   const [retryTick, setRetryTick] = useState(0);
   const retryCountRef = useRef(0);
   const fontFamily = qcfV4Provider.familyForPage(page)?.family ?? null;
+ 
   // The section observer (lazy load + eviction recovery): attached
     // to the section itself — placeholder AND settled — via a callback
     // ref, so it survives the placeholder-to-settled swap (a plain
