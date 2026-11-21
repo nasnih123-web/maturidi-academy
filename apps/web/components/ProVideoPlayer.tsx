@@ -167,6 +167,15 @@ export function ProVideoPlayer({
     nextUrlRef.current = nextUrl;
   }, [nextUrl]);
 
+  // کارت «ادامهٔ تماشا» (VideoWatchBelow) با این رویداد پخش را از سر می‌گیرد
+  useEffect(() => {
+    const onPlayRequest = () => {
+      void videoRef.current?.play().catch(() => undefined);
+    };
+    window.addEventListener('maturidi:video-play', onPlayRequest);
+    return () => window.removeEventListener('maturidi:video-play', onPlayRequest);
+  }, []);
+
   const nf = new Intl.NumberFormat(locale, { useGrouping: false });
   const pct = (v: number) =>
     duration > 0 ? Math.min(100, Math.max(0, (v / duration) * 100)) : 0;

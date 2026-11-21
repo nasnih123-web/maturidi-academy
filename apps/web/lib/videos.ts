@@ -1,4 +1,5 @@
 import { ApiError, getApiBaseUrl } from './api';
+import { toJalali } from './jalali';
 import type { LocalizedText } from './types';
 
 /**
@@ -33,6 +34,8 @@ export interface VideoItem {
   topic_tags: string[];
   visibility: string;
   created_at: string;
+  /** لحظهٔ انتشار عمومی (ورود به وضعیت published) — مبنای «تاریخ انتشار». */
+  published_at: string | null;
   playlists: VideoPlaylistRef[];
 }
 
@@ -161,4 +164,40 @@ export async function getVideoWatch(
       }),
     ),
   };
+}
+
+const JALALI_MONTHS_FA = [
+  'فروردین',
+  'اردیبهشت',
+  'خرداد',
+  'تیر',
+  'مرداد',
+  'شهریور',
+  'مهر',
+  'آبان',
+  'آذر',
+  'دی',
+  'بهمن',
+  'اسفند',
+];
+
+/**
+ * «تاریخ انتشار» نمایشی یک ویدیو از روی published_at.
+ * fa: شمسی با نام ماه («۳۰ آبان ۱۴۰۵»)؛ ar/en: قالب استاندارد Intl.
+ * ورودی خالی/نامعتبر → رشتهٔ خالی (متا آن را نشان نمی‌دهد).
+ */
+export function formatVideoDate(iso: string | null, locale: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  if (locale === 'fa') {
+    const j = toJalali(d);
+    const nf = new Intl.NumberFormat('fa-IR', { useGrouping: false });
+    return `${nf.format(j.d)} ${JALALI_MONTHS_FA[j.m - 1]} ${nf.format(j.y)}`;
+  }
+  return new Intl.DateTimeFormat(locale === 'ar' ? 'ar' : 'en', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(d);
 }

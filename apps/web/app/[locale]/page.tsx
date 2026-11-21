@@ -16,7 +16,7 @@ import {
 import { buildHomeLabels } from "@/lib/home-labels";
 import { getFatwaListServer } from "@/lib/fatwa-topics";
 import { getArticleListServer } from "@/lib/articles";
-import { getVideos } from "@/lib/videos";
+import { formatVideoDate, getVideos } from "@/lib/videos";
 import { formatDuration } from "@/lib/library";
 import { pickText } from "@/lib/localize";
 import type { VideoSliderItem } from "@/components/sections/VideosSlider";
@@ -186,6 +186,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         id: v.id,
         title: pickText(v.title, locale) || v.id,
         scholar: v.scholar_name,
+        dateLabel: formatVideoDate(v.published_at, locale) || null,
         duration: formatDuration(v.duration_seconds, locale) || null,
         image: v.cover_url,
         kindLabel: tLib(`kinds.${v.kind}`),

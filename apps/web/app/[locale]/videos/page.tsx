@@ -1,6 +1,11 @@
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
-import { getVideoPlaylists, getVideos, type VideoItem } from '@/lib/videos';
+import {
+  formatVideoDate,
+  getVideoPlaylists,
+  getVideos,
+  type VideoItem,
+} from '@/lib/videos';
 import { formatDuration } from '@/lib/library';
 import { pickText } from '@/lib/localize';
 import {
@@ -52,6 +57,7 @@ export default async function VideosPage({
     id: item.id,
     title: pickText(item.title, locale) || t('untitled'),
     scholarName: item.scholar_name ?? '',
+    dateLabel: formatVideoDate(item.published_at, locale),
     coverUrl: item.cover_url,
     durationLabel: formatDuration(item.duration_seconds, locale),
     kindLabel: tLib(`kinds.${item.kind}`),

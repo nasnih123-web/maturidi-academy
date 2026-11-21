@@ -31,6 +31,7 @@ from .schemas import (
     VideoListOut,
     VideoProgressIn,
     VideoProgressOut,
+    VideoSavedOut,
     WatchOut,
 )
 
@@ -99,6 +100,48 @@ async def get_playlist(
 ):
     """جزئیات لیست پخش منتشرشده با همهٔ آیتم‌های قابل‌مشاهده به‌ترتیب."""
     return await service.get_playlist(db, playlist_id, user=user)
+
+
+@videos_router.get("/saved", response_model=VideoListOut)
+async def list_saved_videos(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """ویدیوهای ذخیره‌شدهٔ کاربر جاری (تازه‌ترین ذخیره اول)."""
+    items = await service.list_saved_videos(db, user)
+    return VideoListOut(
+        items=[VideoItemOut(**d) for d in items], next_cursor=None
+    )
+
+
+@videos_router.get("/{item_id}/saved", response_model=VideoSavedOut)
+async def get_saved_state(
+    item_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User | None = Depends(_optional_user),
+):
+    """وضعیت نشانک «ذخیره» کاربر جاری روی این ویدیو (مهمان: False)."""
+    return await service.get_saved_state(db, user, item_id)
+
+
+@videos_router.post("/{item_id}/saved", response_model=VideoSavedOut)
+async def save_video(
+    item_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """ذخیرهٔ ویدیو برای کاربر جاری (idempotent)."""
+    return await service.save_video(db, user, item_id)
+
+
+@videos_router.delete("/{item_id}/saved", response_model=VideoSavedOut)
+async def unsave_video(
+    item_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """حذف ویدیو از ذخیره‌های کاربر جاری (idempotent)."""
+    return await service.unsave_video(db, user, item_id)
 
 
 @videos_router.get("/{item_id}", response_model=WatchOut)

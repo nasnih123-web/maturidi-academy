@@ -2,13 +2,22 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense, lazy } from 'react';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
-import { getVideoWatch, type VideoItem } from '@/lib/videos';
+import {
+  formatVideoDate,
+  getVideoPlaylists,
+  getVideoWatch,
+  type VideoItem,
+} from '@/lib/videos';
 import { getSiteConfig } from '@/lib/settings';
 import { ApiError } from '@/lib/api';
 import { formatDuration } from '@/lib/library';
 import { pickText } from '@/lib/localize';
 import { ProVideoPlayer } from '@/components/ProVideoPlayer';
 import { YouTubeEmbed } from '@/components/YouTubeEmbed';
+import {
+  VideoWatchBelow,
+  type WatchPlaylistTab,
+} from '@/components/VideoWatchBelow';
 import {
   VideoWatchSidebar,
   type SidebarVideoRow,
@@ -67,7 +76,7 @@ export default async function VideoWatchPage({
   const t = await getTranslations({ locale, namespace: 'videos' });
   const tLib = await getTranslations({ locale, namespace: 'library' });
 
-  const [watchRes, siteConfig] = await Promise.all([
+  const [watchRes, siteConfig, playlistsRes] = await Promise.all([
     getVideoWatch(id, playlistParam ?? null).then(
       (res) => ({ ok: true as const, res, notFound: false }),
       (err: unknown) => ({
@@ -77,6 +86,10 @@ export default async function VideoWatchPage({
       }),
     ),
     getSiteConfig(),
+    getVideoPlaylists().then(
+      (res) => ({ ok: true as const, res }),
+      () => ({ ok: false as const, res: null }),
+    ),
   ]);
 
   if (!watchRes.ok) {
@@ -119,6 +132,19 @@ export default async function VideoWatchPage({
   const playlistItems = ctx ? ctx.items.map((r) => toRow(r, item.id, ctx.playlist.id)) : [];
   const related = settings.relatedEnabled
     ? watch.related.map((r) => toRow(r, item.id))
+    : [];
+
+  const playlistsTab: WatchPlaylistTab[] = playlistsRes.ok
+    ? playlistsRes.res.map((pl) => ({
+        id: pl.id,
+        title: pickText(pl.title, locale) || t('untitled'),
+        countLabel: t('videoCount', { count: pl.item_count }),
+        coverUrl: pl.cover_url ?? pl.items[0]?.cover_url ?? null,
+        href: pl.items[0]
+          ? `/${locale}/videos/${encodeURIComponent(pl.items[0].id)}?playlist=${encodeURIComponent(pl.id)}`
+          : `/${locale}/videos`,
+        current: ctx?.playlist.id === pl.id,
+      }))
     : [];
 
   const nextItem = ctx?.next_item_id
@@ -205,11 +231,59 @@ export default async function VideoWatchPage({
               subtitleDefaultLang={settings.subtitleDefaultLang}
             />
           )}
-          <h1 className="vid-watch-title">{title}</h1>
-          {item.scholar_name ? (
-            <p className="vid-watch-scholar">{item.scholar_name}</p>
-          ) : null}
-          {description ? <p className="vid-watch-desc">{description}</p> : null}
+          <VideoWatchBelow
+            itemId={item.id}
+            locale={locale}
+            title={title}
+            scholarName={item.scholar_name}
+            dateLabel={formatVideoDate(item.published_at, locale)}
+            durationLabel={formatDuration(item.duration_seconds, locale)}
+            durationSeconds={item.duration_seconds}
+            subtitleLangs={watch.subtitles.map((s) => s.lang)}
+            description={description}
+            tags={item.topic_tags}
+            isExternal={Boolean(item.embed_url)}
+            externalUrl={item.external_url}
+            streamUrl={watch.stream_url}
+            resumeEnabled={
+              settings.resumePlayback && item.kind === 'video' && !item.embed_url
+            }
+            playlistTitle={
+              ctx ? pickText(ctx.playlist.title, locale) || t('untitled') : null
+            }
+            positionLabel={
+              ctx
+                ? t('watch.videoOf', { position: ctx.position, total: ctx.total })
+                : null
+            }
+            playlistItems={playlistItems}
+            playlists={playlistsTab}
+            related={related}
+            labels={{
+              publishedLabel: t('watch.publishedLabel'),
+              durationLabel: t('watch.durationLabel'),
+              subtitlesLabel: t('watch.subtitlesLabel'),
+              download: t('watch.download'),
+              watchOnYouTube: t('watch.watchOnYouTube'),
+              share: t('watch.share'),
+              linkCopied: t('watch.linkCopied'),
+              save: t('watch.save'),
+              saved: t('watch.saved'),
+              tagsLabel: t('watch.tagsLabel'),
+              episodesTab: t('watch.episodesTab'),
+              playlistsTab: t('watch.playlistsTab'),
+              currentPlaylist: t('watch.currentPlaylist'),
+              similarTab: t('watch.relatedTitle'),
+              nowPlaying: t('watch.nowPlaying'),
+              resumeTitle: t('watch.resumeTitle'),
+              resumePercentTemplate: t('watch.resumePercent', {
+                percent: '__PCT__',
+              }),
+              resumeFromTemplate: t('player.resumeFrom', { time: '__TIME__' }),
+              more: t('watch.more'),
+              less: t('watch.less'),
+            }}
+          />
         </main>
         <aside className="vid-watch-side">
           <VideoWatchSidebar

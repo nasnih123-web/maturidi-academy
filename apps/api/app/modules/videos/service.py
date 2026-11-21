@@ -26,6 +26,7 @@ from app.models.models import (
     ItemSubtitle,
     LibraryItem,
     User,
+    UserSavedVideo,
     UserVideoProgress,
     VideoPlaylist,
     VideoPlaylistItem,
@@ -122,6 +123,7 @@ async def _items_out(db: AsyncSession, items: list[LibraryItem]) -> list[dict]:
                 "topic_tags": item.topic_tags or [],
                 "visibility": item.visibility,
                 "created_at": item.created_at,
+                "published_at": item.published_at,
                 "playlists": memberships.get(item.id, []),
             }
         )
@@ -474,6 +476,70 @@ async def save_video_progress(
     await db.commit()
     await db.refresh(row)
     return _progress_out(row, item_id)
+
+
+async def _find_saved(
+    db: AsyncSession, user: User, item_id: uuid.UUID
+) -> UserSavedVideo | None:
+    stmt = select(UserSavedVideo).where(
+        UserSavedVideo.user_id == user.id,
+        UserSavedVideo.item_id == item_id,
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def get_saved_state(
+    db: AsyncSession, user: User | None, item_id: uuid.UUID
+) -> dict:
+    """وضعیت نشانک کاربر جاری؛ مهمان همیشه False (بدون خطا)."""
+    if user is None:
+        return {"item_id": item_id, "saved": False}
+    row = await _find_saved(db, user, item_id)
+    return {"item_id": item_id, "saved": row is not None}
+
+
+async def save_video(
+    db: AsyncSession, user: User, item_id: uuid.UUID
+) -> dict:
+    """ذخیرهٔ ویدیو برای کاربر جاری — idempotent (ذخیرهٔ دوباره خطا نیست)."""
+    await _get_video_item_or_error(db, item_id)
+    if await _find_saved(db, user, item_id) is None:
+        db.add(UserSavedVideo(user_id=user.id, item_id=item_id))
+        await db.commit()
+    return {"item_id": item_id, "saved": True}
+
+
+async def unsave_video(
+    db: AsyncSession, user: User, item_id: uuid.UUID
+) -> dict:
+    """حذف نشانک کاربر جاری — idempotent (نبود ردیف خطا نیست)."""
+    await _get_video_item_or_error(db, item_id)
+    row = await _find_saved(db, user, item_id)
+    if row is not None:
+        await db.delete(row)
+        await db.commit()
+    return {"item_id": item_id, "saved": False}
+
+
+async def list_saved_videos(
+    db: AsyncSession, user: User
+) -> list[dict]:
+    """ویدیوهای ذخیره‌شدهٔ کاربر جاری، تازه‌ترین ذخیره اول.
+
+    آیتم‌هایی که دیگر برای کاربر قابل‌مشاهده نیستند (حذف/محدودشده)
+    بی‌صدا کنار گذاشته می‌شوند — همان قواعد visibility فهرست عمومی.
+    """
+    stmt = (
+        select(UserSavedVideo.item_id)
+        .where(UserSavedVideo.user_id == user.id)
+        .order_by(UserSavedVideo.created_at.desc(), UserSavedVideo.id.desc())
+    )
+    ids = list((await db.execute(stmt)).scalars().all())
+    if not ids:
+        return []
+    visible = await _visible_items_by_ids(db, user, ids)
+    ordered = [visible[i] for i in ids if i in visible]
+    return await _items_out(db, ordered)
 
 
 # ---------------------------------------------------------------------------
