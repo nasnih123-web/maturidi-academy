@@ -334,7 +334,6 @@ export function v2PageIndexForAyah(
     page 1 to the last page of the index. The nass scroll renders
         this range (user 2026-11-21): one section per printed page of
             the whole Quran, not just the study surah. Pure. */
-
 export function v2WholeQuranPageRange(index: V2MushafIndex): {
     firstPage: number;
     lastPage: number;
