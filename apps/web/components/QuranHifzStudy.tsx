@@ -1161,7 +1161,8 @@ export function QuranHifzStudy({
 
   // The line page of the SELECTED ayah, and whether it is ready.
   // pageFailed covers both a failed line-data load and a selected
-  // ayah no page covers: either way the wall below shows everything.
+  // ayah no page covers: either way the page area shows the failed
+  // note below (the wall that used to take over was removed 2026-11-21).
   const pageIndex = useMemo(
     () => (mushafPages ? pageIndexFor(mushafPages, surah, ayah) : null),
     [mushafPages, surah, ayah],
@@ -1192,12 +1193,7 @@ export function QuranHifzStudy({
       ? activeV2Page !== undefined && activeV2Page !== null
       : pageLines !== null;
   const pageFailed = mushafPages !== undefined && v2Index !== undefined && !pageReady;
-  // Surah texts settled (loaded, or failed): only then may the wall
-  // claim an ayah is unplaced. While they still load, placedAyahs is
-  // empty by construction and the wall would wrongly swallow the
-  // whole surah, so both the page and the wall wait.
   const textsReady = textsBySurah[surah] !== undefined;
-  const textsSettled = textsReady || textsFailed;
 
   // The current printed page number (1-based), for the V4 font and
   // glyph map. The family is per-page (QCF4NNN_COLOR), so it comes
@@ -1246,7 +1242,7 @@ export function QuranHifzStudy({
         };
     return { ...fallback, usedV2: false };
   }, [useV2, activeV2Page, v2Index, pageLines, textsBySurah, surah, wallAyahs, v4Glyphs]);
-  const { placedAyahs, renderLines, usedV2 } = pageRender;
+  const { renderLines, usedV2 } = pageRender;
 
   // The nass scroll's page range (2026-11-16): the printed pages
   // holding this surah, from the V2 index alone. Null while the
@@ -1341,22 +1337,6 @@ export function QuranHifzStudy({
       cancelled = true;
     };
   }, [displayMode, surah, activeTranslationEditions, translationsByKey]);
-
-  // Written ayahs not placed on this page render in the wall below.
-  const unplacedGroups = useMemo(
-    () => wallAyahs.filter((g) => !placedAyahs.has(g.ayah)),
-    [wallAyahs, placedAyahs],
-  );
-
-  // Fixed study page (2026-11-10): when the wall renders (a failed
-  // page or unplaced ayahs) the page CANNOT be locked — the wall
-  // sits below the page and must stay reachable by scrolling. The
-  // root carries hifz-has-wall in that state and the scroll lock +
-  // fixed overlays switch off (same condition as the wall section
-  // below, so the class and the section can never disagree).
-  const wallVisible =
-    displayMode === 'mushaf' &&
-    (pageFailed || (pageReady && textsSettled && unplacedGroups.length > 0));
 
   // Pending «« cross-surah advance (whole Quran): after the
   // button navigates to the next surah's first ayah, the words of
@@ -3635,7 +3615,7 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
 
   return (
     <div
-      className={`quran-hifz-study${hifzSettings.hideAyahMarkers ? ' hifz-hide-markers' : ''}${displayMode === 'mushaf' ? ' hifz-mode-mushaf' : ''}${wallVisible ? ' hifz-has-wall' : ''}`}
+      className={`quran-hifz-study${hifzSettings.hideAyahMarkers ? ' hifz-hide-markers' : ''}${displayMode === 'mushaf' ? ' hifz-mode-mushaf' : ''}`}
       dir={locale === 'fa' || locale === 'ar' ? 'rtl' : 'ltr'}
     >
       {/* Header: Tarteel top bar, row 1 (hamburger + surah card +
@@ -3967,8 +3947,9 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
 
       {/* The blank line page: faint markers from the start, words
           written in Uthmanic font as recited. While the line data
-          loads, a loading note; on page failure, the wall below
-          takes over entirely (see svgFailedNote). Performance (§8):
+          loads, a loading note; on page failure, the failed note
+          below is the whole state (see svgFailedNote) — the wall
+          that used to take over was removed 2026-11-21. Performance (§8):
           the note waits for V2 — or, when V2 failed, for the
           fallback old lines — but NOT for the old lines on a healthy
           V2 load: they are fallback-only now and stay unloaded. */}
@@ -3978,6 +3959,13 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
           (v2Index === null && mushafPages === undefined)) && (
           <p className="hifz-line-loading">{labels.loadingPage}</p>
         )}
+      {/* Page failure (2026-11-21): the printed page is unavailable.
+          The failed note is the whole state — it used to live inside
+          the wall section below; the wall is gone, so the note moved
+          here (same honest-failure message, no written ayahs). */}
+      {displayMode === 'mushaf' && pageFailed && (
+        <p className="hifz-line-failed-note">{labels.svgFailedNote}</p>
+      )}
       {/* Mushaf (Tarteel default): the one printed page, swipe to turn.
           V4 gate: while this page's glyph map is still loading or its
           V4 font is not ready yet, blank placeholder lines of the same
@@ -4155,136 +4143,6 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
             labels.loadingPage
           )}
         </div>
-      )}
-
-      {/* The wall: everything when the page failed, otherwise only the
-          ayahs whose words are NOT placed on the line page. Mushaf
-          mode only — nass and translation already show the whole
-          surah, so the wall would duplicate them. Nothing written
-          yet on a ready page means no wall section at all (the blank
-          page above is the whole state). While the surah texts still
-          load, the wall stays hidden: placement is undecided until
-          they arrive, and showing the whole surah below would repeat
-          the silent fallback. */}
-      {wallVisible && (
-      <section className="hifz-wall" aria-label={labels.title}>
-        {pageFailed && <p className="hifz-line-failed-note">{labels.svgFailedNote}</p>}
-        {(pageFailed ? wallAyahs : unplacedGroups).length === 0 ? (
-          <p className="hifz-wall-empty">{labels.wallHint}</p>
-        ) : (
-          (pageFailed ? wallAyahs : unplacedGroups).map((group) => (
-            <div key={group.ayah} className="hifz-wall-ayah">
-              <p className="hifz-wall-ref">
-                {surahName} — {toArabicIndic(group.ayah)}
-              </p>
-              <div className="hifz-wall-words" dir="rtl">
-                {group.words.map((word) => {
-                  // Phase 4 — Hide the script: a written wall word
-                  // becomes a clickable placeholder; tapping it
-                  // reveals just that word (same gradual reveal as
-                  // the page; applies in both modes, like the line
-                  // page). The eye's placeholder is invisible (round
-                  // 2); the old script-hide keeps its dotted line.
-                  const wallKey = `${surah}:${group.ayah}:${word.index}`;
-                  // The eye (practice): the wall is the current
-                  // page's fallback, so it follows the eye like the
-                  // page does; everywhere else the old script-hide
-                  // keeps its exact meaning.
-                  const wallEyeConcealed =
-                    eyeApplies &&
-                    eyeHidden &&
-                    word.status !== 'peeked' &&
-                    eyeCoversWord(surah, group.ayah) &&
-                    !revealedWords.has(wallKey);
-                  const wallScriptConcealed =
-                    !eyeApplies &&
-                    scriptHidden &&
-                    word.status !== 'peeked' &&
-                    !revealedWords.has(wallKey);
-                  if (wallEyeConcealed || wallScriptConcealed) {
-                    return (
-                      <button
-                        type="button"
-                        key={word.index}
-                        className={
-                          wallEyeConcealed
-                            ? 'hifz-word hifz-line-word-eye-hidden'
-                            : 'hifz-word hifz-line-word-concealed'
-                        }
-                        onClick={() =>
-                          setRevealedWords((prev) => new Set(prev).add(wallKey))
-                        }
-                        aria-label={labels.showScript}
-                      >
-                        <span aria-hidden="true">{renderTajweedText(word.text)}</span>
-                      </button>
-                    );
-                  }
-                  const isPractice =
-                    practiceWord?.ayah === group.ayah && practiceWord?.index === word.index;
-                  const newestLive =
-                    liveWords.length > 0 ? liveWords[liveWords.length - 1] : null;
-                  const isNewestLive =
-                    word.live &&
-                    newestLive !== null &&
-                    newestLive.ayah === group.ayah &&
-                    newestLive.word_index === word.index;
-                  const newestTone =
-                    isNewestLive && (word.status === 'wrong' || word.status === 'close')
-                      ? 'hifz-word-live-new-wrong'
-                      : 'hifz-word-live-new';
-                  const tone =
-                    word.status === 'peeked'
-                      ? 'hifz-word-peeked'
-                      : word.live
-                        ? isNewestLive
-                          ? `hifz-word-live ${newestTone}`
-                          : 'hifz-word-live'
-                        : `hifz-word-${word.status}`;
-                  return (
-                    <span
-                      key={word.index}
-                      className={['hifz-word', tone, isPractice ? 'hifz-word-practice' : ''].join(
-                        ' ',
-                      )}
-                    >
-                      <button
-                        type="button"
-                        className="hifz-word-text"
-                        onClick={() =>
-                          setPracticeWord({ ayah: group.ayah, index: word.index, text: word.text })
-                        }
-                        title={labels.practiceWordHint}
-                      >
-                        {renderTajweedText(word.text)}
-                      </button>
-                      {!word.live &&
-                        word.status !== 'peeked' &&
-                        (word.status === 'wrong' || word.status === 'close') &&
-                        word.scoreId &&
-                        !word.disputed && (
-                          <button
-                            type="button"
-                            className="hifz-word-dispute"
-                            onClick={() => void disputeWord(word.scoreId as string)}
-                          >
-                            {labels.dispute}
-                          </button>
-                        )}
-                      {word.disputed && (
-                        <span className="hifz-word-disputed">{labels.disputed}</span>
-                      )}
-                      {word.status === 'peeked' && (
-                        <span className="hifz-word-peeked-tag">{labels.revealedByPeek}</span>
-                      )}
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          ))
-        )}
-      </section>
       )}
 
       {/* Recitation toolbar (user design, 2026-11-10): the old
