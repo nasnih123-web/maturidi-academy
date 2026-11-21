@@ -4291,6 +4291,23 @@ button.mushaf-dk-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
   .pf3-rail { width: 100%; }
   .pf3-grid { grid-template-columns: 1fr; }
   .pf3-main { width: 100%; }
+  /* Mobile-only profile polish — desktop rendering is untouched.
+     Tab bar becomes a pill segmented control in a 2x2 grid so all four
+     tabs stay fully visible instead of overflowing the row. */
+  .pf3-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; padding: 0.75rem; background: rgba(0, 0, 0, 0.22); }
+  .pf3-tab { min-width: 0; padding: 0.7rem 0.4rem; font-size: 0.85rem; text-align: center; white-space: nowrap; color: rgba(237, 230, 214, 0.6); background: rgba(255, 255, 255, 0.04); border: 1.5px solid rgba(212, 175, 55, 0.22); border-radius: 0.75rem; }
+  .pf3-tab.on { border-color: transparent; }
+  /* Selects inherit .auth-form's 0.95rem font and 0.8rem inline padding,
+     which clips Persian option text in narrow fields («فروردین» → «فرور»,
+     «۱۳۸۱» → «۳۸۱»). Shrink both, pf3 scope only. */
+  .pf3-form select, .pf3-security select { font-size: 0.88rem; padding: 0.55rem 0.5rem; box-sizing: border-box; max-width: 100%; }
+  /* DOM order is day / month / year: the month column needs the most
+     room so long month names render in full. */
+  .pf3-dob-col { min-width: 0; }
+  .pf3-dob-col:nth-child(1) { flex: 0.85; }
+  .pf3-dob-col:nth-child(2) { flex: 1.5; }
+  .pf3-dob-col:nth-child(3) { flex: 1.15; }
+  .pf3-dob-col select { font-size: 0.88rem; padding: 0.55rem 0.5rem; box-sizing: border-box; }
 }
 
 .pf3-sessions { list-style: none; display: flex; flex-direction: column; gap: 0.6rem; }
