@@ -264,7 +264,11 @@ export default async function VideoWatchPage({
               durationLabel: t('watch.durationLabel'),
               subtitlesLabel: t('watch.subtitlesLabel'),
               download: t('watch.download'),
-              watchOnYouTube: t('watch.watchOnYouTube'),
+              watchOnYouTube: item.external_url?.includes('aparat.com')
+                ? t('watch.watchOnAparat')
+                : item.external_url?.includes('youtube')
+                  ? t('watch.watchOnYouTube')
+                  : t('watch.watchExternal'),
               share: t('watch.share'),
               linkCopied: t('watch.linkCopied'),
               save: t('watch.save'),

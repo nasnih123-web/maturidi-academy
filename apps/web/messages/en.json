@@ -180,7 +180,8 @@
     "viewAllLabel": "View all",
     "videosViewAll": "View all videos",
     "videosPlaylist": "Playlist",
-    "videosExternal": "YouTube"
+    "videosExternal": "YouTube",
+    "videosExternalAparat": "Aparat"
   },
   "searchPage": {
     "errorDescription": "Could not reach the server. Please try again.",
@@ -1822,6 +1823,7 @@
     "totalDuration": "Total {duration}",
     "playlistTag": "Playlist",
     "externalBadge": "YouTube",
+    "externalBadgeAparat": "Aparat",
     "viewAll": "View all videos",
     "noVideos": "No videos have been published yet.",
     "noVideosHint": "New video lessons will appear here soon.",
@@ -1840,6 +1842,8 @@
       "subtitlesLabel": "Subtitles",
       "download": "Download",
       "watchOnYouTube": "Watch on YouTube",
+      "watchOnAparat": "Watch on Aparat",
+      "watchExternal": "Watch at the source",
       "share": "Share",
       "linkCopied": "Link copied",
       "save": "Save",

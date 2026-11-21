@@ -180,7 +180,8 @@
     "viewAllLabel": "مشاهدهٔ همه",
     "videosViewAll": "نمایش همهٔ ویدیوها",
     "videosPlaylist": "لیست پخش",
-    "videosExternal": "یوتیوب"
+    "videosExternal": "یوتیوب",
+    "videosExternalAparat": "آپارات"
   },
   "searchPage": {
     "errorDescription": "ارتباط با سرور برقرار نشد. لطفاً دوباره تلاش کنید.",
@@ -1822,6 +1823,7 @@
     "totalDuration": "مجموع {duration}",
     "playlistTag": "لیست پخش",
     "externalBadge": "یوتیوب",
+    "externalBadgeAparat": "آپارات",
     "viewAll": "نمایش همهٔ ویدیوها",
     "noVideos": "هنوز ویدیویی منتشر نشده است.",
     "noVideosHint": "به‌زودی درس‌های تصویری تازه این‌جا قرار می‌گیرند.",
@@ -1840,6 +1842,8 @@
       "subtitlesLabel": "زیرنویس",
       "download": "دانلود",
       "watchOnYouTube": "تماشا در یوتیوب",
+      "watchOnAparat": "تماشا در آپارات",
+      "watchExternal": "تماشا در منبع اصلی",
       "share": "اشتراک‌گذاری",
       "linkCopied": "پیوند کپی شد",
       "save": "ذخیره",
