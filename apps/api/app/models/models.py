@@ -1433,10 +1433,13 @@ class UserVideoProgress(Base):
 
 
 class UserSavedVideo(Base):
-    """ویدیوهای ذخیره‌شدهٔ هر کاربر (نشانک «ذخیره» در صفحهٔ تماشا).
+    """آیتم‌های ذخیره‌شدهٔ کتابخانه برای هر کاربر (نشانک «ذخیره»).
 
-    یک ردیف برای هر (کاربر، آیتم)؛ فقط خود کاربر ردیف‌های خودش را
-    می‌خواند و می‌نویسد (endpointها همیشه با user جاری scope می‌شوند).
+    نام جدول از فاز ویدیوها مانده، اما نشانک روی همهٔ kindهای کتابخانه
+    (ویدیو، صوت/درس، pdf…) کار می‌کند و فهرست ذخیره‌ها kind هر آیتم را
+    برمی‌گرداند تا وب آن‌ها را تفکیک کند. یک ردیف برای هر (کاربر،
+    آیتم)؛ فقط خود کاربر ردیف‌های خودش را می‌خواند و می‌نویسد
+    (endpointها همیشه با user جاری scope می‌شوند).
     """
 
     __tablename__ = "user_saved_videos"
@@ -1461,6 +1464,40 @@ class UserSavedVideo(Base):
     __table_args__ = (
         UniqueConstraint(
             "user_id", "item_id", name="uq_user_saved_videos_user_item"
+        ),
+    )
+
+
+class UserSavedFatwa(Base):
+    """فتواهای ذخیره‌شدهٔ هر کاربر (نشانک «ذخیره» در صفحهٔ فتوا).
+
+    فتوا در نمای عمومی همان FiqhTopic منتشرشده است؛ یک ردیف برای هر
+    (کاربر، موضوع) و فقط خود کاربر ردیف‌های خودش را می‌خواند و می‌نویسد
+    (endpointها همیشه با user جاری scope می‌شوند) — هم‌الگوی UserSavedVideo.
+    """
+
+    __tablename__ = "user_saved_fatwas"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    fatwa_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("fiqh_topics.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "fatwa_id", name="uq_user_saved_fatwas_user_fatwa"
         ),
     )
 

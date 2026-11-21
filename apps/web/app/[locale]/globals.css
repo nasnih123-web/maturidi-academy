@@ -4301,6 +4301,26 @@ button.mushaf-dk-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
 .pf3-session-btn { flex: none; border: 1.5px solid rgba(240, 120, 120, 0.5); color: #f0a0a0; background: none; border-radius: 0.6rem; padding: 0.35rem 0.8rem; font-size: 0.75rem; font-weight: 800; cursor: pointer; font-family: inherit; }
 .pf3-session-off { flex: none; font-size: 0.72rem; font-weight: 800; color: rgba(237, 230, 214, 0.5); border: 1.5px dashed rgba(237, 230, 214, 0.3); padding: 0.2rem 0.6rem; border-radius: 999px; }
 
+.pf3-saved-section { margin-bottom: 1.6rem; }
+.pf3-saved-title { display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem; font-weight: 800; color: #e5c07b; margin: 0 0 0.7rem; }
+.pf3-saved-count { font-size: 0.72rem; font-weight: 800; color: #06120e; background: linear-gradient(135deg, #b8912c, #d4af37); border-radius: 999px; padding: 0.1rem 0.55rem; }
+.pf3-saved-list { list-style: none; display: flex; flex-direction: column; gap: 0.6rem; margin: 0; padding: 0; }
+.pf3-saved-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; border: 1px solid rgba(212, 175, 55, 0.25); border-radius: var(--radius-md); padding: 0.6rem 0.8rem; background: rgba(0, 0, 0, 0.16); }
+.pf3-saved-link { display: flex; align-items: center; gap: 0.8rem; min-width: 0; flex: 1; text-decoration: none; color: inherit; }
+.pf3-saved-thumb { flex: none; width: 5.2rem; aspect-ratio: 16 / 9; border-radius: 0.5rem; overflow: hidden; background: linear-gradient(135deg, #0d3b2c, #07231c 70%); display: flex; align-items: center; justify-content: center; font-size: 1.3rem; }
+.pf3-saved-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pf3-saved-info { display: flex; flex-direction: column; min-width: 0; }
+.pf3-saved-name { font-weight: 800; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pf3-saved-meta { font-size: 0.72rem; color: rgba(237, 230, 214, 0.6); font-weight: 700; margin-top: 0.25rem; }
+.pf3-saved-remove { flex: none; border: 1.5px solid rgba(240, 120, 120, 0.5); color: #f0a0a0; background: none; border-radius: 0.6rem; padding: 0.35rem 0.8rem; font-size: 0.75rem; font-weight: 800; cursor: pointer; font-family: inherit; }
+.pf3-saved-remove:disabled { opacity: 0.5; cursor: default; }
+
+.ftw-save { margin-bottom: 1rem; }
+.ftw-save-btn.on { background: linear-gradient(135deg, #b8912c, #d4af37); color: #06120e; border-color: transparent; }
+.lib-save-btn { margin-top: 1rem; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 1.1rem; border-radius: 999px; font-size: 0.8rem; font-weight: 800; font-family: inherit; border: 1px solid rgba(212, 175, 55, 0.32); background: rgba(237, 230, 214, 0.04); color: #ede6d6; cursor: pointer; }
+.lib-save-btn.on { background: linear-gradient(135deg, #b8912c, #d4af37); color: #06120e; border-color: transparent; }
+.lib-save-btn:disabled { opacity: 0.6; cursor: default; }
+
 /* ——— Videos section (phase 1): band, cards, /videos page, watch ——— */
 .vid-thumb { position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 0.9rem; overflow: hidden; background: linear-gradient(135deg, #0d3b2c, #07231c 70%); }
 .vid-thumb-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }

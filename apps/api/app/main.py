@@ -56,6 +56,7 @@ from app.modules.fatwa.router import (
     fatwa_router,
     verify_router,
 )
+from app.modules.fatwa.saved_router import fatwas_router
 from app.modules.fatwa.submissions_router import submissions_router
 from app.modules.finance.router import (
     admin_finance_router,
@@ -297,6 +298,7 @@ app.include_router(admin_social_router)
 app.include_router(moderation_router)
 app.include_router(submissions_router)
 app.include_router(clusters_router)
+app.include_router(fatwas_router)
 app.include_router(places_router)
 app.include_router(admin_places_router)
 app.include_router(telegram_router)

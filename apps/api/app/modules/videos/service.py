@@ -404,6 +404,21 @@ async def _get_video_item_or_error(
     return item
 
 
+async def _get_library_item_or_error(
+    db: AsyncSession, item_id: uuid.UUID
+) -> LibraryItem:
+    """آیتم باید وجود داشته باشد (۴۰۴) — هر kind کتابخانه‌ای پذیرفته است.
+
+    برای «ذخیره» استفاده می‌شود: نشانک روی همهٔ آیتم‌های کتابخانه
+    (ویدیو، صوت/درس، pdf و…) معنا دارد، نه فقط ویدیو. موقعیت پخش اما
+    همچنان فقط ویدیویی است و از _get_video_item_or_error می‌گذرد.
+    """
+    item = await db.get(LibraryItem, item_id)
+    if item is None:
+        raise APIError(404, "item_not_found", "آیتم یافت نشد")
+    return item
+
+
 def _progress_out(row: UserVideoProgress | None, item_id: uuid.UUID) -> dict:
     if row is None:
         return {
@@ -501,8 +516,12 @@ async def get_saved_state(
 async def save_video(
     db: AsyncSession, user: User, item_id: uuid.UUID
 ) -> dict:
-    """ذخیرهٔ ویدیو برای کاربر جاری — idempotent (ذخیرهٔ دوباره خطا نیست)."""
-    await _get_video_item_or_error(db, item_id)
+    """ذخیرهٔ آیتم کتابخانه برای کاربر جاری — idempotent.
+
+    هر kind کتابخانه‌ای (ویدیو، صوت/درس، pdf…) قابل ذخیره است؛ جدول
+    user_saved_videos در عمل «آیتم‌های ذخیره‌شدهٔ کتابخانه» است.
+    """
+    await _get_library_item_or_error(db, item_id)
     if await _find_saved(db, user, item_id) is None:
         db.add(UserSavedVideo(user_id=user.id, item_id=item_id))
         await db.commit()
@@ -513,7 +532,7 @@ async def unsave_video(
     db: AsyncSession, user: User, item_id: uuid.UUID
 ) -> dict:
     """حذف نشانک کاربر جاری — idempotent (نبود ردیف خطا نیست)."""
-    await _get_video_item_or_error(db, item_id)
+    await _get_library_item_or_error(db, item_id)
     row = await _find_saved(db, user, item_id)
     if row is not None:
         await db.delete(row)
@@ -524,10 +543,12 @@ async def unsave_video(
 async def list_saved_videos(
     db: AsyncSession, user: User
 ) -> list[dict]:
-    """ویدیوهای ذخیره‌شدهٔ کاربر جاری، تازه‌ترین ذخیره اول.
+    """آیتم‌های ذخیره‌شدهٔ کاربر جاری، تازه‌ترین ذخیره اول.
 
-    آیتم‌هایی که دیگر برای کاربر قابل‌مشاهده نیستند (حذف/محدودشده)
-    بی‌صدا کنار گذاشته می‌شوند — همان قواعد visibility فهرست عمومی.
+    همهٔ kindها برمی‌گردند و هر ردیف kind خودش را دارد تا وب ذخیره‌ها
+    را به «ویدیوها» و «درس‌ها و صوت‌ها» تفکیک کند. آیتم‌هایی که دیگر
+    برای کاربر قابل‌مشاهده نیستند (حذف/محدودشده) بی‌صدا کنار گذاشته
+    می‌شوند — همان قواعد visibility فهرست عمومی.
     """
     stmt = (
         select(UserSavedVideo.item_id)
