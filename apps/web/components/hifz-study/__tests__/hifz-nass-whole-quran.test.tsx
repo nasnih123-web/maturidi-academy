@@ -46,6 +46,13 @@ function readScroll(): string {
   ]);
 }
 
+function readFont(): string {
+  return read([
+    'apps/web/lib/quran-mushaf-font.ts',
+    'lib/quran-mushaf-font.ts',
+  ]);
+}
+
 describe('whole-Quran nass text preload (QuranHifzStudy)', () => {
   it('loads every other surah while nass mode is open, forward first then backward', () => {
     const src = readStudy();
@@ -93,6 +100,9 @@ describe('whole-Quran nass landing (HifzNassScroll)', () => {
     // through renderPageSection's optional ref instead.
     assert.match(src, /setInView\(entries\.some\(\(e\) => e\.isIntersecting\)\)/);
     assert.doesNotMatch(src, /setInView\(true\);\s*io\.disconnect\(\)/);
+    // The active page is observed too (user 2026-11-21): skipping
+    // it left Fatiha p.1 with no way back once its font was evicted.
+    assert.doesNotMatch(src, /if \(loadEagerly\) return;/);
     assert.match(src, /const observeSection = useCallback\(/);
     assert.match(src, /ioRef = useRef<IntersectionObserver \| null>\(null\)/);
     assert.match(src, /ref=\{observeSection\}/);
@@ -100,6 +110,27 @@ describe('whole-Quran nass landing (HifzNassScroll)', () => {
     assert.match(src, /sectionRef\?: \(el: HTMLElement \| null\) => void/);
     assert.match(study, /sectionRef\?: \(el: HTMLElement \| null\) => void/);
     assert.match(study, /ref=\{sectionRef\}/);
+  });
+
+  it('the active page keeps its font: pinned while active, observed like the rest', () => {
+    const src = readScroll();
+    const font = readFont();
+    // User 2026-11-21: Fatiha p.1 rendered as broken fragments in
+    // nass, and a refresh did not fix it — the preload cascade loads
+    // a dozen page fonts on opening nass, evicting the active page's
+    // font (the oldest) within seconds. Two halves: the active
+    // page's font is pinned while it is active, and the page is
+    // observed like every other page (inView starts true, so the
+    // eager load stays; leaving and re-entering view re-runs the
+    // asset effect and reloads an evicted font).
+    assert.match(src, /protectMushafFontFamily\(fontFamily\)/);
+    assert.match(src, /unprotectMushafFontFamily\(fontFamily\)/);
+    assert.match(src, /\[loadEagerly, fontFamily\]/);
+    assert.match(src, /protectMushafFontFamily,/);
+    assert.match(src, /unprotectMushafFontFamily,/);
+    assert.match(font, /export function protectMushafFontFamily\(family: string\): void/);
+    assert.match(font, /export function unprotectMushafFontFamily\(family: string\): void/);
+    assert.match(font, /if \(protectedFamilies\.has\(family\)\) continue;/);
   });
 
   it('targets the active page section in DOM order and re-scrolls after neighbour expansion', () => {
