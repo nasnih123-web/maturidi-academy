@@ -33,7 +33,7 @@ import {
   v2PageIndexFor,
   v2PageIndexForAyah,
   v2SurahPageRange,
-    v2WholeQuranPageRange,
+  v2WholeQuranPageRange,
   type V2MushafData,
   type V2MushafIndex,
   type V2Page,
@@ -862,7 +862,7 @@ describe('v2SurahPageRange (nass scroll)', () => {
 
 /* v2WholeQuranPageRange (nass scroll, whole Quran, 2026-11-21):   */
 /* the printed-page range of the whole Quran, from the index alone. */
-/* ---------------------------------------------------------------- */
+/* ------------------------------------------------------------------ */
 
 describe('v2WholeQuranPageRange (nass scroll, whole Quran)', () => {
   it('spans page 1 to page 604 regardless of the study surah', (t) => {
