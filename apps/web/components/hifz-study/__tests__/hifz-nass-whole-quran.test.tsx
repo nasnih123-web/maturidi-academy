@@ -112,20 +112,20 @@ describe('whole-Quran nass landing (HifzNassScroll)', () => {
     assert.match(study, /ref=\{sectionRef\}/);
   });
 
-  it('the active page keeps its font: pinned while active, observed like the rest', () => {
+  it('a page in view keeps its font: pinned while visible, observed like the rest', () => {
     const src = readScroll();
     const font = readFont();
     // User 2026-11-21: Fatiha p.1 rendered as broken fragments in
     // nass, and a refresh did not fix it — the preload cascade loads
-    // a dozen page fonts on opening nass, evicting the active page's
-    // font (the oldest) within seconds. Two halves: the active
-    // page's font is pinned while it is active, and the page is
-    // observed like every other page (inView starts true, so the
-    // eager load stays; leaving and re-entering view re-runs the
-    // asset effect and reloads an evicted font).
+    // a dozen page fonts on opening nass, evicting a visible page's
+    // font (the oldest) within seconds. Pinning only the active page
+    // left Baqarah p.2 broken in the same screenshot, so the pin
+    // covers every page currently in view (the active page's inView
+    // starts true). Leaving and re-entering view re-runs the asset
+    // effect and reloads an evicted font.
     assert.match(src, /protectMushafFontFamily\(fontFamily\)/);
     assert.match(src, /unprotectMushafFontFamily\(fontFamily\)/);
-    assert.match(src, /\[loadEagerly, fontFamily\]/);
+    assert.match(src, /\[inView, fontFamily\]/);
     assert.match(src, /protectMushafFontFamily,/);
     assert.match(src, /unprotectMushafFontFamily,/);
     assert.match(font, /export function protectMushafFontFamily\(family: string\): void/);
