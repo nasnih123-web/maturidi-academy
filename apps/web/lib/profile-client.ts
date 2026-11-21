@@ -22,6 +22,8 @@
 import { useEffect, useState } from 'react';
 import { authFetch, authJson, isLoggedIn } from './auth-client';
 import { COUNTRIES } from './countries';
+import type { Bookmark } from './quran-bookmarks';
+import type { LocalizedText } from './types';
 
 export interface MeProfile {
   id: string;
@@ -202,4 +204,63 @@ export function useProfileGate(required: boolean): ProfileGateState {
   }, [required]);
 
   return state;
+}
+
+// ---------------------------------------------------------------------------
+// ذخیره‌شده‌ها (تب پروفایل) — ویدیو/درس/صوت از endpoint ذخیرهٔ کتابخانه،
+// فتواها از /fatwas/saved و نشان‌های قرآن از reading-state خوانده می‌شوند.
+// ---------------------------------------------------------------------------
+
+/** آیتم ذخیره‌شدهٔ کتابخانه — همان شکل VideoItemOut؛ kind هر مقدار
+ * کتابخانه‌ای می‌تواند باشد (video|video_360|audio|pdf|mindmap). */
+export interface SavedLibraryItem {
+  id: string;
+  kind: string;
+  title: LocalizedText | null;
+  cover_url: string | null;
+  duration_seconds: number | null;
+  scholar_name: string | null;
+  published_at: string | null;
+  created_at: string;
+}
+
+export async function fetchSavedItems(): Promise<SavedLibraryItem[]> {
+  const out = await authJson<{ items: SavedLibraryItem[] }>('/api/v1/videos/saved');
+  return Array.isArray(out?.items) ? out.items : [];
+}
+
+export async function unsaveLibraryItem(id: string): Promise<void> {
+  await authJson(`/api/v1/videos/${encodeURIComponent(id)}/saved`, {
+    method: 'DELETE',
+  });
+}
+
+/** فتوای ذخیره‌شده — همان شکل ردیف فهرست عمومی فتوا (PublicTopicOut). */
+export interface SavedFatwa {
+  id: string;
+  title: LocalizedText | null;
+  description: LocalizedText | null;
+  category: { slug: string; title: LocalizedText | null } | null;
+  author_name: string | null;
+  featured_image_url: string | null;
+  published_at: string | null;
+}
+
+export async function fetchSavedFatwas(): Promise<SavedFatwa[]> {
+  const out = await authJson<{ items: SavedFatwa[] }>('/api/v1/fatwas/saved');
+  return Array.isArray(out?.items) ? out.items : [];
+}
+
+export async function unsaveFatwa(id: string): Promise<void> {
+  await authJson(`/api/v1/fatwas/${encodeURIComponent(id)}/saved`, {
+    method: 'DELETE',
+  });
+}
+
+/** نشان‌های قرآن کاربر از reading-state حساب (فقط‌خواندنی این‌جا). */
+export async function fetchQuranBookmarks(): Promise<Bookmark[]> {
+  const out = await authJson<{ bookmarks: Bookmark[] }>(
+    '/api/v1/quran/reading-state',
+  );
+  return Array.isArray(out?.bookmarks) ? out.bookmarks : [];
 }

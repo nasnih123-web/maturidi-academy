@@ -20,6 +20,7 @@ import {
   getFatwaListServer,
   formatDualHijri,
 } from '@/lib/fatwa-topics';
+import { FatwaSaveButton } from '@/components/FatwaSaveButton';
 import { FatwaShareButtons } from '@/components/FatwaShareButtons';
 import { Slider } from '@/components/Slider';
 
@@ -206,6 +207,11 @@ export default async function FatwaDetailPage({
         </div>
 
         <aside className="ftw-sidebar">
+          <FatwaSaveButton
+            fatwaId={detail.id}
+            locale={locale}
+            labels={{ save: t('save'), saved: t('saved') }}
+          />
           <FatwaShareButtons
             topicId={detail.id}
             title={detail.title}

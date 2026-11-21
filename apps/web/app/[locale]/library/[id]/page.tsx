@@ -5,6 +5,7 @@ import { getLibraryItem, formatDuration, scholarDisplay } from '@/lib/library';
 import { ApiError } from '@/lib/api';
 import { pickText } from '@/lib/localize';
 import { LibraryItemView, type LibraryItemViewLabels } from '@/components/LibraryItemView';
+import { LibrarySaveButton } from '@/components/LibrarySaveButton';
 import { LibraryAccessGate, type LibraryAccessGateLabels } from '@/components/LibraryAccessGate';
 import { LibraryCard } from '@/components/LibraryCard';
 
@@ -183,6 +184,11 @@ export default async function LibraryItemPage({
         <h1 className="page-title">{title}</h1>
         {scholarName ? <p className="lib-detail-scholar">{scholarName}</p> : null}
         {description ? <p className="lib-detail-desc">{description}</p> : null}
+        <LibrarySaveButton
+          itemId={it.id}
+          locale={locale}
+          labels={{ save: t('save'), saved: t('saved') }}
+        />
       </header>
 
       <LibraryItemView item={it} locale={locale} labels={vl} />
