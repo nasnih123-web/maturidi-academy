@@ -183,11 +183,28 @@ export function getMushafFontProvider(): MushafFontProvider {
 }
 
 /** Max font families kept loaded at once (oldest-first eviction;
-    no family is pinned — every page has its own family now). */
+    every page has its own family now). One family at a time may be
+    pinned (see protectMushafFontFamily) and is skipped by eviction. */
 export const MAX_LOADED_FAMILIES = 8;
 
 /** Families already loaded (or loading), oldest-first for eviction. */
 const loaded = new Map<string, { face: FontFace | null; promise: Promise<boolean> }>();
+
+/** Families pinned against eviction while their page is the active
+    one (the nass active page). At most one page pins at a time, so
+    the cap still bounds the cache. */
+const protectedFamilies = new Set<string>();
+
+/** Pin a font family so the eviction loop never drops it while its
+    page is the active one. Pair with unprotectMushafFontFamily. */
+export function protectMushafFontFamily(family: string): void {
+  protectedFamilies.add(family);
+}
+
+/** Release a pin set by protectMushafFontFamily. */
+export function unprotectMushafFontFamily(family: string): void {
+  protectedFamilies.delete(family);
+}
 
 function isFontReady(family: string): boolean {
   // NEVER probe with document.fonts.check(): it returns true
@@ -317,13 +334,18 @@ function ensureMushafFontWith(
     return ok;
   });
   cache.set(source.family, { face, promise });
-  // Evict oldest families past the cap. No family is pinned: with
-  // per-page fonts every page has its own family, so the oldest
-  // loaded family goes first (an evicted page's font reloads on
-  // demand when the page is shown again).
+  // Evict oldest families past the cap — except a pinned one: the
+  // active nass page's font must survive while the user is looking
+  // at it (user 2026-11-21: Fatiha's font was evicted within
+  // seconds of opening nass by the preload cascade, and the active
+  // page had no observer to reload it, so a refresh replayed the
+  // same loss). A pinned family is skipped here; when its page
+  // stops being active the pin moves and it may be evicted like
+  // any other (its observer reloads it on revisit).
   if (cache.size > MAX_LOADED_FAMILIES) {
     for (const [family, entry] of cache) {
       if (cache.size <= MAX_LOADED_FAMILIES) break;
+      if (protectedFamilies.has(family)) continue;
       try {
         if (entry.face) document.fonts.delete(entry.face);
       } catch {

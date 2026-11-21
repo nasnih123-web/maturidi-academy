@@ -29,7 +29,12 @@ import {
   type V2Page,
 } from '@/lib/quran-mushaf-v2';
 import { loadV4PageGlyphs, type V4PageGlyphs } from '@/lib/quran-mushaf-v4';
-import { ensureMushafFontFor, qcfV4Provider } from '@/lib/quran-mushaf-font';
+import {
+  ensureMushafFontFor,
+  protectMushafFontFamily,
+  qcfV4Provider,
+  unprotectMushafFontFamily,
+} from '@/lib/quran-mushaf-font';
 import { buildV2PageRender } from '@/lib/hifz-page-render';
 import { toArabicIndic } from '@/lib/quran-print-lines';
 import type {
@@ -266,7 +271,23 @@ function HifzNassScrollPage(props: HifzNassScrollPageProps) {
   const [retryTick, setRetryTick] = useState(0);
   const retryCountRef = useRef(0);
   const fontFamily = qcfV4Provider.familyForPage(page)?.family ?? null;
- 
+  
+  // A page's font is pinned while the page is in view (see
+  // protectMushafFontFamily): the preload cascade loads a dozen
+  // page fonts on opening nass, and without the pin a visible
+  // page's font — the oldest in the cache — is evicted within
+  // seconds, before the user even scrolls (user 2026-11-21: Fatiha
+  // p.1, and Baqarah p.2 in the same screenshot — pinning only the
+  // active page left the next visible page broken). The active page
+  // is covered too: its inView starts true. When a page leaves
+  // view, the pin is released and its font may be evicted; its
+  // observer reloads it on re-entry.
+  useEffect(() => {
+    if (!inView || !fontFamily) return;
+    protectMushafFontFamily(fontFamily);
+    return () => unprotectMushafFontFamily(fontFamily);
+  }, [inView, fontFamily]);
+  
   // The section observer (lazy load + eviction recovery): attached
   // to the section itself — placeholder AND settled — via a callback
   // ref, so it survives the placeholder-to-settled swap (a plain
@@ -279,7 +300,11 @@ function HifzNassScrollPage(props: HifzNassScrollPageProps) {
   // the fallback font (wrong shapes) with a stale fontLoaded=true
   // — the whole-Quran scroll (user 2026-11-21) loads dozens of page
   // fonts, so eviction is the norm, not the exception. The active
-  // page loads eagerly and needs no observer. No IntersectionObserver
+  // page is observed too: it loads eagerly (inView starts true) but
+  // its font is the oldest in the cache, so the preload cascade
+  // evicts it within seconds of opening nass — with no observer it
+  // could never come back, and a refresh replayed the same loss
+  // (user 2026-11-21, Fatiha p.1). No IntersectionObserver
   // (old browsers, SSR) means load at once — never a stuck blank page.
   const ioRef = useRef<IntersectionObserver | null>(null);
   const observeSection = useCallback(
@@ -289,7 +314,6 @@ function HifzNassScrollPage(props: HifzNassScrollPageProps) {
         ioRef.current = null;
       }
       if (!el) return;
-      if (loadEagerly) return;
       if (typeof IntersectionObserver === 'undefined') {
         setInView(true);
         return;
@@ -303,7 +327,7 @@ function HifzNassScrollPage(props: HifzNassScrollPageProps) {
       io.observe(el);
       ioRef.current = io;
     },
-    [loadEagerly],
+    [],
   );
 
   // One page's assets, with the same retry rule as flip mode: a slow
