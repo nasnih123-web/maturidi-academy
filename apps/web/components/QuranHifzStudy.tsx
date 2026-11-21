@@ -1338,7 +1338,7 @@ export function QuranHifzStudy({
     };
   }, [displayMode, surah, activeTranslationEditions, translationsByKey]);
 
-    // Pending «« cross-surah advance (whole Quran): after the
+  // Pending «« cross-surah advance (whole Quran): after the
   // button navigates to the next surah's first ayah, the words of
   // that ayah are revealed by the effect below once its texts
   // arrive. Cleared if the user navigates elsewhere first.
@@ -4143,7 +4143,7 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
             labels.loadingPage
           )}
         </div>
-        )}
+      )}
 
       {/* Recitation toolbar (user design, 2026-11-10): the old
           Tarteel bottom bar is replaced by the user's green
