@@ -4144,9 +4144,8 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
           )}
         </div>
         )}
-    
 
-            {/* Recitation toolbar (user design, 2026-11-10): the old
+      {/* Recitation toolbar (user design, 2026-11-10): the old
           Tarteel bottom bar is replaced by the user's green
           toolbar, EXACTLY as designed — dir="ltr" so the visual
           order matches the user's screenshot (chevrons + pill
