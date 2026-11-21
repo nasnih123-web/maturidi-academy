@@ -2219,7 +2219,7 @@ export function QuranHifzStudy({
     if (peekTarget.ayah !== ayah) setAyah(peekTarget.ayah);
     await revealWords(peekTarget.ayah, [peekTarget.index], 'word');
   }, [peekTarget, revealWords, ayah]);
-  
+
   // Reveal the rest of the next ayah with unwritten words: from
   // the next unwritten word to the end of that same ayah. When
   // nothing is left unwritten to the end of this surah, advance to
