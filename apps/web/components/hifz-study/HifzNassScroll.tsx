@@ -271,7 +271,7 @@ function HifzNassScrollPage(props: HifzNassScrollPageProps) {
   const [retryTick, setRetryTick] = useState(0);
   const retryCountRef = useRef(0);
   const fontFamily = qcfV4Provider.familyForPage(page)?.family ?? null;
-
+  
   // The active page's font is pinned while the page is active (see
   // protectMushafFontFamily): the preload cascade loads a dozen
   // page fonts on opening nass, and without the pin the active
@@ -284,7 +284,7 @@ function HifzNassScrollPage(props: HifzNassScrollPageProps) {
     protectMushafFontFamily(fontFamily);
     return () => unprotectMushafFontFamily(fontFamily);
   }, [loadEagerly, fontFamily]);
- 
+  
   // The section observer (lazy load + eviction recovery): attached
   // to the section itself — placeholder AND settled — via a callback
   // ref, so it survives the placeholder-to-settled swap (a plain
