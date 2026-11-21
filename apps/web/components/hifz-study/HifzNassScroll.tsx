@@ -1,12 +1,12 @@
 /**
  * HifzNassScroll: the nass display mode as scrolling mushaf pages
  * (2026-11-16, user order; whole Quran 2026-11-21). One full page
-  * section per printed page of the whole Quran — surah-header frame,
-   * Basmalah as the SVG glyph, coloured V4 glyph words, page footer —
-    * in one continuous scroll, no page-flipping. Eye conceal, peek,
-     * grading and tap-to-practice come free through the passed
-      * renderPageSection/renderLineWord.*
-       *
+ * section per printed page of the whole Quran — surah-header frame,
+ * Basmalah as the SVG glyph, coloured V4 glyph words, page footer —
+ * in one continuous scroll, no page-flipping. Eye conceal, peek,
+ * grading and tap-to-practice come free through the passed
+ * renderPageSection/renderLineWord.
+ *
  * Each page section owns its loading state (its V2 chunk, its V4
  * glyph map, its per-page font) with lazy loading as it nears the
  * viewport (IntersectionObserver) + neighbour preload. A section
@@ -61,7 +61,7 @@ export type HifzNassScrollProps = {
     lines: RenderLine[],
     key: string,
     font?: HifzV4PageFont,
-        sectionRef?: (el: HTMLElement | null) => void,
+    sectionRef?: (el: HTMLElement | null) => void,
   ) => ReactNode;
 };
 
@@ -102,97 +102,97 @@ export function HifzNassScroll(props: HifzNassScrollProps) {
     for (let p = startPage; p <= lastPage; p += 1) out.push(p);
     return out;
   }, [startPage, lastPage]);
-    const rootRef = useRef<HTMLDivElement | null>(null);
-    // Land on the active page (user 2026-11-21, whole-Quran nass):
-    // the scroll spans 604 pages, so opening it must land on the
-    // selected ayah's page, not page 1. Scrolls once per surah — on
-    // mount and when the study surah changes (a cross-surah ««
-    // advance lands on the new surah's page too); in-mode «« taps
-    // within the same surah never move the view. The scroll runs on
-    // mount, again after 800ms, and then polls until the neighbouring
-    // pages settle: the page above the active one loads and expands
-    // after landing, pushing the active page down — a single delayed
-    // scroll lands two pages early when the font is slow (proven by
-    // the harness: Baqarah 100 landed on p13, not p15). A manual
-    // wheel, touch or scroll key stops all further correction.
-    const lastScrolledSurahRef = useRef<number | null>(null);
-    const userScrolledRef = useRef(false);
-    useEffect(() => {
-          const stop = () => {
-                  userScrolledRef.current = true;
-          };
-          const stopOnKey = (e: KeyboardEvent) => {
-                  if (
-                            e.key === 'ArrowDown' ||
-                            e.key === 'ArrowUp' ||
-                            e.key === 'PageDown' ||
-                            e.key === 'PageUp' ||
-                            e.key === 'Home' ||
-                            e.key === 'End' ||
-                            e.key === ' '
-                          ) {
-                            userScrolledRef.current = true;
-                  }
-          };
-          window.addEventListener('wheel', stop, { passive: true });
-          window.addEventListener('touchstart', stop, { passive: true });
-          window.addEventListener('keydown', stopOnKey);
-          return () => {
-                  window.removeEventListener('wheel', stop);
-                  window.removeEventListener('touchstart', stop);
-                  window.removeEventListener('keydown', stopOnKey);
-          };
-    }, []);
-    useEffect(() => {
-          if (pages === null || activePageIndex === null) return;
-          if (lastScrolledSurahRef.current === surah) return;
-          lastScrolledSurahRef.current = surah;
-          const scrollToActive = () => {
-                  const el = rootRef.current;
-                  if (!el) return;
-                  const sections = el.querySelectorAll(':scope > section.hifz-line-page');
-                  const target = sections[activePageIndex - (pages[0] ?? 0)];
-                  target?.scrollIntoView({ behavior: 'auto', block: 'start' });
-          };
-          // Settled = the active page and the one above it both have their
-          // final height: they render words (glyph or text), or the failed
-          // note (a failed page never expands either). A placeholder has
-          // neither, so while either is a placeholder its final height is
-          // unknown and the scroll would land early.
-          const sectionSettled = (section: Element | undefined) => {
-                  if (!section) return true; // no previous page (first page)
-                  return (
-                            section.querySelectorAll('.hifz-line-word').length > 0 ||
-                            section.querySelector('.hifz-line-failed-note') !== null
-                          );
-          };
-          const neighboursSettled = () => {
-                  const el = rootRef.current;
-                  if (!el) return false;
-                  const sections = el.querySelectorAll(':scope > section.hifz-line-page');
-                  const idx = activePageIndex - (pages[0] ?? 0);
-                  const active = sections[idx];
-                  if (!active) return false;
-                  return sectionSettled(active) && sectionSettled(sections[idx - 1]);
-          };
-          scrollToActive();
-          const timer = window.setTimeout(scrollToActive, 800);
-          const startedAt = Date.now();
-          const poll = window.setInterval(() => {
-                  if (userScrolledRef.current || Date.now() - startedAt > 15000) {
-                            window.clearInterval(poll);
-                            return;
-                  }
-                  if (neighboursSettled()) {
-                            scrollToActive();
-                            window.clearInterval(poll);
-                  }
-          }, 400);
-          return () => {
-                  window.clearTimeout(timer);
-                  window.clearInterval(poll);
-          };
-    }, [pages, surah, activePageIndex]);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  // Land on the active page (user 2026-11-21, whole-Quran nass):
+  // the scroll spans 604 pages, so opening it must land on the
+  // selected ayah's page, not page 1. Scrolls once per surah — on
+  // mount and when the study surah changes (a cross-surah ««
+  // advance lands on the new surah's page too); in-mode «« taps
+  // within the same surah never move the view. The scroll runs on
+  // mount, again after 800ms, and then polls until the neighbouring
+  // pages settle: the page above the active one loads and expands
+  // after landing, pushing the active page down — a single delayed
+  // scroll lands two pages early when the font is slow (proven by
+  // the harness: Baqarah 100 landed on p13, not p15). A manual
+  // wheel, touch or scroll key stops all further correction.
+  const lastScrolledSurahRef = useRef<number | null>(null);
+  const userScrolledRef = useRef(false);
+  useEffect(() => {
+    const stop = () => {
+      userScrolledRef.current = true;
+    };
+    const stopOnKey = (e: KeyboardEvent) => {
+      if (
+        e.key === 'ArrowDown' ||
+        e.key === 'ArrowUp' ||
+        e.key === 'PageDown' ||
+        e.key === 'PageUp' ||
+        e.key === 'Home' ||
+        e.key === 'End' ||
+        e.key === ' '
+      ) {
+        userScrolledRef.current = true;
+      }
+    };
+    window.addEventListener('wheel', stop, { passive: true });
+    window.addEventListener('touchstart', stop, { passive: true });
+    window.addEventListener('keydown', stopOnKey);
+    return () => {
+      window.removeEventListener('wheel', stop);
+      window.removeEventListener('touchstart', stop);
+      window.removeEventListener('keydown', stopOnKey);
+    };
+  }, []);
+  useEffect(() => {
+    if (pages === null || activePageIndex === null) return;
+    if (lastScrolledSurahRef.current === surah) return;
+    lastScrolledSurahRef.current = surah;
+    const scrollToActive = () => {
+      const el = rootRef.current;
+      if (!el) return;
+      const sections = el.querySelectorAll(':scope > section.hifz-line-page');
+      const target = sections[activePageIndex - (pages[0] ?? 0)];
+      target?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    };
+    // Settled = the active page and the one above it both have their
+    // final height: they render words (glyph or text), or the failed
+    // note (a failed page never expands either). A placeholder has
+    // neither, so while either is a placeholder its final height is
+    // unknown and the scroll would land early.
+    const sectionSettled = (section: Element | undefined) => {
+      if (!section) return true; // no previous page (first page)
+      return (
+        section.querySelectorAll('.hifz-line-word').length > 0 ||
+        section.querySelector('.hifz-line-failed-note') !== null
+      );
+    };
+    const neighboursSettled = () => {
+      const el = rootRef.current;
+      if (!el) return false;
+      const sections = el.querySelectorAll(':scope > section.hifz-line-page');
+      const idx = activePageIndex - (pages[0] ?? 0);
+      const active = sections[idx];
+      if (!active) return false;
+      return sectionSettled(active) && sectionSettled(sections[idx - 1]);
+    };
+    scrollToActive();
+    const timer = window.setTimeout(scrollToActive, 800);
+    const startedAt = Date.now();
+    const poll = window.setInterval(() => {
+      if (userScrolledRef.current || Date.now() - startedAt > 15000) {
+        window.clearInterval(poll);
+        return;
+      }
+      if (neighboursSettled()) {
+        scrollToActive();
+        window.clearInterval(poll);
+      }
+    }, 400);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(poll);
+    };
+  }, [pages, surah, activePageIndex]);
   if (pages === null) {
     return (
       <div className="hifz-nass hifz-nass-scroll" dir="rtl" aria-label={ariaLabel}>
@@ -201,12 +201,12 @@ export function HifzNassScroll(props: HifzNassScrollProps) {
     );
   }
   return (
-        <div
-                ref={rootRef}
-                className="hifz-nass hifz-nass-scroll"
-                dir="rtl"
-                aria-label={ariaLabel}
-              >
+    <div
+      ref={rootRef}
+      className="hifz-nass hifz-nass-scroll"
+      dir="rtl"
+      aria-label={ariaLabel}
+    >
       {pages.map((pIdx) => (
         <HifzNassScrollPage
           key={pIdx}
@@ -242,7 +242,7 @@ type HifzNassScrollPageProps = {
     lines: RenderLine[],
     key: string,
     font?: HifzV4PageFont,
-        sectionRef?: (el: HTMLElement | null) => void,
+    sectionRef?: (el: HTMLElement | null) => void,
   ) => ReactNode;
 };
 
@@ -268,43 +268,43 @@ function HifzNassScrollPage(props: HifzNassScrollPageProps) {
   const fontFamily = qcfV4Provider.familyForPage(page)?.family ?? null;
  
   // The section observer (lazy load + eviction recovery): attached
-    // to the section itself — placeholder AND settled — via a callback
-    // ref, so it survives the placeholder-to-settled swap (a plain
-    // ref on the placeholder is lost when the settled section mounts,
-    // and the observer would never fire again). The observer stays
-    // alive and toggles inView both ways: when the section leaves the
-    // margin and comes back, the asset effect below re-runs and
-    // reloads the page font if the 8-family cap evicted it meanwhile.
-    // Without this, a revisited page keeps rendering its glyphs in
-    // the fallback font (wrong shapes) with a stale fontLoaded=true
-    // — the whole-Quran scroll (user 2026-11-21) loads dozens of page
-    // fonts, so eviction is the norm, not the exception. The active
-    // page loads eagerly and needs no observer. No IntersectionObserver
-    // (old browsers, SSR) means load at once — never a stuck blank page.
-    const ioRef = useRef<IntersectionObserver | null>(null);
-    const observeSection = useCallback(
-          (el: HTMLElement | null) => {
-                  if (ioRef.current) {
-                            ioRef.current.disconnect();
-                            ioRef.current = null;
-                  }
-                  if (!el) return;
-                  if (loadEagerly) return;
-                  if (typeof IntersectionObserver === 'undefined') {
-                            setInView(true);
-                            return;
-                  }
-                  const io = new IntersectionObserver(
-                            (entries) => {
-                                        setInView(entries.some((e) => e.isIntersecting));
-                            },
-                    { rootMargin: '600px 0px' },
-                          );
-                  io.observe(el);
-                  ioRef.current = io;
-          },
-          [loadEagerly],
-        );
+  // to the section itself — placeholder AND settled — via a callback
+  // ref, so it survives the placeholder-to-settled swap (a plain
+  // ref on the placeholder is lost when the settled section mounts,
+  // and the observer would never fire again). The observer stays
+  // alive and toggles inView both ways: when the section leaves the
+  // margin and comes back, the asset effect below re-runs and
+  // reloads the page font if the 8-family cap evicted it meanwhile.
+  // Without this, a revisited page keeps rendering its glyphs in
+  // the fallback font (wrong shapes) with a stale fontLoaded=true
+  // — the whole-Quran scroll (user 2026-11-21) loads dozens of page
+  // fonts, so eviction is the norm, not the exception. The active
+  // page loads eagerly and needs no observer. No IntersectionObserver
+  // (old browsers, SSR) means load at once — never a stuck blank page.
+  const ioRef = useRef<IntersectionObserver | null>(null);
+  const observeSection = useCallback(
+    (el: HTMLElement | null) => {
+      if (ioRef.current) {
+        ioRef.current.disconnect();
+        ioRef.current = null;
+      }
+      if (!el) return;
+      if (loadEagerly) return;
+      if (typeof IntersectionObserver === 'undefined') {
+        setInView(true);
+        return;
+      }
+      const io = new IntersectionObserver(
+        (entries) => {
+          setInView(entries.some((e) => e.isIntersecting));
+        },
+        { rootMargin: '600px 0px' },
+      );
+      io.observe(el);
+      ioRef.current = io;
+    },
+    [loadEagerly],
+  );
 
   // One page's assets, with the same retry rule as flip mode: a slow
   // glyph map or font is retried while the section is on screen, so
@@ -416,17 +416,17 @@ function HifzNassScrollPage(props: HifzNassScrollPageProps) {
   }
   // Settled (glyphs and font loaded, or failed after retries): the
   // real section in this page's own font family. A failed font or
-    // map renders Tanzil text through the same code path as flip mode.
-    // The observer ref rides along so the section stays observed
-    // after settling (see observeSection above).
-    return renderPageSection(
-          page - 1,
-          render.renderLines,
-          `nass-scroll-p${page}`,
-      {
-              loaded: fontLoaded,
-              family: fontFamily,
-      },
-          observeSection,
-        );
+  // map renders Tanzil text through the same code path as flip mode.
+  // The observer ref rides along so the section stays observed
+  // after settling (see observeSection above).
+  return renderPageSection(
+    page - 1,
+    render.renderLines,
+    `nass-scroll-p${page}`,
+    {
+      loaded: fontLoaded,
+      family: fontFamily,
+    },
+    observeSection,
+  );
 }
