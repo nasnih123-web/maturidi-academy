@@ -19,7 +19,9 @@ import assert from 'node:assert/strict';
 import {
   ensureMushafFontFor,
   loadedMushafV4FontCount,
+  protectMushafFontFamily,
   qcfV4Provider,
+  unprotectMushafFontFamily,
 } from '../quran-mushaf-font';
 
 /** Minimal FontFace stub: load() resolves only when the test says so. */
@@ -121,6 +123,50 @@ describe('ensureMushafFontFor: a timed-out load does not stick', () => {
       faces[1].succeed();
       assert.equal(await secondPending, true);
     } finally {
+      restore();
+    }
+  });
+});
+
+describe('protectMushafFontFamily: the active page font survives the cap', () => {
+  it('a pinned family is skipped by eviction and may be evicted once released', async () => {
+    const restore = installStubs();
+    try {
+      const load = async (page: number) => {
+        const pending = ensureMushafFontFor(qcfV4Provider, page, 1000);
+        const family = `QCF4${String(page).padStart(3, '0')}_COLOR`;
+        const face = FakeFontFace.instances.find((f) => f.family === family);
+        assert.ok(face, `one FontFace was created for p${page}`);
+        face.succeed();
+        assert.equal(await pending, true);
+      };
+      const countFor = (family: string) =>
+        FakeFontFace.instances.filter((f) => f.family === family).length;
+      // Page 590 is the "active" page: pin it, then load eight more
+      // families past the 8-family cap.
+      await load(590);
+      protectMushafFontFamily('QCF4590_COLOR');
+      for (const p of [591, 592, 593, 594, 595, 596, 597, 598]) await load(p);
+      assert.equal(loadedMushafV4FontCount(), 8);
+      // The pinned family survived: no fresh FontFace on re-ensure.
+      const again590 = ensureMushafFontFor(qcfV4Provider, 590, 1000);
+      assert.equal(countFor('QCF4590_COLOR'), 1, 'the pinned family was not evicted');
+      assert.equal(await again590, true);
+      // The oldest UNPROTECTED family (591) was evicted instead.
+      const again591 = ensureMushafFontFor(qcfV4Provider, 591, 1000);
+      assert.equal(countFor('QCF4591_COLOR'), 2, 'the oldest unprotected family was evicted');
+      FakeFontFace.instances.filter((f) => f.family === 'QCF4591_COLOR')[1].succeed();
+      assert.equal(await again591, true);
+      // Once released, the old pin is evicted like any other.
+      unprotectMushafFontFamily('QCF4590_COLOR');
+      await load(599);
+      assert.equal(loadedMushafV4FontCount(), 8);
+      const after599 = ensureMushafFontFor(qcfV4Provider, 590, 1000);
+      assert.equal(countFor('QCF4590_COLOR'), 2, 'the released family was evicted next');
+      FakeFontFace.instances.filter((f) => f.family === 'QCF4590_COLOR')[1].succeed();
+      assert.equal(await after599, true);
+    } finally {
+      unprotectMushafFontFamily('QCF4590_COLOR');
       restore();
     }
   });
