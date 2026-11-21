@@ -510,7 +510,7 @@ describe('Fixed hifz study page + sign-in toast (user 2026-11-10)', () => {
     assert.match(study, /if \(studyMode === 'practice' && !authed\) \{\s*showSignInToast\(\);/);
   });
 
-  it('globals.css locks the page fixed in mushaf mode on mobile, with a scrollable wall fallback', () => {
+  it('globals.css locks the page fixed in mushaf mode on mobile, always (wall removed 2026-11-21)', () => {
     const css = readCss();
     // The study root itself is fixed to the viewport (the lock):
     // the document then has no scrollable overflow at all.
@@ -542,11 +542,14 @@ describe('Fixed hifz study page + sign-in toast (user 2026-11-10)', () => {
     // Setup panel: fixed overlay with its own scroll, top below the
     // header so the hamburger stays visible to close it.
     assert.match(css, /\.hifz-setup\.is-open \{\s*position: fixed;\s*top: 57px;/);
-    // The wall state switches the lock + the page pin off: the root
-    // carries hifz-has-wall exactly when the wall section renders.
+    // The wall is gone (user 2026-11-21): the root never carries
+    // hifz-has-wall, so the lock + the page pin always apply. The
+    // :not(.hifz-has-wall) selectors above stay as the lock's
+    // shape — the class simply never occurs now.
     const study = readStudy();
-    assert.match(study, /wallVisible \? ' hifz-has-wall' : ''/);
-    assert.match(study, /const wallVisible =\s*displayMode === 'mushaf' &&/);
+    assert.doesNotMatch(study, /hifz-has-wall/);
+    assert.doesNotMatch(study, /wallVisible/);
+    assert.doesNotMatch(study, /hifz-wall/);
   });
 
   it('nass mode wraps inside the viewport + the persisted display mode never mismatches SSR (regression 2026-11-11)', () => {
