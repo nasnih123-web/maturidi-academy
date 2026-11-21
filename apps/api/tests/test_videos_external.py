@@ -12,8 +12,13 @@
 - قاعدهٔ «فایل برنده است»: آپلود فایل روی آیتم خارجی، لینک را پاک می‌کند
 - payload فهرست/تماشا: embed_url + stream_url=null + کاور بندانگشتی یوتیوب
 - پیشرفت پخش روی آیتم خارجی: PUT → 422 external_video؛ GET → ۲۰۰ با nullها
+- آپارات: تجزیه‌گر هش (watch/امبد/ردشده‌ها)، کانونیک‌سازی فرم امبد،
+  عنوان+کاور از og (مانکی‌پچ؛ عنوان در هر سه زبان، کاور دانلود و ذخیره
+  می‌شود)، نبود فراداده و عنوان دستی → 422 title_required، رد برای
+  kind غیر ویدیویی، payload فهرست/تماشا با embed آپارات و بدون کاور
+  ساختگی
 
-همهٔ تست‌ها آفلاین‌اند (oEmbed مانکی‌پچ می‌شود).
+همهٔ تست‌ها آفلاین‌اند (oEmbed و فرادادهٔ آپارات مانکی‌پچ می‌شوند).
 """
 from __future__ import annotations
 
@@ -499,4 +504,299 @@ async def test_direct_file_watch_and_list_payloads(tc):
     assert body["stream_url"] == FILE_URL
     assert body["item"]["external_url"] == FILE_URL
     assert body["item"]["embed_url"] is None
+    assert body["subtitles"] == []
+
+
+# ---------------------------------------------------------------------------
+# آپارات (امبد خارجی — مثل یوتیوب: پخش با iframe منبع، بدون فایل)
+# ---------------------------------------------------------------------------
+
+APARAT_HASH = "cpuac8h"
+APARAT_WATCH_URL = f"https://www.aparat.com/v/{APARAT_HASH}"
+APARAT_EMBED_URL = (
+    "https://www.aparat.com/video/video/embed/videohash/"
+    f"{APARAT_HASH}/vt/frame"
+)
+APARAT_COVER_URL = "https://static.aparat.com/img/thumb-aparat-test.jpg"
+JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"\x00" * 32
+
+
+def _patch_aparat_meta(monkeypatch, meta=(None, None), cover_bytes=None):
+    """فراداده/کاور آپارات مانکی‌پچ می‌شود تا تست‌ها آفلاین بمانند."""
+    from app.modules.videos import aparat
+
+    async def fake_meta(url: str):
+        assert url == APARAT_WATCH_URL
+        return meta
+
+    async def fake_cover(url: str):
+        assert url == APARAT_COVER_URL
+        return cover_bytes
+
+    monkeypatch.setattr(aparat, "fetch_aparat_meta", fake_meta)
+    monkeypatch.setattr(aparat, "fetch_cover_bytes", fake_cover)
+
+
+def test_aparat_parser_accepts_watch_and_embed_forms():
+    from app.modules.videos.aparat import parse_aparat_video_hash
+
+    accepted = [
+        f"https://www.aparat.com/v/{APARAT_HASH}",
+        f"https://aparat.com/v/{APARAT_HASH}",
+        f"http://www.aparat.com/v/{APARAT_HASH}",
+        f"https://www.aparat.com/v/{APARAT_HASH}?ref=share",
+        APARAT_EMBED_URL,
+    ]
+    for url in accepted:
+        assert parse_aparat_video_hash(url) == APARAT_HASH, url
+
+
+def test_aparat_parser_rejects_junk_and_wrong_hosts():
+    from app.modules.videos.aparat import parse_aparat_video_hash
+
+    rejected = [
+        None,
+        "",
+        "not a url",
+        f"https://vimeo.com/v/{APARAT_HASH}",
+        f"https://www.aparat.com.evil.com/v/{APARAT_HASH}",
+        f"https://evil-aparat.com/v/{APARAT_HASH}",
+        f"ftp://www.aparat.com/v/{APARAT_HASH}",
+        "https://www.aparat.com/v/",
+        "https://www.aparat.com/v/ab1",  # کوتاه‌تر از ۴ نویسه
+        "https://www.aparat.com/v/abcdefghijklm",  # بلندتر از ۱۲ نویسه
+        "https://www.aparat.com/v/cpu-ac8h",  # خط تیره در هش مجاز نیست
+        "https://www.aparat.com/v/cpu_ac8h",  # آندرلاین هم مجاز نیست
+        f"https://www.aparat.com/v/{APARAT_HASH}/extra",
+        "https://www.aparat.com/video/video/embed/videohash/",
+        f"https://www.aparat.com/embed/videohash/{APARAT_HASH}/vt/frame",
+    ]
+    for url in rejected:
+        assert parse_aparat_video_hash(url) is None, url
+
+
+def test_aparat_derived_urls():
+    from app.modules.videos.aparat import canonical_watch_url, embed_url
+
+    assert canonical_watch_url(APARAT_HASH) == APARAT_WATCH_URL
+    assert embed_url(APARAT_HASH) == APARAT_EMBED_URL
+
+
+def test_aparat_og_parsing_both_attribute_orders_and_entities():
+    from app.modules.videos.aparat import _og_content
+
+    page_a = (
+        '<meta property="og:title" content="عنوان &amp; تست" />'
+        '<meta property="og:image" content="https://static.aparat.com/a.jpg" />'
+    )
+    page_b = (
+        '<meta content="عنوان دوم" property="og:title" />'
+        '<meta content="https://static.aparat.com/b.jpg" property="og:image" />'
+    )
+    assert _og_content(page_a, "og:title") == "عنوان & تست"
+    assert _og_content(page_a, "og:image") == "https://static.aparat.com/a.jpg"
+    assert _og_content(page_b, "og:title") == "عنوان دوم"
+    assert _og_content(page_b, "og:image") == "https://static.aparat.com/b.jpg"
+    assert _og_content(page_a, "og:video") is None
+    assert _og_content("", "og:title") is None
+
+
+async def test_aparat_fetch_meta_with_fake_client(monkeypatch):
+    from app.modules.videos import aparat
+
+    class _Resp:
+        status_code = 200
+        text = (
+            '<meta property="og:title" content="سخنرانی آپارات" />'
+            '<meta property="og:image" '
+            'content="https://static.aparat.com/c.jpg" />'
+        )
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url):
+            return _Resp()
+
+    monkeypatch.setattr(aparat, "_make_client", lambda: _Client())
+    title, cover = await aparat.fetch_aparat_meta(APARAT_WATCH_URL)
+    assert title == "سخنرانی آپارات"
+    assert cover == "https://static.aparat.com/c.jpg"
+
+    class _BoomClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url):
+            raise RuntimeError("network down")
+
+    monkeypatch.setattr(aparat, "_make_client", lambda: _BoomClient())
+    # هر خطا (None, None) است — هرگز raise نمی‌کند، هرگز مقدار نمی‌سازد
+    assert await aparat.fetch_aparat_meta(APARAT_WATCH_URL) == (None, None)
+
+
+async def test_create_aparat_video_canonicalizes_embed_url(tc, monkeypatch):
+    from app.models.models import LibraryItem
+
+    _patch_aparat_meta(monkeypatch)
+    client = tc["client"]
+    admin = await _admin(tc)
+    r = await _create_link(
+        client, admin, _meta("video", external_url=APARAT_EMBED_URL)
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    # فرم امبد چسبانده‌شده به URL کانونیک watch تبدیل و ذخیره می‌شود
+    assert body["external_url"] == APARAT_WATCH_URL
+    assert body["media_url"] is None
+    assert body["file_size_bytes"] is None
+    async with tc["maker"]() as db:
+        item = await db.get(LibraryItem, uuid.UUID(body["id"]))
+        assert item is not None
+        assert item.media_key is None
+        assert item.external_url == APARAT_WATCH_URL
+
+
+async def test_create_aparat_rejected_for_non_video_kind(tc):
+    client = tc["client"]
+    admin = await _admin(tc)
+    r = await _create_link(
+        client, admin, _meta("pdf", external_url=APARAT_WATCH_URL)
+    )
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "external_url_not_allowed"
+
+
+async def test_create_aparat_title_and_cover_from_meta(tc, monkeypatch):
+    from app.models.models import LibraryItem
+
+    _patch_aparat_meta(
+        monkeypatch,
+        meta=("سخنرانی تست آپارات", APARAT_COVER_URL),
+        cover_bytes=JPEG_BYTES,
+    )
+    client = tc["client"]
+    admin = await _admin(tc)
+    meta = _meta("video", external_url=APARAT_WATCH_URL)
+    del meta["title"]
+    r = await _create_link(client, admin, meta)
+    assert r.status_code == 201, r.text
+    body = r.json()
+    # عنوان og عیناً در هر سه زبان می‌نشیند (همان الگوی oEmbed یوتیوب)
+    assert body["title"] == {
+        "fa": "سخنرانی تست آپارات",
+        "ar": "سخنرانی تست آپارات",
+        "en": "سخنرانی تست آپارات",
+    }
+    # کاور og دانلود و مثل کاور آپلودی ذخیره شده است
+    assert body["cover_url"] is not None
+    async with tc["maker"]() as db:
+        item = await db.get(LibraryItem, uuid.UUID(body["id"]))
+        assert item is not None
+        assert item.cover_media_key is not None
+        assert item.cover_media_key.startswith("library/covers/")
+        assert item.cover_media_key.endswith(".jpg")
+
+
+async def test_create_aparat_meta_failure_requires_title(tc, monkeypatch):
+    _patch_aparat_meta(monkeypatch, meta=(None, None))
+    client = tc["client"]
+    admin = await _admin(tc)
+    meta = _meta("video", external_url=APARAT_WATCH_URL)
+    del meta["title"]
+    r = await _create_link(client, admin, meta)
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "title_required"
+
+
+async def test_create_aparat_manual_title_wins_over_meta(tc, monkeypatch):
+    from app.models.models import LibraryItem
+
+    _patch_aparat_meta(monkeypatch, meta=("عنوان واکشی‌شده", None))
+    client = tc["client"]
+    admin = await _admin(tc)
+    r = await _create_link(
+        client, admin, _meta("video", external_url=APARAT_WATCH_URL)
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["title"] == _L("آیتم تست video")
+    async with tc["maker"]() as db:
+        item = await db.get(LibraryItem, uuid.UUID(body["id"]))
+        assert item is not None
+        # og کاور نداشت → کاوری ذخیره نشده و fallback هم ساخته نمی‌شود
+        assert item.cover_media_key is None
+
+
+async def test_create_aparat_with_title_and_cover_skips_meta(
+    tc, monkeypatch
+):
+    from app.modules.videos import aparat
+
+    async def forbidden_meta(url: str):
+        raise AssertionError("با عنوان و کاور دستی، فراداده نباید واکشی شود")
+
+    monkeypatch.setattr(aparat, "fetch_aparat_meta", forbidden_meta)
+    client = tc["client"]
+    admin = await _admin(tc)
+    r = await client.post(
+        f"{BASE}/admin/library/items",
+        data={
+            "metadata": json.dumps(
+                _meta("video", external_url=APARAT_WATCH_URL)
+            )
+        },
+        files={"cover": ("cover.jpg", JPEG_BYTES, "image/jpeg")},
+        headers=admin,
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["external_url"] == APARAT_WATCH_URL
+    assert r.json()["cover_url"] is not None
+
+
+async def test_update_external_url_to_aparat(tc, monkeypatch):
+    _patch_aparat_meta(monkeypatch)
+    client = tc["client"]
+    admin = await _admin(tc)
+    r = await _create_link(client, admin, _meta("video", external_url=WATCH_URL))
+    assert r.status_code == 201, r.text
+    item_id = r.json()["id"]
+
+    r = await client.put(
+        f"{BASE}/admin/library/items/{item_id}",
+        data={"metadata": json.dumps({"external_url": APARAT_EMBED_URL})},
+        headers=admin,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["external_url"] == APARAT_WATCH_URL
+
+
+async def test_aparat_watch_and_list_payloads(tc):
+    client = tc["client"]
+    item_id = await _make_external_item(tc, external_url=APARAT_WATCH_URL)
+
+    r = await client.get(f"{BASE}/videos")
+    assert r.status_code == 200, r.text
+    found = [i for i in r.json()["items"] if i["id"] == item_id]
+    assert len(found) == 1
+    entry = found[0]
+    assert entry["external_url"] == APARAT_WATCH_URL
+    assert entry["embed_url"] == APARAT_EMBED_URL
+    # آپارات بندانگشتیِ قطعی ندارد — بدون کاور ذخیره‌شده، کاور None است
+    assert entry["cover_url"] is None
+
+    r = await client.get(f"{BASE}/videos/{item_id}")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # پخش فقط از امبد است: stream_url خالی و زیرنویس ندارد
+    assert body["stream_url"] is None
+    assert body["item"]["external_url"] == APARAT_WATCH_URL
+    assert body["item"]["embed_url"] == APARAT_EMBED_URL
     assert body["subtitles"] == []
