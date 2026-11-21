@@ -41,6 +41,11 @@
  * not here. These tests lock the wiring the harness cannot
  * cheaply re-derive.
  *
+ * Wall removal (user 2026-11-21, confirmed 10:37): after PR #178
+ * merged, the wall itself was removed — no large-text written
+ * ayahs below the page in any display mode. The last test below
+ * locks its absence; the page-turn wiring above stays.
+ *
  * Run via the documented web-test harness (tsc to /tmp + node --test)
  * with cwd = repo root.
  */
@@ -120,11 +125,11 @@ describe('Hifz « single-word page-turn fix (user 2026-11-21)', () => {
     assert.doesNotMatch(body, /setRevealedWords/);
   });
 
-  it('a revealed word placed on the turned page leaves the wall by itself (wall shows only unplaced ayahs)', () => {
+  it('the wall is gone (user 2026-11-21): no hifz-wall section, no unplacedGroups, no wallVisible', () => {
     const study = readStudy();
-    assert.match(
-      study,
-      /const unplacedGroups = useMemo\(\s*\n\s*\(\) => wallAyahs\.filter\(\(g\) => !placedAyahs\.has\(g\.ayah\)\),/,
-    );
+    assert.doesNotMatch(study, /hifz-wall/);
+    assert.doesNotMatch(study, /unplacedGroups/);
+    assert.doesNotMatch(study, /wallVisible/);
+    assert.doesNotMatch(study, /hifz-has-wall/);
   });
 });
