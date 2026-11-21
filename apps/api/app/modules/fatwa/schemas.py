@@ -226,6 +226,26 @@ class ShareOut(BaseModel):
     share_count: int
 
 
+# --- ذخیرهٔ فتوا (نشانک کاربر) ---
+
+
+class FatwaSavedOut(BaseModel):
+    """وضعیت نشانک «ذخیره» کاربر جاری روی یک فتوا (موضوع منتشرشده).
+
+    برای مهمان (بدون توکن) همیشه saved=False برمی‌گردد (۲۰۰ — مهمان
+    بودن خطا نیست؛ وب دکمه را به ورود هدایت می‌کند).
+    """
+
+    fatwa_id: UUID
+    saved: bool
+
+
+class FatwaSavedListOut(BaseModel):
+    """فتواهای ذخیره‌شدهٔ کاربر جاری — همان شکل ردیف فهرست عمومی."""
+
+    items: list[PublicTopicOut]
+
+
 class PositionCreateIn(BaseModel):
     # در مسیر تخت /positions، topic_id از body می‌آید؛ در مسیر تودرتوی
     # /topics/{topic_id}/positions از path (در صورت هر دو، path مقدم است).
