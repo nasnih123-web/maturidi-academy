@@ -5,16 +5,18 @@
  * through the WHOLE Quran, crossing surah boundaries — Fatiha 1:7
  * fully revealed advances to Baqarah 2:1, and so on to 114:6.
  *
- * The single-word « button is NOT part of this change: the user
- * explicitly decided (2026-11-20) it stays surah-limited, so its
- * wiring is locked unchanged here.
+ * The single-word « button got the same page-turn later (user
+ * 2026-11-21, see hifz-peek-word-page-turn.test.tsx): it now
+ * advances the selection to the revealed word's ayah, but stays
+ * surah-limited by the user's explicit decision (2026-11-20), so
+ * its surah-limited wiring is locked unchanged here.
  *
  * Source-level locks (same pattern as hifz-eye-toggle.test.tsx):
  * the component is stateful and data-driven, so the actual walk
  * is proven by the Playwright harness shots, not here. These
  * tests lock the wiring the harness cannot cheaply re-derive:
  * which button is disabled when, what peekAyah does at the end
- * of a surah, and that peekNext / peekTarget are untouched.
+ * of a surah, and that peekTarget stays surah-limited.
  * The advance target itself is unit-tested with real assertions
  * in apps/web/lib/__tests__/hifz-phase4.test.ts
  * (nextPeekAyahPosition).
@@ -58,12 +60,18 @@ describe('Hifz «« show-next-ayah button (whole Quran, user 2026-11-20)', () =>
     );
   });
 
-  it('peekNext is unchanged: reveals one word at peekTarget, kind word, no surah crossing', () => {
+  it('peekNext turns the page the same way (user 2026-11-21): setAyah to the revealed word\'s ayah, still one word, kind word, no surah crossing', () => {
     const study = readStudy();
+    const start = study.indexOf('const peekNext = useCallback');
+    const end = study.indexOf('}, [peekTarget, revealWords, ayah]);', start);
+    assert.ok(start > 0 && end > start, 'peekNext not found');
+    const body = study.slice(start, end);
     assert.match(
-      study,
-      /const peekNext = useCallback\(async \(\) => \{\s*\n\s*if \(!peekTarget\) return;\s*\n\s*await revealWords\(peekTarget\.ayah, \[peekTarget\.index\], 'word'\);/,
+      body,
+      /if \(peekTarget\.ayah !== ayah\) setAyah\(peekTarget\.ayah\);\s*\n\s*await revealWords\(peekTarget\.ayah, \[peekTarget\.index\], 'word'\);/,
     );
+    assert.doesNotMatch(body, /setSurah/);
+    assert.doesNotMatch(body, /peekAyahNext/);
   });
 
   it('peekTarget still scans only to the end of the CURRENT surah (surah-limited)', () => {
