@@ -177,6 +177,8 @@ async def generate_subtitles(ctx: dict, item_id: str) -> dict:
 
         try:
             if direct_file:
+                # is_direct_file_external تضمین می‌کند external_url مقدار دارد
+                assert item.external_url is not None
                 data = await _download_external_media(item.external_url)
             else:
                 data = await library_tasks._read_media_bytes(item)
