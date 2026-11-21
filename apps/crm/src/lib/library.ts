@@ -664,17 +664,12 @@ export interface UpdateLibraryItemArgs {
   cover?: File | null;
 }
 
-/** PUT — metadata-only edit (backend archives a version). */
+/** PUT — metadata edit (backend archives a version). The API route is
+ * multipart-only (metadata form field + optional file), so this goes through
+ * putLibraryItemMultipart like the replace path; a JSON PUT is rejected 422. */
 export function useUpdateLibraryItem() {
-  return useLibraryMutation(({ id, metadata }: UpdateLibraryItemArgs) =>
-    apiFetch<unknown>(`${BASE}/items/${encodeURIComponent(id)}`, {
-      method: "PUT",
-      body: toApiMetadata(metadata),
-    }).then((raw) => {
-      const item = parseLibraryItem(raw);
-      if (!item) throw new Error("malformed library item");
-      return item;
-    }),
+  return useLibraryMutation(({ id, metadata, file, cover }: UpdateLibraryItemArgs) =>
+    putLibraryItemMultipart(id, metadata, file ?? null, cover ?? null),
   );
 }
 
