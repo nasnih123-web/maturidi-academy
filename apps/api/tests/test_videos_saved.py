@@ -7,7 +7,8 @@
 - ذخیره → وضعیت True → فهرست ذخیره‌ها آیتم را دارد → حذف → False
 - idempotent بودن ذخیره و حذف دوباره
 - جداسازی کاربرها: ذخیرهٔ کاربر دیگر دیده نمی‌شود
-- آیتم غیر ویدیویی (pdf) ۴۲۲ و آیتم غایب ۴۰۴
+- آیتم‌های غیر ویدیویی کتابخانه (pdf و audio/درس) هم ذخیره می‌شوند و
+  در فهرست با kind خودشان برمی‌گردند؛ آیتم غایب ۴۰۴
 """
 from __future__ import annotations
 
@@ -144,12 +145,33 @@ async def test_save_unsave_flow_and_isolation(tc):
     assert r.json()["saved"] is False
 
 
-async def test_save_rejects_non_video_and_missing(tc):
+async def test_save_accepts_non_video_library_items(tc):
+    """ذخیره دیگر فقط ویدیویی نیست: pdf و audio (درس) هم ذخیره می‌شوند
+    و در فهرست ذخیره‌ها با kind خودشان دیده می‌شوند."""
     client = tc["client"]
     me = await _make_user(tc)
     pdf_id = await _make_item(tc, kind="pdf")
-    r = await client.post(_url(pdf_id), headers=me)
-    assert r.status_code == 422, r.text
+    audio_id = await _make_item(tc, kind="audio")
+
+    for item_id in (pdf_id, audio_id):
+        r = await client.post(_url(item_id), headers=me)
+        assert r.status_code == 200, r.text
+        assert r.json() == {"item_id": item_id, "saved": True}
+        r = await client.get(_url(item_id), headers=me)
+        assert r.json()["saved"] is True
+
+    r = await client.get(f"{BASE}/videos/saved", headers=me)
+    assert r.status_code == 200, r.text
+    by_id = {i["id"]: i for i in r.json()["items"]}
+    assert pdf_id in by_id and by_id[pdf_id]["kind"] == "pdf"
+    assert audio_id in by_id and by_id[audio_id]["kind"] == "audio"
+
+
+async def test_save_missing_item_is_404(tc):
+    client = tc["client"]
+    me = await _make_user(tc)
     missing = str(uuid.uuid4())
     r = await client.post(_url(missing), headers=me)
+    assert r.status_code == 404, r.text
+    r = await client.delete(_url(missing), headers=me)
     assert r.status_code == 404, r.text
