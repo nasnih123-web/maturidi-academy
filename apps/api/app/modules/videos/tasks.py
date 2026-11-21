@@ -156,11 +156,11 @@ async def generate_subtitles(ctx: dict, item_id: str) -> dict:
         direct_file = subs.is_direct_file_external(item)
         if (
             item.kind not in VIDEO_KINDS
-            or subs.is_youtube_external(item)
+            or subs.is_embed_external(item)
             or (not direct_file and not item.media_key)
         ):
-            # یوتیوب/غیرویدیویی/بدون فایل زیرنویس ندارد — trigger این را
-            # ۴۲۲ می‌کند؛ این‌جا فقط صادقانه رد می‌شویم.
+            # امبدی (یوتیوب/آپارات)/غیرویدیویی/بدون فایل زیرنویس ندارد —
+            # trigger این را ۴۲۲ می‌کند؛ این‌جا فقط صادقانه رد می‌شویم.
             return {"ok": False, "reason": "not_applicable"}
 
         langs = await subs.target_langs(db)

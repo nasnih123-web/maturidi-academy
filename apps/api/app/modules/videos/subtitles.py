@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.platform_settings import get_typed_setting
 from app.models.models import ItemSubtitle, LibraryItem
 
-from . import youtube
+from . import aparat, youtube
 from .schemas import SUBTITLE_LANGS
 
 # نام زبان مقصد برای prompt ترجمه
@@ -45,7 +45,7 @@ class TranslationFailed(Exception):
 
 
 # ---------------------------------------------------------------------------
-# کلاس رسانه‌ای آیتم (آپلودی / یوتیوب / لینک مستقیم فایل)
+# کلاس رسانه‌ای آیتم (آپلودی / امبدی: یوتیوب و آپارات / لینک مستقیم فایل)
 # ---------------------------------------------------------------------------
 
 
@@ -57,12 +57,25 @@ def is_youtube_external(item: LibraryItem) -> bool:
     )
 
 
-def is_direct_file_external(item: LibraryItem) -> bool:
-    """آیتم «لینک مستقیم فایل» (PR #182): external_url دارد ولی یوتیوب
-    نیست — فایل از همان URL قابل دانلود است و تولید زیرنویس دارد."""
+def is_aparat_external(item: LibraryItem) -> bool:
+    """آیتم خارجیِ آپاراتی: external_url دارد و به هش آپارات تجزیه
+    می‌شود — کپشن داخل خود آپارات است و تولید زیرنویس ندارد."""
     return bool(item.external_url) and (
-        youtube.parse_youtube_video_id(item.external_url) is None
+        aparat.parse_aparat_video_hash(item.external_url) is not None
     )
+
+
+def is_embed_external(item: LibraryItem) -> bool:
+    """آیتم خارجیِ امبدی (یوتیوب یا آپارات): پخش فقط از iframe منبع است
+    و فایل قابل دانلودی ندارد — از تولید زیرنویس مستثناست."""
+    return is_youtube_external(item) or is_aparat_external(item)
+
+
+def is_direct_file_external(item: LibraryItem) -> bool:
+    """آیتم «لینک مستقیم فایل» (PR #182): external_url دارد ولی امبدی
+    (یوتیوب/آپارات) نیست — فایل از همان URL قابل دانلود است و تولید
+    زیرنویس دارد."""
+    return bool(item.external_url) and not is_embed_external(item)
 
 
 # ---------------------------------------------------------------------------

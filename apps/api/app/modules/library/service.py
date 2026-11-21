@@ -39,7 +39,7 @@ from app.models.models import (
     User,
     UserRole,
 )
-from app.modules.videos import youtube
+from app.modules.videos import aparat, youtube
 
 from .schemas import AI_SCOPES
 
@@ -470,8 +470,8 @@ def _direct_file_url(raw: str) -> str | None:
 
 
 def _canonical_external_url(kind: str, raw: str) -> str:
-    """اعتبارسنجی لینک خارجی → URL کانونیک watch یوتیوب، یا لینک مستقیم
-    فایل ویدیو (https با پسوند mp4/webm/m4v/mov) عیناً.
+    """اعتبارسنجی لینک خارجی → URL کانونیک watch یوتیوب یا آپارات، یا
+    لینک مستقیم فایل ویدیو (https با پسوند mp4/webm/m4v/mov) عیناً.
 
     قاعدهٔ فایل/لینک: لینک خارجی فقط برای kind=video و فقط روی آیتمی
     که فایل ندارد؛ آپلود فایل همیشه برنده است و لینک را پاک می‌کند.
@@ -486,13 +486,16 @@ def _canonical_external_url(kind: str, raw: str) -> str:
     video_id = youtube.parse_youtube_video_id(raw)
     if video_id is not None:
         return youtube.canonical_watch_url(video_id)
+    aparat_hash = aparat.parse_aparat_video_hash(raw)
+    if aparat_hash is not None:
+        return aparat.canonical_watch_url(aparat_hash)
     direct = _direct_file_url(raw)
     if direct is not None:
         return direct
     raise APIError(
         422,
         "invalid_youtube_url",
-        "لینک معتبر نیست؛ لینک یوتیوب یا لینک مستقیم فایل ویدیو بدهید",
+        "لینک معتبر نیست؛ لینک یوتیوب، آپارات یا لینک مستقیم فایل ویدیو بدهید",
     )
 
 
@@ -503,27 +506,75 @@ def _usable_title(title: object) -> bool:
     )
 
 
-async def _external_title(meta_title: object, canonical_url: str) -> dict:
-    """عنوان آیتم خارجی: عنوان دستی، وگرنه (فقط یوتیوب) عنوان oEmbed در هر سه زبان.
+async def _external_title(
+    meta_title: object,
+    canonical_url: str,
+    *,
+    aparat_title: str | None = None,
+) -> dict:
+    """عنوان آیتم خارجی: عنوان دستی، وگرنه عنوان واکشی‌شده از منبع در هر سه زبان.
 
     واکشی عنوان best-effort است؛ اگر عنوان دستی داده شده باشد هرگز
-    صدا زده نمی‌شود و خطای oEmbed هم ساخت را نمی‌شکند. بدون هر دو →
-    ۴۲۲ title_required (همان الزام عنوانِ مسیر آپلود).
+    صدا زده نمی‌شود و خطای واکشی هم ساخت را نمی‌شکند. بدون هر دو →
+    ۴۲۲ title_required (همان الزام عنوانِ مسیر آپلود). یوتیوب: oEmbed
+    همین‌جا صدا زده می‌شود؛ آپارات: عنوان og از پیش در فراخواننده
+    واکشی شده و با aparat_title می‌آید (فرادادهٔ آپارات عنوان+کاور را
+    با هم می‌دهد و یک واکشی برای هر دو کافی است)؛ لینک مستقیم فایل
+    عنوان خودکار ندارد و عنوان دستی برایش الزامی است.
     """
     if _usable_title(meta_title):
         assert isinstance(meta_title, dict)
         return dict(meta_title)
-    # oEmbed فقط برای یوتیوب است؛ لینک مستقیم فایل عنوان خودکار ندارد
-    # و عنوان دستی برایش الزامی است (همان ۴۲۲ مسیرِ بی‌عنوان).
     if youtube.parse_youtube_video_id(canonical_url) is not None:
         fetched = await youtube.fetch_youtube_title(canonical_url)
         if fetched:
             return {"fa": fetched, "ar": fetched, "en": fetched}
+    if aparat_title:
+        return {"fa": aparat_title, "ar": aparat_title, "en": aparat_title}
     raise APIError(
         422,
         "title_required",
         "عنوان ویدیو به‌دست نیامد؛ عنوان را دستی وارد کنید",
     )
+
+
+async def _store_fetched_cover(
+    db: AsyncSession,
+    cover_url: str,
+    *,
+    actor: User,
+    ip: str | None,
+    user_agent: str | None,
+) -> str | None:
+    """ذخیرهٔ کاور واکشی‌شده از راه دور (og:image آپارات) مثل کاور آپلودی.
+
+    best-effort کامل: دانلود + اسکن ClamAV + اعتبارسنجی magic-byte؛ هر
+    خطا در هر مرحله → None و ساخت آیتم بدون کاور ادامه پیدا می‌کند
+    (کاور واکشی‌شده هرگز نباید ساخت آیتم لینکی را بشکند). پسوند از
+    خود بایت‌ها تشخیص داده می‌شود، نه از URL؛ چیزی که اسکن/اعتبارسنجی
+    را رد نکند هرگز ذخیره نمی‌شود.
+    """
+    try:
+        data = await aparat.fetch_cover_bytes(cover_url)
+        if not data:
+            return None
+        ext = next(
+            (e for e in (".jpg", ".png", ".webp") if _check_magic(data, e)),
+            None,
+        )
+        if ext is None:
+            return None
+        filename = f"cover{ext}"
+        await _scan_upload_or_audit(
+            db, actor=actor, data=data, filename=filename,
+            ip=ip, user_agent=user_agent,
+        )
+        cext, cmime = _validate_cover(filename, data)
+        cover_key = f"library/covers/{uuid.uuid4().hex}{cext}"
+        await get_storage().put_object(cover_key, data, cmime)
+        return cover_key
+    except Exception:  # noqa: BLE001 — کاور best-effort است، نه گیت ساخت
+        return None
 
 
 async def _create_external_item(
@@ -540,10 +591,20 @@ async def _create_external_item(
     source_type: str,
     source_ref: dict | None,
 ) -> dict:
-    """ساخت آیتم ویدیویی خارجی (یوتیوب یا لینک مستقیم فایل) — بدون فایل: نه اسکن ClamAV،
-    نه ذخیره‌سازی، نه صف پردازش؛ media_key خالی می‌ماند."""
+    """ساخت آیتم ویدیویی خارجی (یوتیوب، آپارات یا لینک مستقیم فایل) — بدون فایل:
+    نه ذخیره‌سازی فایل اصلی، نه صف پردازش؛ media_key خالی می‌ماند."""
     kind = meta["kind"]
-    title = await _external_title(meta.get("title"), external_url)
+    # فرادادهٔ آپارات (عنوان + کاور og) یک‌جا و فقط وقتی لازم است
+    # واکشی می‌شود: عنوان دستی و کاور آپلودی هر دو داده شده باشند،
+    # هیچ واکشی‌ای انجام نمی‌شود.
+    aparat_meta: tuple[str | None, str | None] = (None, None)
+    if aparat.parse_aparat_video_hash(external_url) is not None and (
+        not _usable_title(meta.get("title")) or not cover_content
+    ):
+        aparat_meta = await aparat.fetch_aparat_meta(external_url)
+    title = await _external_title(
+        meta.get("title"), external_url, aparat_title=aparat_meta[0]
+    )
 
     cover_key: str | None = None
     if cover_content:
@@ -554,6 +615,13 @@ async def _create_external_item(
         cext, cmime = _validate_cover(cover_filename, cover_content)
         cover_key = f"library/covers/{uuid.uuid4().hex}{cext}"
         await get_storage().put_object(cover_key, cover_content, cmime)
+    elif aparat_meta[1]:
+        # کاور og آپارات — best-effort؛ نبودنش ساخت را نمی‌شکند و
+        # fallback دیگری هم ندارد (آپارات بندانگشتیِ قطعی ندارد).
+        cover_key = await _store_fetched_cover(
+            db, aparat_meta[1],
+            actor=actor, ip=ip, user_agent=user_agent,
+        )
 
     item = LibraryItem(
         kind=kind,

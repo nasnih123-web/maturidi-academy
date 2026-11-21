@@ -33,8 +33,8 @@ from app.models.models import (
 )
 from app.modules.library import service as library_service
 
+from . import aparat, youtube
 from . import subtitles as subs
-from . import youtube
 from .schemas import SUBTITLE_LANGS, VIDEO_KINDS
 
 _RELATED_SCAN_CAP = 300
@@ -88,24 +88,33 @@ def _external_fields(item: LibraryItem) -> tuple[str | None, str | None]:
     if not item.external_url:
         return None, None
     video_id = youtube.parse_youtube_video_id(item.external_url)
-    if video_id is None:  # دادهٔ قدیمی/دستی — لینک هست ولی امبد ساخته نمی‌شود
-        return item.external_url, None
-    return item.external_url, youtube.embed_url(video_id)
+    if video_id is not None:
+        return item.external_url, youtube.embed_url(video_id)
+    aparat_hash = aparat.parse_aparat_video_hash(item.external_url)
+    if aparat_hash is not None:
+        return item.external_url, aparat.embed_url(aparat_hash)
+    # دادهٔ قدیمی/دستی یا لینک مستقیم فایل — لینک هست ولی امبد ندارد
+    return item.external_url, None
 
 
 def _watch_stream_url(item: LibraryItem, detail: dict) -> str | None:
     """منبع پخش پلیر بومی در payload تماشا: آیتم آپلودی ← media_url
-    امضاشده؛ یوتیوب ← None (پخش فقط از embed_url است)؛ لینک مستقیم
-    فایل ← خود URL فایل تا پلیر بومی سایت پخشش کند."""
+    امضاشده؛ یوتیوب/آپارات ← None (پخش فقط از embed_url است)؛ لینک
+    مستقیم فایل ← خود URL فایل تا پلیر بومی سایت پخشش کند."""
     if not item.external_url:
         return detail["media_url"]
-    if youtube.parse_youtube_video_id(item.external_url) is not None:
+    if subs.is_embed_external(item):
         return None
     return item.external_url
 
 
 async def _cover_url(item: LibraryItem) -> str | None:
-    """کاور امضاشده؛ برای آیتم خارجیِ بدون کاور، بندانگشتی یوتیوب."""
+    """کاور امضاشده؛ برای آیتم یوتیوبیِ بدون کاور، بندانگشتی یوتیوب.
+
+    آپارات بندانگشتیِ قطعی (قابل‌حدس از روی هش) ندارد و fallback
+    ساخته نمی‌شود — کاور آپاراتی همان است که هنگام ساخت از og:image
+    ذخیره شده (یا کاور آپلودی مدیر).
+    """
     url = await library_service._signed_url(item.cover_media_key)
     if url is None and item.external_url:
         video_id = youtube.parse_youtube_video_id(item.external_url)
@@ -324,9 +333,9 @@ async def _subtitle_tracks(
     db: AsyncSession, item: LibraryItem
 ) -> list[dict]:
     """ترک‌های زیرنویس ready برای payload تماشا — آیتم آپلودی و لینک
-    مستقیم فایل (یوتیوب کپشن خودش را دارد) و فقط وقتی سوییچ CRM
-    (videos.subtitles_enabled) روشن است."""
-    if subs.is_youtube_external(item):
+    مستقیم فایل (یوتیوب و آپارات کپشن خودشان را دارند) و فقط وقتی
+    سوییچ CRM (videos.subtitles_enabled) روشن است."""
+    if subs.is_embed_external(item):
         return []
     if not await subs.subtitles_enabled(db):
         return []
@@ -360,8 +369,8 @@ async def get_watch(
     base = (await _items_out(db, [item]))[0]
     return {
         "item": base,
-        # یوتیوب فایل ندارد و از embed_url پخش می‌شود؛ آپلودی و لینک
-        # مستقیم فایل از stream_url با پلیر بومی پخش می‌شوند
+        # یوتیوب/آپارات فایل ندارند و از embed_url پخش می‌شوند؛ آپلودی
+        # و لینک مستقیم فایل از stream_url با پلیر بومی پخش می‌شوند
         "stream_url": _watch_stream_url(item, detail),
         "playlist": await _playlist_context(db, item, user, playlist_id),
         "related": await _related(db, item, user),
@@ -380,7 +389,7 @@ async def get_subtitle_vtt(
     (همان قواعد visibility کتابخانه)؛ هر حالت دیگر ۴۰۴ است."""
     visible = await _visible_items_by_ids(db, user, [item_id])
     item = visible.get(item_id)
-    if item is None or subs.is_youtube_external(item):
+    if item is None or subs.is_embed_external(item):
         raise APIError(404, "subtitle_not_found", "زیرنویس یافت نشد")
     row = (
         await db.execute(
@@ -905,12 +914,12 @@ async def request_subtitle_generation(
             "زیرنویس خودکار فقط برای آیتم‌های ویدیویی است",
             {"kind": item.kind},
         )
-    if subs.is_youtube_external(item):
+    if subs.is_embed_external(item):
         raise APIError(
             422,
             "external_video",
-            "ویدیوی خارجی (یوتیوب) زیرنویس خودکار ندارد؛ "
-            "کپشن داخل خود یوتیوب است",
+            "ویدیوی خارجی (یوتیوب/آپارات) زیرنویس خودکار ندارد؛ "
+            "کپشن داخل خود منبع است",
         )
     if not item.external_url and not item.media_key:
         raise APIError(
@@ -942,10 +951,10 @@ async def admin_subtitle_statuses(
     """تازه‌ترین ویدیوهای آپلودی و لینک مستقیم فایل + وضعیت زیرنویس هر
     پنج زبان — کارت CRM.
 
-    آیتم خارجیِ یوتیوب عمداً نیست: کپشن خودش را دارد. تشخیص یوتیوب از
-    روی URL است و در SQL شدنی نیست؛ اسکن تازه‌ترین‌ها در پایتون فیلتر
-    می‌شود (همان الگوی list_candidates). نبود ردیف برای یک زبان یعنی
-    "missing"؛ وضعیت ردیف عیناً گزارش می‌شود.
+    آیتم خارجیِ امبدی (یوتیوب/آپارات) عمداً نیست: کپشن خودش را دارد.
+    تشخیص منبع از روی URL است و در SQL شدنی نیست؛ اسکن تازه‌ترین‌ها
+    در پایتون فیلتر می‌شود (همان الگوی list_candidates). نبود ردیف
+    برای یک زبان یعنی "missing"؛ وضعیت ردیف عیناً گزارش می‌شود.
     """
     stmt = (
         select(LibraryItem)
@@ -960,7 +969,7 @@ async def admin_subtitle_statuses(
         .limit(_SUBTITLE_STATUS_SCAN_CAP)
     )
     rows = list((await db.execute(stmt)).scalars().all())
-    items = [i for i in rows if not subs.is_youtube_external(i)][:limit]
+    items = [i for i in rows if not subs.is_embed_external(i)][:limit]
     by_item: dict[uuid.UUID, dict[str, str]] = {}
     if items:
         sstmt = select(ItemSubtitle).where(
