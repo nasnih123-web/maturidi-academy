@@ -272,18 +272,21 @@ function HifzNassScrollPage(props: HifzNassScrollPageProps) {
   const retryCountRef = useRef(0);
   const fontFamily = qcfV4Provider.familyForPage(page)?.family ?? null;
   
-  // The active page's font is pinned while the page is active (see
+  // A page's font is pinned while the page is in view (see
   // protectMushafFontFamily): the preload cascade loads a dozen
-  // page fonts on opening nass, and without the pin the active
+  // page fonts on opening nass, and without the pin a visible
   // page's font — the oldest in the cache — is evicted within
-  // seconds, before the user even scrolls (user 2026-11-21, Fatiha
-  // p.1). When the active page moves on, the pin moves with it and
-  // the old font may be evicted; its observer reloads it on revisit.
+  // seconds, before the user even scrolls (user 2026-11-21: Fatiha
+  // p.1, and Baqarah p.2 in the same screenshot — pinning only the
+  // active page left the next visible page broken). The active page
+// is covered too: its inView starts true. When a page leaves
+// view, the pin is released and its font may be evicted; its
+// observer reloads it on re-entry.
   useEffect(() => {
-    if (!loadEagerly || !fontFamily) return;
+    if (!inView || !fontFamily) return;
     protectMushafFontFamily(fontFamily);
     return () => unprotectMushafFontFamily(fontFamily);
-  }, [loadEagerly, fontFamily]);
+  }, [inView, fontFamily]);
   
   // The section observer (lazy load + eviction recovery): attached
   // to the section itself — placeholder AND settled — via a callback
