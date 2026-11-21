@@ -18,8 +18,9 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.platform_settings import get_typed_setting
-from app.models.models import ItemSubtitle
+from app.models.models import ItemSubtitle, LibraryItem
 
+from . import youtube
 from .schemas import SUBTITLE_LANGS
 
 # نام زبان مقصد برای prompt ترجمه
@@ -41,6 +42,27 @@ class TranslationNotConfigured(Exception):
 
 class TranslationFailed(Exception):
     """provider خطا داد یا خروجی‌اش با سگمنت‌ها هم‌خوان نبود."""
+
+
+# ---------------------------------------------------------------------------
+# کلاس رسانه‌ای آیتم (آپلودی / یوتیوب / لینک مستقیم فایل)
+# ---------------------------------------------------------------------------
+
+
+def is_youtube_external(item: LibraryItem) -> bool:
+    """آیتم خارجیِ یوتیوبی: external_url دارد و به شناسهٔ یوتیوب تجزیه
+    می‌شود — کپشن داخل خود یوتیوب است و تولید زیرنویس ندارد."""
+    return bool(item.external_url) and (
+        youtube.parse_youtube_video_id(item.external_url) is not None
+    )
+
+
+def is_direct_file_external(item: LibraryItem) -> bool:
+    """آیتم «لینک مستقیم فایل» (PR #182): external_url دارد ولی یوتیوب
+    نیست — فایل از همان URL قابل دانلود است و تولید زیرنویس دارد."""
+    return bool(item.external_url) and (
+        youtube.parse_youtube_video_id(item.external_url) is None
+    )
 
 
 # ---------------------------------------------------------------------------

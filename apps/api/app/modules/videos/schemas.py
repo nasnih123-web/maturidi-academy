@@ -112,8 +112,8 @@ class SubtitleGenerateOut(BaseModel):
 
 
 class AdminSubtitleItemOut(BaseModel):
-    """وضعیت زیرنویس هر ویدیوی آپلودی برای کارت CRM — هر پنج زبان همیشه
-    حاضرند؛ نبود ردیف یعنی وضعیت "missing"."""
+    """وضعیت زیرنویس هر ویدیوی آپلودی/لینک مستقیم فایل برای کارت CRM —
+    هر پنج زبان همیشه حاضرند؛ نبود ردیف یعنی وضعیت "missing"."""
 
     id: uuid.UUID
     kind: str

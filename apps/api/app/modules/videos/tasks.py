@@ -13,12 +13,21 @@ generate_subtitles: ساخت WebVTT با faster-whisper روی همان صف و
 روی ردیف خودش ثبت می‌شود؛ زیرنویس جعلی هرگز ساخته نمی‌شود. دری مثل
 بقیهٔ زبان‌های ترجمه است — کپی خاموش از فارسی انجام نمی‌شود.
 
+آیتم «لینک مستقیم فایل» (external_url غیرِ یوتیوب) هم همین خط لوله را
+دارد: فایل اول با سقف حجم/مهلت به فایل موقت دانلود می‌شود و بعد دقیقاً
+همان استخراج صدا + whisper آپلودها رویش می‌رود. یوتیوب همچنان
+not_applicable است (کپشن داخل خود یوتیوب است).
+
 تابع مستقیم هم تست‌پذیر است (بدون ARQ).
 """
 from __future__ import annotations
 
+import asyncio
+import tempfile
+import time
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +42,55 @@ from .schemas import VIDEO_KINDS
 # انگلیسی کوتاه‌تر است تا مجموع دو پاس از job_timeout صف media نگذرد.
 _SOURCE_TIMEOUT_S = 1500
 _TRANSLATE_TIMEOUT_S = 900
+
+# دانلود فایل «لینک مستقیم»: سقف حجم سخت و مهلت کلی، تا جاب media
+# (job_timeout=۱۸۰۰ ثانیه) پیش از پاس‌های whisper تمام نشود.
+_DOWNLOAD_MAX_BYTES = 600 * 1024 * 1024
+_DOWNLOAD_TIMEOUT_S = 600.0
+
+
+async def _download_external_media(url: str) -> bytes:
+    """دانلود استریمی فایل لینک مستقیم به فایل موقت و برگرداندن بایت‌ها
+    برای همان خط لولهٔ whisper آپلودها.
+
+    سقف حجم هنگام استریم اعمال می‌شود (نه بعد از دانلود کامل)؛ فایل
+    موقت در همهٔ حالت‌ها پاک می‌شود؛ هر خطا raise می‌شود و فراخواننده
+    آن را به failed صادقانهٔ ردیف‌ها تبدیل می‌کند.
+    """
+    import httpx
+
+    deadline = time.monotonic() + _DOWNLOAD_TIMEOUT_S
+    tmp_path: Path | None = None
+    try:
+        timeout = httpx.Timeout(
+            connect=15.0, read=120.0, write=30.0, pool=15.0
+        )
+        async with (
+            httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client,
+            client.stream("GET", url) as resp,
+        ):
+            resp.raise_for_status()
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=".media"
+            ) as fh:
+                tmp_path = Path(fh.name)
+                total = 0
+                async for chunk in resp.aiter_bytes(1 << 20):
+                    total += len(chunk)
+                    if total > _DOWNLOAD_MAX_BYTES:
+                        raise ValueError(
+                            "file_too_large: حجم فایل از سقف "
+                            "۶۰۰ مگابایت گذشت"
+                        )
+                    if time.monotonic() > deadline:
+                        raise ValueError(
+                            "download_timeout: مهلت دانلود تمام شد"
+                        )
+                    fh.write(chunk)
+        return await asyncio.to_thread(tmp_path.read_bytes)
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
 
 
 def _utcnow() -> datetime:
@@ -85,7 +143,8 @@ async def _fail_all(
 
 @register_task("media")
 async def generate_subtitles(ctx: dict, item_id: str) -> dict:
-    """ساخت زیرنویس‌های زمان‌دار یک ویدیوی آپلودی (صف media — فاز ۳)."""
+    """ساخت زیرنویس‌های زمان‌دار ویدیوی آپلودی یا لینک مستقیم فایل
+    (صف media — فاز ۳)."""
     from app.core.database import SessionLocal
     from app.core.errors import APIError
     from app.core.media_tools import FASTER_WHISPER_MODEL, faster_whisper_installed
@@ -94,9 +153,14 @@ async def generate_subtitles(ctx: dict, item_id: str) -> dict:
 
     async with SessionLocal() as db:
         item: LibraryItem = await library_tasks._load_item(db, item_id)
-        if item.kind not in VIDEO_KINDS or item.external_url or not item.media_key:
-            # آیتم خارجی/غیرویدیویی زیرنویس ندارد — trigger این را ۴۲۲
-            # می‌کند؛ این‌جا فقط صادقانه رد می‌شویم.
+        direct_file = subs.is_direct_file_external(item)
+        if (
+            item.kind not in VIDEO_KINDS
+            or subs.is_youtube_external(item)
+            or (not direct_file and not item.media_key)
+        ):
+            # یوتیوب/غیرویدیویی/بدون فایل زیرنویس ندارد — trigger این را
+            # ۴۲۲ می‌کند؛ این‌جا فقط صادقانه رد می‌شویم.
             return {"ok": False, "reason": "not_applicable"}
 
         langs = await subs.target_langs(db)
@@ -112,9 +176,20 @@ async def generate_subtitles(ctx: dict, item_id: str) -> dict:
             return {"ok": False, "reason": reason}
 
         try:
-            data = await library_tasks._read_media_bytes(item)
+            if direct_file:
+                # is_direct_file_external تضمین می‌کند external_url مقدار دارد
+                assert item.external_url is not None
+                data = await _download_external_media(item.external_url)
+            else:
+                data = await library_tasks._read_media_bytes(item)
         except Exception as exc:  # noqa: BLE001
-            reason = f"read_failed: خواندن فایل از storage ناموفق بود: {exc}"
+            if direct_file:
+                reason = (
+                    f"download_failed: دانلود فایل لینک مستقیم "
+                    f"ناموفق بود: {exc}"
+                )
+            else:
+                reason = f"read_failed: خواندن فایل از storage ناموفق بود: {exc}"
             await _fail_all(db, item.id, reason)
             return {"ok": False, "reason": reason}
 

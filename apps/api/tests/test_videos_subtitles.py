@@ -12,6 +12,11 @@
 - endpoint عمومی VTT: ترک ready → ۲۰۰ text/vtt؛ آماده‌نباشد → ۴۰۴؛
   payload تماشا فقط ترک‌های ready؛ با subtitles_enabled خاموش → خالی
 - وضعیت‌های مدیریت برای کارت CRM: آیتم آپلودی با missingها؛ خارجی حذف
+- لینک مستقیم فایل (غیر یوتیوب): تریگر ۲۰۲ می‌گیرد؛ تسک فایل را دانلود
+  می‌کند و همان ترک‌های منبع+انگلیسی را می‌سازد؛ شکست دانلود → همهٔ
+  ردیف‌ها failed با download_failed و تسک raise نمی‌کند؛ payload تماشا
+  و endpoint VTT ترک‌های ready را می‌دهند؛ کارت CRM آن را نشان می‌دهد
+  ولی یوتیوب همچنان بیرون است؛ دانلودر: سقف حجم و اتصال بایت‌ها
 
 همهٔ تست‌ها آفلاین‌اند (whisper و provider و storage مانکی‌پچ می‌شوند).
 """
@@ -523,3 +528,226 @@ async def test_admin_subtitle_statuses(tc):
     assert subs["en"] == "missing"
     assert subs["ur"] == "missing"
     assert subs["dari"] == "missing"
+
+
+# ---------------------------------------------------------------------------
+# لینک مستقیم فایل (external غیرِ یوتیوب)
+# ---------------------------------------------------------------------------
+
+DIRECT_FILE_URL = "https://cdn.example.com/talks/lecture.mp4"
+
+
+async def _make_direct_file_item(tc, **over) -> str:
+    over.setdefault("media_key", None)
+    over.setdefault("external_url", DIRECT_FILE_URL)
+    return await _make_item(tc, **over)
+
+
+async def test_trigger_direct_file_item_accepted(tc):
+    await _pin_subtitle_langs(tc)
+    client = tc["client"]
+    admin = await _admin(tc)
+    item_id = await _make_direct_file_item(tc)
+    res = await client.post(
+        f"{BASE}/admin/videos/{item_id}/subtitles/generate", headers=admin
+    )
+    assert res.status_code == 202, res.text
+    body = res.json()
+    assert body["item_id"] == item_id
+    assert body["statuses"] == {
+        lang: "pending" for lang in ("fa", "ar", "en", "ur", "dari")
+    }
+    assert body["enqueued"] is False
+    rows = await _subtitle_rows(tc, item_id)
+    assert all(r["status"] == "pending" for r in rows.values())
+
+
+async def test_generate_subtitles_direct_file_downloads_and_builds(
+    tc, patch_task_env, monkeypatch
+):
+    await _pin_subtitle_langs(tc)
+    """لینک مستقیم: دانلود از URL آیتم + همان خروجی آپلود (fa/en آماده)."""
+    monkeypatch.setattr(
+        "app.modules.videos.subtitles.resolve_translation_provider",
+        lambda db: _async_none(),
+    )
+    downloads: list[str] = []
+
+    async def _fake_download(url):
+        downloads.append(url)
+        return b"downloaded-media-bytes"
+
+    monkeypatch.setattr(
+        "app.modules.videos.tasks._download_external_media", _fake_download
+    )
+
+    async def _no_storage_read(item):  # مسیر storage نباید صدا زده شود
+        raise AssertionError("storage read نباید برای لینک مستقیم بیاید")
+
+    monkeypatch.setattr(
+        "app.modules.library.tasks._read_media_bytes", _no_storage_read
+    )
+    from app.modules.videos.tasks import generate_subtitles
+
+    item_id = await _make_direct_file_item(tc)
+    out = await generate_subtitles({}, item_id)
+    assert out["ok"] is True
+    assert out["source_lang"] == "fa"
+    assert downloads == [DIRECT_FILE_URL]
+    assert _FakeWhisper.calls == ["transcribe", "translate"]
+
+    rows = await _subtitle_rows(tc, item_id)
+    assert rows["fa"]["status"] == "ready"
+    assert "سلام و درود" in rows["fa"]["vtt"]
+    assert rows["en"]["status"] == "ready"
+    assert "Hello and greetings" in rows["en"]["vtt"]
+    for lang in ("ar", "ur", "dari"):
+        assert rows[lang]["status"] == "failed", lang
+        assert rows[lang]["error"] == "translation_provider_not_configured"
+
+
+async def test_generate_subtitles_direct_file_download_failure(
+    tc, patch_task_env, monkeypatch
+):
+    await _pin_subtitle_langs(tc)
+    """شکست دانلود: تسک raise نمی‌کند؛ همهٔ ردیف‌ها failed صادقانه‌اند."""
+
+    async def _boom_download(url):
+        raise RuntimeError("connection reset")
+
+    monkeypatch.setattr(
+        "app.modules.videos.tasks._download_external_media", _boom_download
+    )
+    from app.modules.videos.tasks import generate_subtitles
+
+    item_id = await _make_direct_file_item(tc)
+    out = await generate_subtitles({}, item_id)
+    assert out["ok"] is False
+    assert out["reason"].startswith("download_failed")
+    rows = await _subtitle_rows(tc, item_id)
+    assert rows and all(r["status"] == "failed" for r in rows.values())
+    assert all(
+        "download_failed" in (r["error"] or "") for r in rows.values()
+    )
+
+
+async def test_watch_payload_and_vtt_for_direct_file_item(tc):
+    client = tc["client"]
+    item_id = await _make_direct_file_item(tc)
+    vtt = "WEBVTT\n\n00:00:00.000 --> 00:00:02.500\nسلام و درود\n"
+    await _seed_ready_subtitle(tc, item_id, "fa", vtt)
+
+    watch = await client.get(f"{BASE}/videos/{item_id}")
+    assert watch.status_code == 200, watch.text
+    assert watch.json()["subtitles"] == [
+        {"lang": "fa", "url": f"/api/v1/videos/{item_id}/subtitles/fa.vtt"}
+    ]
+    # پخش با پلیر بومی است (لینک فایل)، نه امبد یوتیوب
+    assert watch.json()["item"]["embed_url"] is None
+    assert watch.json()["stream_url"] == DIRECT_FILE_URL
+
+    res = await client.get(f"{BASE}/videos/{item_id}/subtitles/fa.vtt")
+    assert res.status_code == 200
+    assert res.text == vtt
+
+    # بدون تولید، ترک‌ها خالی می‌مانند
+    bare_id = await _make_direct_file_item(tc, title=_L("بدون زیرنویس"))
+    watch = await client.get(f"{BASE}/videos/{bare_id}")
+    assert watch.status_code == 200
+    assert watch.json()["subtitles"] == []
+
+    # یوتیوب حتی با ردیف ready هم ترک نمی‌گیرد (رفتار قبلی)
+    yt_id = await _make_item(
+        tc,
+        media_key=None,
+        external_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        title=_L("یوتیوبی"),
+    )
+    await _seed_ready_subtitle(tc, yt_id, "fa", vtt)
+    watch = await client.get(f"{BASE}/videos/{yt_id}")
+    assert watch.status_code == 200
+    assert watch.json()["subtitles"] == []
+    res = await client.get(f"{BASE}/videos/{yt_id}/subtitles/fa.vtt")
+    assert res.status_code == 404
+
+
+async def test_admin_statuses_include_direct_file_not_youtube(tc):
+    client = tc["client"]
+    admin = await _admin(tc)
+    file_id = await _make_direct_file_item(tc)
+    yt_id = await _make_item(
+        tc,
+        media_key=None,
+        external_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        title=_L("یوتیوبی"),
+    )
+    res = await client.get(f"{BASE}/admin/videos/subtitles", headers=admin)
+    assert res.status_code == 200, res.text
+    by_id = {row["id"]: row for row in res.json()}
+    assert file_id in by_id  # لینک مستقیم در کارت زیرنویس هست
+    assert yt_id not in by_id  # یوتیوب همچنان بیرون است
+    subs = by_id[file_id]["subtitles"]
+    assert all(s == "missing" for s in subs.values())
+
+
+# ---------------------------------------------------------------------------
+# دانلودر لینک مستقیم (واحدی — httpx جعلی)
+# ---------------------------------------------------------------------------
+
+
+class _FakeStreamResponse:
+    def __init__(self, chunks: list[bytes]):
+        self._chunks = chunks
+
+    def raise_for_status(self) -> None:
+        return None
+
+    async def aiter_bytes(self, chunk_size: int):
+        for chunk in self._chunks:
+            yield chunk
+
+
+class _FakeHTTPClient:
+    chunks: ClassVar[list[bytes]] = []
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    def stream(self, method: str, url: str):
+        resp = _FakeStreamResponse(type(self).chunks)
+
+        class _Ctx:
+            async def __aenter__(self):
+                return resp
+
+            async def __aexit__(self, *exc):
+                return False
+
+        return _Ctx()
+
+
+async def test_download_external_media_joins_chunks(monkeypatch):
+    from app.modules.videos.tasks import _download_external_media
+
+    _FakeHTTPClient.chunks = [b"ab", b"cd", b"ef"]
+    monkeypatch.setattr("httpx.AsyncClient", _FakeHTTPClient)
+    data = await _download_external_media("https://cdn.example.com/x.mp4")
+    assert data == b"abcdef"
+
+
+async def test_download_external_media_enforces_size_cap(monkeypatch):
+    from app.modules.videos import tasks as video_tasks
+
+    _FakeHTTPClient.chunks = [b"12345678", b"90abcdef"]
+    monkeypatch.setattr("httpx.AsyncClient", _FakeHTTPClient)
+    monkeypatch.setattr(video_tasks, "_DOWNLOAD_MAX_BYTES", 10)
+    with pytest.raises(ValueError, match="file_too_large"):
+        await video_tasks._download_external_media(
+            "https://cdn.example.com/big.mp4"
+        )
