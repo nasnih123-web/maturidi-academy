@@ -330,6 +330,18 @@ export function v2PageIndexForAyah(
   return firsts[lo - 1][2] - 1;
 }
 
+/** The whole Quran as one printed-page range (0-based, inclusive):
+    page 1 to the last page of the index. The nass scroll renders
+        this range (user 2026-11-21): one section per printed page of
+            the whole Quran, not just the study surah. Pure. */
+
+export function v2WholeQuranPageRange(index: V2MushafIndex): {
+    firstPage: number;
+    lastPage: number;
+} {
+    return { firstPage: 0, lastPage: index.pageCount - 1 };
+}
+
 /** The printed-page range of one surah (0-based, inclusive), from
     the index alone, plus whether the range's first page carries the
     previous surah's tail and whether its last page carries the next
