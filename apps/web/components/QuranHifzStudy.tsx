@@ -158,7 +158,7 @@ import {
   v2FirstAyahOfSurahOnPage,
   v2PageAyahs,
   v2PageIndexForAyah,
-  v2SurahPageRange,
+  v2WholeQuranPageRange,
   type V2MushafIndex,
   type V2Page,
 } from '@/lib/quran-mushaf-v2';
@@ -326,6 +326,14 @@ export function QuranHifzStudy({
         ? { [initialSurah]: initialTexts }
         : {},
   );
+    // Latest-texts mirror for the whole-Quran nass preload below: the
+    // preload loop must skip already-loaded surahs without depending
+    // on textsBySurah (a dep would cancel + restart the loop on every
+    // load). Updated after every render.
+    const textsBySurahRef = useRef(textsBySurah);
+    useEffect(() => {
+          textsBySurahRef.current = textsBySurah;
+    });
   // Translation mode (Tarteel sheet): per-ayah translations keyed
   // `${surah}:${edition}`. The default edition of the initial surah
   // arrives with the server render; every other active edition (and
@@ -1244,14 +1252,17 @@ export function QuranHifzStudy({
   }, [useV2, activeV2Page, v2Index, pageLines, textsBySurah, surah, wallAyahs, v4Glyphs]);
   const { renderLines, usedV2 } = pageRender;
 
-  // The nass scroll's page range (2026-11-16): the printed pages
-  // holding this surah, from the V2 index alone. Null while the
-  // index loads or when V2 is unavailable — the scroll falls back
-  // to the plain-text nass then.
-  const nassRange = useMemo(
-    () => (useV2 && v2Index ? v2SurahPageRange(v2Index, surah, ayahCount) : null),
-    [useV2, v2Index, surah, ayahCount],
-  );
+  // The nass scroll's page range (whole Quran, user 2026-11-21,
+    // confirmed 16:55): every printed page, 1..604, from the V2
+    // index alone — not just the study surah's pages. Scrolling past
+    // a surah's end continues into the next surah, to the end of the
+    // Quran. Null while the index loads or when V2 is unavailable —
+    // the scroll falls back to the plain-text nass then (which stays
+    // surah-limited: the degraded path).
+    const nassRange = useMemo(
+          () => (useV2 && v2Index ? v2WholeQuranPageRange(v2Index) : null),
+          [useV2, v2Index],
+        );
 
   // Phase 3: a V2 page spanning a surah boundary needs the neighbor
   // surah's texts too (the study surah alone is not enough). Load
@@ -1291,6 +1302,45 @@ export function QuranHifzStudy({
       cancelled = true;
     };
   }, [v2Index, activeV2Page, surah, textsBySurah, displayMode, nassRange]);
+
+    // Whole-Quran nass text preload (user 2026-11-21): the scroll
+    // spans all 604 pages, so its sections need every surah's texts,
+    // not just the study surah ± 1. Load them in the background while
+    // nass mode is open, outward from the study surah — forward first
+    // (the user scrolls down, into the next surahs), then backward.
+    // The study surah ± 1 stay with the neighbour effect above (the
+    // active page needs them first); this loop owns ± 2 and beyond.
+    // One fetch at a time, two passes: a dropped request (flaky VPN)
+    // is retried on the second pass instead of stranding a surah's
+    // pages as loading placeholders. Leaving nass mode cancels the
+    // loop; re-entering resumes from the next missing surah.
+    useEffect(() => {
+          if (displayMode !== 'nass' || !nassRange) return;
+          let cancelled = false;
+          const order: number[] = [];
+          for (let s = surah + 2; s <= 114; s += 1) order.push(s);
+          for (let s = surah - 2; s >= 1; s -= 1) order.push(s);
+          void (async () => {
+                  for (let pass = 0; pass < 2; pass += 1) {
+                            for (const s of order) {
+                                        if (cancelled) return;
+                                        if (textsBySurahRef.current[s] !== undefined) continue;
+                                        try {
+                                                      const view = await getSurah(s);
+                                                      if (cancelled) return;
+                                                      const texts: Record<number, string> = {};
+                                                      for (const a of view.ayahs) texts[a.number] = a.text;
+                                                      setTextsBySurah((prev) => ({ ...prev, [s]: texts }));
+                                        } catch {
+                                                      /* stays missing this pass: retried on the next pass */
+                                        }
+                            }
+                  }
+          })();
+          return () => {
+                  cancelled = true;
+          };
+    }, [displayMode, surah, nassRange]);
 
   // Translation mode (Tarteel sheet): when it is open, every active
   // edition for the current surah must be loaded. The default
@@ -3352,9 +3402,14 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
     lines: RenderLine[],
     key: string,
     font?: HifzV4PageFont,
+        // Nass scroll only: the section observer rides along so a
+        // settled page stays observed (a revisited page reloads its
+        // font if the 8-family cap evicted it). Flip mode omits it.
+        sectionRef?: (el: HTMLElement | null) => void,
   ) => (
     <section
       key={key}
+            ref={sectionRef}
       // Page-1 fidelity (user 2026-11-20): the Fatiha page gets
       // its own larger text size (see the --fatiha rule) — the
       // header is the surah-1 header in either render path (the
@@ -4008,14 +4063,15 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
         displayMode === 'mushaf' &&
         (!usedV2 || (v4Glyphs !== undefined && v4FontReady)) &&
         renderPageSection(activePageIndex ?? 0, renderLines, 'mushaf')}
-      {/* Nass (2026-11-16, user order): the whole surah as scrolling
-          mushaf pages — one full page section per printed page
-          (surah-header frame + page footer), glyphs exactly like
-          flip mode, the Basmalah as the SVG glyph on its page. Eye,
-          peek, grades and tap-to-practice come free through
-          renderPageSection/renderLineWord. While the V2 index loads
-          the view waits; when V2 is unavailable it keeps the old
-          plain-text nass below as the honest fallback. */}
+      {/* Nass (2026-11-16, user order; whole Quran 2026-11-21): the
+                whole Quran as scrolling mushaf pages — one full page
+                          section per printed page (surah-header frame + page
+                                    footer), glyphs exactly like flip mode, the Basmalah as
+                                              the SVG glyph on its page. Eye, peek, grades and
+                                                        tap-to-practice come free through
+                                                                  renderPageSection/renderLineWord. While the V2 index loads
+                                                                            the view waits; when V2 is unavailable it keeps the old
+                                                                                      plain-text nass below as the honest fallback. */}
       {textsReady && ayahCount > 0 && displayMode === 'nass' && (
         useV2 && v2Index && nassRange ? (
           <HifzNassScroll
