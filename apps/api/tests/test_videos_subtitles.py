@@ -17,6 +17,9 @@
   ردیف‌ها failed با download_failed و تسک raise نمی‌کند؛ payload تماشا
   و endpoint VTT ترک‌های ready را می‌دهند؛ کارت CRM آن را نشان می‌دهد
   ولی یوتیوب همچنان بیرون است؛ دانلودر: سقف حجم و اتصال بایت‌ها
+- آپارات (امبد خارجی): عیناً مثل یوتیوب مستثناست — تریگر ۴۲۲
+  external_video، تسک not_applicable، کارت مدیریت و payload تماشا و
+  endpoint VTT آن را ندارند
 
 همهٔ تست‌ها آفلاین‌اند (whisper و provider و storage مانکی‌پچ می‌شوند).
 """
@@ -751,3 +754,58 @@ async def test_download_external_media_enforces_size_cap(monkeypatch):
         await video_tasks._download_external_media(
             "https://cdn.example.com/big.mp4"
         )
+
+
+# ---------------------------------------------------------------------------
+# آپارات (امبد خارجی — عیناً مثل یوتیوب از زیرنویس مستثناست)
+# ---------------------------------------------------------------------------
+
+APARAT_URL = "https://www.aparat.com/v/cpuac8h"
+
+
+async def test_trigger_generate_aparat_item_422(tc):
+    client = tc["client"]
+    admin = await _admin(tc)
+    item_id = await _make_item(tc, media_key=None, external_url=APARAT_URL)
+    res = await client.post(
+        f"{BASE}/admin/videos/{item_id}/subtitles/generate", headers=admin
+    )
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "external_video"
+
+
+async def test_generate_subtitles_aparat_item_not_applicable(
+    tc, patch_task_env
+):
+    from app.modules.videos.tasks import generate_subtitles
+
+    item_id = await _make_item(tc, media_key=None, external_url=APARAT_URL)
+    out = await generate_subtitles({}, item_id)
+    assert out == {"ok": False, "reason": "not_applicable"}
+    assert await _subtitle_rows(tc, item_id) == {}
+
+
+async def test_aparat_item_excluded_from_admin_statuses(tc):
+    client = tc["client"]
+    admin = await _admin(tc)
+    aparat_id = await _make_item(
+        tc, media_key=None, external_url=APARAT_URL, title=_L("آپاراتی")
+    )
+    res = await client.get(f"{BASE}/admin/videos/subtitles", headers=admin)
+    assert res.status_code == 200, res.text
+    by_id = {row["id"]: row for row in res.json()}
+    assert aparat_id not in by_id  # امبدی‌ها در کارت زیرنویس نیستند
+
+
+async def test_aparat_watch_payload_and_vtt_excluded(tc):
+    """حتی با ترک ready دستی، payload تماشا برای امبدی خالی و VTT ۴۰۴ است."""
+    client = tc["client"]
+    item_id = await _make_item(tc, media_key=None, external_url=APARAT_URL)
+    await _seed_ready_subtitle(
+        tc, item_id, "fa", "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nx\n"
+    )
+    watch = await client.get(f"{BASE}/videos/{item_id}")
+    assert watch.status_code == 200, watch.text
+    assert watch.json()["subtitles"] == []
+    res = await client.get(f"{BASE}/videos/{item_id}/subtitles/fa.vtt")
+    assert res.status_code == 404

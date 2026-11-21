@@ -160,7 +160,7 @@ export interface LibraryItem {
   source_ref: string;
   cover_url: string;
   media_url: string;
-  /** External (YouTube) canonical watch URL — null for uploaded items. */
+  /** External (YouTube/Aparat) canonical watch URL — null for uploaded items. */
   external_url: string | null;
   settings: LibrarySettings;
   created_at: string;
@@ -543,7 +543,7 @@ export interface LibraryMetadata {
   transcript_status: TranscriptStatus;
   ocr_text: string;
   duration_seconds: number | null;
-  /** YouTube link for external videos (kind=video, no file). */
+  /** Source link for external videos (kind=video, no file). */
   external_url?: string | null;
   settings: LibrarySettings;
 }
@@ -628,7 +628,7 @@ export function buildCreateForm(
 }
 
 /**
- * Build the create body for an external (YouTube) video: metadata only,
+ * Build the create body for an external (YouTube/Aparat/file-link) video: metadata only,
  * no file part. The metadata must carry `external_url`; the API creates
  * the item without any upload (and without the ClamAV scan gate).
  */

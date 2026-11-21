@@ -180,7 +180,8 @@
     "viewAllLabel": "عرض الكل",
     "videosViewAll": "عرض كل الفيديوهات",
     "videosPlaylist": "قائمة تشغيل",
-    "videosExternal": "يوتيوب"
+    "videosExternal": "يوتيوب",
+    "videosExternalAparat": "أبارات"
   },
   "searchPage": {
     "errorDescription": "تعذّر الاتصال بالخادم. حاول مجدداً.",
@@ -1822,6 +1823,7 @@
     "totalDuration": "المجموع {duration}",
     "playlistTag": "قائمة تشغيل",
     "externalBadge": "يوتيوب",
+    "externalBadgeAparat": "أبارات",
     "viewAll": "عرض كل الفيديوهات",
     "noVideos": "لم يُنشر أي فيديو بعد.",
     "noVideosHint": "ستظهر الدروس المرئية الجديدة هنا قريباً.",
@@ -1840,6 +1842,8 @@
       "subtitlesLabel": "الترجمة",
       "download": "تنزيل",
       "watchOnYouTube": "المشاهدة على يوتيوب",
+      "watchOnAparat": "المشاهدة على أبارات",
+      "watchExternal": "المشاهدة في المصدر الأصلي",
       "share": "مشاركة",
       "linkCopied": "تم نسخ الرابط",
       "save": "حفظ",

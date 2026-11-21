@@ -62,7 +62,11 @@ export default async function VideosPage({
     durationLabel: formatDuration(item.duration_seconds, locale),
     kindLabel: tLib(`kinds.${item.kind}`),
     playlistLabel: item.playlists.length > 0 ? t('playlistTag') : null,
-    externalLabel: item.external_url ? t('externalBadge') : null,
+    externalLabel: item.external_url?.includes('aparat.com')
+      ? t('externalBadgeAparat')
+      : item.external_url?.includes('youtube')
+        ? t('externalBadge')
+        : null,
     href: `/${locale}/videos/${encodeURIComponent(item.id)}${
       playlistId ? `?playlist=${encodeURIComponent(playlistId)}` : ''
     }`,

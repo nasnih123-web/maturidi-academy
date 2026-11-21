@@ -58,6 +58,7 @@ export interface HomeSectionsLabels {
   videosPlaylist: string;
   /** «یوتیوب» badge for external videos in the band. */
   videosExternal: string;
+  videosExternalAparat: string;
 }
 
 /**
@@ -195,7 +196,10 @@ export function HomeSectionRenderer({
                 viewAllHref={`/${locale}/videos`}
                 viewAllLabel={labels.videosViewAll}
                 playlistLabel={labels.videosPlaylist}
-                externalLabel={labels.videosExternal}
+                externalLabels={{
+                  youtube: labels.videosExternal,
+                  aparat: labels.videosExternalAparat,
+                }}
                 prevLabel={labels.card.sliderPrev}
                 nextLabel={labels.card.sliderNext}
               />
