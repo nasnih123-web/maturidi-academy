@@ -15,6 +15,8 @@ export interface VideoSliderItem {
   id: string;
   title: string;
   scholar: string | null;
+  /** «تاریخ انتشار» قالب‌بندی‌شده (شمسی در fa) — خط متای کارت. */
+  dateLabel: string | null;
   duration: string | null;
   image: string | null;
   kindLabel: string;
@@ -129,8 +131,10 @@ export function VideosSlider({
                   ) : null}
                 </span>
                 <span className="vid-band-card-title">{item.title}</span>
-                {item.scholar ? (
-                  <span className="vid-band-card-meta">{item.scholar}</span>
+                {item.scholar || item.dateLabel ? (
+                  <span className="vid-band-card-meta">
+                    {[item.scholar, item.dateLabel].filter(Boolean).join(' · ')}
+                  </span>
                 ) : null}
               </Link>
             </li>

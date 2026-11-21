@@ -1432,6 +1432,39 @@ class UserVideoProgress(Base):
     )
 
 
+class UserSavedVideo(Base):
+    """ویدیوهای ذخیره‌شدهٔ هر کاربر (نشانک «ذخیره» در صفحهٔ تماشا).
+
+    یک ردیف برای هر (کاربر، آیتم)؛ فقط خود کاربر ردیف‌های خودش را
+    می‌خواند و می‌نویسد (endpointها همیشه با user جاری scope می‌شوند).
+    """
+
+    __tablename__ = "user_saved_videos"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("library_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "item_id", name="uq_user_saved_videos_user_item"
+        ),
+    )
+
+
 class ItemSubtitle(Base):
     """زیرنویس زمان‌دار (WebVTT) هر آیتم ویدیویی، به‌ازای هر زبان — فاز ۳ ویدیوها.
 

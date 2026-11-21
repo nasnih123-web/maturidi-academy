@@ -43,6 +43,9 @@ class VideoItemOut(BaseModel):
     topic_tags: list[str]
     visibility: str
     created_at: datetime
+    # لحظهٔ ورود آیتم به وضعیت published؛ برای آیتم‌های منتشرشده همیشه
+    # پر است و وب از آن «تاریخ انتشار» (شمسی در fa) می‌سازد
+    published_at: datetime | None = None
     playlists: list[PlaylistRef] = Field(default_factory=list)
 
 
@@ -193,6 +196,17 @@ class VideoProgressOut(BaseModel):
     position_seconds: float | None
     duration_seconds: float | None
     updated_at: datetime | None
+
+
+class VideoSavedOut(BaseModel):
+    """وضعیت نشانک «ذخیره» کاربر جاری روی یک ویدیو.
+
+    برای مهمان (بدون توکن) همیشه saved=False برمی‌گردد (۲۰۰ — مهمان
+    بودن خطا نیست؛ وب دکمه را به ورود هدایت می‌کند).
+    """
+
+    item_id: uuid.UUID
+    saved: bool
 
 
 class CandidateOut(BaseModel):

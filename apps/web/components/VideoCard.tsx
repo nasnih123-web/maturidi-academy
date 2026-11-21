@@ -11,6 +11,8 @@ export interface VideoCardItem {
   id: string;
   title: string;
   scholarName: string;
+  /** «تاریخ انتشار» قالب‌بندی‌شده (شمسی در fa) — خط متای کارت. */
+  dateLabel: string;
   coverUrl: string | null;
   durationLabel: string;
   kindLabel: string;
@@ -52,7 +54,11 @@ export function VideoCard({ item }: { item: VideoCardItem }) {
           ) : null}
         </div>
         <h3 className="vid-card-title">{item.title}</h3>
-        {item.scholarName ? <p className="vid-card-meta">{item.scholarName}</p> : null}
+        {item.scholarName || item.dateLabel ? (
+          <p className="vid-card-meta">
+            {[item.scholarName, item.dateLabel].filter(Boolean).join(' · ')}
+          </p>
+        ) : null}
       </Link>
     </article>
   );
