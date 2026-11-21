@@ -722,12 +722,6 @@ async def main() -> None:
         lms_seed = await seed_lms_demo(db)
         print(f"seed LMS: {lms_seed}")
 
-        # آیتم‌های نمایشی کتابخانه — فاز ۹ (idempotent؛ فایل‌های واقعی تولیدشده در کد)
-        from app.modules.library.seed_library import seed_library_demo
-
-        lib_seed = await seed_library_demo(db)
-        print(f"seed کتابخانه: {lib_seed}")
-
         # نقش/مجوزها، تنظیمات، گروه‌ها و صفحهٔ قوانین انجمن — فاز ۱۰ (idempotent)
         from app.seed_social import seed_social
 

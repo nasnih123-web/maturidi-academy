@@ -383,3 +383,120 @@ async def test_external_progress_put_422_get_nulls(tc):
     assert body["position_seconds"] is None
     assert body["duration_seconds"] is None
     assert body["updated_at"] is None
+
+
+# ---------------------------------------------------------------------------
+# لینک مستقیم فایل ویدیو (پخش با پلیر بومی سایت)
+# ---------------------------------------------------------------------------
+
+FILE_URL = "https://cdn.example.com/media/lecture-1.mp4"
+FILE_URL_WEBM = "https://cdn.example.com/media/Lecture-2.WEBM?dl=1"
+
+
+async def test_create_direct_file_video_without_upload(tc):
+    from app.models.models import LibraryItem
+
+    client = tc["client"]
+    admin = await _admin(tc)
+    r = await _create_link(client, admin, _meta("video", external_url=FILE_URL))
+    assert r.status_code == 201, r.text
+    body = r.json()
+    # لینک فایل عیناً ذخیره می‌شود (برخلاف یوتیوب، کانونیک‌سازی ندارد)
+    assert body["external_url"] == FILE_URL
+    assert body["media_url"] is None
+    assert body["file_size_bytes"] is None
+    async with tc["maker"]() as db:
+        item = await db.get(LibraryItem, uuid.UUID(body["id"]))
+        assert item is not None
+        assert item.media_key is None
+        assert item.external_url == FILE_URL
+
+
+async def test_create_direct_file_url_variants(tc):
+    client = tc["client"]
+    admin = await _admin(tc)
+    # پسوند بزرگ + کوئری‌استرینگ: پسوند از روی path خوانده می‌شود و URL
+    # با همان کوئری ذخیره می‌شود؛ فاصله‌های دو سر هم بریده می‌شوند
+    r = await _create_link(
+        client, admin, _meta("video", external_url=f"  {FILE_URL_WEBM}  ")
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["external_url"] == FILE_URL_WEBM
+
+
+async def test_create_direct_file_without_title_422_no_oembed(tc, monkeypatch):
+    from app.modules.videos import youtube
+
+    async def forbidden_fetch(url: str):
+        raise AssertionError("oEmbed برای لینک فایل نباید صدا زده شود")
+
+    monkeypatch.setattr(youtube, "fetch_youtube_title", forbidden_fetch)
+    client = tc["client"]
+    admin = await _admin(tc)
+    meta = _meta("video", external_url=FILE_URL)
+    del meta["title"]
+    r = await _create_link(client, admin, meta)
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "title_required"
+
+
+async def test_create_non_file_non_youtube_url_422(tc):
+    client = tc["client"]
+    admin = await _admin(tc)
+    for bad in (
+        "https://example.com/watch",
+        "https://example.com/video.avi",
+        "http://cdn.example.com/media/lecture-1.mp4",  # فقط https
+        "https://example.com/video.mp4/",  # پسوند در انتهای path نیست
+    ):
+        r = await _create_link(client, admin, _meta("video", external_url=bad))
+        assert r.status_code == 422, (bad, r.text)
+        assert r.json()["error"]["code"] == "invalid_youtube_url"
+
+
+async def test_create_direct_file_rejected_for_non_video_kind(tc):
+    client = tc["client"]
+    admin = await _admin(tc)
+    r = await _create_link(client, admin, _meta("pdf", external_url=FILE_URL))
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "external_url_not_allowed"
+
+
+async def test_update_external_url_to_direct_file(tc):
+    client = tc["client"]
+    admin = await _admin(tc)
+    r = await _create_link(client, admin, _meta("video", external_url=WATCH_URL))
+    assert r.status_code == 201, r.text
+    item_id = r.json()["id"]
+
+    r = await client.put(
+        f"{BASE}/admin/library/items/{item_id}",
+        data={"metadata": json.dumps({"external_url": FILE_URL})},
+        headers=admin,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["external_url"] == FILE_URL
+
+
+async def test_direct_file_watch_and_list_payloads(tc):
+    client = tc["client"]
+    item_id = await _make_external_item(tc, external_url=FILE_URL)
+
+    r = await client.get(f"{BASE}/videos")
+    assert r.status_code == 200, r.text
+    found = [i for i in r.json()["items"] if i["id"] == item_id]
+    assert len(found) == 1
+    entry = found[0]
+    assert entry["external_url"] == FILE_URL
+    # نه امبد یوتیوب ساخته می‌شود، نه بندانگشتی از یوتیوب می‌آید
+    assert entry["embed_url"] is None
+    assert entry["cover_url"] is None
+
+    r = await client.get(f"{BASE}/videos/{item_id}")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # پخش با پلیر بومی: stream_url خودِ URL فایل است و زیرنویس ندارد
+    assert body["stream_url"] == FILE_URL
+    assert body["item"]["external_url"] == FILE_URL
+    assert body["item"]["embed_url"] is None
+    assert body["subtitles"] == []

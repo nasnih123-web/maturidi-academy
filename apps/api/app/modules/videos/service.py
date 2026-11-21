@@ -92,6 +92,17 @@ def _external_fields(item: LibraryItem) -> tuple[str | None, str | None]:
     return item.external_url, youtube.embed_url(video_id)
 
 
+def _watch_stream_url(item: LibraryItem, detail: dict) -> str | None:
+    """منبع پخش پلیر بومی در payload تماشا: آیتم آپلودی ← media_url
+    امضاشده؛ یوتیوب ← None (پخش فقط از embed_url است)؛ لینک مستقیم
+    فایل ← خود URL فایل تا پلیر بومی سایت پخشش کند."""
+    if not item.external_url:
+        return detail["media_url"]
+    if youtube.parse_youtube_video_id(item.external_url) is not None:
+        return None
+    return item.external_url
+
+
 async def _cover_url(item: LibraryItem) -> str | None:
     """کاور امضاشده؛ برای آیتم خارجیِ بدون کاور، بندانگشتی یوتیوب."""
     url = await library_service._signed_url(item.cover_media_key)
@@ -347,8 +358,9 @@ async def get_watch(
     base = (await _items_out(db, [item]))[0]
     return {
         "item": base,
-        # آیتم خارجی فایل ندارد — پخش فقط از embed_url داخل item است
-        "stream_url": None if item.external_url else detail["media_url"],
+        # یوتیوب فایل ندارد و از embed_url پخش می‌شود؛ آپلودی و لینک
+        # مستقیم فایل از stream_url با پلیر بومی پخش می‌شوند
+        "stream_url": _watch_stream_url(item, detail),
         "playlist": await _playlist_context(db, item, user, playlist_id),
         "related": await _related(db, item, user),
         "subtitles": await _subtitle_tracks(db, item),
