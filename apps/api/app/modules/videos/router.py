@@ -328,7 +328,7 @@ async def admin_subtitle_statuses(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(_can_library),
 ):
-    """وضعیت زیرنویس تازه‌ترین ویدیوهای آپلودی برای کارت CRM."""
+    """وضعیت زیرنویس تازه‌ترین ویدیوهای آپلودی و لینک مستقیم فایل."""
     return await service.admin_subtitle_statuses(db)
 
 

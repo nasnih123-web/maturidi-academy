@@ -38,6 +38,7 @@ from . import youtube
 from .schemas import SUBTITLE_LANGS, VIDEO_KINDS
 
 _RELATED_SCAN_CAP = 300
+_SUBTITLE_STATUS_SCAN_CAP = 300
 
 
 def _utcnow() -> datetime:
@@ -322,9 +323,10 @@ async def _related(
 async def _subtitle_tracks(
     db: AsyncSession, item: LibraryItem
 ) -> list[dict]:
-    """ترک‌های زیرنویس ready برای payload تماشا — فقط آیتم آپلودی و فقط
-    وقتی سوییچ CRM (videos.subtitles_enabled) روشن است."""
-    if item.external_url:
+    """ترک‌های زیرنویس ready برای payload تماشا — آیتم آپلودی و لینک
+    مستقیم فایل (یوتیوب کپشن خودش را دارد) و فقط وقتی سوییچ CRM
+    (videos.subtitles_enabled) روشن است."""
+    if subs.is_youtube_external(item):
         return []
     if not await subs.subtitles_enabled(db):
         return []
@@ -378,7 +380,7 @@ async def get_subtitle_vtt(
     (همان قواعد visibility کتابخانه)؛ هر حالت دیگر ۴۰۴ است."""
     visible = await _visible_items_by_ids(db, user, [item_id])
     item = visible.get(item_id)
-    if item is None or item.external_url:
+    if item is None or subs.is_youtube_external(item):
         raise APIError(404, "subtitle_not_found", "زیرنویس یافت نشد")
     row = (
         await db.execute(
@@ -903,14 +905,14 @@ async def request_subtitle_generation(
             "زیرنویس خودکار فقط برای آیتم‌های ویدیویی است",
             {"kind": item.kind},
         )
-    if item.external_url:
+    if subs.is_youtube_external(item):
         raise APIError(
             422,
             "external_video",
             "ویدیوی خارجی (یوتیوب) زیرنویس خودکار ندارد؛ "
             "کپشن داخل خود یوتیوب است",
         )
-    if not item.media_key:
+    if not item.external_url and not item.media_key:
         raise APIError(
             422, "no_media_file", "این آیتم فایل رسانه‌ای ندارد"
         )
@@ -937,22 +939,28 @@ async def request_subtitle_generation(
 async def admin_subtitle_statuses(
     db: AsyncSession, *, limit: int = 30
 ) -> list[dict]:
-    """تازه‌ترین ویدیوهای آپلودی + وضعیت زیرنویس هر پنج زبان — کارت CRM.
+    """تازه‌ترین ویدیوهای آپلودی و لینک مستقیم فایل + وضعیت زیرنویس هر
+    پنج زبان — کارت CRM.
 
-    آیتم خارجی (یوتیوب) عمداً نیست: زیرنویس ندارد. نبود ردیف برای یک
-    زبان یعنی "missing"؛ وضعیت ردیف عیناً گزارش می‌شود.
+    آیتم خارجیِ یوتیوب عمداً نیست: کپشن خودش را دارد. تشخیص یوتیوب از
+    روی URL است و در SQL شدنی نیست؛ اسکن تازه‌ترین‌ها در پایتون فیلتر
+    می‌شود (همان الگوی list_candidates). نبود ردیف برای یک زبان یعنی
+    "missing"؛ وضعیت ردیف عیناً گزارش می‌شود.
     """
     stmt = (
         select(LibraryItem)
         .where(
             LibraryItem.kind.in_(VIDEO_KINDS),
-            LibraryItem.external_url.is_(None),
-            LibraryItem.media_key.is_not(None),
+            or_(
+                LibraryItem.media_key.is_not(None),
+                LibraryItem.external_url.is_not(None),
+            ),
         )
         .order_by(LibraryItem.created_at.desc(), LibraryItem.id.desc())
-        .limit(limit)
+        .limit(_SUBTITLE_STATUS_SCAN_CAP)
     )
-    items = list((await db.execute(stmt)).scalars().all())
+    rows = list((await db.execute(stmt)).scalars().all())
+    items = [i for i in rows if not subs.is_youtube_external(i)][:limit]
     by_item: dict[uuid.UUID, dict[str, str]] = {}
     if items:
         sstmt = select(ItemSubtitle).where(
