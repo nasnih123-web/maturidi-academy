@@ -33,6 +33,7 @@ import {
   v2PageIndexFor,
   v2PageIndexForAyah,
   v2SurahPageRange,
+    v2WholeQuranPageRange,
   type V2MushafData,
   type V2MushafIndex,
   type V2Page,
@@ -856,5 +857,32 @@ describe('v2SurahPageRange (nass scroll)', () => {
     }
     const empty = { pageFirstAyahs: [[2, 1, 5]] } as unknown as V2MushafIndex;
     assert.equal(v2SurahPageRange(empty, 1, 7), null);
+  });
+});
+
+/* v2WholeQuranPageRange (nass scroll, whole Quran, 2026-11-21):   */
+/* the printed-page range of the whole Quran, from the index alone. */
+/* ---------------------------------------------------------------- */
+
+describe('v2WholeQuranPageRange (nass scroll, whole Quran)', () => {
+  it('spans page 1 to page 604 regardless of the study surah', (t) => {
+    const index = loadIndex();
+    if (!index) {
+      t.skip('quran-mushaf-v2-index.json در دسترس نیست');
+      return;
+    }
+    assert.equal(index.pageCount, 604);
+    assert.deepEqual(v2WholeQuranPageRange(index), {
+      firstPage: 0,
+      lastPage: 603,
+    });
+  });
+
+  it('follows pageCount, not a hardcoded 604', () => {
+    const fake = { pageCount: 3 } as unknown as V2MushafIndex;
+    assert.deepEqual(v2WholeQuranPageRange(fake), {
+      firstPage: 0,
+      lastPage: 2,
+    });
   });
 });
