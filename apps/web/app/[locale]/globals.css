@@ -4333,26 +4333,26 @@ button.mushaf-dk-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
 .vid-thumb-plcount { position: absolute; bottom: 0.55rem; inset-inline-end: 0.55rem; background: rgba(212, 175, 55, 0.92); color: #06120e; font-size: 0.72rem; font-weight: 800; padding: 0.15rem 0.55rem; border-radius: 0.45rem; }
 
 /* Homepage band */
-.vid-band { background: linear-gradient(160deg, #0d3b2c, #07231c 65%); border-block: 1px solid rgba(212, 175, 55, 0.35); padding: 2.2rem 0 1.6rem; margin: 2.5rem 0; }
+.vid-band { padding: 2.2rem 0 1.6rem; margin: 2.5rem 0; }
 .vid-band-inner { max-width: 1200px; margin: 0 auto; padding: 0 1.25rem; }
 .vid-band-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.2rem; }
 .vid-band-title { display: flex; align-items: center; gap: 0.8rem; }
 .vid-band-badge { width: 2.9rem; height: 2.9rem; border-radius: 50%; background: linear-gradient(135deg, #b8912c, #d4af37); display: flex; align-items: center; justify-content: center; flex: none; }
-.vid-band-title h2 { color: #ede6d6; font-size: 1.45rem; font-weight: 800; margin: 0; }
-.vid-band-title p { color: rgba(237, 230, 214, 0.65); font-size: 0.85rem; margin: 0.15rem 0 0; }
+.vid-band-title h2 { color: #07231c; font-size: 1.45rem; font-weight: 800; margin: 0; }
+.vid-band-title p { color: rgba(7, 35, 28, 0.65); font-size: 0.85rem; margin: 0.15rem 0 0; }
 .vid-band-all { background: linear-gradient(135deg, #b8912c, #d4af37); color: #06120e; font-weight: 800; font-size: 0.85rem; padding: 0.55rem 1.2rem; border-radius: 999px; text-decoration: none; }
 .vid-band-track { display: flex; gap: 1rem; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0.2rem 0 0.8rem; margin: 0; list-style: none; scrollbar-width: none; }
 .vid-band-track::-webkit-scrollbar { display: none; }
 .vid-band-slide { flex: 0 0 16.5rem; scroll-snap-align: start; }
 .vid-band-card { display: block; text-decoration: none; }
-.vid-band-card .vid-thumb { border: 1px solid rgba(212, 175, 55, 0.25); }
-.vid-band-card-title { display: block; color: #ede6d6; font-weight: 700; font-size: 0.95rem; line-height: 1.7; margin-top: 0.6rem; }
-.vid-band-card-meta { display: block; color: rgba(237, 230, 214, 0.6); font-size: 0.78rem; margin-top: 0.15rem; }
+.vid-band-card .vid-thumb { border: 1px solid rgba(7, 35, 28, 0.12); }
+.vid-band-card-title { display: block; color: #14231e; font-weight: 700; font-size: 0.95rem; line-height: 1.7; margin-top: 0.6rem; }
+.vid-band-card-meta { display: block; color: rgba(7, 35, 28, 0.55); font-size: 0.78rem; margin-top: 0.15rem; }
 .vid-band-nav { display: flex; align-items: center; justify-content: center; gap: 0.9rem; margin-top: 0.4rem; }
-.vid-band-navbtn { width: 2.2rem; height: 2.2rem; border-radius: 50%; border: 1.5px solid rgba(212, 175, 55, 0.6); background: none; color: #e5c07b; font-size: 1.2rem; line-height: 1; cursor: pointer; }
+.vid-band-navbtn { width: 2.2rem; height: 2.2rem; border-radius: 50%; border: 1.5px solid rgba(7, 35, 28, 0.3); background: none; color: #8a6d1f; font-size: 1.2rem; line-height: 1; cursor: pointer; }
 .vid-band-dots { display: flex; gap: 0.4rem; }
-.vid-band-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: rgba(237, 230, 214, 0.3); }
-.vid-band-dot.on { background: #d4af37; }
+.vid-band-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: rgba(7, 35, 28, 0.25); }
+.vid-band-dot.on { background: #b8912c; }
 
 /* /videos page */
 .vid-chips { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1.2rem 0 0.4rem; }
@@ -4377,7 +4377,8 @@ button.mushaf-dk-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
 
 /* Watch page */
 .vid-watch-layout { display: grid; grid-template-columns: minmax(0, 1fr) 21rem; gap: 1.6rem; align-items: start; margin-top: 1.2rem; }
-.vid-watch-layout[data-side="left"] .vid-watch-side { order: -1; }
+.vid-watch-layout[data-side="right"] { grid-template-columns: 21rem minmax(0, 1fr); }
+.vid-watch-layout[data-side="right"] .vid-watch-side { order: -1; }
 .vid-watch-title { font-size: 1.35rem; font-weight: 800; color: #07231c; line-height: 1.8; margin: 1rem 0 0.3rem; }
 .vid-watch-scholar { color: rgba(7, 35, 28, 0.6); font-weight: 700; font-size: 0.9rem; margin: 0; }
 .vid-watch-desc { color: rgba(7, 35, 28, 0.8); line-height: 2; margin-top: 0.8rem; white-space: pre-wrap; }
@@ -4401,6 +4402,7 @@ button.mushaf-dk-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
 .vid-side-now { font-size: 0.7rem; font-weight: 800; color: #8a6d1f; margin-top: 0.2rem; }
 @media (max-width: 900px) {
   .vid-watch-layout { grid-template-columns: 1fr; }
-  .vid-watch-layout[data-side="left"] .vid-watch-side { order: 0; }
+  .vid-watch-layout[data-side="right"] { grid-template-columns: 1fr; }
+  .vid-watch-layout .vid-watch-side { order: 0; }
   .vid-band-slide { flex-basis: 13.5rem; }
 }
