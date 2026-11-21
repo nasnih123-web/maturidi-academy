@@ -21,6 +21,7 @@ import {
   dataUrlToFile,
   defaultMetadata,
   errText,
+  fetchLibraryItems,
   formatDuration,
   metadataFromItem,
   useCreateLibraryItem,
@@ -984,12 +985,48 @@ function LibraryListTab({
     kind: kind || undefined,
     workflow_status: workflow || undefined,
     q: appliedQ || undefined,
+    limit: 100,
   };
   const query = useLibraryItemsQuery(filters);
   const transitionMut = useTransitionLibraryItem();
   const queryClient = useQueryClient();
 
-  const items = query.data?.items ?? [];
+  // صفحه‌های بعدی (کرسر API) — با «بارگذاری بیشتر» به انتهای فهرست اضافه می‌شوند.
+  const [extraItems, setExtraItems] = React.useState<LibraryItem[]>([]);
+  const [extraCursor, setExtraCursor] = React.useState<string | null | undefined>(undefined);
+  const [loadingMore, setLoadingMore] = React.useState(false);
+  const filtersKey = JSON.stringify(filters);
+  const [lastFiltersKey, setLastFiltersKey] = React.useState(filtersKey);
+  if (filtersKey !== lastFiltersKey) {
+    setLastFiltersKey(filtersKey);
+    setExtraItems([]);
+    setExtraCursor(undefined);
+  }
+
+  const items: LibraryItem[] = [];
+  {
+    const seen = new Set<string>();
+    for (const it of [...(query.data?.items ?? []), ...extraItems]) {
+      if (seen.has(it.id)) continue;
+      seen.add(it.id);
+      items.push(it);
+    }
+  }
+  const nextCursor = extraCursor !== undefined ? extraCursor : (query.data?.next_cursor ?? null);
+
+  const loadMore = async (): Promise<void> => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchLibraryItems({ ...filters, cursor: nextCursor });
+      setExtraItems((prev) => [...prev, ...page.items]);
+      setExtraCursor(page.next_cursor);
+    } catch {
+      // فهرست فعلی می‌ماند؛ دکمه برای تلاش دوباره فعال است.
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const toggleSelect = (id: string): void => {
     setSelected((prev) => {
@@ -1026,6 +1063,8 @@ function LibraryListTab({
       setBulkError(errText(e));
     } finally {
       setBulkBusy(false);
+      setExtraItems([]);
+      setExtraCursor(undefined);
       queryClient.invalidateQueries({ queryKey: ["library"] });
     }
   };
@@ -1190,6 +1229,14 @@ function LibraryListTab({
           </table>
         </div>
       </QueryState>
+
+      {nextCursor && (
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <Button variant="secondary" onClick={() => void loadMore()} disabled={loadingMore}>
+            {t("media.loadMore")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1757,7 +1804,7 @@ function ReviewCard({
 function ReviewTab({ onSelect }: { onSelect: (id: string) => void }): React.ReactElement {
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const query = useLibraryItemsQuery({ workflow_status: "in_review" });
+  const query = useLibraryItemsQuery({ workflow_status: "in_review", limit: 100 });
   const items = query.data?.items ?? [];
 
   return (
