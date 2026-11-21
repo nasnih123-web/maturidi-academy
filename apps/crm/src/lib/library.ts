@@ -187,6 +187,7 @@ export interface LibraryFilters {
   workflow_status?: string;
   q?: string;
   cursor?: string;
+  limit?: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -454,9 +455,12 @@ const BASE = "/api/v1/admin/library";
 function itemsQuery(filters: LibraryFilters): string {
   const params = new URLSearchParams();
   if (filters.kind) params.set("kind", filters.kind);
-  if (filters.workflow_status) params.set("workflow_status", filters.workflow_status);
+  // نام پارامترهای API: status و after (نه workflow_status/cursor) —
+  // نام اشتباه بی‌سروصدا از سوی سرور نادیده گرفته می‌شد.
+  if (filters.workflow_status) params.set("status", filters.workflow_status);
   if (filters.q) params.set("q", filters.q);
-  if (filters.cursor) params.set("cursor", filters.cursor);
+  if (filters.cursor) params.set("after", filters.cursor);
+  if (filters.limit) params.set("limit", String(filters.limit));
   const s = params.toString();
   return s ? `${BASE}/items?${s}` : `${BASE}/items`;
 }

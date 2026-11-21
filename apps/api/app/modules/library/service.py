@@ -843,15 +843,34 @@ async def admin_list_items(
         stmt = stmt.where(LibraryItem.workflow_status == status)
     if source_type:
         stmt = stmt.where(LibraryItem.source_type == source_type)
-    if q:
-        like = f"%{q.lower()}%"
-        stmt = stmt.where(
-            or_(
-                func.lower(cast(LibraryItem.title, Text)).like(like),
-                func.lower(cast(LibraryItem.description, Text)).like(like),
-            )
-        )
     stmt = stmt.order_by(LibraryItem.created_at.desc(), LibraryItem.id.desc())
+    if q:
+        # جست‌وجو در پایتون، نه LIKE روی JSON: ستون‌های JSON ممکن است
+        # unicode-escaped ذخیره شوند و LIKE روی متن فارسی/عربی قابل‌اتکا
+        # نیست (همان دلیل list_candidates در ماژول ویدیوها — ADR-0033).
+        rows = list((await db.execute(stmt.limit(500))).scalars().all())
+        needle = q.lower()
+        rows = [
+            r
+            for r in rows
+            if needle
+            in json.dumps(
+                {"t": r.title, "d": r.description}, ensure_ascii=False
+            ).lower()
+        ]
+        if cursor:
+            ts, lid = _decode_cursor(cursor)
+            rows = [
+                r
+                for r in rows
+                if r.created_at < ts or (r.created_at == ts and r.id < lid)
+            ]
+        next_cursor = None
+        if len(rows) > limit:
+            last = rows[limit - 1]
+            next_cursor = _encode_cursor(last.created_at, last.id)
+            rows = rows[:limit]
+        return [_to_out(r, media_url=None, cover_url=None) for r in rows], next_cursor
     if cursor:
         ts, lid = _decode_cursor(cursor)
         stmt = stmt.where(
@@ -860,7 +879,7 @@ async def admin_list_items(
                 (LibraryItem.created_at == ts) & (LibraryItem.id < lid),
             )
         )
-    rows = (await db.execute(stmt.limit(limit + 1))).scalars().all()
+    rows = list((await db.execute(stmt.limit(limit + 1))).scalars().all())
     next_cursor = None
     if len(rows) > limit:
         last = rows[limit - 1]
