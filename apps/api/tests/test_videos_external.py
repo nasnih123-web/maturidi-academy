@@ -642,6 +642,183 @@ async def test_aparat_fetch_meta_with_fake_client(monkeypatch):
     assert await aparat.fetch_aparat_meta(APARAT_WATCH_URL) == (None, None)
 
 
+class _FakeResp:
+    """پاسخ جعلی httpx برای تست‌های واکشی فرادادهٔ آپارات."""
+
+    def __init__(self, status_code=200, json_data=None, text="",
+                 json_error=False):
+        self.status_code = status_code
+        self._json_data = json_data
+        self.text = text
+        self._json_error = json_error
+
+    def json(self):
+        if self._json_error:
+            raise ValueError("bad json")
+        return self._json_data
+
+
+def _routing_aparat_client(calls, *, api=None, og=None):
+    """کلاینت جعلی آپارات: URLهای etc/api را با api و بقیه (صفحهٔ
+    تماشا) را با og جواب می‌دهد؛ مقدار Exception یعنی همان خطا raise
+    شود. همهٔ URLهای درخواستی به‌ترتیب در calls ثبت می‌شوند."""
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url):
+            calls.append(url)
+            outcome = api if "/etc/api/video/" in url else og
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+    return _Client()
+
+
+_OG_PAGE = (
+    '<meta property="og:title" content="عنوان از og" />'
+    '<meta property="og:image" '
+    'content="https://static.aparat.com/og.jpg" />'
+)
+
+
+async def test_aparat_fetch_meta_prefers_json_api(monkeypatch):
+    from app.modules.videos import aparat
+
+    calls = []
+    api = _FakeResp(json_data={"video": {
+        "title": "  عنوان از API  ",
+        "big_poster": "https://static.aparat.com/big.jpg",
+        "small_poster": "https://static.aparat.com/small.jpg",
+    }})
+    monkeypatch.setattr(
+        aparat, "_make_client",
+        lambda: _routing_aparat_client(
+            calls, api=api, og=_FakeResp(text=_OG_PAGE)
+        ),
+    )
+    title, cover = await aparat.fetch_aparat_meta(APARAT_WATCH_URL)
+    assert title == "عنوان از API"
+    assert cover == "https://static.aparat.com/big.jpg"
+    # با موفقیت API، صفحهٔ تماشا دیگر خوانده نمی‌شود
+    assert len(calls) == 1
+    assert f"/etc/api/video/videohash/{APARAT_HASH}" in calls[0]
+
+
+async def test_aparat_fetch_meta_small_poster_when_big_unusable(monkeypatch):
+    from app.modules.videos import aparat
+
+    # big_poster غایب → small_poster
+    calls = []
+    api = _FakeResp(json_data={"video": {
+        "title": "عنوان",
+        "small_poster": "https://static.aparat.com/small.jpg",
+    }})
+    monkeypatch.setattr(
+        aparat, "_make_client",
+        lambda: _routing_aparat_client(calls, api=api, og=_FakeResp()),
+    )
+    assert await aparat.fetch_aparat_meta(APARAT_WATCH_URL) == (
+        "عنوان",
+        "https://static.aparat.com/small.jpg",
+    )
+
+    # big_poster غیر https → رد می‌شود و small_poster برمی‌گردد
+    calls = []
+    api = _FakeResp(json_data={"video": {
+        "title": "عنوان",
+        "big_poster": "http://static.aparat.com/big.jpg",
+        "small_poster": "https://static.aparat.com/small.jpg",
+    }})
+    monkeypatch.setattr(
+        aparat, "_make_client",
+        lambda: _routing_aparat_client(calls, api=api, og=_FakeResp()),
+    )
+    assert await aparat.fetch_aparat_meta(APARAT_WATCH_URL) == (
+        "عنوان",
+        "https://static.aparat.com/small.jpg",
+    )
+
+
+async def test_aparat_fetch_meta_api_404_falls_back_to_og(monkeypatch):
+    from app.modules.videos import aparat
+
+    calls = []
+    monkeypatch.setattr(
+        aparat, "_make_client",
+        lambda: _routing_aparat_client(
+            calls,
+            api=_FakeResp(status_code=404),
+            og=_FakeResp(text=_OG_PAGE),
+        ),
+    )
+    title, cover = await aparat.fetch_aparat_meta(APARAT_WATCH_URL)
+    assert title == "عنوان از og"
+    assert cover == "https://static.aparat.com/og.jpg"
+    assert len(calls) == 2
+
+
+async def test_aparat_fetch_meta_api_bad_json_falls_back_to_og(monkeypatch):
+    from app.modules.videos import aparat
+
+    calls = []
+    monkeypatch.setattr(
+        aparat, "_make_client",
+        lambda: _routing_aparat_client(
+            calls,
+            api=_FakeResp(json_error=True),
+            og=_FakeResp(text=_OG_PAGE),
+        ),
+    )
+    title, cover = await aparat.fetch_aparat_meta(APARAT_WATCH_URL)
+    assert title == "عنوان از og"
+    assert cover == "https://static.aparat.com/og.jpg"
+    assert len(calls) == 2
+
+
+async def test_aparat_fetch_meta_empty_api_title_falls_back_to_og(
+    monkeypatch,
+):
+    from app.modules.videos import aparat
+
+    calls = []
+    api = _FakeResp(json_data={"video": {
+        "title": "   ",
+        "big_poster": "https://static.aparat.com/api-big.jpg",
+    }})
+    monkeypatch.setattr(
+        aparat, "_make_client",
+        lambda: _routing_aparat_client(
+            calls, api=api, og=_FakeResp(text=_OG_PAGE)
+        ),
+    )
+    # عنوان خالی API کافی نیست — کل نتیجه از og می‌آید، نه کاور تنها
+    title, cover = await aparat.fetch_aparat_meta(APARAT_WATCH_URL)
+    assert title == "عنوان از og"
+    assert cover == "https://static.aparat.com/og.jpg"
+    assert len(calls) == 2
+
+
+async def test_aparat_fetch_meta_both_sources_fail(monkeypatch):
+    from app.modules.videos import aparat
+
+    calls = []
+    monkeypatch.setattr(
+        aparat, "_make_client",
+        lambda: _routing_aparat_client(
+            calls,
+            api=_FakeResp(status_code=500),
+            og=RuntimeError("network down"),
+        ),
+    )
+    assert await aparat.fetch_aparat_meta(APARAT_WATCH_URL) == (None, None)
+
+
 async def test_create_aparat_video_canonicalizes_embed_url(tc, monkeypatch):
     from app.models.models import LibraryItem
 
