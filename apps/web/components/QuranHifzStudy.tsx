@@ -2205,16 +2205,28 @@ export function QuranHifzStudy({
 
   const peekNext = useCallback(async () => {
     if (!peekTarget) return;
+    // Page-turn fix (user 2026-11-21): the same shape as the ««
+    // fix above — the revealed word's ayah becomes the selection,
+    // so the mushaf page follows it. Before, the selection stayed
+    // on the old ayah and the page never turned: the first word of
+    // a next-page ayah landed in the wall below in large text (the
+    // page is derived from the selected ayah: pageIndex /
+    // v2PageIndex). Still surah-limited by construction: peekTarget
+    // scans only this surah's texts (ayah..ayahCount), so setAyah
+    // can never point across a surah boundary. Scoring is
+    // unchanged: revealWords still records the peek for
+    // peekTarget.ayah.
+    if (peekTarget.ayah !== ayah) setAyah(peekTarget.ayah);
     await revealWords(peekTarget.ayah, [peekTarget.index], 'word');
-  }, [peekTarget, revealWords]);
-
-  // Reveal the rest of the next ayah with unwritten words: from
+  },  [peekTarget, revealWords, ayah]);
+// Reveal the rest of the next ayah with unwritten words: from
   // the next unwritten word to the end of that same ayah. When
   // nothing is left unwritten to the end of this surah, advance to
   // the first ayah of the NEXT surah and reveal it (whole Quran):
   // repeated presses walk ayah by ayah through all 114 surahs.
-  // The single-word « button (peekNext) is untouched and stays
-  // surah-limited (user decision 2026-11-20).
+  // The single-word « button (peekNext) turns the page the same
+  // way (user 2026-11-21) and stays surah-limited (user decision
+  // 2026-11-20).
   const peekAyah = useCallback(async () => {
     if (peekTarget) {
       const words = (textsBySurah[surah]?.[peekTarget.ayah] ?? '').split(/\s+/).filter(Boolean);
@@ -2222,6 +2234,18 @@ export function QuranHifzStudy({
       for (let i = peekTarget.index; i < words.length; i += 1) {
         if (!wallKeys.has(`${peekTarget.ayah}:${i}`)) indices.push(i);
       }
+      // Page-turn fix (user 2026-11-21): the revealed ayah becomes
+      // the selection, so the mushaf page follows it. Before, the
+      // selection stayed on the old ayah and the page never turned
+      // within a surah — the revealed words of a next-page ayah
+      // landed in the wall below in large text (the page is derived
+      // from the selected ayah: pageIndex / v2PageIndex). The eye is
+      // untouched, the same setAyah-only turn the page-nav «آیهٔ بعد»
+      // button (PR #165) already does: with the usual surah scope
+      // the new page stays hidden; a page scope keeps its existing
+      // rule (it covers only its page). Scoring is unchanged:
+      // revealWords still records the peek for peekTarget.ayah.
+      if (peekTarget.ayah !== ayah) setAyah(peekTarget.ayah);
       await revealWords(peekTarget.ayah, indices, 'ayah');
       return;
     }
@@ -2235,7 +2259,7 @@ export function QuranHifzStudy({
     setEyeHidden(true);
     setRevealedWords(new Set());
     setAyah(peekAyahNext.ayah);
-  }, [peekTarget, peekAyahNext, textsBySurah, surah, wallKeys, revealWords]);
+  }, [peekTarget, peekAyahNext, textsBySurah, surah, wallKeys, revealWords, ayah]);
 
   // Reveal the next ayah after a «« cross-surah advance, once its
   // texts (and wall keys) have arrived, through the same
