@@ -2702,29 +2702,10 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
 .quran-hifz-study .hifz-word-disputed { font-size: 0.75rem; font-family: system-ui, sans-serif; opacity: 0.85; }
 .quran-hifz-study .hifz-practice-note { text-align: center; margin: 0.75rem 0 0; }
 .quran-hifz-study .hifz-controls { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; margin-top: 1rem; }
-/* ---- Phase 3 revision: the blank wall (white page, words written live) ---- */
-.quran-hifz-study .hifz-wall { background: #fffef9; color: #1c1710; border-radius: 0; border-top: 1px solid #e5e0d5; padding: 1rem; box-shadow: none; min-height: 40vh; }
-.quran-hifz-study .hifz-wall-empty { text-align: center; opacity: 0.65; padding: 3rem 1rem; }
-.quran-hifz-study .hifz-wall-ayah { margin-bottom: 1.25rem; }
-.quran-hifz-study .hifz-wall-ayah:last-child { margin-bottom: 0; }
-.quran-hifz-study .hifz-wall-ref { font-size: 0.85rem; opacity: 0.6; font-family: system-ui, sans-serif; text-align: center; margin: 0 0 0.5rem; }
-.quran-hifz-study .hifz-wall-words { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; font-family: "KFGQPC HAFS Uthmanic Script", "Noto Naskh Arabic", serif; font-size: 2rem; line-height: 2.4; }
-/* Status chips on the LIGHT wall need dark text (the dark-page variants
-   below the wall rules use light text and would be unreadable here). */
-.quran-hifz-study .hifz-wall .hifz-word-correct { background: transparent; color: #1c1710; }
-.quran-hifz-study .hifz-wall .hifz-word-close { background: #ffe14d; color: #1c1710; text-decoration: underline dotted #1c1710; text-underline-offset: 0.2em; }
-.quran-hifz-study .hifz-wall .hifz-word-wrong { background: transparent; color: #b3261e; text-decoration: underline dashed #b3261e; text-underline-offset: 0.2em; }
-.quran-hifz-study .hifz-wall .hifz-word-skipped { background: transparent; color: #6b655a; }
-.quran-hifz-study .hifz-wall .hifz-word-peeked { background: transparent; color: #1c1710; }
-.quran-hifz-study .hifz-wall .hifz-word-live { background: rgba(0,0,0,0.04); color: #1c1710; }
-.quran-hifz-study .hifz-wall .hifz-word-practice { outline: 2px solid #8a6d1b; outline-offset: 2px; }
-.quran-hifz-study .hifz-wall .hifz-word-heard,
-.quran-hifz-study .hifz-wall .hifz-word-peeked-tag,
-.quran-hifz-study .hifz-wall .hifz-word-disputed { color: #444444; }
 /* Line page: Tarteel-style blank mushaf page (white, true line
    layout). Faint markers sit at their printed positions from the
    start; unwritten words are hidden slots that keep the layout
-   stable. Status colors mirror the wall's dark-text variants: the
+   stable. Status colors use dark text: the
    page is white, so the base dark-background word colors would be
    unreadable here. The bottom padding keeps content clear of the
    FIXED recitation toolbar (user design, 2026-11-10): 136px bar
@@ -3125,9 +3106,8 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
      bare-html page behaved the same, so the lock cannot rest on
      overflow at all. The clip rules below stay as a second layer.)
      The root keeps its flex column + 100dvh height (inset:0 pins
-     it to the viewport). When the wall renders (hifz-has-wall) the
-     root returns to normal flow and the page scrolls again, so the
-     wall stays reachable.
+     it to the viewport). The wall is gone (removed 2026-11-21):
+     the root is always fixed and the page never scrolls.
      REGRESSION FIX (2026-11-11, live p106 after PR #125): the base
      rule for .quran-hifz-study carries `margin: 0 calc(-1 *
      clamp(1rem, 3vw, 2rem))` — in normal flow that negative margin
@@ -3167,9 +3147,9 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
      footer then lands ~28px above the toolbar at scroll 0 in
      every root state. min-height, not height, so a short viewport
      degrades to the natural page instead of clipping lines.
-     Fixed page (2026-11-10): the pin switches OFF when the wall
-     renders (hifz-has-wall) — the page scrolls again then, so the
-     wall below it stays reachable. */
+     Fixed page (2026-11-10): the pin used to switch off when the
+     wall rendered; the wall was removed 2026-11-21, so the pin
+     always applies. */
   .quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall) .hifz-line-page {
     min-height: calc(100vh - 57px - 104px);
     min-height: calc(100dvh - 57px - 104px);
@@ -3226,9 +3206,9 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
      The page height is already pinned above, and everything that
      used to sit below the page moves into fixed overlays (live
      panel, setup, pills, banner, loading note) so nothing
-     reachable is lost. When the wall renders (hifz-has-wall) the
-     lock switches OFF — the wall sits below the page and must stay
-     reachable by scrolling. */
+     reachable is lost. The lock used to switch off when the wall
+     rendered; the wall was removed 2026-11-21, so the lock always
+     applies. */
   html:has(.quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall)) {
     overflow: clip;
   }
