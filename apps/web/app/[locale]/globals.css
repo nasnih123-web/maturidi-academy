@@ -2652,22 +2652,81 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
    threshold, amber between thresholds, red below amber, gray skipped.
    All controls are real buttons >= 44px; no horizontal overflow. */
 .quran-hifz-study { max-width: none; margin: 0 calc(-1 * clamp(1rem, 3vw, 2rem)); padding: 0 0 110px; background: #ffffff; color: #1c1710; }
-.quran-hifz-study .hifz-picker { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; justify-content: center; margin-bottom: 1rem; padding: 0 1rem; }
-/* Phase-1 hifz fix: the session-setup form (surah/ayah picker,
-   range + repetition, listen controls) lives in a collapsible panel
-   that is CLOSED by default, so the mushaf is the first visible
-   element on load and line 1 is in the viewport. The panel opens
-   from the hamburger in the top bar. */
-.quran-hifz-study .hifz-setup { margin: 0; padding: 0 1rem; }
-.quran-hifz-study .hifz-setup.is-open { margin: 0.75rem 0; }
-.quran-hifz-study .hifz-setup .hifz-picker,
-.quran-hifz-study .hifz-setup .hifz-range,
-.quran-hifz-study .hifz-setup .hifz-listen-controls { padding-inline: 0; }
-.quran-hifz-study .hifz-picker label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
-.quran-hifz-study .hifz-picker select,
-.quran-hifz-study .hifz-picker input { min-height: 44px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.30); background: #ffffff; color: #1c1710; padding: 0 0.6rem; font-size: 1rem; }
-.quran-hifz-study .hifz-page-nav { display: inline-flex; gap: 0.4rem; align-items: center; }
-.quran-hifz-study .hifz-page-nav input { width: 5.5rem; text-align: center; }
+/* Hifz dashboard (2026-11-22, design 4): lively tiles + a 30-juz map.
+   The panel takes the exact slot the session-setup panel had: in-flow
+   outside mushaf-mobile, a fixed overlay below the header inside it
+   (see the mushaf-mobile rule below). The setup panel is deleted.
+   RESTYLE 2026-11-22: the first version kept the sections and the
+   data but dropped the chosen design's look (plain head, percentage
+   fills, pill rows); these rules follow design 4's artifact exactly —
+   green gradient header with ring + gold streak pill, pastel tiles,
+   white cards, discrete juz states. The generic
+   `.quran-hifz-study button` rule below (pill radius, beige bg) would
+   win over plain dashboard classes, so every dashboard button rule
+   is qualified with `.hifz-dashboard-panel`. */
+.quran-hifz-study .hifz-dashboard-panel { margin: 0.75rem 0; padding: 0; background: #f2f6f1; color: #17301f; font-size: 14px; border-radius: 20px; overflow: hidden; }
+.hifz-dash-head { background: linear-gradient(140deg,#0d5c3a 0%,#12805c 58%,#0e7a6d 100%); color: #fff; padding: 6px 20px 20px; border-radius: 0 0 26px 26px; position: relative; overflow: hidden; }
+.hifz-dash-head::after { content: ""; position: absolute; width: 190px; height: 190px; border-radius: 50%; border: 34px solid rgba(255,255,255,.07); left: -70px; top: -80px; }
+.hifz-dash-head--plain { padding-bottom: 14px; }
+.hifz-dash-head-top { display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1; }
+.hifz-dash-head-top h2 { margin: 0; font-size: 17px; font-weight: 800; color: #fff; }
+.hifz-dash-head-actions { display: flex; gap: 0.5rem; }
+.hifz-dashboard-panel .hifz-dash-icon-btn { width: 36px; min-width: 36px; height: 36px; min-height: 36px; padding: 0; border: 0; border-radius: 50%; background: rgba(255,255,255,.18); color: #fff; font-size: 15px; cursor: pointer; }
+.hifz-dash-headrow { display: flex; align-items: center; gap: 15px; margin-top: 15px; position: relative; z-index: 1; }
+.hifz-dash-ring { position: relative; width: 82px; height: 82px; flex: none; }
+.hifz-dash-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.hifz-dash-ring-center b { font-size: 19px; font-weight: 900; }
+.hifz-dash-ring-center span { font-size: 10px; opacity: .85; }
+.hifz-dash-headtext b { font-size: 16.5px; display: block; }
+.hifz-dash-headtext span { font-size: 12.5px; opacity: .88; line-height: 1.8; display: block; }
+.hifz-dash-headtext .hifz-dash-streak { display: inline-flex; align-items: center; gap: 5px; background: #ffb03a; color: #5c2e00; font-weight: 900; font-size: 13px; padding: 5px 12px; border-radius: 999px; margin-top: 9px; box-shadow: 0 6px 14px -4px rgba(0,0,0,.35); opacity: 1; }
+.hifz-dash-body { padding: 16px 16px 22px; }
+.hifz-dash-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.hifz-dash-tile { border-radius: 18px; padding: 13px 14px; }
+.hifz-dash-tile span { font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.hifz-dash-tile b { font-size: 24px; font-weight: 900; display: block; margin-top: 4px; }
+.hifz-dash-tile b small { font-size: 12px; font-weight: 600; opacity: .65; }
+.hifz-dash-tile--green { background: #dff2e4; color: #0d5c3a; }
+.hifz-dash-tile--teal { background: #dcf2ef; color: #0b5a52; }
+.hifz-dash-tile--amber { background: #fdeeda; color: #8a4b06; }
+.hifz-dash-tile--rose { background: #fbe7e2; color: #93331f; }
+.hifz-dash-card { background: #fff; border-radius: 20px; padding: 15px 16px; margin-top: 12px; box-shadow: 0 4px 14px rgba(20,50,30,.05); }
+.hifz-dash-card p { margin: 0; font-size: 13px; color: #71857a; }
+.hifz-dash-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.hifz-dash-card-head b { font-size: 14.5px; font-weight: 800; }
+.hifz-dash-count { background: #177a4c; color: #fff; font-size: 12px; font-weight: 800; min-width: 24px; height: 24px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
+.hifz-dash-mut { font-size: 12px; color: #71857a; font-weight: 600; }
+.hifz-dash-week { display: flex; justify-content: space-between; }
+.hifz-dash-week-day { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11.5px; color: #71857a; }
+.hifz-dash-week-sq { width: 36px; height: 36px; border-radius: 12px; background: #eef3ee; display: flex; align-items: center; justify-content: center; font-weight: 800; color: #9db3a3; }
+.hifz-dash-week-sq--done { background: #177a4c; color: #fff; }
+.hifz-dash-week-sq--today { background: #ffb03a; color: #5c2e00; box-shadow: 0 5px 12px -3px rgba(232,147,12,.6); }
+.hifz-dash-juzmap { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; list-style: none; margin: 0; padding: 0; }
+.hifz-dashboard-panel .hifz-dash-juz { aspect-ratio: 1; width: 100%; min-height: 0; padding: 0; border: 0; border-radius: 10px; background: #eef3ee; color: #9db3a3; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.hifz-dashboard-panel .hifz-dash-juz--on { background: #177a4c; color: #fff; }
+.hifz-dashboard-panel .hifz-dash-juz--cur { background: #fff; color: #b05e09; box-shadow: inset 0 0 0 2px #e8930c; }
+@media (prefers-reduced-motion: no-preference) { .hifz-dash-juz--cur { animation: hifz-dash-pulse 1.8s ease-in-out infinite; } @keyframes hifz-dash-pulse { 50% { box-shadow: inset 0 0 0 2px #e8930c, 0 0 0 5px rgba(232,147,12,.18); } } }
+.hifz-dash-legend { margin-top: 10px; font-size: 12px; color: #71857a; }
+.hifz-dashboard-panel .hifz-dash-row { width: 100%; display: flex; align-items: center; gap: 11px; padding: 9px 0; border: 0; border-bottom: 1px solid #f0f4f0; border-radius: 0; background: transparent; min-height: 0; font-size: 14px; font-family: inherit; cursor: pointer; text-align: right; color: #17301f; }
+.hifz-dashboard-panel .hifz-dash-row:last-child { border-bottom: 0; padding-bottom: 2px; }
+.hifz-dash-row-ic { width: 36px; height: 36px; flex: none; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.hifz-dash-row-ic--teal { background: #dcf2ef; color: #0b5a52; }
+.hifz-dash-row-ic--rose { background: #fbe7e2; color: #93331f; }
+.hifz-dash-row-ic--amber { background: #fdeeda; color: #8a4b06; }
+.hifz-dash-row-text { flex: 1; min-width: 0; text-align: right; }
+.hifz-dash-row-text b { display: block; font-size: 13.5px; }
+.hifz-dash-row-text span { font-size: 11.5px; color: #71857a; }
+.hifz-dash-due { font-size: 11px; font-weight: 800; color: #8a4b06; background: #fdeeda; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
+.hifz-dash-due--late { color: #93331f; background: #fbe7e2; }
+.hifz-dash-chip { font-size: 12px; font-weight: 800; padding: 5px 10px; border-radius: 999px; white-space: nowrap; }
+.hifz-dash-chip--rose { background: #fbe7e2; color: #93331f; }
+.hifz-dash-chip--amber { background: #fdeeda; color: #8a4b06; }
+.hifz-dash-cta { display: flex; flex-direction: column; gap: 9px; margin-top: 14px; }
+.hifz-dashboard-panel .hifz-dash-main { border: 0; width: 100%; border-radius: 16px; background: linear-gradient(120deg,#12805c,#0d5c3a); color: #fff; font-family: inherit; cursor: pointer; padding: 13px 16px; display: flex; align-items: center; gap: 12px; text-align: right; box-shadow: 0 12px 24px -8px rgba(13,92,58,.55); min-height: 56px; font-size: 14px; }
+.hifz-dash-main-text { flex: 1; min-width: 0; }
+.hifz-dash-main-text b { display: block; font-size: 15.5px; }
+.hifz-dash-main-text span { font-size: 12px; opacity: .85; }
+.hifz-dashboard-panel .hifz-dash-ghost { border: 0; background: #e3efe7; color: #0d5c3a; width: 100%; border-radius: 16px; font-family: inherit; font-weight: 800; font-size: 14.5px; padding: 12px; cursor: pointer; min-height: 50px; }
 .quran-hifz-study button { min-height: 44px; padding: 0 1rem; border-radius: 999px; border: 1px solid rgba(0,0,0,0.30); background: #f3efe7; color: #1c1710; font-size: 1rem; cursor: pointer; }
 .quran-hifz-study button:disabled { opacity: 0.5; cursor: not-allowed; }
 .quran-hifz-study .hifz-parchment { background: #f7ecd4; border-radius: 12px; padding: 1rem; box-shadow: 0 8px 30px rgba(0,0,0,0.45); color: #1c1710; }
@@ -2856,10 +2915,9 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
 .quran-hifz-study .hifz-line-word-eye-hidden,
 .quran-hifz-study .hifz-line-word-eye-hidden * { color: transparent !important; }
 .quran-hifz-study.hifz-hide-markers .hifz-line-marker { visibility: hidden; }
-/* Phase 4 — range picker, resume banner, settings rows, error cards. */
-.quran-hifz-study .hifz-range { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; margin: 0.5rem 0 1rem; padding: 0 1rem; }
-.quran-hifz-study .hifz-range label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; }
-.quran-hifz-study .hifz-range input { width: 5.5rem; padding: 0.35rem 0.5rem; border: 1px solid #d6d0c4; border-radius: 8px; font-size: 1rem; }
+/* Phase 4 — resume banner, settings rows, error cards. (The range
+   rules lived here until the session-setup panel was deleted,
+   2026-11-22.) */
 .quran-hifz-study .hifz-resume-banner { display: flex; flex-wrap: wrap; gap: var(--q-space-2); align-items: center; justify-content: center; margin: 0.5rem 1rem 1rem; padding: 0.75rem 1rem; background: rgba(var(--q-brand-rgb),0.10); border: 1px solid rgba(var(--q-brand-rgb),0.35); border-radius: var(--q-radius); }
 .quran-hifz-study .hifz-setting-row { display: flex; gap: 1rem; align-items: center; justify-content: space-between; margin: 0; padding: 0.85rem 0; font-size: 0.95rem; line-height: 1.6; cursor: pointer; }
 .quran-hifz-study .hifz-setting-row + .hifz-setting-row { border-top: 1px solid #f0ece4; }
@@ -3284,11 +3342,11 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
   .quran-hifz-study.hifz-mode-mushaf .hifz-live-panel .hifz-controls { margin-top: 0; padding-inline: 0; }
   .quran-hifz-study.hifz-mode-mushaf .hifz-live-panel .hifz-practice-note { margin: 0; }
   .quran-hifz-study.hifz-mode-mushaf .hifz-live-panel .hifz-error { margin: 0.5rem 0 0; }
-  /* Setup panel (hamburger): a fixed overlay with its own scroll,
+  /* Dashboard panel (hamburger): a fixed overlay with its own scroll,
      top below the header so the hamburger (its only toggle) stays
      visible to close it. Covers the toolbar while open — the user
-     is configuring, not reciting (same as the other sheets). */
-  .quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall) .hifz-setup.is-open {
+     is viewing stats, not reciting (same as the other sheets). */
+  .quran-hifz-study.hifz-mode-mushaf:not(.hifz-has-wall) .hifz-dashboard-panel.is-open {
     position: fixed;
     top: 57px;
     left: 0;
@@ -3296,10 +3354,10 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
     bottom: 0;
     z-index: 70;
     margin: 0;
-    padding: 1rem;
+    padding: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    background: #ffffff;
+    background: #f2f6f1;
     border: 0;
     border-radius: 0;
   }
@@ -3373,11 +3431,9 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
    the same hollow-rectangle outline, so it renders tofu in the
    browser (see QuranHifzStudy). */
 .quran-hifz-study .hifz-line-basmala .hifz-basmala-svg { display: block; width: 212px; max-width: 59%; height: auto; margin: 0 auto; }
-.quran-hifz-study .hifz-listen-controls { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; justify-content: center; margin-bottom: 1rem; padding: 0 1rem; }
-.quran-hifz-study .hifz-listen-controls label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
-.quran-hifz-study .hifz-listen-controls select { min-height: 44px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.30); background: #ffffff; color: #1c1710; padding: 0 0.6rem; font-size: 1rem; }
-.quran-hifz-study .hifz-listen-controls audio { display: none; }
-/* Phase 5: the always-rendered (hidden) listen audio element. */
+/* Phase 5: the always-rendered (hidden) listen audio element. (The
+   listen-controls rules lived here until the session-setup panel was
+   deleted, 2026-11-22.) */
 .quran-hifz-study > audio[aria-hidden="true"] { display: none; }
 /* Tarteel (2026-11-08): the listen mini player is gone — the
    spacer + .hifz-listen-mini rules were removed with it. The
@@ -3402,7 +3458,6 @@ body:has(.quran-hifz-study .recitation-toolbar) .site-footer {
     padding-bottom: calc(104px + env(safe-area-inset-bottom));
   }
 }
-.quran-hifz-study .hifz-listen-controls .hifz-listen-resume { min-height: 44px; border-radius: 999px; border: 1px solid #16a34a; background: #f0fdf4; color: #166534; padding: 0 0.9rem; font-size: 0.95rem; cursor: pointer; }
 .quran-hifz-study .hifz-pills { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-start; margin-bottom: 1rem; padding: 0 1rem; }
 /* Live boxes HIDDEN 2026-11-14 at the user's request (phone
    screenshot, Duha p596): the live pills row (error count /
