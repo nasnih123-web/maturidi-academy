@@ -675,10 +675,10 @@ async def dashboard(db: AsyncSession, user: User) -> dict:
     clean_by_juz: dict[int, int] = {t["juz"]: 0 for t in totals}
     latest: dict[tuple[int, int], tuple[datetime, set[str]]] = {}
     for surah, ayah, status, created in scored.all():
-        key = (surah, ayah)
-        entry = latest.get(key)
+        ayah_key = (surah, ayah)
+        entry = latest.get(ayah_key)
         if entry is None:
-            latest[key] = (created, {status})
+            latest[ayah_key] = (created, {status})
         elif entry[0] == created:
             entry[1].add(status)
         # نشست قدیمی‌تر: نادیده گرفته می‌شود.
