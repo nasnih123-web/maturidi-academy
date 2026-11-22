@@ -643,6 +643,58 @@ async def dashboard(db: AsyncSession, user: User) -> dict:
         .order_by(func.count().desc())
         .limit(5)
     )
+    # نمره‌های امروز (برای دقت و خطای امروز در داشبورد) + پیشرفت هر
+    # جزء (آیهٔ «تمیز» = تازه‌ترین نمره‌اش نه غلط دارد نه جاافتاده؛
+    # همان معنای review_queue: تازه‌ترین نشست، نه تازه‌ترین کلمه).
+    today_start = datetime.combine(today, datetime.min.time(), tzinfo=UTC)
+    today_rows = await db.execute(
+        select(HifzWordScore.status, func.count())
+        .join(HifzAttempt, HifzWordScore.attempt_id == HifzAttempt.id)
+        .where(
+            HifzAttempt.user_id == user.id,
+            HifzWordScore.created_at >= today_start,
+        )
+        .group_by(HifzWordScore.status)
+    )
+    today_counts = {"correct": 0, "close": 0, "wrong": 0, "skipped": 0}
+    for status, n in today_rows.all():
+        if status in today_counts:
+            today_counts[status] = int(n)
+    totals = hifz_plan.juz_ayah_counts(await _ayah_counts(db))
+    scored = await db.execute(
+        select(
+            HifzWordScore.surah,
+            HifzWordScore.ayah,
+            HifzWordScore.status,
+            HifzAttempt.created_at,
+        )
+        .join(HifzAttempt, HifzWordScore.attempt_id == HifzAttempt.id)
+        .where(HifzAttempt.user_id == user.id)
+        .order_by(HifzAttempt.created_at.desc())
+    )
+    clean_by_juz: dict[int, int] = {t["juz"]: 0 for t in totals}
+    latest: dict[tuple[int, int], tuple[datetime, set[str]]] = {}
+    for surah, ayah, status, created in scored.all():
+        ayah_key = (surah, ayah)
+        entry = latest.get(ayah_key)
+        if entry is None:
+            latest[ayah_key] = (created, {status})
+        elif entry[0] == created:
+            entry[1].add(status)
+        # نشست قدیمی‌تر: نادیده گرفته می‌شود.
+    for (surah, ayah), (_, statuses) in latest.items():
+        if "wrong" not in statuses and "skipped" not in statuses:
+            clean_by_juz[hifz_plan.juz_of(surah, ayah)] += 1
+    juz_progress = [
+        {
+            "juz": t["juz"],
+            "start_surah": t["start_surah"],
+            "start_ayah": t["start_ayah"],
+            "total_ayahs": t["total_ayahs"],
+            "clean_ayahs": clean_by_juz[t["juz"]],
+        }
+        for t in totals
+    ]
     return {
         "attempts": attempt_count,
         "graded_words": graded,
@@ -661,6 +713,8 @@ async def dashboard(db: AsyncSession, user: User) -> dict:
             {"surah": s, "ayah": a, "mistake_count": int(n)}
             for s, a, n in worst.all()
         ],
+        "today_counts": today_counts,
+        "juz_progress": juz_progress,
     }
 
 

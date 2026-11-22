@@ -205,6 +205,17 @@ async def test_activity_streaks_heatmap_and_goal(tc):
     assert dash["streak_current"] == 2 and dash["streak_best"] == 3
     assert dash["goal_ayahs"] == 3 and dash["goal_today_ayahs"] == 2
     assert dash["goal_met"] is False
+    # نمره‌های امروز: فقط ۵ کلمهٔ امروز، همه درست.
+    assert dash["today_counts"] == {
+        "correct": 5, "close": 0, "wrong": 0, "skipped": 0,
+    }
+    # پیشرفت جزءها: فقط اخلاص (۱۱۲) نمره گرفته — هر ۴ آیه‌اش در
+    # جزء ۳۰ تمیزند؛ بقیهٔ جزءها صفر.
+    juz = {row["juz"]: row for row in dash["juz_progress"]}
+    assert len(juz) == 30
+    assert sum(row["total_ayahs"] for row in juz.values()) == 6236
+    assert juz[30]["total_ayahs"] == 564 and juz[30]["clean_ayahs"] == 4
+    assert all(row["clean_ayahs"] == 0 for n, row in juz.items() if n != 30)
 
 
 async def test_activity_requires_auth_and_empty_history(tc):

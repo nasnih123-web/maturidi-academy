@@ -122,10 +122,8 @@ import {
   accuracyPillClass,
   accuracyPillTone,
   clampRepeatCount,
-  nextAyahPosition,
   nextPeekAyahPosition,
   parseStoredHifzSettings,
-  prevAyahPosition,
   validatePracticeRange,
   type HifzUserSettings,
 } from '@/lib/hifz-phase4';
@@ -149,7 +147,7 @@ import { loadBookmarks, pageBookmarkId, saveBookmarks } from '@/lib/quran-bookma
 import { initQuranReadingSync } from '@/lib/quran-sync';
 import { DEFAULT_SVG_MUSHAF } from '@/lib/quran-svg-page';
 import { HifzLivePills } from './hifz-study/HifzLivePills';
-import { HifzNumericInput } from './HifzNumericInput';
+import { HifzStudyDashboard } from './hifz-study/HifzStudyDashboard';
 import { loadBoundaries } from '@/lib/quran-boundaries-loader';
 import { loadMushafLines, type MushafExactLine } from '@/lib/quran-mushaf-lines';
 import {
@@ -557,7 +555,7 @@ export function QuranHifzStudy({
   // on load and line 1 is in the viewport. The panel opens on
   // demand (and automatically when a range validation error must
   // be shown — see ensureAttempt).
-  const [setupOpen, setSetupOpen] = useState(false);
+  const [dashboardOpen, setDashboardOpen] = useState(false);
   // Surah-header SVGs that failed to load (fall back to the
   // plain-text header for those surahs, like the reader's V2 page).
   const [failedStudyHeaders, setFailedStudyHeaders] = useState<ReadonlySet<number>>(new Set());
@@ -1432,9 +1430,9 @@ export function QuranHifzStudy({
       ayahCount > 0 ? validatePracticeRange(rangeStart, rangeEnd, ayahCount) : null;
     if (rangeProblem) {
       setRangeError(rangeProblem);
-      // The range inputs live inside the (closed-by-default) setup
-      // panel: open it so the error is visible instead of hidden.
-      setSetupOpen(true);
+      // The range inputs are gone with the setup panel (2026-11-22),
+      // so the range can no longer become invalid from the UI; this
+      // stays as a guard only.
       return null;
     }
     setRangeError(null);
@@ -3340,6 +3338,38 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
     [v2Index, boundaries, surah],
   );
 
+  // Dashboard ayah jump (2026-11-22): like the old setup panel's
+  // prev/next ayah buttons — setAyah only, no eye-scope change; a
+  // cross-surah jump carries the target ayah past the surah-change
+  // reset via resumeAyahRef.
+  const jumpToDashboardAyah = useCallback(
+    (targetSurah: number, targetAyah: number): void => {
+      setDashboardOpen(false);
+      if (targetSurah !== surah) {
+        resumeAyahRef.current = targetAyah;
+        setSurah(targetSurah);
+      }
+      setAyah(targetAyah);
+    },
+    [surah],
+  );
+
+  // Printed page of an ayah, for the dashboard's continue button
+  // («سورهٔ بقره، آیهٔ ۲۵۵ · صفحهٔ ۴۳»): same V2-first lookup the
+  // study page itself uses for the selected ayah. Null when the
+  // index is not loaded — the button then omits the page.
+  const dashboardPageForAyah = useCallback(
+    (s: number, a: number): number | null => {
+      const idx = v2Index
+        ? v2PageIndexForAyah(v2Index, s, a)
+        : mushafPages
+          ? pageIndexFor(mushafPages, s, a)
+          : null;
+      return idx === null ? null : idx + 1;
+    },
+    [v2Index, mushafPages],
+  );
+
   // Swipe to turn the page (mushaf mode only): a horizontal swipe
   // of 50px+ that dominates the vertical movement turns the page —
   // left = next page, right = previous page (RTL mushaf order).
@@ -3377,18 +3407,19 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
   // match the backdrop tap + the close button; no focus trap yet —
   // see the phase 7 notes, deliberately not changed).
   useEffect(() => {
-    if (!settingsOpen && !errorSheetOpen && !displaySheetOpen && !pickerOpen) return;
+    if (!settingsOpen && !errorSheetOpen && !displaySheetOpen && !pickerOpen && !dashboardOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setSettingsOpen(false);
         setErrorSheetOpen(false);
         setDisplaySheetOpen(false);
         setPickerOpen(false);
+        setDashboardOpen(false);
       }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [settingsOpen, errorSheetOpen, displaySheetOpen, pickerOpen]);
+  }, [settingsOpen, errorSheetOpen, displaySheetOpen, pickerOpen, dashboardOpen]);
 
   // One printed page as a section: header/basmala/text lines + the
   // printed page number at the bottom (Eastern Arabic digits).
@@ -3684,8 +3715,8 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
         surah={surah}
         ayah={ayah}
         labels={labels}
-        menuOpen={setupOpen}
-        onOpenMenu={() => setSetupOpen((v) => !v)}
+        menuOpen={dashboardOpen}
+        onOpenMenu={() => setDashboardOpen((v) => !v)}
         onOpenSearch={() => setSearchSheetOpen(true)}
         bookmarked={bookmarked}
         onToggleBookmark={toggleBookmark}
@@ -3735,240 +3766,29 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
           repetition, listen controls) is a collapsible panel, CLOSED
           by default — the mushaf below is the first visible element
           on load. It opens from the hamburger in the top bar. */}
-      <div className={`hifz-setup${setupOpen ? ' is-open' : ''}`}>
-        {setupOpen && (
-          <>
-      <div className="hifz-picker" role="group" aria-label={labels.surahLabel}>
-        <label>
-          {labels.surahLabel}
-          <select
-            value={surah}
-            onChange={(e) => {
-              // A surah picked here is a surah selection: the eye's
-              // new scope is the whole surah, starting hidden.
-              const n = Number(e.target.value);
-              setSurah(n);
-              setEyeScope({ kind: 'surah', target: n });
-              setEyeHidden(true);
-              setRevealedWords(new Set());
-            }}
-            aria-label={labels.surahLabel}
-          >
-            {surahList.map((s) => (
-              <option key={s.number} value={s.number}>
-                {toArabicIndic(s.number)} — {s.nameAr}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {labels.ayahLabel}
-          <span className="hifz-page-nav">
-            <button
-              type="button"
-              disabled={prevAyahPosition(surah, ayah) === null}
-              onClick={() => {
-                const prev = prevAyahPosition(surah, ayah);
-                if (!prev) return;
-                if (prev.surah !== surah) {
-                  // Surah boundary: a surah selection — carry the
-                  // target ayah across the surah-change reset (the
-                  // resume pattern: the effect resets ayah to 1
-                  // unless resumeAyahRef carries it), and reset
-                  // the eye scope to the new surah, hidden.
-                  resumeAyahRef.current = prev.ayah;
-                  setSurah(prev.surah);
-                  setEyeScope({ kind: 'surah', target: prev.surah });
-                  setEyeHidden(true);
-                  setRevealedWords(new Set());
-                }
-                setAyah(prev.ayah);
-              }}
-            >
-              {labels.prevAyah}
-            </button>
-            <select
-              value={ayah}
-              aria-label={labels.ayahLabel}
-              onChange={(e) => setAyah(Number(e.target.value))}
-            >
-              {Array.from({ length: ayahCount || 1 }, (_, i) => i + 1).map((n) => (
-                <option key={n} value={n}>
-                  {toArabicIndic(n)}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              disabled={nextAyahPosition(surah, ayah, ayahCount) === null}
-              onClick={() => {
-                const next = nextAyahPosition(surah, ayah, ayahCount);
-                if (!next) return;
-                if (next.surah !== surah) {
-                  // Surah boundary: a surah selection — the next
-                  // ayah is the first ayah of the next surah, so
-                  // the surah-change effect's reset to ayah 1
-                  // already lands on it; reset the eye scope to
-                  // the new surah, hidden, like the surah picker.
-                  setSurah(next.surah);
-                  setEyeScope({ kind: 'surah', target: next.surah });
-                  setEyeHidden(true);
-                  setRevealedWords(new Set());
-                }
-                setAyah(next.ayah);
-              }}
-            >
-              {labels.nextAyah}
-            </button>
-          </span>
-        </label>
-      </div>
-
-      {/* The picker IS the start-ayah selector: a session starts
-          from the ayah chosen here (and ?ayah= follows it). */}
-      <p className="hifz-hint">{labels.startAyahHint}</p>
-
-      {/* Phase 4 — practice range + repetition: the session's ayah
-          range (empty end = to the end of the surah) and how many
-          times each ayah / the whole range repeats. Numeric inputs
-          are Eastern-Arabic (HifzNumericInput): the range bounds
-          pass through unclamped — validatePracticeRange still
-          validates them on start, with the role="alert" error below. */}
-      <div className="hifz-range" role="group" aria-label={labels.rangeStart}>
-        <label>
-          {labels.rangeStart}
-          <HifzNumericInput
-            value={rangeStart}
-            onChange={(v) => {
-              setRangeStart(v);
-              setRangeError(null);
-            }}
-            ariaLabel={labels.rangeStart}
-            placeholder={toArabicIndic(ayah)}
-          />
-        </label>
-        <label>
-          {labels.rangeEnd}
-          <HifzNumericInput
-            value={rangeEnd}
-            onChange={(v) => {
-              setRangeEnd(v);
-              setRangeError(null);
-            }}
-            ariaLabel={labels.rangeEnd}
-            placeholder={ayahCount > 0 ? toArabicIndic(ayahCount) : ''}
-          />
-        </label>
-        <label>
-          {labels.repeatAyah}
-          <HifzNumericInput
-            value={repeatAyah}
-            onChange={(v) => setRepeatAyah(v ?? 1)}
-            ariaLabel={labels.repeatAyah}
-            min={1}
-            max={20}
-          />
-        </label>
-        <label>
-          {labels.repeatRange}
-          <HifzNumericInput
-            value={repeatRange}
-            onChange={(v) => setRepeatRange(v ?? 1)}
-            ariaLabel={labels.repeatRange}
-            min={1}
-            max={20}
-          />
-        </label>
-      </div>
-      {rangeError !== null && (
-        <p className="hifz-error" role="alert">
-          {rangeError === 'rangeStart'
-            ? labels.rangeErrorStart
-            : rangeError === 'rangeEnd'
-              ? labels.rangeErrorEnd
-              : labels.rangeErrorOrder}
-        </p>
+      {/* The hamburger opens the hifz dashboard (2026-11-22, design 4):
+          it sits exactly where the session-setup panel sat (same fixed
+          overlay slot below the header). The setup panel is deleted:
+          range/repeat inputs and listen controls have no home here any
+          more (the user will ask if he wants any of them back in the
+          dashboard); their state stays at defaults so practice and
+          listen keep working (range = current ayah, repeats 1, reciter
+          Alafasy). Surah/ayah start still lives in the picker sheet. */}
+      {dashboardOpen && (
+        <HifzStudyDashboard
+          labels={labels.dashboard}
+          authed={authed}
+          locale={locale}
+          currentSurah={surah}
+          currentAyah={ayah}
+          pageForAyah={dashboardPageForAyah}
+          surahName={(n) =>
+            surahList.find((s) => s.number === n)?.nameAr ?? String(n)
+          }
+          onNavigate={jumpToDashboardAyah}
+          onClose={() => setDashboardOpen(false)}
+        />
       )}
-
-      {/* Listen controls (Phase 5): configuration only — reciter
-          picker, repeat mode (counts + range come from the Phase 4
-          inputs above), stop, saved-position resume, and the
-          timing-source note (real vs estimated). Transport lives on
-          the glass mini player below (play/pause, prev/next, speed,
-          repeat badge, position) — no control is duplicated. */}
-      {studyMode === 'listen' && (
-        <div className="hifz-listen-controls">
-          <label>
-            {labels.listenReciter}
-            <select
-              value={listenReciter}
-              onChange={(e) => setListenReciter(e.target.value)}
-              aria-label={labels.listenReciter}
-            >
-              {labels.listenReciters.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {labels.listenRepeat}
-            <select
-              value={listen.repeatMode}
-              onChange={(e) =>
-                listen.setRepeatMode(
-                  e.target.value as ListenRepeatMode,
-                )
-              }
-              aria-label={labels.listenRepeat}
-            >
-              <option value="off">{labels.listenRepeatOff}</option>
-              <option value="ayah">{labels.listenRepeatAyah}</option>
-              <option value="range">{labels.listenRepeatRange}</option>
-              <option value="surah">{labels.listenRepeatSurah}</option>
-            </select>
-          </label>
-          <button type="button" onClick={() => listen.stop()}>
-            {labels.listenStop}
-          </button>
-          {/* Phase 5: resume after leaving/returning — the persisted
-              position for this reciter+surah. Explicit: play() never
-              jumps on its own. */}
-          {listen.hasSavedPosition && listen.savedPosition !== null && (
-            <button
-              type="button"
-              className="hifz-listen-resume"
-              onClick={() => listen.resumeSaved()}
-            >
-              {labels.listenResumeFrom} {toArabicIndic(listen.savedPosition.ayah)}
-            </button>
-          )}
-          <p className="hifz-hint" aria-live="polite">
-            {labels.listenCurrentAyah}: {toArabicIndic(listen.currentAyah)}
-            {ayahCount > 0 ? ` / ${toArabicIndic(ayahCount)}` : ''}
-          </p>
-          {listen.timingSource === 'segments' && (
-            <p className="hifz-hint">{labels.listenSegmentsNote}</p>
-          )}
-          {listen.timingSource === 'interpolated' && (
-            <p className="hifz-hint">{labels.listenInterpolatedNote}</p>
-          )}
-          {listen.listenError && (
-            <p className="hifz-error" role="alert">
-              {listen.listenErrorKind === 'offline'
-                ? labels.listenOffline
-                : labels.listenAudioFailed}{' '}
-              <button type="button" onClick={() => listen.retry()}>
-                {labels.listenRetry}
-              </button>
-            </p>
-          )}
-        </div>
-      )}
-          </>
-        )}
-      </div>
 
       {/* Phase 5: the listen audio element is ALWAYS rendered (hidden),
           not only in listen mode. The hook attaches its event

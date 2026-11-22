@@ -107,11 +107,15 @@ describe('Hifz «« show-next-ayah button (whole Quran, user 2026-11-20)', () =>
     assert.match(study, /void revealWords\(pending\.ayah, indices, 'ayah'\);/);
   });
 
-  it('the page-nav «آیهٔ بعد» button is untouched (PR #165)', () => {
+  it('the page-nav «آیهٔ بعد» button is gone with the setup panel (user 2026-11-22)', () => {
     const study = readStudy();
-    assert.match(
-      study,
-      /disabled=\{nextAyahPosition\(surah, ayah, ayahCount\) === null\}/,
-    );
+    // The setup panel is deleted: its surah/ayah picker with the
+    // PR #165 page-nav buttons has no home here any more. Ayah
+    // navigation now lives in the picker sheet (surah links + range
+    // jumps), the toolbar «/«« buttons, and the dashboard rows.
+    // The helpers themselves stay unit-tested in hifz-phase4.test.ts.
+    assert.doesNotMatch(study, /nextAyahPosition\(surah, ayah, ayahCount\)/);
+    assert.doesNotMatch(study, /prevAyahPosition/);
+    assert.match(study, /surahHref=\{\(n\) => `\/\$\{locale\}\/quran\/\$\{n\}\?tab=hifz`\}/);
   });
 });

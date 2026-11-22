@@ -152,6 +152,31 @@ def test_quality_from_grade_cases():
     assert hifz_plan.quality_from_grade({"correct": 8, "close": 2, "wrong": 0, "skipped": 0}) in (3, 4)
 
 
+def test_juz_starts_cover_6236_and_boundaries():
+    from app.modules.quran import surahs
+
+    assert len(hifz_plan.JUZ_STARTS) == 30
+    assert hifz_plan.JUZ_STARTS[0] == (1, 1)
+    assert list(hifz_plan.JUZ_STARTS) == sorted(hifz_plan.JUZ_STARTS)
+    assert hifz_plan.juz_of(1, 1) == 1
+    assert hifz_plan.juz_of(2, 141) == 1
+    assert hifz_plan.juz_of(2, 142) == 2
+    assert hifz_plan.juz_of(2, 252) == 2
+    assert hifz_plan.juz_of(2, 253) == 3
+    assert hifz_plan.juz_of(78, 1) == 30
+    assert hifz_plan.juz_of(114, 6) == 30
+    counts = {s: surahs.get_surah(s).ayahs for s in range(1, 115)}
+    totals = hifz_plan.juz_ayah_counts(counts)
+    assert len(totals) == 30
+    assert sum(t["total_ayahs"] for t in totals) == 6236
+    assert totals[0] == {
+        "juz": 1, "start_surah": 1, "start_ayah": 1, "total_ayahs": 148,
+    }
+    assert totals[29] == {
+        "juz": 30, "start_surah": 78, "start_ayah": 1, "total_ayahs": 564,
+    }
+
+
 def test_plan_order_reverse_keeps_ayah_order():
     counts = {113: 5, 114: 6}
     order = hifz_plan.plan_ayah_order(
@@ -442,6 +467,12 @@ async def test_srs_record_and_due_and_dashboard(tc):
     assert body["attempts"] == 0 and body["graded_words"] == 0
     assert body["due_count"] >= 1
     assert len(body["daily_series"]) == 30
+    assert body["today_counts"] == {
+        "correct": 0, "close": 0, "wrong": 0, "skipped": 0,
+    }
+    assert len(body["juz_progress"]) == 30
+    assert sum(row["total_ayahs"] for row in body["juz_progress"]) == 6236
+    assert all(row["clean_ayahs"] == 0 for row in body["juz_progress"])
 
 
 async def test_suggested_requires_memorized_range_and_history(tc, monkeypatch):

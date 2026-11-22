@@ -539,9 +539,11 @@ describe('Fixed hifz study page + sign-in toast (user 2026-11-10)', () => {
     // empty check must ignore the (display:none) static hint or the
     // panel shows as an empty white strip for every guest.
     assert.match(css, /\.hifz-live-panel:not\(:has\(\.hifz-controls > :not\(\.hifz-signin-hint-static\)\)\)/);
-    // Setup panel: fixed overlay with its own scroll, top below the
-    // header so the hamburger stays visible to close it.
-    assert.match(css, /\.hifz-setup\.is-open \{\s*position: fixed;\s*top: 57px;/);
+    // Dashboard panel: fixed overlay with its own scroll, top below the
+    // header so the hamburger stays visible to close it. (The
+    // session-setup panel it replaced is gone, 2026-11-22.)
+    assert.match(css, /\.hifz-dashboard-panel\.is-open \{\s*position: fixed;\s*top: 57px;/);
+    assert.doesNotMatch(css, /hifz-setup/);
     // The wall is gone (user 2026-11-21): the root never carries
     // hifz-has-wall, so the lock + the page pin always apply. The
     // :not(.hifz-has-wall) selectors above stay as the lock's
