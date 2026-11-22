@@ -221,7 +221,14 @@ export function HifzNassScroll(props: HifzNassScrollProps) {
           textsBySurah={textsBySurah}
           wallAyahs={wallAyahs}
           loadEagerly={activePageIndex === pIdx}
-          preloadNext={pIdx < lastPage}
+          // Proposal 5: only the ACTIVE page preloads its next page.
+          // Before, every page except the last preloaded its next one,
+          // so with the 600px observer margin ~3 in-view pages each
+          // fired the next-page cascade and a dozen fonts loaded at
+          // once, evicting the visible ones. The next page still loads
+          // itself when it enters view; preloadNext only buys it a
+          // head start from the page the user is actually reading.
+          preloadNext={activePageIndex === pIdx && pIdx < lastPage}
           loadingLabel={loadingLabel}
           failedLabel={failedLabel}
           renderPageSection={renderPageSection}
@@ -295,7 +302,7 @@ function HifzNassScrollPage(props: HifzNassScrollPageProps) {
   // and the observer would never fire again). The observer stays
   // alive and toggles inView both ways: when the section leaves the
   // margin and comes back, the asset effect below re-runs and
-  // reloads the page font if the 8-family cap evicted it meanwhile.
+  // reloads the page font if the 12-family cap evicted it meanwhile.
   // Without this, a revisited page keeps rendering its glyphs in
   // the fallback font (wrong shapes) with a stale fontLoaded=true
   // — the whole-Quran scroll (user 2026-11-21) loads dozens of page
@@ -339,10 +346,27 @@ function HifzNassScrollPage(props: HifzNassScrollPageProps) {
     if (!inView) return;
     let cancelled = false;
     let retryTimer: number | undefined;
+    let idleHandle: number | undefined;
+    let idleTimer: number | undefined;
     if (preloadNext && page < 604) {
-      void loadV2Page(page + 1);
-      void loadV4PageGlyphs(page + 1);
-      void ensureMushafFontFor(qcfV4Provider, page + 1);
+      // Proposal 6: the next page's assets load only when the browser
+      // is idle (requestIdleCallback, 2s timeout; setTimeout fallback)
+      // and with low fetch priority — so they never race the active
+      // page's own font/glyphs. The font has no priority knob, so the
+      // idle deferral is what keeps it off the critical path.
+      const preloadNextPage = () => {
+        if (cancelled) return;
+        void loadV2Page(page + 1, { priority: 'low' });
+        void loadV4PageGlyphs(page + 1, { priority: 'low' });
+        void ensureMushafFontFor(qcfV4Provider, page + 1);
+      };
+      if (typeof window.requestIdleCallback === 'function') {
+        idleHandle = window.requestIdleCallback(preloadNextPage, {
+          timeout: 2000,
+        });
+      } else {
+        idleTimer = window.setTimeout(preloadNextPage, 0);
+      }
     }
     void loadV2Page(page).then((pg) => {
       if (!cancelled) setV2Page(pg);
@@ -364,6 +388,10 @@ function HifzNassScrollPage(props: HifzNassScrollPageProps) {
     return () => {
       cancelled = true;
       if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+      if (idleHandle !== undefined && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleHandle);
+      }
+      if (idleTimer !== undefined) window.clearTimeout(idleTimer);
     };
   }, [inView, page, preloadNext, retryTick]);
 

@@ -257,10 +257,16 @@ const pagePromises = new Map<number, Promise<V2Page | null>>();
     falls back once to the full data and picks the page from there, so
     a missing chunk never strands the mushaf; only when that fails too
     does the caller fall back to the old exact-line rendering. */
-export async function loadV2Page(page: number): Promise<V2Page | null> {
+export async function loadV2Page(
+  page: number,
+  opts?: { priority?: 'low' },
+): Promise<V2Page | null> {
   const existing = pagePromises.get(page);
   if (existing) return existing;
-  const promise = fetch(v2PageUrl(page))
+  const promise = fetch(
+    v2PageUrl(page),
+    opts?.priority ? { priority: opts.priority } : undefined,
+  )
     .then((res) => {
       if (!res.ok) return null;
       return res.json() as Promise<V2Page>;

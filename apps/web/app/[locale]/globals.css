@@ -2967,6 +2967,10 @@ body.quran-chrome-hidden .site-header, body.quran-chrome-hidden .site-footer { d
    reported. The dark-base .hifz-word-peeked rule above keeps its
    own colours for its dark surface. */
 .quran-hifz-study .hifz-line-word.hifz-word-peeked { background: transparent; color: #1c1710; }
+/* Basmala recited live, stored as `basmala` (proposal 16): a stored
+   basmala word reads as plain text, like a correct word — written,
+   unscored, never counted. */
+.quran-hifz-study .hifz-line-word.hifz-word-basmala { background: transparent; color: #1c1710; }
 /* Tajweed letter colors (the 8-color documented palette, phase 7).
    They apply only to LIVE words: once a word is graded, the grade
    color wins and the letters inherit it, so a wrong word never

@@ -114,11 +114,19 @@ const glyphPromises = new Map<number, Promise<V4PageGlyphs | null>>();
 /** One page's "surah:ayah:word" → glyph-string map, or null when the
     file is missing or unreadable (the caller then renders Tanzil
     text — the honest fallback, never a silent substitution).
-    Promise-cached per page. Mirrors loadV2PageGlyphs. */
-export function loadV4PageGlyphs(page: number): Promise<V4PageGlyphs | null> {
+    Promise-cached per page. Mirrors loadV2PageGlyphs. `priority:
+    'low'` marks a preload fetch so it never races the active page's
+    own assets (proposal 6). */
+export function loadV4PageGlyphs(
+  page: number,
+  opts?: { priority?: 'low' },
+): Promise<V4PageGlyphs | null> {
   const existing = glyphPromises.get(page);
   if (existing) return existing;
-  const promise = fetch(v4PageGlyphsUrl(page))
+  const promise = fetch(
+    v4PageGlyphsUrl(page),
+    opts?.priority ? { priority: opts.priority } : undefined,
+  )
     .then((res) => {
       if (!res.ok) return null;
       return res.json() as Promise<Record<string, string>>;

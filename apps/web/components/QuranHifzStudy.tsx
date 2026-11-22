@@ -1324,7 +1324,10 @@ export function QuranHifzStudy({
           if (cancelled) return;
           if (textsBySurahRef.current[s] !== undefined) continue;
           try {
-            const view = await getSurah(s);
+            // Light bundle (proposal 2): the preload loop only needs
+            // the Uthmani text; translation + tafsir + audio would
+            // triple the chain's bytes for data it throws away.
+            const view = await getSurah(s, { light: true });
             if (cancelled) return;
             const texts: Record<number, string> = {};
             for (const a of view.ayahs) texts[a.number] = a.text;
@@ -3435,7 +3438,7 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
     font?: HifzV4PageFont,
     // Nass scroll only: the section observer rides along so a
     // settled page stays observed (a revisited page reloads its
-    // font if the 8-family cap evicted it). Flip mode omits it.
+    // font if the 12-family cap evicted it). Flip mode omits it.
     sectionRef?: (el: HTMLElement | null) => void,
   ) => (
     <section
