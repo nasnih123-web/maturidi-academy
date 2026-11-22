@@ -30,6 +30,7 @@ export default async function TasbihPage({
         labels={{
           title: t('title'),
           subtitle: t('subtitle'),
+          tagline: t('tagline'),
           tapHint: t('tapHint'),
           targetLabel: t('targetLabel'),
           customTarget: t('customTarget'),
@@ -39,13 +40,19 @@ export default async function TasbihPage({
           dailyTotals: t('dailyTotals'),
           sessionsCount: t('sessionsCount'),
           totalCount: t('totalCount'),
+          timesLabel: t('timesLabel'),
           targetReached: t('targetReached'),
+          roundLabel: t('roundLabel'),
+          ofCount: t('ofCount'),
           voiceStart: t('voiceStart'),
           voiceStop: t('voiceStop'),
           voiceUnsupported: t('voiceUnsupported'),
           voiceListening: t('voiceListening'),
+          voiceHeard: t('voiceHeard'),
           signInToSync: t('signInToSync'),
           todaySynced: t('todaySynced'),
+          verse: t('verse'),
+          verseCaption: t('verseCaption'),
           presets: presets.map((p) => ({ key: p.key, text: p.text })),
         }}
       />

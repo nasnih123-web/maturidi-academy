@@ -79,6 +79,16 @@ export function useTasbihSession(initialTarget: number | null = 100) {
     });
   }, []);
 
+  /** Add n ≥ 1 at once (voice counting hears several dhikr per result). */
+  const incrementBy = useCallback((n: number) => {
+    if (!Number.isFinite(n) || n < 1) return;
+    const step = Math.floor(n);
+    setCount((c) => {
+      if (c === 0) setStartedAt(new Date().toISOString());
+      return c + step;
+    });
+  }, []);
+
   const decrement = useCallback(() => {
     setCount((c) => Math.max(0, c - 1));
   }, []);
@@ -125,6 +135,7 @@ export function useTasbihSession(initialTarget: number | null = 100) {
     state,
     selectDhikr,
     increment,
+    incrementBy,
     decrement,
     reset,
     finishSession,

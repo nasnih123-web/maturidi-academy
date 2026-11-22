@@ -1398,36 +1398,140 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
   .quran-player-expanded .quran-player-status { display: inline; }
 }
 
-/* tasbih */
-.tasbih-presets { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
-.tasbih-preset { padding: 0.55rem 1.1rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.35); background: transparent; color: hsl(var(--text-secondary)); font-size: 1.05rem; cursor: pointer; }
+/* tasbih — Design 4: skyline banner, framed beads photograph as the tap
+   target, three-column rails on desktop; mobile = one screen, no scroll */
+.tasbih { max-width: 74rem; margin-inline: auto; }
+/* banner */
+.tasbih-banner { position: relative; height: 11rem; border-radius: 1.25rem; overflow: hidden; border: 1px solid rgba(212, 175, 55, 0.35); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35); }
+.tasbih-banner-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 58%; }
+.tasbih-banner::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(7, 35, 28, 0.28) 0%, rgba(7, 35, 28, 0) 42%, rgba(4, 16, 13, 0.88) 100%); }
+.tasbih-banner-txt { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 1rem; text-align: center; }
+.tasbih-banner-title { margin: 0; font-size: 2rem; font-weight: 800; color: #f4e3bb; text-shadow: 0 3px 20px rgba(0, 0, 0, 0.85); }
+.tasbih-banner-sub { margin: 0.25rem 0 0; font-size: 0.92rem; color: rgba(244, 227, 187, 0.92); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85); font-variant-numeric: tabular-nums; }
+.tasbih-banner-sub b { color: #e5c07b; }
+/* layout: start rail / center stage / end rail */
+.tasbih-grid { display: grid; grid-template-columns: 18.5rem 1fr 18rem; gap: 1.25rem; align-items: start; margin-top: 1.25rem; }
+.tasbih-rail { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+.tasbih-panel { background: linear-gradient(180deg, rgba(237, 230, 214, 0.055), rgba(237, 230, 214, 0.03)); border: 1px solid rgba(212, 175, 55, 0.35); border-radius: 1.1rem; padding: 1.1rem 1.15rem; box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35); }
+.tasbih-panel h2 { font-size: 0.95rem; font-weight: 800; color: #f4e3bb; margin: 0 0 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
+.tasbih-panel h2::before { content: ''; width: 0.45rem; height: 0.45rem; background: #d4af37; transform: rotate(45deg); flex: 0 0 auto; }
+/* presets — vertical rows; each row can carry today's count for that dhikr */
+.tasbih-presets { display: flex; flex-direction: column; gap: 0.5rem; }
+.tasbih-preset { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; width: 100%; padding: 0.65rem 0.95rem; border-radius: 0.8rem; border: 1px solid rgba(237, 230, 214, 0.13); background: rgba(237, 230, 214, 0.045); color: #ede6d6; font-size: 1.12rem; cursor: pointer; text-align: start; }
 .tasbih-preset:hover { border-color: rgba(212, 175, 55, 0.7); color: #e5c07b; }
-.tasbih-preset-active { background: rgba(212, 175, 55, 0.2); color: #e5c07b; border-color: rgba(212, 175, 55, 0.8); }
-.tasbih-current-dhikr { text-align: center; font-size: 1.7rem; color: #ede6d6; margin: 0 0 1rem; }
-.tasbih-stage { position: relative; width: min(22rem, 80vw); aspect-ratio: 1; margin: 0 auto; }
-.tasbih-ring { position: absolute; inset: 0; width: 100%; height: 100%; }
-.tasbih-ring-bg { fill: none; stroke: rgba(212, 175, 55, 0.15); stroke-width: 10; }
-.tasbih-ring-fg { fill: none; stroke: #e5c07b; stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 0.2s ease-out; }
-.tasbih-tap { position: absolute; inset: 12%; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.4); background: radial-gradient(circle at 35% 30%, rgba(212, 175, 55, 0.22), rgba(7, 35, 28, 0.85)); color: #ede6d6; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.3rem; }
-.tasbih-tap:active { transform: scale(0.97); }
-.tasbih-count { font-size: clamp(2.6rem, 8vw, 4rem); font-weight: 800; font-variant-numeric: tabular-nums; color: #e5c07b; }
-.tasbih-tap-hint { font-size: 0.8rem; color: hsl(var(--text-muted)); }
-.tasbih-reached { text-align: center; color: #e5c07b; font-weight: 700; margin: 0.8rem 0 0; }
-.tasbih-progress { max-width: 22rem; margin: 1rem auto 0; text-align: center; font-size: 0.85rem; color: hsl(var(--text-secondary)); font-variant-numeric: tabular-nums; }
-.tasbih-controls { display: flex; flex-direction: column; align-items: center; gap: 0.9rem; margin-top: 1.2rem; }
-.tasbih-target { display: flex; align-items: center; gap: 0.7rem; font-size: 0.88rem; color: hsl(var(--text-secondary)); }
-.tasbih-target-choices { display: inline-flex; gap: 0.35rem; }
-.tasbih-target-choices button { min-width: 2.6rem; padding: 0.35rem 0.5rem; border-radius: 999px; border: 1px solid rgba(212, 175, 55, 0.3); background: transparent; color: hsl(var(--text-secondary)); cursor: pointer; font-size: 0.82rem; }
-.tasbih-target-choices .tasbih-preset-active { color: #e5c07b; }
-.tasbih-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; justify-content: center; }
-.tasbih-actions button, .tasbih-voice { padding: 0.55rem 1.2rem; border-radius: var(--radius-md); border: 1px solid rgba(212, 175, 55, 0.4); background: rgba(212, 175, 55, 0.1); color: #e5c07b; cursor: pointer; font-size: 0.88rem; }
+.tasbih-preset-active { background: linear-gradient(180deg, rgba(212, 175, 55, 0.25), rgba(212, 175, 55, 0.12)); color: #f4e3bb; border-color: #d4af37; font-weight: 800; }
+.tasbih-preset-cnt { font-size: 0.78rem; color: hsl(var(--text-muted)); font-variant-numeric: tabular-nums; }
+.tasbih-preset-active .tasbih-preset-cnt { color: #e5c07b; }
+/* target chips */
+.tasbih-target-choices { display: flex; gap: 0.45rem; }
+.tasbih-tchip { flex: 1; min-width: 0; padding: 0.6rem 0.2rem; text-align: center; border-radius: 0.7rem; border: 1px solid rgba(237, 230, 214, 0.16); background: rgba(237, 230, 214, 0.05); color: #ede6d6; cursor: pointer; font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+.tasbih-tchip:hover { border-color: rgba(212, 175, 55, 0.7); }
+.tasbih-tchip-active { background: linear-gradient(180deg, #e5c07b, #cfa636); border-color: #e5c07b; color: #231a02; font-weight: 800; }
+/* verse card */
+.tasbih-verse-text { margin: 0; font-size: 1.12rem; line-height: 2.1; color: #ede6d6; }
+.tasbih-verse-caption { margin: 0.35rem 0 0; font-size: 0.84rem; line-height: 1.9; color: hsl(var(--text-secondary)); }
+/* center stage: dhikr pill + framed beads photograph (the tap target) */
+.tasbih-center { text-align: center; min-width: 0; }
+.tasbih-dhikr-banner { display: inline-block; margin: 0; font-size: 1.65rem; font-weight: 800; color: #f4e3bb; background: linear-gradient(180deg, rgba(212, 175, 55, 0.2), rgba(212, 175, 55, 0.08)); border: 1px solid rgba(212, 175, 55, 0.55); padding: 0.45rem 2.4rem; border-radius: 999px; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35); }
+.tasbih-stage { margin-top: 1.1rem; }
+.tasbih-frame { position: relative; display: block; width: min(28.25rem, 100%); aspect-ratio: 1; margin-inline: auto; padding: 0; overflow: hidden; border-radius: 1.9rem; border: 1px solid rgba(212, 175, 55, 0.6); background: #04150f; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 0 0 0 8px rgba(212, 175, 55, 0.06); cursor: pointer; font: inherit; color: #ede6d6; transition: transform 0.12s ease-out; }
+.tasbih-tap:active { transform: scale(0.985); }
+.tasbih-frame:focus-visible { outline: 2px solid #d4af37; outline-offset: 3px; }
+.tasbih-beads-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tasbih-count-core { position: absolute; left: 50%; top: 45.5%; transform: translate(-50%, -50%); width: 52%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, rgba(4, 21, 15, 0.55) 0%, rgba(4, 21, 15, 0.3) 60%, rgba(4, 21, 15, 0) 78%); display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+.tasbih-count { font-size: clamp(3.4rem, 6vw, 5.4rem); font-weight: 800; line-height: 1; color: #fff; text-shadow: 0 4px 24px rgba(0, 0, 0, 0.85); }
+.tasbih-times { font-size: 1.05rem; color: #f4e3bb; margin-top: 0.3rem; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9); }
+.tasbih-round-line { font-size: 0.85rem; color: rgba(237, 230, 214, 0.92); margin-top: 0.3rem; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9); font-variant-numeric: tabular-nums; }
+.tasbih-frame-badge { position: absolute; bottom: 0.8rem; left: 50%; transform: translateX(-50%); background: rgba(4, 21, 15, 0.75); border: 1px solid rgba(212, 175, 55, 0.5); color: #f4e3bb; font-size: 0.8rem; padding: 0.35rem 1rem; border-radius: 999px; white-space: nowrap; pointer-events: none; }
+.tasbih-reached { color: #e5c07b; font-weight: 700; margin: 0.9rem 0 0; }
+.tasbih-progress { margin: 0.9rem auto 0; font-size: 0.85rem; color: hsl(var(--text-muted)); font-variant-numeric: tabular-nums; }
+/* session actions */
+.tasbih-actions { display: flex; gap: 0.6rem; max-width: 28.25rem; margin: 0.85rem auto 0; }
+.tasbih-actions button { flex: 1; padding: 0.85rem 0.5rem; border-radius: 0.8rem; border: 1px solid rgba(237, 230, 214, 0.18); background: rgba(237, 230, 214, 0.06); color: #ede6d6; cursor: pointer; font-size: 0.93rem; }
 .tasbih-actions button:disabled { opacity: 0.4; cursor: default; }
-.tasbih-voice-on { background: rgba(212, 175, 55, 0.28); }
-.tasbih-voice-note { font-size: 0.8rem; color: hsl(var(--text-muted)); margin: 0; }
-.tasbih-totals { max-width: 30rem; margin: 2.5rem auto 0; }
-.tasbih-totals h2 { font-size: 1.05rem; color: #e5c07b; margin: 0 0 0.6rem; }
-.tasbih-totals ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
-.tasbih-totals li { display: flex; justify-content: space-between; padding: 0.55rem 0.9rem; border: 1px solid rgba(212, 175, 55, 0.2); border-radius: var(--radius-sm); font-size: 0.85rem; color: hsl(var(--text-secondary)); font-variant-numeric: tabular-nums; }
+.tasbih-actions .tasbih-btn-primary { flex-grow: 1.3; background: linear-gradient(180deg, #e5c07b, #cfa636); border-color: #e5c07b; color: #231a02; font-weight: 800; box-shadow: 0 10px 24px rgba(212, 175, 55, 0.3); }
+/* voice panel */
+.tasbih-voice-panel { border-color: rgba(212, 175, 55, 0.5); background: linear-gradient(180deg, rgba(212, 175, 55, 0.13), rgba(212, 175, 55, 0.06)); }
+.tasbih-voice-row { display: flex; align-items: center; gap: 0.75rem; }
+.tasbih-mic { flex: 0 0 auto; width: 2.75rem; height: 2.75rem; border-radius: 50%; background: linear-gradient(180deg, #e5c07b, #cfa636); border: 1px solid #e5c07b; color: #231a02; display: flex; align-items: center; justify-content: center; position: relative; }
+.tasbih-mic-on::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid rgba(212, 175, 55, 0.5); animation: tasbih-mic-pulse 1.6s ease-out infinite; }
+@keyframes tasbih-mic-pulse { 0% { transform: scale(0.9); opacity: 0.9; } 100% { transform: scale(1.18); opacity: 0; } }
+.tasbih-voice-text { flex: 1; min-width: 0; }
+.tasbih-voice-status { margin: 0; font-size: 0.88rem; font-weight: 700; color: #f4e3bb; }
+.tasbih-voice { flex: 0 0 auto; padding: 0.5rem 0.95rem; border-radius: 999px; border: 1px solid rgba(237, 230, 214, 0.3); background: transparent; color: #ede6d6; cursor: pointer; font-size: 0.85rem; }
+.tasbih-voice-on { background: rgba(212, 175, 55, 0.28); border-color: #d4af37; color: #e5c07b; }
+.tasbih-voice-note { font-size: 0.85rem; color: hsl(var(--text-secondary)); margin: 0; }
+.tasbih-wave { display: flex; gap: 3px; align-items: flex-end; height: 1.25rem; margin-top: 0.8rem; }
+.tasbih-wave i { width: 4px; height: 50%; border-radius: 2px; background: #7dd87d; }
+.tasbih-wave i:nth-child(3n) { height: 85%; }
+.tasbih-wave i:nth-child(4n) { height: 65%; }
+.tasbih-wave i:nth-child(5n) { height: 100%; }
+.tasbih-wave i:nth-child(7n) { height: 40%; }
+.tasbih-wave-on i { animation: tasbih-wave-bounce 0.9s ease-in-out infinite alternate; transform-origin: bottom; }
+.tasbih-wave-on i:nth-child(2n) { animation-delay: 0.15s; }
+.tasbih-wave-on i:nth-child(3n) { animation-delay: 0.3s; }
+.tasbih-wave-on i:nth-child(4n) { animation-delay: 0.45s; }
+@keyframes tasbih-wave-bounce { from { transform: scaleY(0.45); } to { transform: scaleY(1); } }
+.tasbih-heard { margin: 0.75rem 0 0; padding-top: 0.6rem; border-top: 1px dashed rgba(212, 175, 55, 0.3); font-size: 0.88rem; color: hsl(var(--text-secondary)); display: flex; justify-content: space-between; gap: 0.75rem; }
+.tasbih-heard b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tasbih-heard-added { color: #7dd87d; }
+.tasbih-heard-none { color: hsl(var(--text-muted)); }
+/* totals */
+.tasbih-totals ul { list-style: none; margin: 0; padding: 0; }
+.tasbih-totals li { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px dashed rgba(237, 230, 214, 0.12); font-size: 0.88rem; color: hsl(var(--text-secondary)); font-variant-numeric: tabular-nums; }
+.tasbih-totals li:last-child { border-bottom: none; }
+.tasbih-total-card { background: linear-gradient(180deg, rgba(212, 175, 55, 0.22), rgba(212, 175, 55, 0.1)); border: 1px solid rgba(212, 175, 55, 0.55); border-radius: 0.95rem; padding: 0.9rem 1.1rem; display: flex; justify-content: space-between; align-items: center; }
+.tasbih-total-key { font-size: 0.85rem; color: #f4e3bb; }
+.tasbih-total-value { font-size: 1.6rem; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 900px) {
+  .tasbih-banner { height: 9rem; }
+  .tasbih-grid { grid-template-columns: 1fr; grid-template-areas: 'center' 'start' 'end'; }
+  .tasbih-rail-start { grid-area: start; }
+  .tasbih-center { grid-area: center; }
+  .tasbih-rail-end { grid-area: end; }
+}
+
+/* Mobile: the whole tasbih on one screen, no scroll.
+   Height budget: sticky header = .header-inner min-height 3.6rem
+   (+1px border), .page-wrap adds 2.5rem top + 4rem bottom padding. */
+@media (max-width: 720px) {
+  .tasbih { display: flex; flex-direction: column; gap: 0.55rem; height: calc(100dvh - 3.6rem - 1px - 6.5rem); overflow: hidden; }
+  .tasbih-banner { flex: 0 0 auto; height: 6.4rem; border-radius: 1rem; }
+  .tasbih-banner-title { font-size: 1.3rem; }
+  .tasbih-banner-sub { font-size: 0.72rem; }
+  .tasbih-grid, .tasbih-rail, .tasbih-center { display: contents; }
+  .tasbih-panel { padding: 0; border: none; background: none; border-radius: 0; box-shadow: none; }
+  .tasbih-panel-presets { order: 1; }
+  .tasbih-presets { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 0.15rem; }
+  .tasbih-presets::-webkit-scrollbar { display: none; }
+  .tasbih-preset { flex: 0 0 auto; width: auto; font-size: 1.02rem; padding: 0.5rem 0.9rem; border-radius: 999px; border-color: rgba(212, 175, 55, 0.35); background: rgba(237, 230, 214, 0.05); }
+  .tasbih-preset-cnt { display: none; }
+  .tasbih-dhikr-banner { display: none; }
+  .tasbih-stage { order: 2; flex: 1; min-height: 0; display: flex; margin-top: 0; }
+  .tasbih-frame { margin: auto; height: 100%; width: auto; max-width: 88vw; }
+  .tasbih-count { font-size: clamp(2.6rem, 13vw, 4rem); }
+  .tasbih-times { font-size: 0.9rem; }
+  .tasbih-round-line { font-size: 0.72rem; }
+  .tasbih-frame-badge { font-size: 0.72rem; bottom: 0.6rem; }
+  .tasbih-reached { order: 2; margin: 0; text-align: center; }
+  .tasbih-progress { display: none; }
+  .tasbih-panel-target { order: 3; display: flex; align-items: center; justify-content: center; gap: 0.45rem; }
+  .tasbih-panel-target h2 { font-size: 0.8rem; font-weight: 600; color: hsl(var(--text-muted)); margin: 0; }
+  .tasbih-panel-target h2::before { display: none; }
+  .tasbih-tchip { min-width: 2.75rem; padding: 0.45rem 0.3rem; font-size: 0.88rem; }
+  .tasbih-voice-panel { order: 4; padding: 0.6rem 0.75rem; border: 1px solid rgba(212, 175, 55, 0.5); background: linear-gradient(180deg, rgba(212, 175, 55, 0.13), rgba(212, 175, 55, 0.06)); border-radius: 0.9rem; }
+  .tasbih-mic { width: 2.3rem; height: 2.3rem; }
+  .tasbih-wave { height: 0.9rem; margin-top: 0.5rem; }
+  .tasbih-heard { margin-top: 0.5rem; padding-top: 0.45rem; }
+  .tasbih-actions { order: 5; margin: 0; max-width: none; }
+  .tasbih-actions button { padding: 0.7rem 0.4rem; font-size: 0.88rem; }
+  .tasbih-verse, .tasbih-totals, .tasbih-total-card { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tasbih-wave-on i, .tasbih-mic-on::after { animation: none; }
+}
 
 /* adhan widget */
 .adhan-setup { max-width: 30rem; margin: 0 auto; padding: 1.5rem; border: 1px solid rgba(212, 175, 55, 0.25); border-radius: var(--radius-lg); background: rgba(7, 35, 28, 0.55); display: flex; flex-direction: column; gap: 1rem; }
@@ -1502,7 +1606,7 @@ html[data-munajat="on"] .quran-toolbar { background: rgba(4, 14, 11, 0.7); borde
 html[data-munajat="on"] .page-title, html[data-munajat="on"] .quran-surah-title { color: #cfd8d2; }
 html[data-munajat="on"] .ayah-text { color: #dfe7e1; }
 html[data-munajat="on"] .ayah-card.ayah-active { border-color: rgba(150, 170, 160, 0.5); box-shadow: none; background: rgba(150, 170, 160, 0.06); }
-html[data-munajat="on"] .tasbih-ring-fg { stroke: #9fb3a8; }
+html[data-munajat="on"] .tasbih-beads-img { filter: saturate(0.55) brightness(0.75); }
 html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown { color: #cfd8d2; }
 .munajat-controls { position: fixed; bottom: 1rem; inset-inline-end: 1rem; z-index: 60; display: none; gap: 0.5rem; }
 .munajat-controls.munajat-visible { display: flex; }
@@ -1510,7 +1614,7 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
 
 /* reduced motion: kill decorative transitions/animations */
 @media (prefers-reduced-motion: reduce) {
-  .tasbih-ring-fg, .quran-progress-fill, .surah-card a, .tasbih-tap { transition: none; }
+  .quran-progress-fill, .surah-card a, .tasbih-tap { transition: none; }
   .ayah-card { transition: none; }
 }
 .tasbih-totals-sub { font-size: 0.85rem; color: hsl(var(--text-muted)); margin: 0.8rem 0 0.4rem; font-weight: 600; }
