@@ -147,7 +147,7 @@ import { loadBookmarks, pageBookmarkId, saveBookmarks } from '@/lib/quran-bookma
 import { initQuranReadingSync } from '@/lib/quran-sync';
 import { DEFAULT_SVG_MUSHAF } from '@/lib/quran-svg-page';
 import { HifzLivePills } from './hifz-study/HifzLivePills';
-import { HifzNumericInput } from './HifzNumericInput';
+import { HifzStudyDashboard } from './hifz-study/HifzStudyDashboard';
 import { loadBoundaries } from '@/lib/quran-boundaries-loader';
 import { loadMushafLines, type MushafExactLine } from '@/lib/quran-mushaf-lines';
 import {
