@@ -4716,8 +4716,8 @@ button.mushaf-dk-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
    scene is too. */
 .page-flip-scene--fit { width: 100%; max-width: min(90vw, 600px); margin-inline: auto;}
 @media (max-width: 768px) {
-.page-flip-scene--fit { max-width: min(92vw, 600px);}
-.quran-reading.page-flip-scene--fit { width: 100%; max-width: none;}
+  .page-flip-scene--fit { max-width: min(92vw, 600px); }
+  .quran-reading .page-flip-scene--fit { width: 100%; max-width: none; }
 }
 .page-flip-to { min-width: 0;}
 .page-flip-shade { pointer-events: none; z-index: 1;}
@@ -4730,6 +4730,6 @@ button.mushaf-dk-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
 .page-flip-face--front { position: relative;}
 .page-flip-face--back { position: absolute; inset: 0; transform: rotateY(180deg); background: var(--page-flip-paper, #F9F7F8); box-shadow: inset 0 0 40px rgba(0,0,0,0.08);}
 .page-flip-wrap { touch-action: pan-y;}
-.quran-hifz-study.hifz-mode-mushaf.page-flip-wrap { flex: 1 0 auto; display: flex; flex-direction: column; min-height: 0;}
-.quran-hifz-study.hifz-mode-mushaf.page-flip-wrap >.page-flip-scene { flex: 1 0 auto; min-height: 0;}
+.quran-hifz-study.hifz-mode-mushaf .page-flip-wrap { flex: 1 0 auto; display: flex; flex-direction: column; min-height: 0; }
+.quran-hifz-study.hifz-mode-mushaf .page-flip-wrap > .page-flip-scene { flex: 1 0 auto; min-height: 0; }
 @media (prefers-reduced-motion: reduce) {.page-flip-leaf { transition: none!important;}}
