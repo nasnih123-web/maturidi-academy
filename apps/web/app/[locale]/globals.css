@@ -1444,7 +1444,7 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
 /* center stage: dhikr name + SVG bead ring (the tap target) */
 .tasbih-center { text-align: center; min-width: 0; display: flex; flex-direction: column; align-items: center; }
 .tasbih-dhikr-block { text-align: center; }
-.tasbih-dhikr-name { margin: 0; font-size: 2.5rem; font-weight: 800; line-height: 1.5; color: #fdf6e0; text-shadow: 0 2px 22px rgba(212, 175, 55, 0.35); }
+.tasbih-dhikr-name { margin: 0; font-size: 2.5rem; font-weight: 800; line-height: 1.9; color: #fdf6e0; text-shadow: 0 2px 22px rgba(212, 175, 55, 0.35); }
 .tasbih-flourish { width: 9.4rem; height: 2px; margin: 0.55rem auto 0; border-radius: 2px; background: linear-gradient(90deg, transparent, #d4af37, transparent); }
 .tasbih-stage { margin-top: 0.6rem; width: min(29rem, 100%); }
 .tasbih-ringwrap { position: relative; display: block; width: 100%; aspect-ratio: 1; padding: 0; border: none; background: none; cursor: pointer; font: inherit; color: #ede6d6; transition: transform 0.12s ease-out; }
@@ -1515,11 +1515,11 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
   .tasbih-custom-card, .tasbih-verse { margin-top: 0; }
 }
 
-/* Mobile: the whole tasbih on one screen, no scroll.
-   Height budget: sticky header = .header-inner min-height 3.6rem
-   (+1px border), .page-wrap adds 2.5rem top + 4rem bottom padding. */
+/* Mobile: natural flow — the ring is sized by viewport WIDTH, never by a
+   fixed container height, so taller headers / larger system fonts can only
+   make the page scroll, never crush the ring or hide the count. */
 @media (max-width: 720px) {
-  .tasbih { display: flex; flex-direction: column; gap: 0.5rem; height: calc(100dvh - 3.6rem - 1px - 6.5rem); overflow: hidden; padding: 0.8rem 0.9rem 0.7rem; border-radius: 1rem; }
+  .tasbih { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.8rem 0.9rem 0.7rem; border-radius: 1rem; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   .tasbih-head { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; text-align: start; }
   .tasbih-head-title { font-size: 1rem; }
   .tasbih-head-tag { display: none; }
@@ -1529,8 +1529,8 @@ a.compact-link:focus-visible { outline: 2px solid hsl(var(--focus)); outline-off
   .tasbih-dhikr-block { order: 1; }
   .tasbih-dhikr-name { font-size: 1.9rem; }
   .tasbih-flourish { width: 7.4rem; margin-top: 0.4rem; }
-  .tasbih-stage { order: 2; flex: 1; min-height: 0; display: flex; margin-top: 0; width: 100%; }
-  .tasbih-ringwrap { margin: auto; height: 100%; width: auto; max-width: 86vw; }
+  .tasbih-stage { order: 2; display: block; margin-top: 0; width: 100%; }
+  .tasbih-ringwrap { margin-inline: auto; width: min(76vw, 21rem); height: auto; }
   .tasbih-count { font-size: clamp(2.6rem, 13vw, 4.2rem); }
   .tasbih-times { font-size: 0.9rem; }
   .tasbih-round-line { font-size: 0.72rem; margin-top: 0.4rem; }
