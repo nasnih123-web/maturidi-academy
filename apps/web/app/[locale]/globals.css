@@ -1873,7 +1873,7 @@ html[data-munajat="on"] .tasbih-count, html[data-munajat="on"] .adhan-countdown 
 .vp-frame:focus-visible { border-color: #d4af37; box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.35); }
 .vp-frame:fullscreen { border-radius: 0; border: none; aspect-ratio: auto; inline-size: 100%; block-size: 100%; }
 .vp-hide { cursor: none; }
-.vp-el { inline-size: 100%; block-size: 100%; display: block; background: #020807; }
+.vp-el { inline-size: 100%; block-size: 100%; display: block; background: #020807; object-fit: contain; }
 .vp-el::cue { background: rgba(7, 35, 28, 0.85); color: #f7f1de; font-size: 1.05rem; line-height: 1.7; }
 .vp-btn.vp-cc-on { color: #e5c07b; box-shadow: inset 0 -2px 0 #d4af37; }
 .vp-status { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 0.9rem; align-items: center; justify-content: center; color: #ede6d6; font-size: 0.95rem; margin: 0; padding: 1rem; text-align: center; }
@@ -4480,3 +4480,16 @@ button.mushaf-dk-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
 .vid-eq i:nth-child(3) { height: 6px; animation-delay: 0.5s; }
 @keyframes vid-eq-bounce { 0%, 100% { transform: scaleY(0.45); } 50% { transform: scaleY(1); } }
 @media (prefers-reduced-motion: reduce) { .vid-eq i { animation: none; } }
+/* طرح ۱ پلیر (موبایل): قاب تطبیقی تمام‌عرض — قاب لبه‌به‌لبه می‌شود،
+   گوشهٔ گرد و بردر کناری حذف، و هدف‌های لمسی بزرگ‌تر. نسبت قاب را
+   خود کامپوننت از ابعاد واقعی ویدیو می‌گذارد (پیش‌فرض دسکتاپ ۱۶:۹). */
+@media (max-width: 900px) {
+  .vid-watch-main .vp-frame { margin-inline: calc(-1 * clamp(1rem, 3vw, 2rem)); border-radius: 0; border-inline: none; }
+  .vp-btn { inline-size: 3rem; block-size: 3rem; }
+  .vp-center { inline-size: 4.4rem; block-size: 4.4rem; }
+  .vp-seek { block-size: 1.5rem; }
+  .vp-seek input[type="range"]::-webkit-slider-thumb { inline-size: 18px; block-size: 18px; }
+  .vp-seek input[type="range"]::-moz-range-thumb { inline-size: 18px; block-size: 18px; }
+  .vp-el::cue { font-size: 1.12rem; }
+  .vp-time { font-size: 0.85rem; }
+}
