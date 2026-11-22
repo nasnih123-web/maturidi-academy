@@ -407,7 +407,7 @@ describe('Recitation toolbar replaces the hifz bottom bar (user 2026-11-10)', ()
   it('globals.css carries the user design verbatim (scoped) + fixed positioning + clearance', () => {
     const css = readCss();
     // The user's gradient, gold-ringed mic and mobile sizes.
-        assert.match(css, /#b6e2ca 0%,/);
+    assert.match(css, /#b6e2ca 0%,/);
     assert.match(css, /#087d43 17%,/);
     assert.match(css, /#006535 43%,/);
     assert.match(css, /#00703a 65%,/);
