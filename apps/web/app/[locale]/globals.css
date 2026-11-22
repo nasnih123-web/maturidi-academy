@@ -4687,4 +4687,49 @@ button.mushaf-dk-word:focus-visible { outline: 2px solid #8a6d1b; outline-offset
   .vp-seek input[type="range"]::-moz-range-thumb { inline-size: 18px; block-size: 18px; }
   .vp-el::cue { font-size: 1.12rem; }
   .vp-time { font-size: 0.85rem; }
+
 }
+/* ---- 3D page turn (user 2026-11-22) ----
+   A real page-turn leaf shared by the hifz study page (mushaf mode)
+   and the general Quran reader. The scene stacks the incoming page
+   underneath and the outgoing page on a leaf that rotates around the
+   page edge: next page sweeps left-to-right (leaf around its right
+   edge), previous page right-to-left. The leaf's front is the frozen
+   outgoing page, its back is plain paper, so past 90 degrees the
+   viewer sees the back of the turning page, like a real book. The
+   front face stays in flow so the leaf takes the page's height; the
+   grid cell takes the taller of the two pages, so neither clips.
+   The leaf and the shade ignore pointer events: the leaf is purely
+   visual, taps reach the live page underneath, and the drag gesture
+   lives on the wrapper. */
+.page-flip-scene { display: grid; perspective: 1400px;}
+.page-flip-scene > * { grid-area: 1 / 1;}
+/* The reader's scene hugs the printed card: it must be the CARD's
+   width, never fit-content of its content — a block card holding
+   wrappable text / a percentage-width SVG has almost no intrinsic
+   width, so fit-content collapsed the turning leaf to a ~31px
+   sliver even with real text in it (verified 2026-11-23: leaf
+   31×339px, text present but squeezed into one narrow column).
+   The card is min(90vw, 600px) — 92vw under the phone breakpoint
+   — mirrored here, so the leaf rotates around the card's own edge.
+   In the reading overlay on phones the card is full-width, so the
+   scene is too. */
+.page-flip-scene--fit { width: 100%; max-width: min(90vw, 600px); margin-inline: auto;}
+@media (max-width: 768px) {
+.page-flip-scene--fit { max-width: min(92vw, 600px);}
+.quran-reading.page-flip-scene--fit { width: 100%; max-width: none;}
+}
+.page-flip-to { min-width: 0;}
+.page-flip-shade { pointer-events: none; z-index: 1;}
+.page-flip-shade[data-direction="ltr"] { background: linear-gradient(to left, rgba(0,0,0,0.28), rgba(0,0,0,0) 35%);}
+.page-flip-shade[data-direction="rtl"] { background: linear-gradient(to right, rgba(0,0,0,0.28), rgba(0,0,0,0) 35%);}
+.page-flip-leaf { position: relative; z-index: 2; transform-style: preserve-3d; transition-property: transform; transition-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); will-change: transform; pointer-events: none;}
+.page-flip-leaf[data-direction="ltr"] { transform-origin: right center;}
+.page-flip-leaf[data-direction="rtl"] { transform-origin: left center;}
+.page-flip-face { backface-visibility: hidden;}
+.page-flip-face--front { position: relative;}
+.page-flip-face--back { position: absolute; inset: 0; transform: rotateY(180deg); background: var(--page-flip-paper, #F9F7F8); box-shadow: inset 0 0 40px rgba(0,0,0,0.08);}
+.page-flip-wrap { touch-action: pan-y;}
+.quran-hifz-study.hifz-mode-mushaf.page-flip-wrap { flex: 1 0 auto; display: flex; flex-direction: column; min-height: 0;}
+.quran-hifz-study.hifz-mode-mushaf.page-flip-wrap >.page-flip-scene { flex: 1 0 auto; min-height: 0;}
+@media (prefers-reduced-motion: reduce) {.page-flip-leaf { transition: none!important;}}
