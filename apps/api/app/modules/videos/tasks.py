@@ -48,6 +48,13 @@ _TRANSLATE_TIMEOUT_S = 900
 _DOWNLOAD_MAX_BYTES = 600 * 1024 * 1024
 _DOWNLOAD_TIMEOUT_S = 600.0
 
+# User-Agent توصیفی برای دانلود: ویکی‌مدیا (و برخی CDNها) ایجنت پیش‌فرض
+# کتابخانه‌ای httpx («python-httpx/...») را طبق سیاست UA با ۴۰۳ رد
+# می‌کنند؛ دانلود از upload.wikimedia.org بدون این هدر ناموفق بود.
+_DOWNLOAD_USER_AGENT = (
+    "MaturidiAcademy/1.0 (https://academy.matoridi.ir; subtitle worker)"
+)
+
 
 async def _download_external_media(url: str) -> bytes:
     """دانلود استریمی فایل لینک مستقیم به فایل موقت و برگرداندن بایت‌ها
@@ -66,7 +73,11 @@ async def _download_external_media(url: str) -> bytes:
             connect=15.0, read=120.0, write=30.0, pool=15.0
         )
         async with (
-            httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client,
+            httpx.AsyncClient(
+                follow_redirects=True,
+                timeout=timeout,
+                headers={"User-Agent": _DOWNLOAD_USER_AGENT},
+            ) as client,
             client.stream("GET", url) as resp,
         ):
             resp.raise_for_status()
