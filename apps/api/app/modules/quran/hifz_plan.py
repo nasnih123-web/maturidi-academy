@@ -492,3 +492,84 @@ def test_total_score(questions: list[dict]) -> dict | None:
         "answered": len(scores),
         "total": len(questions),
     }
+
+
+# ---------------------------------------------------------------------------
+# جزء‌های سی‌گانه — مرزهای ثابت مصحف (شمارش کوفی ۶۲۳۶ آیه)
+# ---------------------------------------------------------------------------
+# سرآغاز هر جزء (سوره، آیه). وارسی‌شده در ۲۰۲۶-۱۱-۲۲ در برابر نقطهٔ
+# پایانی جزء در AlQuran Cloud (v1/juz/{1..30}): هر ۳۰ سرآغاز با
+# نخستین آیهٔ همان جزء در آن مرجع می‌خواند و مجموع آیه‌ها ۶۲۳۶ است.
+# این جدول دادهٔ ثابتِ چاپ مصحف است، نه حکم فقهی؛ اگر شمارش دیگری
+# (مثلاً مدنی) روزی پشتیبانی شد، این جدول باید نسخه‌دار شود.
+JUZ_STARTS: tuple[tuple[int, int], ...] = (
+    (1, 1),
+    (2, 142),
+    (2, 253),
+    (3, 93),
+    (4, 24),
+    (4, 148),
+    (5, 82),
+    (6, 111),
+    (7, 88),
+    (8, 41),
+    (9, 93),
+    (11, 6),
+    (12, 53),
+    (15, 1),
+    (17, 1),
+    (18, 75),
+    (21, 1),
+    (23, 1),
+    (25, 21),
+    (27, 56),
+    (29, 46),
+    (33, 31),
+    (36, 28),
+    (39, 32),
+    (41, 47),
+    (46, 1),
+    (51, 31),
+    (58, 1),
+    (67, 1),
+    (78, 1),
+)
+
+
+def juz_of(surah: int, ayah: int) -> int:
+    """شمارهٔ جزء یک آیه (۱ تا ۳۰)."""
+    juz = 1
+    for i, start in enumerate(JUZ_STARTS, start=1):
+        if (surah, ayah) >= start:
+            juz = i
+        else:
+            break
+    return juz
+
+
+def juz_ayah_counts(ayah_counts: dict[int, int]) -> list[dict]:
+    """تعداد آیات هر جزء: [{juz, start_surah, start_ayah, total_ayahs}]
+    — از شمار آیات هر سوره."""
+    totals: list[dict] = []
+    for j in range(1, 31):
+        start_surah, start_ayah = JUZ_STARTS[j - 1]
+        if j < 30:
+            end_surah, end_ayah = JUZ_STARTS[j]
+        else:
+            end_surah, end_ayah = 114, ayah_counts.get(114, 0) + 1
+        total = 0
+        for s in range(start_surah, end_surah + 1):
+            count = ayah_counts.get(s, 0)
+            first = start_ayah if s == start_surah else 1
+            last = (end_ayah - 1) if s == end_surah else count
+            if last >= first:
+                total += last - first + 1
+        totals.append(
+            {
+                "juz": j,
+                "start_surah": start_surah,
+                "start_ayah": start_ayah,
+                "total_ayahs": total,
+            }
+        )
+    return totals
