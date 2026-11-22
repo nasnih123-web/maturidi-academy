@@ -26,6 +26,8 @@ from .schemas import (
     PlaylistOrderIn,
     PlaylistOut,
     PlaylistUpdateIn,
+    SubtitleCuesIn,
+    SubtitleCuesOut,
     SubtitleGenerateOut,
     VideoItemOut,
     VideoListOut,
@@ -347,6 +349,37 @@ async def admin_generate_subtitles(
     ip, ua = _client(request)
     return await service.request_subtitle_generation(
         db, item_id, actor=user, ip=ip, user_agent=ua
+    )
+
+
+@admin_videos_router.get(
+    "/{item_id}/subtitles/{lang}", response_model=SubtitleCuesOut
+)
+async def admin_get_subtitle_cues(
+    item_id: uuid.UUID,
+    lang: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(_can_library),
+):
+    """سطرهای زیرنویس یک زبان برای ویرایشگر CRM (از VTT ذخیره‌شده)."""
+    return await service.get_subtitle_cues(db, item_id, lang)
+
+
+@admin_videos_router.put(
+    "/{item_id}/subtitles/{lang}", response_model=SubtitleCuesOut
+)
+async def admin_save_subtitle_cues(
+    item_id: uuid.UUID,
+    lang: str,
+    body: SubtitleCuesIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(_can_library),
+):
+    """ذخیرهٔ ویرایش دستی سطرهای زیرنویس — ردیف ready می‌شود."""
+    ip, ua = _client(request)
+    return await service.save_subtitle_cues(
+        db, item_id, lang, body.cues, actor=user, ip=ip, user_agent=ua
     )
 
 
