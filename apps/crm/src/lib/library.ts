@@ -19,6 +19,7 @@ import {
  * - POST   /api/v1/admin/library/items            (multipart: file + metadata JSON) → draft
  * - PUT    /api/v1/admin/library/items/{id}       (edit; backend archives a version)
  * - POST   /api/v1/admin/library/items/{id}/transition   {to[, note]}
+ * - DELETE /api/v1/admin/library/items/{id}/permanent   (archived only → 409 otherwise)
  * - GET    /api/v1/admin/library/items/{id}/versions
  * - POST   /api/v1/admin/library/items/{id}/versions/{v}/revert   {note?}
  * - POST   /api/v1/admin/library/items/{id}/index-ai
@@ -733,6 +734,19 @@ export function useTransitionLibraryItem() {
         if (!item) throw new Error("malformed library item");
         return item;
       }),
+  );
+}
+
+/** Permanent (physical) delete — backend only allows it from `archived` (409 otherwise). */
+export function usePurgeLibraryItem() {
+  return useLibraryMutation(({ id }: { id: string }) =>
+    apiFetch<LibraryItem>(`${BASE}/items/${encodeURIComponent(id)}/permanent`, {
+      method: "DELETE",
+    }).then((raw) => {
+      const item = parseLibraryItem(raw);
+      if (!item) throw new Error("malformed library item");
+      return item;
+    }),
   );
 }
 

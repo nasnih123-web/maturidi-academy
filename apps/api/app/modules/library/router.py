@@ -357,6 +357,21 @@ async def delete_item(
     return _out(await service.archive_item(db, item_id, actor=user, ip=ip, user_agent=ua))
 
 
+@admin_library_router.delete("/items/{item_id}/permanent", response_model=LibraryItemOut)
+async def purge_item(
+    item_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(_can_library),
+):
+    """حذف دائمی (فیزیکی) — فقط برای آیتم archived؛ وگرنه 409.
+
+    فایل‌های storage آیتم هم پاک می‌شوند (مگر کلید مشترک با آیتم/لیست‌پخش دیگر).
+    """
+    ip, ua = _client(request)
+    return _out(await service.purge_item(db, item_id, actor=user, ip=ip, user_agent=ua))
+
+
 @admin_library_router.post("/items/{item_id}/index-ai", response_model=IndexAiOut)
 async def index_ai(
     item_id: uuid.UUID,

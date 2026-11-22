@@ -14,13 +14,14 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import re
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
-from sqlalchemy import Text, cast, func, or_, select
+from sqlalchemy import Text, cast, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import workflow
@@ -31,17 +32,22 @@ from app.core.errors import APIError
 from app.core.events import emit_event
 from app.core.storage import get_storage
 from app.models.models import (
+    FiqhKnowledgeChunk,
     LibraryItem,
     LibraryItemVersion,
     Permission,
+    ReligiousPlace,
     Role,
     RolePermission,
     User,
     UserRole,
+    VideoPlaylist,
 )
 from app.modules.videos import aparat, youtube
 
 from .schemas import AI_SCOPES
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # ثابت‌های اعتبارسنجی آپلود (§۷)
@@ -1183,6 +1189,89 @@ async def archive_item(
 ) -> dict:
     """حذف = بایگانی (وضعیت archived) — رکورد هرگز فیزیکی حذف نمی‌شود (§۹.۵)."""
     return await transition_item(db, item_id, workflow.ARCHIVED, actor=actor, ip=ip, user_agent=user_agent)
+
+
+async def purge_item(
+    db: AsyncSession, item_id: uuid.UUID, *, actor: User,
+    ip: str | None = None, user_agent: str | None = None,
+) -> dict:
+    """حذف دائمی (فیزیکی) — فقط از وضعیت archived.
+
+    برخلاف archive_item (بایگانی نرم §۹.۵)، این مسیر رکورد را برای همیشه
+    پاک می‌کند: نسخه‌های آیتم و chunkهای AI حذف می‌شوند، ارجاع
+    ReligiousPlace.video_360_id خنثی می‌شود و فایل‌های storage پاک
+    می‌شوند — مگر کلیدی که آیتم یا لیست‌پخش دیگری هم به آن اشاره کند.
+    جداول دارای FK با ondelete=CASCADE (عضویت لیست‌پخش، پیشرفت و
+    ذخیره‌های کاربران، زیرنویس‌ها) را خود دیتابیس پاک می‌کند.
+    """
+    item = await _get_admin_item(db, item_id)
+    if item.workflow_status != workflow.ARCHIVED:
+        raise APIError(
+            409, "item_not_archived",
+            "حذف دائمی فقط برای آیتم بایگانی‌شده ممکن است؛ اول آیتم را بایگانی کنید",
+            {"workflow_status": item.workflow_status},
+        )
+
+    out = await _item_out_with_urls(db, item, actor)
+    kind, version, title = item.kind, item.version, item.title
+
+    keys = {k for k in (item.media_key, item.cover_media_key) if k}
+    if keys:
+        shared: set[str] = set()
+        rows = (await db.execute(
+            select(LibraryItem.media_key, LibraryItem.cover_media_key)
+            .where(LibraryItem.id != item_id)
+        )).all()
+        for mk, ck in rows:
+            shared.update(k for k in (mk, ck) if k)
+        playlist_covers = (await db.execute(
+            select(VideoPlaylist.cover_media_key)
+            .where(VideoPlaylist.cover_media_key.in_(keys))
+        )).scalars().all()
+        shared.update(k for k in playlist_covers if k)
+        keys -= shared
+
+    await db.execute(delete(LibraryItemVersion).where(LibraryItemVersion.item_id == item_id))
+    await db.execute(
+        delete(FiqhKnowledgeChunk)
+        .where(FiqhKnowledgeChunk.source_library_item_ref == str(item_id))
+    )
+    await db.execute(
+        update(ReligiousPlace)
+        .where(ReligiousPlace.video_360_id == item_id)
+        .values(video_360_id=None)
+    )
+    await db.delete(item)
+    await db.flush()
+
+    await emit_event(
+        db, aggregate_type="library_item", aggregate_id=str(item_id),
+        event_type="library.item.purged",
+        payload={"kind": kind, "version": version},
+    )
+    await log_audit(
+        db, actor_id=actor.id, actor_type="admin", action="library.item.purge",
+        entity_type="library_item", entity_id=str(item_id),
+        old_values={
+            "workflow_status": workflow.ARCHIVED, "kind": kind,
+            "title": title, "version": version,
+        },
+        new_values={"purged": True},
+        ip=ip, user_agent=user_agent,
+    )
+    await db.commit()
+
+    if keys:
+        try:
+            storage = get_storage()
+            for key in keys:
+                try:
+                    await storage.delete_object(key)
+                except Exception:  # noqa: BLE001 — حذف فایل best-effort است
+                    logger.debug("purge: delete_object skipped for %s", key)
+        except Exception:
+            logger.debug("purge: storage cleanup skipped", exc_info=True)
+    return out
 
 
 async def list_versions(db: AsyncSession, item_id: uuid.UUID) -> list[dict]:

@@ -29,6 +29,7 @@ import {
   useLibraryItemQuery,
   useLibraryItemsQuery,
   useLibraryVersionsQuery,
+  usePurgeLibraryItem,
   useReplaceLibraryItem,
   useRequeueOcr,
   useRequeueTranscription,
@@ -989,6 +990,7 @@ function LibraryListTab({
   };
   const query = useLibraryItemsQuery(filters);
   const transitionMut = useTransitionLibraryItem();
+  const purgeMut = usePurgeLibraryItem();
   const queryClient = useQueryClient();
 
   // صفحه‌های بعدی (کرسر API) — با «بارگذاری بیشتر» به انتهای فهرست اضافه می‌شوند.
@@ -1056,6 +1058,31 @@ function LibraryListTab({
       for (const it of selectedItems) {
         // Sequential: keeps the audit trail ordered.
         await transitionMut.mutateAsync({ id: it.id, to: bulkTo as LibraryWorkflow });
+      }
+      setSelected(new Set());
+      setBulkTo("");
+    } catch (e) {
+      setBulkError(errText(e));
+    } finally {
+      setBulkBusy(false);
+      setExtraItems([]);
+      setExtraCursor(undefined);
+      queryClient.invalidateQueries({ queryKey: ["library"] });
+    }
+  };
+
+  const allSelectedArchived =
+    selectedItems.length > 0 && selectedItems.every((it) => it.workflow_status === "archived");
+
+  const applyPurge = async (): Promise<void> => {
+    if (!allSelectedArchived) return;
+    if (!window.confirm(t("media.confirmPurge").replace("{n}", String(selectedItems.length)))) return;
+    setBulkBusy(true);
+    setBulkError("");
+    try {
+      for (const it of selectedItems) {
+        // Sequential: keeps the audit trail ordered.
+        await purgeMut.mutateAsync({ id: it.id });
       }
       setSelected(new Set());
       setBulkTo("");
@@ -1149,6 +1176,16 @@ function LibraryListTab({
                   {t("media.noCommonTransition")}
                 </span>
               )}
+              {allSelectedArchived ? (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => void applyPurge()}
+                  disabled={bulkBusy || !canManage}
+                >
+                  {t("media.purge")}
+                </Button>
+              ) : null}
               {bulkError ? <span className="form-error">{bulkError}</span> : null}
             </div>
           </CardContent>
