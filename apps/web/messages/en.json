@@ -857,7 +857,12 @@
     ],
     "todaySynced": "Synced today",
     "verse": "أَلَا بِذِكْرِ ٱللَّهِ تَطْمَئِنُّ ٱلْقُلُوبُ",
-    "verseCaption": "Verily, in the remembrance of Allah do hearts find rest. (Quran 13:28)"
+    "verseCaption": "Verily, in the remembrance of Allah do hearts find rest. (Quran 13:28)",
+    "customTitle": "Your own dhikr",
+    "customPlaceholder": "Write your own dhikr…",
+    "customAdd": "Add dhikr",
+    "customRemove": "Remove dhikr",
+    "beadsWord": "beads"
   },
   "adhan": {
     "metaTitle": "Prayer Times",

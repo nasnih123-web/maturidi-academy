@@ -1,14 +1,20 @@
 'use client';
 
 /**
- * TasbihCounter — the digital tasbih (Design 4).
+ * TasbihCounter — the digital tasbih (Design 5).
  *
- * Layout: a skyline banner with the title, tagline and today's summary;
- * below it a three-column grid — presets/target/verse rail, the center
- * stage (current-dhikr pill over a framed photograph of wooden prayer
- * beads; the whole frame is the tap button and the count sits in the
- * beads' empty center), and a voice/stats rail. On mobile the grid
- * flattens into a single column that fits one screen without scrolling.
+ * Layout: a centered header (title, tagline, today's chip) over an
+ * emerald canvas; below it a three-column grid — presets/custom rail,
+ * the center stage (dhikr name over an SVG ring of 33 beads that light
+ * up gold as the count advances through each cycle; the whole ring is
+ * the tap button and the count sits in its middle), and a voice/stats
+ * rail. On mobile the grid flattens into a single column that fits one
+ * screen without scrolling.
+ *
+ * Custom dhikrs: the user can add their own dhikr text (validated by
+ * addCustomDhikr in lib/tasbih.ts); customs persist in localStorage,
+ * join the selectable list, and count by tap and voice exactly like
+ * the presets.
  *
  * Voice counting (Web Speech API, progressive enhancement): interim
  * results are matched live against the current dhikr with
@@ -17,7 +23,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTasbihSession } from '@/lib/hooks/useTasbihSession';
-import { countDhikrOccurrences } from '@/lib/tasbih';
+import { addCustomDhikr, countDhikrOccurrences } from '@/lib/tasbih';
 
 export interface TasbihLabels {
   title: string;
@@ -45,6 +51,11 @@ export interface TasbihLabels {
   todaySynced: string;
   verse: string;
   verseCaption: string;
+  customTitle: string;
+  customPlaceholder: string;
+  customAdd: string;
+  customRemove: string;
+  beadsWord: string;
   presets: { key: string; text: string }[];
 }
 
@@ -53,6 +64,15 @@ const TARGET_CHOICES = [33, 100, 500, 1000];
 const BEADS_PER_ROUND = 33;
 /** Waveform bars in the voice panel (purely decorative). */
 const WAVE_BARS = 18;
+/** localStorage key for the user's own dhikr texts (JSON string array). */
+const CUSTOM_DHIKRS_KEY = 'tasbih:custom-dhikrs';
+const CUSTOM_KEY_PREFIX = 'custom:';
+
+/** Bead centers on the ring (viewBox 360×360, radius 148), top first. */
+const BEAD_POSITIONS = Array.from({ length: BEADS_PER_ROUND }, (_, i) => {
+  const angle = ((-90 + (i * 360) / BEADS_PER_ROUND) * Math.PI) / 180;
+  return { x: 180 + 148 * Math.cos(angle), y: 180 + 148 * Math.sin(angle) };
+});
 
 export function TasbihCounter({ labels }: { labels: TasbihLabels }) {
   const {
@@ -96,6 +116,55 @@ export function TasbihCounter({ labels }: { labels: TasbihLabels }) {
     [numLocale],
   );
 
+  // Custom dhikrs: loaded from localStorage after mount (SSR renders
+  // presets only), persisted on every add/remove.
+  const [customDhikrs, setCustomDhikrs] = useState<string[]>([]);
+  const [customInput, setCustomInput] = useState('');
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CUSTOM_DHIKRS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        setCustomDhikrs(
+          parsed.filter((v): v is string => typeof v === 'string' && v.trim() !== ''),
+        );
+      }
+    } catch {
+      /* corrupted storage — start clean */
+    }
+  }, []);
+  const saveCustomDhikrs = useCallback((list: string[]) => {
+    setCustomDhikrs(list);
+    try {
+      window.localStorage.setItem(CUSTOM_DHIKRS_KEY, JSON.stringify(list));
+    } catch {
+      /* non-fatal */
+    }
+  }, []);
+  const submitCustomDhikr = useCallback(() => {
+    // Duplicates are checked against presets and existing customs alike.
+    const next = addCustomDhikr(
+      [...labels.presets.map((p) => p.text), ...customDhikrs],
+      customInput,
+    );
+    if (!next) return;
+    const added = next[next.length - 1];
+    saveCustomDhikrs([...customDhikrs, added]);
+    setCustomInput('');
+    selectDhikr(`${CUSTOM_KEY_PREFIX}${added}`, added);
+  }, [customDhikrs, customInput, labels.presets, saveCustomDhikrs, selectDhikr]);
+  const removeCustomDhikr = useCallback(
+    (text: string) => {
+      saveCustomDhikrs(customDhikrs.filter((d) => d !== text));
+      if (state.dhikrKey === `${CUSTOM_KEY_PREFIX}${text}`) {
+        const first = labels.presets[0];
+        if (first) selectDhikr(first.key, first.text);
+      }
+    },
+    [customDhikrs, labels.presets, saveCustomDhikrs, selectDhikr, state.dhikrKey],
+  );
+
   const [voiceOn, setVoiceOn] = useState(false);
   const [voiceSupported] = useState(
     () =>
@@ -131,6 +200,9 @@ export function TasbihCounter({ labels }: { labels: TasbihLabels }) {
     const dhikrText = state.dhikrText || labels.presets[0]?.text || '';
     let dead = false;
     recog.onresult = (ev: SpeechResultEventLike) => {
+      // Only the results that changed in this event — earlier indices
+      // were already processed when they arrived; rescanning them on
+      // every event grows with the session and delays the count.
       for (let i = ev.resultIndex; i < ev.results.length; i += 1) {
         const result = ev.results[i];
         const transcript = result?.[0]?.transcript?.trim() ?? '';
@@ -158,6 +230,11 @@ export function TasbihCounter({ labels }: { labels: TasbihLabels }) {
     recog.onend = () => {
       // Auto-restart while the toggle is on (recognition stops on silence).
       if (!dead && recogRef.current === recog) {
+        // A restarted recognition reports results from index 0 again —
+        // drop the previous session's per-index counts, otherwise the
+        // first occurrences after every restart are swallowed by the
+        // stale map and the count feels delayed.
+        countedRef.current = new Map();
         try {
           recog.start();
         } catch {
@@ -180,10 +257,17 @@ export function TasbihCounter({ labels }: { labels: TasbihLabels }) {
         /* ignore */
       }
     };
-    // Restarting on dhikr change gives counting a fresh result map.
+    // Restarting on dhikr change gives counting a fresh result map —
+    // this also covers switching to or from a custom dhikr.
   }, [voiceOn, voiceSupported, incrementBy, state.dhikrKey, state.dhikrText, labels.presets]);
 
-  const round = Math.floor(state.count / BEADS_PER_ROUND) + 1;
+  // Bead ring: progress inside the current 33-bead cycle. A completed
+  // cycle (count a positive multiple of 33) shows the full ring lit.
+  const count = state.count;
+  const litBeads =
+    count > 0 && count % BEADS_PER_ROUND === 0 ? BEADS_PER_ROUND : count % BEADS_PER_ROUND;
+  const cycle = count > 0 ? Math.floor((count - 1) / BEADS_PER_ROUND) + 1 : 1;
+  const inCycle = count > 0 ? ((count - 1) % BEADS_PER_ROUND) + 1 : 0;
 
   // Today chip: server totals win when present; the session count only
   // exists in the local daily totals (finished sessions are always
@@ -201,29 +285,16 @@ export function TasbihCounter({ labels }: { labels: TasbihLabels }) {
 
   return (
     <div className="tasbih">
-      <div className="tasbih-banner">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          className="tasbih-banner-img"
-          src="/tasbih-skyline.webp"
-          alt=""
-          width={2736}
-          height={912}
-        />
-        <div className="tasbih-banner-txt">
-          <h1 className="tasbih-banner-title">{labels.title}</h1>
-          <p className="tasbih-banner-sub">
-            {labels.tagline}
-            {todayTotal > 0 ? (
-              <>
-                {' · '}
-                <b>{fmt(todayTotal)}</b> {labels.totalCount} · <b>{fmt(todaySessions)}</b>{' '}
-                {labels.sessionsCount}
-              </>
-            ) : null}
-          </p>
-        </div>
-      </div>
+      <header className="tasbih-head">
+        <h1 className="tasbih-head-title">{labels.title}</h1>
+        <p className="tasbih-head-tag">{labels.tagline}</p>
+        {todayTotal > 0 ? (
+          <span className="tasbih-today-chip">
+            <b>{fmt(todayTotal)}</b> {labels.totalCount} · <b>{fmt(todaySessions)}</b>{' '}
+            {labels.sessionsCount}
+          </span>
+        ) : null}
+      </header>
 
       <div className="tasbih-grid">
         <div className="tasbih-rail tasbih-rail-start">
@@ -246,79 +317,138 @@ export function TasbihCounter({ labels }: { labels: TasbihLabels }) {
                   </button>
                 );
               })}
+              {customDhikrs.map((text) => {
+                const key = `${CUSTOM_KEY_PREFIX}${text}`;
+                const today = state.todayRemote.find((t) => t.dhikrText === text);
+                return (
+                  <div
+                    key={key}
+                    className={`tasbih-preset tasbih-preset-custom${state.dhikrKey === key ? ' tasbih-preset-active' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      className="tasbih-preset-main"
+                      aria-pressed={state.dhikrKey === key}
+                      onClick={() => selectDhikr(key, text)}
+                    >
+                      <span lang="ar" dir="rtl">
+                        {text}
+                      </span>
+                      {today ? (
+                        <span className="tasbih-preset-cnt">{fmt(today.total)}</span>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      className="tasbih-preset-remove"
+                      aria-label={`${labels.customRemove}: ${text}`}
+                      title={labels.customRemove}
+                      onClick={() => removeCustomDhikr(text)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </section>
 
-          <section className="tasbih-panel tasbih-panel-target">
-            <h2>{labels.targetLabel}</h2>
-            <div className="tasbih-target-choices" role="group" aria-label={labels.targetLabel}>
-              {TARGET_CHOICES.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  className={`tasbih-tchip${state.target === t ? ' tasbih-tchip-active' : ''}`}
-                  aria-pressed={state.target === t}
-                  onClick={() => setTarget(t)}
-                >
-                  {fmt(t)}
-                </button>
-              ))}
-              <button
-                type="button"
-                className={`tasbih-tchip${state.target === null ? ' tasbih-tchip-active' : ''}`}
-                aria-pressed={state.target === null}
-                onClick={() => setTarget(null)}
-                title={labels.customTarget}
-              >
-                ∞
+          <section className="tasbih-panel tasbih-custom-card">
+            <h2>{labels.customTitle}</h2>
+            <div className="tasbih-custom-row">
+              <input
+                type="text"
+                className="tasbih-custom-input"
+                lang="ar"
+                dir="rtl"
+                value={customInput}
+                placeholder={labels.customPlaceholder}
+                maxLength={200}
+                onChange={(e) => setCustomInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitCustomDhikr();
+                  }
+                }}
+              />
+              <button type="button" className="tasbih-custom-add" onClick={submitCustomDhikr}>
+                {labels.customAdd}
               </button>
             </div>
-          </section>
-
-          <section className="tasbih-panel tasbih-verse">
-            <p className="tasbih-verse-text" lang="ar" dir="rtl">
-              «{labels.verse}»
-            </p>
-            <p className="tasbih-verse-caption">{labels.verseCaption}</p>
           </section>
         </div>
 
         <div className="tasbih-center">
-          <p className="tasbih-dhikr-banner" lang="ar" dir="rtl" aria-live="polite">
-            {state.dhikrText || labels.presets[0]?.text}
-          </p>
+          <div className="tasbih-dhikr-block">
+            <p className="tasbih-dhikr-name" lang="ar" dir="rtl" aria-live="polite">
+              {state.dhikrText || labels.presets[0]?.text}
+            </p>
+            <div className="tasbih-flourish" aria-hidden />
+          </div>
 
           <div className="tasbih-stage">
             <button
               type="button"
-              className="tasbih-frame tasbih-tap"
+              className="tasbih-ringwrap tasbih-tap"
               onClick={increment}
               aria-label={`${labels.tapHint} — ${fmt(state.count)}`}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                className="tasbih-beads-img"
-                src="/tasbih-beads.webp"
-                alt=""
-                width={1600}
-                height={1600}
-              />
+              <svg className="tasbih-ring-svg" viewBox="0 0 360 360" aria-hidden>
+                <defs>
+                  <radialGradient id="tasbih-gold" cx="35%" cy="30%" r="80%">
+                    <stop offset="0%" stopColor="#f7e3a1" />
+                    <stop offset="55%" stopColor="#d9b45c" />
+                    <stop offset="100%" stopColor="#a87f24" />
+                  </radialGradient>
+                  <radialGradient id="tasbih-dark" cx="35%" cy="30%" r="80%">
+                    <stop offset="0%" stopColor="#17573d" />
+                    <stop offset="100%" stopColor="#0a2e21" />
+                  </radialGradient>
+                </defs>
+                <circle
+                  cx={180}
+                  cy={180}
+                  r={168}
+                  fill="none"
+                  stroke="#d4af37"
+                  strokeOpacity={0.16}
+                />
+                <circle
+                  cx={180}
+                  cy={180}
+                  r={128}
+                  fill="none"
+                  stroke="#d4af37"
+                  strokeOpacity={0.28}
+                />
+                {BEAD_POSITIONS.map((pos, i) =>
+                  i < litBeads ? (
+                    <circle key={i} cx={pos.x} cy={pos.y} r={i === 0 ? 15 : 11.5} fill="url(#tasbih-gold)" />
+                  ) : (
+                    <circle
+                      key={i}
+                      cx={pos.x}
+                      cy={pos.y}
+                      r={i === 0 ? 15 : 11.5}
+                      fill="url(#tasbih-dark)"
+                      stroke="#d4af37"
+                      strokeOpacity={0.45}
+                    />
+                  ),
+                )}
+              </svg>
               <span className="tasbih-count-core">
                 <span className="tasbih-count" aria-live="polite">
                   {fmt(state.count)}
                 </span>
                 <span className="tasbih-times">{labels.timesLabel}</span>
                 <span className="tasbih-round-line">
-                  {labels.roundLabel} {fmt(round)}
-                  {state.target ? (
-                    <>
-                      {' · '}
-                      {fmt(state.count)} {labels.ofCount} {fmt(state.target)}
-                    </>
-                  ) : null}
+                  {labels.roundLabel} {fmt(cycle)} · {fmt(inCycle)} {labels.ofCount}{' '}
+                  {fmt(BEADS_PER_ROUND)} {labels.beadsWord}
                 </span>
+                <span className="tasbih-tap-badge">{labels.tapHint}</span>
               </span>
-              <span className="tasbih-frame-badge">{labels.tapHint}</span>
             </button>
           </div>
 
@@ -328,32 +458,74 @@ export function TasbihCounter({ labels }: { labels: TasbihLabels }) {
             </p>
           ) : null}
 
-          <div
-            className="tasbih-progress"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={state.target ?? 0}
-            aria-valuenow={state.count}
-            aria-label={labels.targetLabel}
-          >
-            <span>{fmtPct(state.progress)}</span>
-          </div>
+          <div className="tasbih-under">
+            <div className="tasbih-progress-wrap">
+              <div
+                className="tasbih-progress"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={state.target ?? 0}
+                aria-valuenow={state.count}
+                aria-label={labels.targetLabel}
+              >
+                <i style={{ width: `${Math.round(state.progress * 100)}%` }} />
+              </div>
+              <div className="tasbih-progress-lbl">
+                <span>
+                  {state.target
+                    ? `${labels.targetLabel}: ${fmt(state.target)}`
+                    : labels.customTarget}
+                </span>
+                <span>{fmtPct(state.progress)}</span>
+              </div>
+            </div>
 
-          <div className="tasbih-actions">
-            <button
-              type="button"
-              className="tasbih-btn-primary"
-              onClick={() => void finishSession()}
-              disabled={state.count === 0}
-            >
-              {labels.finishSession}
-            </button>
-            <button type="button" onClick={decrement} disabled={state.count === 0}>
-              {labels.undo}
-            </button>
-            <button type="button" onClick={reset} disabled={state.count === 0}>
-              {labels.reset}
-            </button>
+            <div className="tasbih-targets">
+              <span className="tasbih-targets-lbl">{labels.targetLabel}</span>
+              <div
+                className="tasbih-target-choices"
+                role="group"
+                aria-label={labels.targetLabel}
+              >
+                {TARGET_CHOICES.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`tasbih-tchip${state.target === t ? ' tasbih-tchip-active' : ''}`}
+                    aria-pressed={state.target === t}
+                    onClick={() => setTarget(t)}
+                  >
+                    {fmt(t)}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={`tasbih-tchip${state.target === null ? ' tasbih-tchip-active' : ''}`}
+                  aria-pressed={state.target === null}
+                  onClick={() => setTarget(null)}
+                  title={labels.customTarget}
+                >
+                  ∞
+                </button>
+              </div>
+            </div>
+
+            <div className="tasbih-actions">
+              <button
+                type="button"
+                className="tasbih-btn-primary"
+                onClick={() => void finishSession()}
+                disabled={state.count === 0}
+              >
+                {labels.finishSession}
+              </button>
+              <button type="button" onClick={decrement} disabled={state.count === 0}>
+                {labels.undo}
+              </button>
+              <button type="button" onClick={reset} disabled={state.count === 0}>
+                {labels.reset}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -458,6 +630,13 @@ export function TasbihCounter({ labels }: { labels: TasbihLabels }) {
             <span className="tasbih-total-key">{labels.dailyTotals}</span>
             <b className="tasbih-total-value">{fmt(todayTotal)}</b>
           </div>
+
+          <section className="tasbih-panel tasbih-verse">
+            <p className="tasbih-verse-text" lang="ar" dir="rtl">
+              «{labels.verse}»
+            </p>
+            <p className="tasbih-verse-caption">{labels.verseCaption}</p>
+          </section>
         </div>
       </div>
     </div>

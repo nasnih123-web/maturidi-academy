@@ -12,10 +12,12 @@
  *   خانوادهٔ الف (آ/أ/إ/ٱ)، ی فارسی ← ي عربی، ة ← ه، حذف نشانه‌گذاری.
  * - countDhikrOccurrences: شمارش ناهم‌پوشان، مسیر بدون‌فاصله برای
  *   خروجی چسبیدهٔ ASR، ذکر در میان جمله، عدم تطابق و ورودی خالی.
+ * - addCustomDhikr: رد ورودی خالی/طولانی/تکراری (با مقایسهٔ نرمال‌شده)
+ *   و افزودن ذکر تازه بدون دست‌کاری فهرست اصلی.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { countDhikrOccurrences, normalizeArabicForMatch } from '../tasbih';
+import { addCustomDhikr, countDhikrOccurrences, normalizeArabicForMatch } from '../tasbih';
 
 /** «سُبْحَانَ ٱللَّٰهِ» — دقیقاً با همان کدپوینت‌های preset (از messages/fa.json). */
 const SUBHAN_VOCALIZED =
@@ -88,5 +90,34 @@ describe('countDhikrOccurrences', () => {
     assert.equal(countDhikrOccurrences('', SUBHAN_VOCALIZED), 0);
     assert.equal(countDhikrOccurrences('سبحان الله', ''), 0);
     assert.equal(countDhikrOccurrences('', ''), 0);
+  });
+});
+
+describe('addCustomDhikr', () => {
+  it('ورودی خالی یا فقط فاصله رد می‌شود', () => {
+    assert.equal(addCustomDhikr([], ''), null);
+    assert.equal(addCustomDhikr([], '   '), null);
+    assert.equal(addCustomDhikr([], '!!!'), null);
+  });
+
+  it('ذکر بلندتر از ۸۰ نویسه رد می‌شود', () => {
+    assert.equal(addCustomDhikr([], 'ا'.repeat(81)), null);
+    assert.notEqual(addCustomDhikr([], 'ا'.repeat(80)), null);
+  });
+
+  it('تکراری دقیق و تکراری با اعراب/فاصلهٔ متفاوت رد می‌شود', () => {
+    const list = [SUBHAN_VOCALIZED];
+    assert.equal(addCustomDhikr(list, SUBHAN_VOCALIZED), null);
+    assert.equal(addCustomDhikr(list, 'سبحان الله'), null);
+    assert.equal(addCustomDhikr(list, '  سبحان   الله  '), null);
+    assert.equal(addCustomDhikr(['سبحان الله'], SUBHAN_VOCALIZED), null);
+  });
+
+  it('ذکر تازه به‌صورت آرایهٔ جدید افزوده می‌شود و فهرست اصلی دست‌نخورده می‌ماند', () => {
+    const list = ['الحمد لله'];
+    const next = addCustomDhikr(list, '  یا حی یا قیوم  ');
+    assert.deepEqual(next, ['الحمد لله', 'یا حی یا قیوم']);
+    assert.deepEqual(list, ['الحمد لله']);
+    assert.notEqual(next, list);
   });
 });
