@@ -29,7 +29,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import struct
 import sys
+import threading
 import uuid
 from types import SimpleNamespace
 
@@ -1329,7 +1331,9 @@ def test_feed_decodes_only_when_ready(monkeypatch, tmp_path):
         ready_after=2, tokens_per_decode=[["a", "b"]]
     )
     stream = _fake_sherpa_stream(monkeypatch, tmp_path, recognizer)
-    frame = b"\x00\x00" * 4096
+    # قابِ بلند (۱۰۰۰، ‎~−۳۰ dBFS): دروازهٔ VAD (پیشنهاد ۱۲) سکوت را
+    # پیش از بازشناس حذف می‌کند، پس قابِ تست باید گفتار باشد.
+    frame = b"\xe8\x03" * 4096
     assert stream.feed(frame) == []
     assert recognizer.decode_calls == 0
     assert stream.feed(frame) == ["a", "b"]
@@ -1348,7 +1352,8 @@ def test_flush_decodes_remaining_chunks(monkeypatch, tmp_path):
         ready_after=2, tokens_per_decode=[["a", "b"], ["a", "b", "c"]]
     )
     stream = _fake_sherpa_stream(monkeypatch, tmp_path, recognizer)
-    frame = b"\x00\x00" * 4096
+    # قابِ بلند (۱۰۰۰، ‎~−۳۰ dBFS): دروازهٔ VAD سکوت را حذف می‌کند.
+    frame = b"\xe8\x03" * 4096
     assert stream.feed(frame) == []
     assert stream.feed(frame) == ["a", "b"]
     # دو قاب را مستقیم بپذیر (بدون feed) تا بافر، یک چانک کامل شود.
@@ -1365,10 +1370,208 @@ def test_feed_without_ready_chunk_never_decodes(monkeypatch, tmp_path):
         ready_after=2, tokens_per_decode=[["a", "b"]]
     )
     stream = _fake_sherpa_stream(monkeypatch, tmp_path, recognizer)
-    assert stream.feed(b"\x00\x00" * 4096) == []
+    # قابِ بلند (۱۰۰۰، ‎~−۳۰ dBFS): دروازهٔ VAD سکوت را حذف می‌کند.
+    assert stream.feed(b"\xe8\x03" * 4096) == []
     assert recognizer.decode_calls == 0
     assert stream.flush() == []
     assert recognizer.decode_calls == 0
+
+
+# ---------------------------------------------------------------------------
+# بازشناس مشترک (پیشنهاد ۸): یک بار بارگذاری، جریان‌های جدا
+# ---------------------------------------------------------------------------
+
+
+class _ConcurrentSherpaStream:
+    """جریان ساختگی با حالتِ مختصِ خودِ جریان: هر accept یک واج
+    برمی‌گرداند که از بلندیِ همان قاب گرفته شده — «a» برای آرام،
+    «b» برای بلند. اگر دو جریان قاطی شوند، واج‌ها جابه‌جا دیده می‌شوند."""
+
+    def __init__(self):
+        self.tokens: list[str] = []
+        self.finished = False
+
+    def accept_waveform(self, sample_rate, samples):
+        mean = sum(abs(s) for s in samples) / max(len(samples), 1)
+        self.tokens.append("a" if mean < 0.08 else "b")
+
+    def input_finished(self):
+        self.finished = True
+
+
+class _ConcurrentSherpaRecognizer:
+    """بازشناس ساختگی: هر create_stream یک جریانِ تازه می‌دهد؛
+    نتیجه، واج‌های همان جریان است — نه یک بافرِ مشترک."""
+
+    def __init__(self):
+        self.create_calls = 0
+
+    def create_stream(self):
+        self.create_calls += 1
+        return _ConcurrentSherpaStream()
+
+    def is_ready(self, stream):
+        return True
+
+    def decode_stream(self, stream):
+        pass
+
+    def get_result_as_json_string(self, stream):
+        return json.dumps({"tokens": list(stream.tokens)})
+
+
+def _fake_engine_module(monkeypatch, tmp_path, recognizer):
+    """پوشهٔ مدلِ ساختگی + sherpaی ساختگی؛ شمار ساختِ بازشناس را برمی‌گرداند."""
+    from app.modules.quran import hifz_engines
+
+    model_dir = tmp_path / "model"
+    model_dir.mkdir(exist_ok=True)
+    (model_dir / "model.int8.onnx").write_bytes(b"fake")
+    (model_dir / "tokens.txt").write_text("<blank> 250\n", encoding="utf-8")
+    monkeypatch.setenv("HIFZ_ZIPFORMER_MODEL_DIR", str(model_dir))
+    builds = {"n": 0}
+
+    def _build(**kwargs):
+        builds["n"] += 1
+        return recognizer
+
+    fake_module = SimpleNamespace(
+        OnlineRecognizer=SimpleNamespace(from_zipformer2_ctc=_build)
+    )
+    monkeypatch.setitem(sys.modules, "sherpa_onnx", fake_module)
+    return hifz_engines, builds
+
+
+def test_zipformer_engine_load_shares_one_recognizer_across_instances(
+    monkeypatch, tmp_path
+):
+    """دو نمونهٔ تازه از get_engine، همان یک بازشناس را می‌گیرند و
+    from_zipformer2_ctc فقط یک بار صدا زده می‌شود."""
+    recognizer = _ConcurrentSherpaRecognizer()
+    hifz_engines, builds = _fake_engine_module(monkeypatch, tmp_path, recognizer)
+    first = hifz_engines.get_engine("zipformer")._load()
+    second = hifz_engines.get_engine("zipformer")._load()
+    assert first is second is recognizer
+    assert builds["n"] == 1
+
+
+def test_zipformer_engine_concurrent_load_builds_once(monkeypatch, tmp_path):
+    """دو نخِ هم‌زمان که با هم _load را صدا می‌زنند، فقط یک ساخت
+    می‌بینند (قفلِ کلاس) و هر دو همان یک شیء را می‌گیرند."""
+    recognizer = _ConcurrentSherpaRecognizer()
+    hifz_engines, builds = _fake_engine_module(monkeypatch, tmp_path, recognizer)
+    barrier = threading.Barrier(2)
+    results: list = []
+
+    def _load():
+        barrier.wait(timeout=10)
+        results.append(hifz_engines.get_engine("zipformer")._load())
+
+    threads = [threading.Thread(target=_load) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    assert len(results) == 2
+    assert results[0] is results[1] is recognizer
+    assert builds["n"] == 1
+
+
+def test_two_live_streams_share_recognizer_without_mixing_tokens(
+    monkeypatch, tmp_path
+):
+    """دو SherpaPhonemeStream هم‌زمان روی یک بازشناسِ مشترک: هر
+    جریان فقط واج‌های خودش را برمی‌گرداند (آرام → a، بلند → b) و
+    ساختِ مدل فقط یک بار انجام شده است."""
+    recognizer = _ConcurrentSherpaRecognizer()
+    _fake_engine_module(monkeypatch, tmp_path, recognizer)
+    stream_quiet = SherpaPhonemeStream()
+    stream_loud = SherpaPhonemeStream()
+    assert stream_quiet._recognizer is stream_loud._recognizer is recognizer
+    assert stream_quiet._stream is not stream_loud._stream
+    assert recognizer.create_calls == 2
+
+    quiet_frame = struct.pack("<8h", *([1000] * 8))
+    loud_frame = struct.pack("<8h", *([4000] * 8))
+    quiet_tokens: list[str] = []
+    loud_tokens: list[str] = []
+    barrier = threading.Barrier(2)
+
+    def _feed_quiet():
+        barrier.wait(timeout=10)
+        for _ in range(8):
+            quiet_tokens.extend(stream_quiet.feed(quiet_frame))
+
+    def _feed_loud():
+        barrier.wait(timeout=10)
+        for _ in range(8):
+            loud_tokens.extend(stream_loud.feed(loud_frame))
+
+    threads = [
+        threading.Thread(target=_feed_quiet),
+        threading.Thread(target=_feed_loud),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    assert quiet_tokens == ["a"] * 8
+    assert loud_tokens == ["b"] * 8
+
+
+# ---------------------------------------------------------------------------
+# گرم‌کردن واقعی (پیشنهاد ۹): ۰٫۷ ثانیه سکوت، نه ۰٫۵
+# ---------------------------------------------------------------------------
+
+
+class _SamplesSherpaStream:
+    """جریان ساختگی با آستانهٔ نمونه‌ای مثل sherpa واقعی: is_ready
+    فقط وقتی درست است که ‎~۰٫۶ ثانیه صدا (۹٬۶۰۰ نمونه در ۱۶kHz)
+    بافر شده باشد."""
+
+    READY_SAMPLES = 9600
+
+    def __init__(self):
+        self.samples = 0
+        self.finished = False
+
+    def accept_waveform(self, sample_rate, samples):
+        self.samples += len(samples)
+
+    def input_finished(self):
+        self.finished = True
+
+
+class _SamplesSherpaRecognizer:
+    def __init__(self):
+        self._stream = _SamplesSherpaStream()
+        self.decode_calls = 0
+
+    def create_stream(self):
+        return self._stream
+
+    def is_ready(self, stream):
+        return stream.samples >= _SamplesSherpaStream.READY_SAMPLES
+
+    def decode_stream(self, stream):
+        self.decode_calls += 1
+        stream.samples = 0
+
+    def get_result_as_json_string(self, stream):
+        return json.dumps({"tokens": []})
+
+
+def test_warmup_feeds_enough_silence_for_a_real_decode(monkeypatch, tmp_path):
+    """warmup باید یک دیکد واقعی انجام دهد: ۰٫۷ ثانیه سکوت از
+    آستانهٔ ‎~۰٫۶ ثانیه‌ای is_ready می‌گذرد؛ ۰٫۵ ثانیهٔ پیشین نه."""
+    recognizer = _SamplesSherpaRecognizer()
+    stream = _fake_sherpa_stream(monkeypatch, tmp_path, recognizer)
+    # ۰٫۵ ثانیه صوتِ بلند (نه سکوت — دروازهٔ VAD سکوت را حذف
+    # می‌کند و آن‌وقت آزمونِ «زیر آستانهٔ is_ready» بی‌معنا می‌شد).
+    assert stream.feed(b"\xe8\x03" * 8000) == []
+    assert recognizer.decode_calls == 0, "0.5s of silence must not decode"
+    assert stream.warmup() >= 0
+    assert recognizer.decode_calls == 1, "0.7s of silence must decode once"
 
 
 # ---------------------------------------------------------------------------

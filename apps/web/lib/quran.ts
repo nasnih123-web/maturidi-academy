@@ -339,6 +339,14 @@ export function parseSurahView(
   return { surah, ayahs };
 }
 
+/** In-flight getSurah requests, keyed by surah + options (proposal 4):
+    the neighbour effect and the preload loop can ask for the same surah
+    at the same time (Surah 2 was fetched twice, 20ms apart); concurrent
+    callers share one promise instead of one fetch each. The entry is
+    removed when it settles, so a later call refetches and a failed fetch
+    is never cached. */
+const getSurahInflight = new Map<string, Promise<SurahView>>();
+
 /** Fetch one surah with ayahs, translation, tafsir and audio references. */
 export async function getSurah(
   number: number,
@@ -348,20 +356,44 @@ export async function getSurah(
     translationEdition?: string | null;
     tafsirEdition?: string | null;
     reciter?: string | null;
+    /** Light bundle (proposal 2): only the Uthmani text — the nass
+        preload loop needs nothing else, and the full bundle's
+        translation + tafsir + audio are ~75% of its bytes. */
+    light?: boolean;
   } = {},
 ): Promise<SurahView> {
-  const params = new URLSearchParams();
-  if (opts.translation) params.set('translation', opts.translation);
-  if (opts.tafsir) params.set('tafsir', opts.tafsir);
-  if (opts.reciter) params.set('reciter', opts.reciter);
-  const qs = params.toString();
-  const body = await getJson<SurahViewBody>(
-    `/api/v1/quran/surah/${number}${qs ? `?${qs}` : ''}`,
-  );
-  return parseSurahView(body, number, {
-    translationEdition: opts.translationEdition ?? null,
-    tafsirEdition: opts.tafsirEdition ?? null,
-  });
+  const key = JSON.stringify([
+    number,
+    opts.translation ?? null,
+    opts.tafsir ?? null,
+    opts.translationEdition ?? null,
+    opts.tafsirEdition ?? null,
+    opts.reciter ?? null,
+    opts.light ?? false,
+  ]);
+  const existing = getSurahInflight.get(key);
+  if (existing) return existing;
+  const promise = (async (): Promise<SurahView> => {
+    const params = new URLSearchParams();
+    if (opts.translation) params.set('translation', opts.translation);
+    if (opts.tafsir) params.set('tafsir', opts.tafsir);
+    if (opts.reciter) params.set('reciter', opts.reciter);
+    if (opts.light) params.set('editions', 'quran-uthmani');
+    const qs = params.toString();
+    const body = await getJson<SurahViewBody>(
+      `/api/v1/quran/surah/${number}${qs ? `?${qs}` : ''}`,
+    );
+    return parseSurahView(body, number, {
+      translationEdition: opts.translationEdition ?? null,
+      tafsirEdition: opts.tafsirEdition ?? null,
+    });
+  })();
+  getSurahInflight.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    if (getSurahInflight.get(key) === promise) getSurahInflight.delete(key);
+  }
 }
 
 /**

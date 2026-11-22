@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import difflib
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 __all__ = [
@@ -54,6 +54,17 @@ PROB_CORRECT = 0.95
 PROB_CLOSE = 0.65
 PROB_WRONG = 0.30
 NEAR_MISS_MAX_DISTANCE = 2
+
+#: بیشینهٔ فاصلهٔ لون‌اشتاین برای پیشینهٔ خطای شخصی (پیشنهاد ۱۴):
+#: تلفظِ عادتیِ کاربر باید هنوز به واجِ موردانتظار نزدیک باشد؛
+#: رشته‌ای که از این دورتر است، با پیشینه هم نجات نمی‌یابد.
+#: سقفِ اثر همین‌جاست — پیشینه فقط یک «نزدیک» می‌سازد، هرگز «درست».
+PRIOR_MAX_DISTANCE = 4
+
+#: نگاشتِ پیشینه‌های خطای شخصی: واجِ موردانتظار ←
+#: [(واجِ شنیده‌شدهٔ عادتی، شمارِ تکرار)] — شمار، فقط برای
+#: مستندسازیِ آستانهٔ ≥۳ است؛ تطبیق‌دهنده آن را نمی‌خواند.
+PriorMap = Mapping[str, Sequence[tuple[str, int]]]
 
 # Arabic diacritics + Quranic annotation marks stripped for matching.
 _STRIP_RANGES = (
@@ -152,6 +163,11 @@ class AlignedWord:
     # نگاشتِ زمان‌بندیِ DTW (آخرین راهِ جایگزینِ گام ۹) روی کلمهٔ
     # موردانتظار است.
     heard_index: int | None = None
+    # پیشینهٔ خطای شخصی (پیشنهاد ۱۴): این کلمه فقط چون کاربر همان
+    # جفت (موردانتظار ← شنیده‌شده) را پیش‌تر ≥۳ بار تکرار کرده،
+    # «نزدیک» خورده است. فقط برچسبِ خروجی است؛ ذخیره نمی‌شود و در
+    # شمارندهٔ وضعیت‌ها اثری ندارد.
+    prior_applied: bool = False
 
 
 def _status_for_prob(prob: float, green: float, amber: float) -> str:
@@ -393,6 +409,7 @@ def align_phonemes(
     phoneme_text: str,
     green: float = 0.8,
     amber: float = 0.5,
+    priors: PriorMap | None = None,
 ) -> tuple[list[AlignedWord], list[str]]:
     """Align a Zipformer phoneme string onto expected words, via segments.
 
@@ -409,6 +426,16 @@ def align_phonemes(
     rest of the ayah is simply unheard. Leftover phoneme material is
     returned as a single extra entry: it is unparsed phoneme material,
     never presented as words.
+
+    `priors` (proposal 14) is the user's personal mistake history:
+    expected-phoneme → [(habitual heard-phoneme, repeat count)].
+    After exact and near-miss fail, a prior whose heard string starts
+    the buffer and is within PRIOR_MAX_DISTANCE of the expected
+    phoneme rescues the unit as "close" (never "correct") with
+    `prior_applied=True` — the habitual mispronunciation is the user's
+    own repeated pattern, not a new mistake. Exact and near-miss keep
+    priority: a prior never overrides a match the plain matcher
+    already makes.
 
     Returns (aligned, extra) in the same shape as `align_words`.
     Every consumed unit also records its phoneme-string span
@@ -470,6 +497,43 @@ def align_phonemes(
             buf = buf[len(phon):]
             consumed += len(phon)
             i += 1
+            continue
+        # پیشینهٔ خطای شخصی (پیشنهاد ۱۴): پس از دقیق و نزدیک، پیش
+        # از پرشِ روبه‌جلو. کاربر این واحد را پیش‌تر دست‌کم ۳ بار
+        # با همین تلفظِ عادتی گفته است؛ رشتهٔ شنیده‌شدهٔ عادتی
+        # باید سرِ بافر باشد و به واجِ موردانتظار نزدیک بماند
+        # (≤ PRIOR_MAX_DISTANCE) — وگرنه نجات نمی‌یابد. نتیجه
+        # همیشه «نزدیک» است (هرگز «درست») و برچسبِ prior_applied
+        # می‌خورد تا در پاسخ دیده شود.
+        prior_matched = False
+        if priors:
+            for heard_str, _count in priors.get(phon, ()):
+                if (
+                    heard_str
+                    and len(heard_str) >= 2
+                    and buf.startswith(heard_str)
+                    and levenshtein(heard_str, phon) <= PRIOR_MAX_DISTANCE
+                ):
+                    span = (consumed, consumed + len(heard_str))
+                    for wi in widxs:
+                        exp = expected[wi] if wi < len(expected) else ""
+                        aligned.append(
+                            AlignedWord(
+                                wi, exp,
+                                _status_for_prob(PROB_CLOSE, green, amber),
+                                PROB_CLOSE, exp, "wrong_word",
+                                needs_review=True,
+                                phoneme_start=span[0],
+                                phoneme_end=span[1],
+                                prior_applied=True,
+                            )
+                        )
+                    buf = buf[len(heard_str):]
+                    consumed += len(heard_str)
+                    i += 1
+                    prior_matched = True
+                    break
+        if prior_matched:
             continue
         found = None
         for j in range(i + 1, min(len(units), i + 41)):

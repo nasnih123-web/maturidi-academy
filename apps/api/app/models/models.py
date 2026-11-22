@@ -20,6 +20,7 @@ from sqlalchemy import JSON as SA_JSON
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -2850,6 +2851,11 @@ class HifzUserSettings(Base):
     - daily_goal_ayahs: هدف روزانهٔ کاربر به واحد آیه (۰ = هدفی
       تنظیم نشده) — مبنای پیشرفت روزانه و رکورد پیوستگی در داشبورد
       (گام ۴ برابری با ترتیل، PR ایجنت دوم).
+    - green_threshold / amber_threshold: آستانه‌های شخصیِ کالیبره‌شده
+      (پیشنهاد ۱۳، سرعت حفاظ) — از تاریخچهٔ اعتراض‌های کاربر مشتق
+      می‌شوند (calibrate_user_thresholds در hifz_service)؛ NULL یعنی
+      هنوز کالیبره نشده و آستانه‌های سراسری CRM حاکم‌اند. کاربر
+      مستقیم تنظیمشان نمی‌کند؛ فقط خواندنی‌اند.
     """
 
     __tablename__ = "hifz_user_settings"
@@ -2863,6 +2869,12 @@ class HifzUserSettings(Base):
     resumable_sessions: Mapped[bool] = mapped_column(Boolean, default=False)
     hide_ayah_markers: Mapped[bool] = mapped_column(Boolean, default=False)
     daily_goal_ayahs: Mapped[int] = mapped_column(Integer, default=0)
+    green_threshold: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
+    amber_threshold: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=True
@@ -2955,8 +2967,10 @@ class HifzWordScore(Base):
 
     یکتایی (attempt_id, surah, ayah, word_index) یعنی نمره‌دهی دوبارهٔ
     همان آیه در همان نشست، ردیف را به‌روز می‌کند نه این‌که تکثیر کند.
-    status: correct | close | wrong | skipped (extra این‌جا نمی‌آید؛
-    کلمه‌های اضافه در extra_words نشست و پاسخ نمره می‌آیند).
+    status: correct | close | wrong | skipped | basmala (extra این‌جا
+    نمی‌آید؛ کلمه‌های اضافه در extra_words نشست و پاسخ نمره می‌آیند).
+    `basmala` یعنی بسملهٔ خوانده‌شدهٔ زنده (پیشنهاد ۱۶) — نمایشی،
+    بی‌نمره: در شمارنده‌ها نمی‌آید و ردیفِ خطا نمی‌سازد.
     mistake_type: wrong_word | wrong_tashkeel | skipped | peek | null.
     """
 
@@ -2986,6 +3000,45 @@ class HifzWordScore(Base):
             name="uq_hifz_word_score_attempt_word",
         ),
         Index("ix_hifz_word_score_attempt_ayah", "attempt_id", "surah", "ayah"),
+        # پنج وضعیتِ نمره (پیشنهاد ۱۶): بسملهٔ خوانده‌شدهٔ زنده،
+        # نمایشی و بی‌نمره، در کنارِ چهار وضعیتِ نمره‌خورده.
+        CheckConstraint(
+            "status IN ('correct', 'close', 'wrong', 'skipped', 'basmala')",
+            name="ck_hifz_word_score_status",
+        ),
+    )
+
+
+class HifzDisputeFeedback(Base):
+    """بازخورد اعتراض کاربر به نمرهٔ کلمه (پیشنهاد ۱۵).
+
+    هر اعتراضِ تازه به یک نمرهٔ «غلط»، جفت (واجِ موردانتظار ←
+    تکهٔ واجیِ شنیده‌شده) را یک بار می‌شمارد؛ جفت فقط وقتی در
+    تطبیقِ بعدیِ همان کاربر اثر می‌کند که شمارش به ۲ برسد.
+    فقط رشتهٔ واجی — هرگز صدا (صدای نمره‌دهی گذراست و ذخیره
+    نمی‌شود). یکتاییِ جفت یعنی اعتراضِ دوباره به همان جفت،
+    شمارش را بالا می‌برد، نه اینکه ردیف تازه بسازد.
+    """
+
+    __tablename__ = "hifz_dispute_feedback"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    expected_phoneme: Mapped[str] = mapped_column(String(120))
+    heard_phoneme: Mapped[str] = mapped_column(String(120))
+    count: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "expected_phoneme", "heard_phoneme",
+            name="uq_hifz_dispute_feedback_pair",
+        ),
     )
 
 

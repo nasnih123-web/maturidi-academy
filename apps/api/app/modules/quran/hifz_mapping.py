@@ -43,11 +43,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
+import pickle
 import re
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -72,6 +75,21 @@ _ORDERED_FILE = "ordered_quran_phonemes.json"
 _TOKENS_FILE = "tokens.txt"
 _TEXT2PHONEME_FILE = "quran_text2phoneme.json"
 _TANZIL_FILE = Path(__file__).resolve().parent / "data" / "tanzil_uthmani.txt"
+
+#: کش دیسکی نگاشت (پیشنهاد ۱۰، سرعت حفاظ): ساخت نگاشت (DP روی
+#: ۶٬۲۳۶ آیه) حدود ۴ دقیقه طول می‌کشد و با کشِ حافظه‌ایِ تنها، هر
+#: بوتِ ورکر آن را از صفر تکرار می‌کرد. نگاشتِ ساخته‌شده با pickle
+#: زیر پوشهٔ `.cache` کنار فایل‌های منبع ذخیره می‌شود و با اثر
+#: انگشتِ SHA-256 بایت‌های همهٔ فایل‌های منبع + نسخهٔ قالب،
+#: اعتبارسنجی می‌شود: هر تغییری در هر فایل منبع، اثر انگشت را عوض
+#: می‌کند و کشِ کهنه هرگز خوانده نمی‌شود. نسخهٔ قالب را باید با هر
+#: تغییر در منطق ساخت (DP، نرمال‌ساز، جداسازی بسمله) بالا برد.
+_DISK_CACHE_FORMAT_VERSION = 1
+_DISK_CACHE_DIR_ENV = "QURAN_PHONEME_MAP_CACHE_DIR"
+_DISK_CACHE_PREFIX = "phoneme-mapping"
+#: کش‌های کهنه‌تر از این، موقع ذخیرهٔ کش تازه پاک می‌شوند (۷ روز):
+#: آن‌قدر دیر که بوتِ هم‌زمانِ ورکر دیگری را تهدید نکند.
+_DISK_CACHE_PRUNE_AFTER_S = 7 * 24 * 3600
 _TANZIL_LINE_RE = re.compile(r"^(\d+)\|(\d+)\|(.*)$")
 
 #: نشانه‌های وقفِ تنها — کلمه نیستند، خوانده نمی‌شوند.
@@ -544,6 +562,108 @@ def map_files_present(data_dir: str | Path | None = None) -> tuple[bool, str]:
     return True, ""
 
 
+def _disk_cache_dir(resolved: Path) -> Path:
+    """پوشهٔ کش دیسکی: پیش‌فرض `.cache` کنار فایل‌های نقشه؛
+    با `QURAN_PHONEME_MAP_CACHE_DIR` قابل جابه‌جایی است (مثلاً
+    وقتی پوشهٔ نقشه فقط‌خواندنی است)."""
+    env = os.environ.get(_DISK_CACHE_DIR_ENV, "").strip()
+    if env:
+        return Path(env)
+    return resolved / ".cache"
+
+
+def _mapping_fingerprint(resolved: Path) -> str | None:
+    """اثر انگشت SHA-256 بایت‌های همهٔ ورودی‌های ساخت نگاشت.
+
+    ordered JSON + tokens.txt + متن Tanzil (مسیر ثابت کنار ماژول)
+    + quran_text2phoneme.json اگر حاضر باشد؛ با نسخهٔ قالب ترکیب
+    می‌شود. None یعنی یکی از فایل‌ها خواندنی نیست — فراخواننده
+    کش را نادیده می‌گیرد و ساختِ کامل (با خطای صادقانه‌اش) اجرا
+    می‌شود."""
+    digest = hashlib.sha256()
+    digest.update(f"format:{_DISK_CACHE_FORMAT_VERSION}\n".encode())
+    sources = [
+        resolved / _ORDERED_FILE,
+        resolved / _TOKENS_FILE,
+        _TANZIL_FILE,
+    ]
+    t2p = resolved / _TEXT2PHONEME_FILE
+    if t2p.is_file():
+        sources.append(t2p)
+    for path in sources:
+        try:
+            with path.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1 << 20), b""):
+                    digest.update(chunk)
+        except OSError:
+            return None
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _disk_cache_path(resolved: Path, fingerprint: str) -> Path:
+    name = (
+        f"{_DISK_CACHE_PREFIX}-v{_DISK_CACHE_FORMAT_VERSION}"
+        f"-{fingerprint[:32]}.pkl"
+    )
+    return _disk_cache_dir(resolved) / name
+
+
+def _load_disk_cached_mapping(
+    resolved: Path, fingerprint: str
+) -> PhonemeMapping | None:
+    """خواندن نگاشت از کش دیسکی؛ هر مشکلی → None (ساخت کامل)."""
+    path = _disk_cache_path(resolved, fingerprint)
+    try:
+        with path.open("rb") as handle:
+            obj = pickle.load(handle)
+    except (OSError, ValueError, EOFError, pickle.UnpicklingError) as exc:
+        logger.debug("hifz disk cache unreadable, rebuilding: %s", exc)
+        return None
+    except (AttributeError, ImportError) as exc:
+        # pickle به کلاسی اشاره می‌کند که دیگر نیست (تغییر ساختار).
+        logger.debug("hifz disk cache stale class, rebuilding: %s", exc)
+        return None
+    if not isinstance(obj, PhonemeMapping):
+        return None
+    if not isinstance(obj.report, ValidationReport):
+        return None
+    if obj.report.accepted_ayahs <= 0:
+        return None
+    return obj
+
+
+def _store_disk_cached_mapping(
+    resolved: Path, fingerprint: str, mapping: PhonemeMapping
+) -> None:
+    """ذخیرهٔ نگاشت در کش دیسکی — بهترین تلاش؛ هرگز بوت را نمی‌شکند."""
+    try:
+        cache_dir = _disk_cache_dir(resolved)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        path = _disk_cache_path(resolved, fingerprint)
+        tmp = cache_dir / f".{path.name}.tmp-{os.getpid()}"
+        with tmp.open("wb") as handle:
+            pickle.dump(mapping, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(tmp, path)
+    except Exception as exc:  # noqa: BLE001 — کش، هرگز مسیر اصلی نیست
+        logger.warning("hifz disk cache store failed: %s", exc)
+        return
+    # پاک‌سازی کش‌های کهنهٔ همین پیشوند (قدیمی‌تر از ۷ روز) تا دیسک
+    # با هر به‌روزرسانیِ فایل‌های منبع رشد نکند.
+    try:
+        now = time.time()
+        for old in cache_dir.glob(f"{_DISK_CACHE_PREFIX}-v*.pkl"):
+            if old == path:
+                continue
+            try:
+                if now - old.stat().st_mtime > _DISK_CACHE_PRUNE_AFTER_S:
+                    old.unlink(missing_ok=True)
+            except OSError:
+                continue
+    except OSError:
+        pass
+
+
 def _build_adjusted_segments(
     plist: list[str],
     pairs: list[tuple[tuple[int, ...], tuple[int, ...]]],
@@ -589,6 +709,17 @@ def load_phoneme_mapping(data_dir: str | Path | None = None) -> PhonemeMapping:
             f"پوشهٔ نگاشت یافت نشد: {resolved} "
             f"(انتظار { _ORDERED_FILE} و {_TOKENS_FILE})"
         )
+    # کش دیسکی (پیشنهاد ۱۰): اگر فایل‌های منبع نسبت به بوتِ قبل
+    # عوض نشده‌اند، نگاشتِ آماده را از دیسک بخوان — ثانیه‌ها به‌جای
+    # دقیقه‌ها. اثر انگشت با هر تغییرِ بایتِ منبع عوض می‌شود، پس
+    # کشِ کهنه هرگز به‌جای نگاشتِ تازه برگردانده نمی‌شود.
+    fingerprint = _mapping_fingerprint(resolved)
+    if fingerprint is not None:
+        cached = _load_disk_cached_mapping(resolved, fingerprint)
+        if cached is not None:
+            with _cache_lock:
+                _cache[cache_key] = cached
+            return cached
     symbols = _load_tokens(tokens_path)
     # شاخص نمادها یک‌بار ساخته می‌شود (نه برای هر واج): وارسیِ
     # ۶۷ هزار واج با ساختِ دوبارهٔ شاخص در هر بار، دقیقه‌ها طول می‌کشد.
@@ -761,6 +892,8 @@ def load_phoneme_mapping(data_dir: str | Path | None = None) -> PhonemeMapping:
                     report.cross_check_disagree += 1
 
     mapping = PhonemeMapping(final, report)
+    if fingerprint is not None:
+        _store_disk_cached_mapping(resolved, fingerprint, mapping)
     with _cache_lock:
         _cache[cache_key] = mapping
     return mapping

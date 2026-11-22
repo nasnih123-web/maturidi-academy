@@ -30,13 +30,14 @@ from app.core.errors import APIError
 from app.core.platform_settings import get_typed_setting
 from app.models.models import (
     HifzAttempt,
+    HifzDisputeFeedback,
     HifzMistake,
     HifzUserSettings,
     HifzWordScore,
     User,
 )
 
-from . import alignment, hifz_engines, hifz_mapping
+from . import alignment, hifz_engines, hifz_mapping, hifz_vad
 from . import service as quran_service
 
 logger = logging.getLogger(__name__)
@@ -45,12 +46,28 @@ MAX_AUDIO_BYTES = 32 * 1024 * 1024  # ~۱۵ دقیقه WAV تک‌کانالهٔ
 DEFAULT_GREEN = 0.8
 DEFAULT_AMBER = 0.5
 
+#: آستانه‌های شخصی (پیشنهاد ۱۳): کالیبراسیون فقط می‌تواند یک دستهٔ
+#: کامل را جابه‌جا کند، چون احتمال‌ها مقدارهای مشتق‌شده از نوع تطابق‌اند
+#: (correct=۰٫۹۵، close=۰٫۶۵، wrong=۰٫۳۰) نه confidence کالیبره‌شده:
+#: green شخصی = ۰٫۶۵ یعنی «نزدیک»های کاربر «درست» حساب می‌شوند و
+#: amber شخصی = ۰٫۳۰ یعنی «غلط»هایش «نزدیک». پس کف‌های شخصی همان
+#: ثابت‌های احتمال‌اند و سقف‌ها، آستانه‌های سراسری.
+_CALIBRATED_GREEN = 0.65
+_CALIBRATED_AMBER = 0.30
+#: کمینهٔ تاریخچه پیش از شخصی‌سازی (کلمه‌های نمره‌خورده) و کمینهٔ هر
+#: دسته: کمتر از این، اعتراض‌ها نویزند، نه سیگنال.
+_MIN_HISTORY_WORDS = 100
+_MIN_STATUS_WORDS = 10
+#: سهم اعتراض از یک دسته که کالیبراسیون را می‌اندازد: کاربر باید دست‌کم
+#: نیمی از «نزدیک»ها (یا «غلط»ها) را صریحاً اعتراض کرده باشد.
+_DISPUTE_RATE_TO_CALIBRATE = 0.5
+
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-async def get_thresholds(db: AsyncSession) -> tuple[float, float]:
+async def _global_thresholds(db: AsyncSession) -> tuple[float, float]:
     """آستانه‌های رنگ از CRM؛ مقدار خراب → پیش‌فرض، هرگز ۵۰۰."""
     raw = await get_typed_setting(
         db, "quran.hifz_thresholds", {"green": DEFAULT_GREEN, "amber": DEFAULT_AMBER}
@@ -65,6 +82,266 @@ async def get_thresholds(db: AsyncSession) -> tuple[float, float]:
     if not (0.0 < amber < green <= 1.0):
         return DEFAULT_GREEN, DEFAULT_AMBER
     return green, amber
+
+
+async def get_thresholds(
+    db: AsyncSession, user_id: UUID | None = None
+) -> tuple[float, float]:
+    """آستانه‌های رنگ: اول شخصیِ کاربر (اگر کالیبره شده باشد)، بعد
+    سراسری CRM، بعد پیش‌فرض. مقدار شخصیِ خارج از باند مجاز نادیده
+    گرفته می‌شود — هرگز ۵۰۰ و هرگز آستانهٔ وارونه."""
+    green, amber = await _global_thresholds(db)
+    if user_id is None:
+        return green, amber
+    row = await db.get(HifzUserSettings, user_id)
+    if row is None:
+        return green, amber
+    try:
+        if row.green_threshold is not None:
+            g = float(row.green_threshold)
+            if _CALIBRATED_GREEN <= g <= green:
+                green = g
+        if row.amber_threshold is not None:
+            a = float(row.amber_threshold)
+            if _CALIBRATED_AMBER <= a < green and a <= amber:
+                amber = a
+    except (TypeError, ValueError):
+        return green, amber
+    return green, amber
+
+
+async def calibrate_user_thresholds(
+    db: AsyncSession, user_id: UUID
+) -> tuple[float | None, float | None]:
+    """کالیبراسیون آستانه‌های شخصی از تاریخچهٔ اعتراض‌های کاربر.
+
+    سیگنال، فقط اعتراضِ صریح است (disputed=True روی نمرهٔ کلمه):
+    اگر کاربر دست‌کم نیمی از «نزدیک»هایش را اعتراض کرده باشد،
+    تطبیق برای لهجه/سبک او بیش‌ازحد سخت‌گیرانه است و green شخصی
+    به ۰٫۶۵ می‌رسد؛ همین‌طور برای «غلط»ها و amber به ۰٫۳۰.
+    پیش‌نیاز: دست‌کم ۱۰۰ کلمهٔ نمره‌خورده و دست‌کم ۱۰ کلمه در هر
+    دسته — کمتر از آن، شخصی‌سازی نمی‌شود (NULL می‌ماند).
+    ضد رانش: هر کالیبراسیون از کل تاریخچه از صفر حساب می‌شود و
+    مقدار ذخیره‌شده را بازنویسی می‌کند — اگر اعتراض‌ها فروکش کنند،
+    آستانه به پیش‌فرض سراسری برمی‌گردد، نه اینکه پایین‌تر برود.
+    برمی‌گرداند (green_personal, amber_personal) — هر کدام یا عدد
+    است یا None.
+    """
+    rows = await db.execute(
+        select(HifzWordScore.status, HifzWordScore.disputed, func.count())
+        .join(HifzAttempt, HifzWordScore.attempt_id == HifzAttempt.id)
+        .where(HifzAttempt.user_id == user_id)
+        .group_by(HifzWordScore.status, HifzWordScore.disputed)
+    )
+    counts: dict[str, dict[bool, int]] = {}
+    total = 0
+    for status, disputed, n in rows.all():
+        counts.setdefault(status, {})[bool(disputed)] = int(n)
+        total += int(n)
+    green_personal: float | None = None
+    amber_personal: float | None = None
+    if total >= _MIN_HISTORY_WORDS:
+        close_total = sum(counts.get("close", {}).values())
+        close_disputed = counts.get("close", {}).get(True, 0)
+        if (
+            close_total >= _MIN_STATUS_WORDS
+            and close_disputed / close_total >= _DISPUTE_RATE_TO_CALIBRATE
+        ):
+            green_personal = _CALIBRATED_GREEN
+        wrong_total = sum(counts.get("wrong", {}).values())
+        wrong_disputed = counts.get("wrong", {}).get(True, 0)
+        if (
+            wrong_total >= _MIN_STATUS_WORDS
+            and wrong_disputed / wrong_total >= _DISPUTE_RATE_TO_CALIBRATE
+        ):
+            amber_personal = _CALIBRATED_AMBER
+    settings = await db.get(HifzUserSettings, user_id)
+    if settings is None:
+        settings = HifzUserSettings(user_id=user_id, **_SETTINGS_DEFAULTS)
+        db.add(settings)
+    settings.green_threshold = green_personal
+    settings.amber_threshold = amber_personal
+    settings.updated_at = _utcnow()
+    await db.commit()
+    return green_personal, amber_personal
+
+
+#: پیشینه‌های خطای شخصی (پیشنهاد ۱۴): جفتی فقط وقتی پیشینه
+#: می‌شود که همان کاربر همان جفت (موردانتظار ← شنیده‌شده) را
+#: دست‌کم ۳ بار تکرار کرده باشد؛ کوئری فقط ۲۰۰۰ «غلط»ِ تازه‌تر
+#: را می‌خواند تا تاریخچهٔ کهنهٔ تلفظ، برای همیشه نماند.
+#: بازخورد اعتراض (پیشنهاد ۱۵) آستانهٔ پایین‌تری دارد — ۲ —
+#: چون اعتراض، سیگنالِ صریحِ کاربر است، نه ردیفِ خاموش.
+_PRIOR_MIN_COUNT = 3
+_FEEDBACK_MIN_COUNT = 2
+_PRIOR_RECENT_WRONG_LIMIT = 2000
+
+
+async def load_user_priors(
+    db: AsyncSession,
+    user_id: UUID,
+    mapping: hifz_mapping.PhonemeMapping | None = None,
+) -> dict[str, list[tuple[str, int]]]:
+    """پیشینه‌های خطای شخصی کاربر برای `align_phonemes`.
+
+    از سطرهای «غلط»ِ ذخیره‌شده می‌سازد (`heard` = تکهٔ واجیِ
+    شنیده‌شده؛ فقط رشتهٔ واجی، هرگز صدا): برای هر سطر، واجِ
+    موردانتظار از نگاشتِ قطعه‌ای (قطعه‌ای که word_index را
+    می‌پوشاند) خوانده می‌شود و جفت (موردانتظار ← شنیده‌شده)
+    شمرده می‌شود؛ فقط جفت‌های با شمار ≥۳ برمی‌گردند، هر کلید
+    بر پایهٔ شمارِ نزولی مرتب است. بازخورد اعتراض (پیشنهاد ۱۵)
+    هم ادغام می‌شود: جفتِ اعتراض‌شده از شمار ۲ اثر می‌کند و با
+    پیشینه‌های سطری یکی می‌شود (شمارِ بیشتر برنده است).
+    `mapping` درزِ تست است؛ در محصول None می‌ماند و نگاشتِ
+    کش‌شدهٔ حافظه خوانده می‌شود (در مسیر نمره‌دهی،
+    `_phoneme_units` آن را پیش‌تر گرم کرده است). خالی بودن یعنی
+    هیچ پیشینه‌ای — هرگز خطا نمی‌دهد؛ اگر خواندنِ پیشینه‌ها به
+    هر دلیل ناممکن شد (دیتابیس در دسترس نیست، جدولِ بازخورد
+    هنوز مایگریت نشده، ...)، هم خالی برمی‌گردد و نمره‌دهی با
+    تطبیقِ ساده ادامه می‌یابد — پیشینه بهینه‌سازی است، نه
+    وابستگیِ نمره‌دهی.
+    """
+    if mapping is None:
+        try:
+            mapping = hifz_mapping.load_phoneme_mapping()
+        except APIError as exc:
+            logger.warning("hifz priors skipped: mapping unavailable: %s", exc)
+            return {}
+    try:
+        rows = (
+            await db.execute(
+                select(
+                    HifzWordScore.surah,
+                    HifzWordScore.ayah,
+                    HifzWordScore.word_index,
+                    HifzWordScore.heard,
+                )
+                .join(HifzAttempt, HifzWordScore.attempt_id == HifzAttempt.id)
+                .where(
+                    HifzAttempt.user_id == user_id,
+                    HifzWordScore.status == "wrong",
+                    HifzWordScore.heard.is_not(None),
+                )
+                .order_by(HifzWordScore.created_at.desc())
+                .limit(_PRIOR_RECENT_WRONG_LIMIT)
+            )
+        ).all()
+    except Exception as exc:  # noqa: BLE001 — پیشینه بهترین تلاش است؛
+        # هر خطای خواندن، نمره‌دهی را نمی‌شکند.
+        logger.warning("hifz priors skipped: priors query failed: %s", exc)
+        return {}
+    counts: dict[tuple[str, str], int] = {}
+    for surah, ayah, word_index, heard in rows:
+        if not heard:
+            continue
+        segs = mapping.segments_for(surah, ayah)
+        if not segs:
+            continue
+        phon = next(
+            (s.phoneme for s in segs if word_index in s.word_indices),
+            None,
+        )
+        if not phon or heard == phon:
+            continue
+        key = (phon, heard)
+        counts[key] = counts.get(key, 0) + 1
+    priors: dict[str, list[tuple[str, int]]] = {}
+    for (phon, heard), n in counts.items():
+        if n >= _PRIOR_MIN_COUNT:
+            priors.setdefault(phon, []).append((heard, n))
+    # بازخورد اعتراض (پیشنهاد ۱۵): جفتِ اعتراض‌شده از شمار ۲
+    # اثر می‌کند — اعتراض، سیگنالِ صریحِ کاربر است. با پیشینه‌های
+    # سطری ادغام می‌شود؛ اگر همان جفت در هر دو منبع باشد، شمارِ
+    # بیشتر برنده است. خطا در خواندنِ بازخورد، فقط بازخورد را
+    # حذف می‌کند — پیشینه‌های سطری سر جایشان می‌مانند.
+    try:
+        feedback = (
+            await db.execute(
+                select(
+                    HifzDisputeFeedback.expected_phoneme,
+                    HifzDisputeFeedback.heard_phoneme,
+                    HifzDisputeFeedback.count,
+                )
+                .where(
+                    HifzDisputeFeedback.user_id == user_id,
+                    HifzDisputeFeedback.count >= _FEEDBACK_MIN_COUNT,
+                )
+            )
+        ).all()
+    except Exception as exc:  # noqa: BLE001 — بهترین تلاش، مثلِ بالا.
+        logger.warning("hifz priors skipped: feedback query failed: %s", exc)
+        feedback = []
+    for exp_phon, heard_phon, n in feedback:
+        lst = priors.setdefault(exp_phon, [])
+        for i, (h, c) in enumerate(lst):
+            if h == heard_phon:
+                if int(n) > c:
+                    lst[i] = (h, int(n))
+                break
+        else:
+            lst.append((heard_phon, int(n)))
+    for lst in priors.values():
+        lst.sort(key=lambda pair: -pair[1])
+    return priors
+
+
+async def record_dispute_feedback(
+    db: AsyncSession,
+    user_id: UUID,
+    word_score: HifzWordScore,
+    mapping: hifz_mapping.PhonemeMapping | None = None,
+) -> bool:
+    """ثبت بازخورد اعتراض (پیشنهاد ۱۵).
+
+    فقط نمرهٔ «غلط» با تکهٔ واجیِ شنیده‌شده جفت می‌سازد: برای
+    «نزدیک»/«درست»، heard متنِ موردانتظار است، نه واج — چیزی
+    برای یادگیری نیست؛ برای «جاافتاده» هم heard نیست. جفتِ
+    (واجِ موردانتظار ← شنیده‌شده) از نگاشتِ قطعه‌ای ترجمه
+    می‌شود و شمارشِ همان جفت یک واحد بالا می‌رود (upsert).
+    برمی‌گرداند True یعنی جفت ثبت شد؛ False یعنی این اعتراض
+    جفتی نساخت — یا نگاشت در دسترس نبود. اعتراضِ کاربر سر جایش
+    می‌ماند؛ ثبتِ بازخورد بهترین تلاش است، نه وابستگیِ آن.
+    """
+    if word_score.status != "wrong" or not word_score.heard:
+        return False
+    try:
+        if mapping is None:
+            mapping = hifz_mapping.load_phoneme_mapping()
+        segs = mapping.segments_for(word_score.surah, word_score.ayah)
+    except APIError as exc:
+        logger.warning("hifz dispute feedback skipped: mapping unavailable: %s", exc)
+        return False
+    if not segs:
+        return False
+    phon = next(
+        (s.phoneme for s in segs if word_score.word_index in s.word_indices),
+        None,
+    )
+    if not phon or word_score.heard == phon:
+        return False
+    existing = (
+        await db.execute(
+            select(HifzDisputeFeedback).where(
+                HifzDisputeFeedback.user_id == user_id,
+                HifzDisputeFeedback.expected_phoneme == phon,
+                HifzDisputeFeedback.heard_phoneme == word_score.heard,
+            )
+        )
+    ).scalars().first()
+    if existing is None:
+        db.add(
+            HifzDisputeFeedback(
+                user_id=user_id,
+                expected_phoneme=phon,
+                heard_phoneme=word_score.heard,
+                count=1,
+            )
+        )
+    else:
+        existing.count += 1
+        existing.updated_at = _utcnow()
+    await db.commit()
+    return True
 
 
 def validate_wav_16k_mono(data: bytes) -> None:
@@ -172,7 +449,12 @@ _SETTINGS_INT_KEYS = {"daily_goal_ayahs"}
 
 def _settings_out(row: HifzUserSettings | None) -> dict:
     if row is None:
-        return dict(_SETTINGS_DEFAULTS, updated_at=None)
+        return dict(
+            _SETTINGS_DEFAULTS,
+            updated_at=None,
+            green_threshold=None,
+            amber_threshold=None,
+        )
     return {
         "freeze_on_error": row.freeze_on_error,
         "mistake_detection": row.mistake_detection,
@@ -180,6 +462,8 @@ def _settings_out(row: HifzUserSettings | None) -> dict:
         "resumable_sessions": row.resumable_sessions,
         "hide_ayah_markers": row.hide_ayah_markers,
         "daily_goal_ayahs": row.daily_goal_ayahs,
+        "green_threshold": row.green_threshold,
+        "amber_threshold": row.amber_threshold,
         "updated_at": row.updated_at,
     }
 
@@ -845,8 +1129,11 @@ async def grade_ayah(
     """
     attempt = await _attempt_or_404(db, user, attempt_id)
     validate_wav_16k_mono(wav_bytes)
+    # دروازهٔ گفتار (پیشنهاد ۱۲): ضبطِ بی‌گفتار، پیش از رونویسی
+    # خطای صادقانه می‌گیرد، نه نمرهٔ غلط/جاافتاده.
+    hifz_vad.require_speech(wav_bytes)
     expected = await _ayah_words(db, surah, ayah)
-    green, amber = await get_thresholds(db)
+    green, amber = await get_thresholds(db, user.id)
     # تصمیمِ DTW پیش از رونویسی (گام ۹): فقط وقتی پس‌پردازشِ واجی
     # از اساس در دسترس نیست، از Whisper زمانِ DTW خواسته می‌شود.
     want_dtw = not _phoneme_post_pass_possible(phoneme_engine)
@@ -860,13 +1147,14 @@ async def grade_ayah(
         # بسملهٔ آغازین — تا تراز روی صدای واقعی هم درست بماند؛
         # زمان‌بندی هم از همان تراز می‌آید، نه از دیکدِ دوم.)
         units = _phoneme_units(surah, ayah)
+        priors = await load_user_priors(db, user.id)
         timed = getattr(transcription, "timed_phonemes", None)
         if timed:
             prep_units, phoneme_text, char_token = _prepare_phoneme_alignment(
                 units, timed
             )
             aligned, extra = alignment.align_phonemes(
-                expected, prep_units, phoneme_text, green, amber
+                expected, prep_units, phoneme_text, green, amber, priors=priors
             )
             timings = _spans_to_timings(aligned, timed, char_token)
             timing_source = "phoneme" if timings else "none"
@@ -875,7 +1163,7 @@ async def grade_ayah(
                 w.text for w in transcription.words if w.text != "<blank>"
             )
             aligned, extra = alignment.align_phonemes(
-                expected, units, phoneme_text, green, amber
+                expected, units, phoneme_text, green, amber, priors=priors
             )
             timings, timing_source = {}, "none"
     else:
@@ -912,6 +1200,7 @@ async def grade_ayah(
                 "heard": w.heard,
                 "mistake_type": w.mistake_type,
                 "needs_review": w.needs_review,
+                "prior_applied": w.prior_applied,
                 "start": timings.get(w.word_index, (None, None))[0],
                 "end": timings.get(w.word_index, (None, None))[1],
             }
@@ -936,11 +1225,14 @@ async def grade_word(
     """تمرین تک‌کلمه: فقط همان یک کلمه نمره می‌گیرد."""
     attempt = await _attempt_or_404(db, user, attempt_id)
     validate_wav_16k_mono(wav_bytes)
+    # دروازهٔ گفتار (پیشنهاد ۱۲): ضبطِ بی‌گفتار، پیش از رونویسی
+    # خطای صادقانه می‌گیرد، نه نمرهٔ غلط/جاافتاده.
+    hifz_vad.require_speech(wav_bytes)
     words = await _ayah_words(db, surah, ayah)
     if not 0 <= word_index < len(words):
         raise APIError(422, "hifz_word_index", "شمارهٔ کلمه خارج از آیه است")
     expected = [words[word_index]]
-    green, amber = await get_thresholds(db)
+    green, amber = await get_thresholds(db, user.id)
     want_dtw = not _phoneme_post_pass_possible(phoneme_engine)
     engine_id, transcription, level = await _transcribe(
         db, wav_bytes, transcriber, word_timestamps=want_dtw
@@ -962,13 +1254,14 @@ async def grade_word(
         single_units: list[tuple[tuple[int, ...], str | None]] = [
             ((0,), phon) for (widxs, phon) in covering
         ]
+        priors = await load_user_priors(db, user.id)
         timed = getattr(transcription, "timed_phonemes", None)
         if timed:
             prep_units, phoneme_text, char_token = _prepare_phoneme_alignment(
                 single_units, timed
             )
             aligned, extra = alignment.align_phonemes(
-                expected, prep_units, phoneme_text, green, amber
+                expected, prep_units, phoneme_text, green, amber, priors=priors
             )
             timings = _spans_to_timings(aligned, timed, char_token)
             timing_source = "phoneme" if timings else "none"
@@ -977,7 +1270,7 @@ async def grade_word(
                 w.text for w in transcription.words if w.text != "<blank>"
             )
             aligned, extra = alignment.align_phonemes(
-                expected, single_units, phoneme_text, green, amber
+                expected, single_units, phoneme_text, green, amber, priors=priors
             )
             timings, timing_source = {}, "none"
     else:
@@ -1021,6 +1314,7 @@ async def grade_word(
                 "heard": aligned[0].heard if aligned else None,
                 "mistake_type": aligned[0].mistake_type if aligned else "skipped",
                 "needs_review": aligned[0].needs_review if aligned else False,
+                "prior_applied": aligned[0].prior_applied if aligned else False,
                 "start": timing[0],
                 "end": timing[1],
             }
@@ -1117,8 +1411,18 @@ async def dispute_word(
     row = await db.get(HifzWordScore, word_score_id)
     if row is None or row.attempt_id != attempt.id:
         raise APIError(404, "hifz_word_score_not_found", "نمرهٔ کلمه پیدا نشد")
+    was_disputed = row.disputed
     row.disputed = True
     await db.commit()
+    # هر اعتراض، سیگنالِ تازهٔ کالیبراسیون است: آستانه‌های شخصی از
+    # کل تاریخچه از صفر حساب می‌شوند (پیشنهاد ۱۳)؛ اگر شواهد کافی
+    # نباشد، NULL می‌مانند و سراسری حاکم است.
+    await calibrate_user_thresholds(db, user.id)
+    # بازخورد اعتراض (پیشنهاد ۱۵): فقط گذارِ تازهٔ False → True
+    # جفت می‌سازد — اعتراضِ دوباره به همان کلمه، همان جفت را
+    # دوباره نمی‌شمارد.
+    if not was_disputed:
+        await record_dispute_feedback(db, user.id, row)
     return {"word_score_id": row.id, "disputed": True}
 
 

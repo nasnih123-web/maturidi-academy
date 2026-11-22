@@ -77,9 +77,10 @@ import json
 import logging
 import os
 import struct
+import threading
 import wave
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +225,17 @@ class ZipformerEngine(BaseEngine):
     runtime_module = "sherpa_onnx"
     output_level = "phoneme"
 
-    _recognizer: Any | None = None
+    # کشِ کلاس‌محورِ بازشناس (پیشنهاد ۸، سرعت حفاظ): `get_engine()`
+    # هر بار نمونهٔ تازه می‌سازد، ولی مدلِ ۷۲ مگابایتی باید فقط یک
+    # بار بارگذاری شود و میان همهٔ نشست‌های زنده و نمره‌دهی‌ها مشترک
+    # بماند — پیش‌تر، انتسابِ نمونه‌ایِ `self._recognizer` کشِ
+    # کلاسی را سایه می‌انداخت و هر فراخوانی، مدل را از صفر می‌ساخت
+    # (هر نشستِ زنده ~۲ ثانیه). کلید، پوشهٔ مدل است؛ قفلِ کلاس،
+    # ساختِ دوتاییِ هم‌زمان در بوتِ موازیِ ورکرها را خنثی می‌کند.
+    # جریان‌ها (OnlineStream) هنوز برای هر نشست جدا ساخته می‌شوند —
+    # فقط بازشناس مشترک است — و sherpa روی جریان‌های جدا امن است.
+    _recognizers: ClassVar[dict[str, Any]] = {}
+    _recognizers_lock: ClassVar[threading.Lock] = threading.Lock()
 
     def is_configured(self) -> tuple[bool, str]:
         ok, reason = super().is_configured()
@@ -254,30 +265,37 @@ class ZipformerEngine(BaseEngine):
         return min(glob.glob(os.path.join(d, "*.onnx")))
 
     def _load(self) -> Any:
-        if self._recognizer is not None:
-            return self._recognizer
+        """بازشناس مشترکِ کلاس (یک بار برای هر پوشهٔ مدل)."""
         d, _ = _model_dir(self.env_var)
         assert d is not None
-        try:
-            import sherpa_onnx
-        except ImportError as exc:
-            raise EngineError(
-                "engine_not_configured", f"sherpa_onnx is not installed: {exc}"
-            ) from exc
-        try:
-            recognizer = sherpa_onnx.OnlineRecognizer.from_zipformer2_ctc(
-                tokens=os.path.join(d, "tokens.txt"),
-                model=self._onnx_path(d),
-            )
-        except Exception as exc:
-            # جزئیات خطای بومی (مسیر مدل/نام فایل) فقط در لاگ سرور؛
-            # پیام عمومی، عمومی می‌ماند.
-            logger.exception("hifz zipformer model failed to load")
-            raise EngineError(
-                "engine_load_failed", "بارگذاری مدل Zipformer ناموفق بود"
-            ) from exc
-        self._recognizer = recognizer
-        return recognizer
+        cached = self._recognizers.get(d)
+        if cached is not None:
+            return cached
+        with self._recognizers_lock:
+            cached = self._recognizers.get(d)
+            if cached is not None:
+                return cached
+            try:
+                import sherpa_onnx
+            except ImportError as exc:
+                raise EngineError(
+                    "engine_not_configured",
+                    f"sherpa_onnx is not installed: {exc}",
+                ) from exc
+            try:
+                recognizer = sherpa_onnx.OnlineRecognizer.from_zipformer2_ctc(
+                    tokens=os.path.join(d, "tokens.txt"),
+                    model=self._onnx_path(d),
+                )
+            except Exception as exc:
+                # جزئیات خطای بومی (مسیر مدل/نام فایل) فقط در لاگ سرور؛
+                # پیام عمومی، عمومی می‌ماند.
+                logger.exception("hifz zipformer model failed to load")
+                raise EngineError(
+                    "engine_load_failed", "بارگذاری مدل Zipformer ناموفق بود"
+                ) from exc
+            self._recognizers[d] = recognizer
+            return recognizer
 
     def _decode(self, wav_bytes: bytes) -> tuple[list[str], list[float]]:
         """Single-shot Zipformer decode: (tokens, per-token timestamps).

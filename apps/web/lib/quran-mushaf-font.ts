@@ -119,7 +119,7 @@ export const qcfV2Provider: MushafFontProvider = {
     This provider is NEVER registered globally (see below): the
     reader depends on the V2 singleton, so V4 loads through
     ensureMushafFontFor / useMushafFontReadyFor with its OWN loaded
-    map and its own 8-family cap instead. */
+    map and its own 12-family cap instead. */
 export const qcfV4Provider: MushafFontProvider = {
   id: 'qcf-v4',
   familyForPage: (page) => {
@@ -183,9 +183,12 @@ export function getMushafFontProvider(): MushafFontProvider {
 }
 
 /** Max font families kept loaded at once (oldest-first eviction;
-    every page has its own family now). One family at a time may be
-    pinned (see protectMushafFontFamily) and is skipped by eviction. */
-export const MAX_LOADED_FAMILIES = 8;
+    every page has its own family now). Families in view may be
+    pinned (see protectMushafFontFamily) and are skipped by eviction.
+    Raised 8 → 12 (proposal 7): nass keeps the active page + its
+    neighbour + the in-view pins alive without evicting a visible
+    page's font; 12 families ≈ 1 MB, negligible. */
+export const MAX_LOADED_FAMILIES = 12;
 
 /** Families already loaded (or loading), oldest-first for eviction. */
 const loaded = new Map<string, { face: FontFace | null; promise: Promise<boolean> }>();
@@ -241,7 +244,7 @@ export function ensureMushafFont(page: number, timeoutMs = 1500): Promise<boolea
 /**
  * Provider-parameterized font load: same contract as
  * ensureMushafFont, but for an explicitly passed provider with its
- * OWN loaded map and its own 8-family cap — so the hifz page can
+ * OWN loaded map and its own 12-family cap — so the hifz page can
  * load V4 fonts without touching the reader's V2 singleton. The
  * `loaded` map above stays the V2/global one; V4 families live in
  * `loadedV4` and never evict (or get evicted by) V2 families.

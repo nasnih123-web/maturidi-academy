@@ -87,6 +87,10 @@ class HifzGradeWordOut(BaseModel):
     prob: float
     heard: str | None = None
     mistake_type: str | None = None
+    # پیشینهٔ خطای شخصی (پیشنهاد ۱۴): True یعنی این کلمه فقط چون
+    # کاربر همان جفت (موردانتظار ← شنیده‌شده) را پیش‌تر ≥۳ بار
+    # تکرار کرده، «نزدیک» خورده است — نه چون تطابقِ ساده نزدیک بود.
+    prior_applied: bool = False
     # Word timing in seconds within the graded audio (step 9): from the
     # phoneme forced alignment when available, else None. The source
     # is reported once per response as HifzGradeOut.timing_source.
@@ -492,6 +496,10 @@ class HifzUserSettingsOut(BaseModel):
     resumable_sessions: bool = False
     hide_ayah_markers: bool = False
     daily_goal_ayahs: int = 0
+    # آستانه‌های شخصیِ کالیبره‌شده (پیشنهاد ۱۳) — فقط خواندنی؛
+    # None یعنی هنوز کالیبره نشده و سراسری حاکم است.
+    green_threshold: float | None = None
+    amber_threshold: float | None = None
     updated_at: datetime | None = None
 
 

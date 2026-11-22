@@ -68,7 +68,8 @@ describe('whole-Quran nass text preload (QuranHifzStudy)', () => {
     const src = readStudy();
     assert.match(src, /for \(let pass = 0; pass < 2; pass \+= 1\)/);
     assert.match(src, /if \(textsBySurahRef\.current\[s\] !== undefined\) continue;/);
-    assert.match(src, /const view = await getSurah\(s\);/);
+    // Light bundle (proposal 2): the loop only needs Uthmani text.
+    assert.match(src, /const view = await getSurah\(s, \{ light: true \}\);/);
   });
 
   it('the preload loop runs once per nass entry and cancels on leaving nass mode', () => {
@@ -90,7 +91,7 @@ describe('whole-Quran nass landing (HifzNassScroll)', () => {
   it('the section observer stays alive so a revisited page reloads an evicted font', () => {
     const src = readScroll();
     const study = readStudy();
-    // The 8-family cap evicts page fonts as the user scrolls the
+    // The 12-family cap evicts page fonts as the user scrolls the
     // whole Quran; a one-shot observer would leave a revisited page
     // rendering glyphs in the fallback font (wrong shapes) with a
     // stale fontLoaded=true. Toggling inView re-runs the asset
@@ -149,5 +150,23 @@ describe('whole-Quran nass landing (HifzNassScroll)', () => {
     assert.match(src, /window\.setInterval\(/);
     assert.match(src, /Date\.now\(\) - startedAt > 15000/);
     assert.match(src, /userScrolledRef\.current/);
+  });
+
+  it('only the active page preloads its next page, idle + low priority (proposals 5 + 6)', () => {
+    const src = readScroll();
+    // Proposal 5: every page preloading its next one fired a dozen
+    // font loads at once; only the page being read preloads ahead.
+    assert.match(src, /preloadNext=\{activePageIndex === pIdx && pIdx < lastPage\}/);
+    // Proposal 6: the next-page assets wait for idle time and fetch
+    // low priority, so they never race the active page's own font.
+    assert.match(src, /requestIdleCallback\(preloadNextPage,/);
+    assert.match(src, /loadV2Page\(page \+ 1, \{ priority: 'low' \}\)/);
+    assert.match(src, /loadV4PageGlyphs\(page \+ 1, \{ priority: 'low' \}\)/);
+    assert.match(src, /cancelIdleCallback\(idleHandle\)/);
+  });
+
+  it('the font cap is 12 families (proposal 7)', () => {
+    const font = readFont();
+    assert.match(font, /export const MAX_LOADED_FAMILIES = 12;/);
   });
 });
