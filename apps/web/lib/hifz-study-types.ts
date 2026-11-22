@@ -259,6 +259,68 @@ export interface HifzLabels {
   listenRetry: string;
   listenResumeFrom: string;
   listenLongPressSwitch: string;
+  /** Study-page dashboard behind the hamburger (design 4). */
+  dashboard: HifzStudyDashboardLabels;
+}
+
+/** Labels for the study-page hifz dashboard (design 4). */
+export interface HifzStudyDashboardLabels {
+  title: string;
+  loading: string;
+  error: string;
+  refresh: string;
+  close: string;
+  signInHint: string;
+  todayTitle: string;
+  accuracy: string;
+  wordsRead: string;
+  ayahsRead: string;
+  errorsToday: string;
+  streakTitle: string;
+  daysUnit: string;
+  dailyGoal: string;
+  goalMet: string;
+  weekTitle: string;
+  totalTitle: string;
+  juzLabel: string;
+  reviewTitle: string;
+  reviewEmpty: string;
+  mistakesUnit: string;
+  weakTitle: string;
+  weakEmpty: string;
+  recentErrorsTitle: string;
+  continueTitle: string;
+  continueButton: string;
+  newSession: string;
+  // Design-4 header / tiles / cards (2026-11-22 restyle): the first
+  // implementation dropped the chosen design's look, so these labels
+  // carry its exact texts — ring, streak pill, week goal, juz legend,
+  // row subtitles and pills, and the gradient continue button.
+  reviewReady: string;
+  goalToday: string;
+  goalUnset: string;
+  goalPerDay: string;
+  ayahsReadGoal: string;
+  ayahsReadToday: string;
+  remaining: string;
+  wordsUnit: string;
+  ayahUnit: string;
+  streakDays: string;
+  juzSummary: string;
+  legendDone: string;
+  legendCurrent: string;
+  legendTotal: string;
+  lastReview: string;
+  dueLabel: string;
+  daysAgo: string;
+  yesterday: string;
+  dueToday: string;
+  dueLate: string;
+  needsReview: string;
+  needsPractice: string;
+  mistakesLastSession: string;
+  continueNow: string;
+  pageLabel: string;
 }
 
 export interface HifzWordScore {
