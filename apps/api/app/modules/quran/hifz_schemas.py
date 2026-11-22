@@ -391,6 +391,14 @@ class HifzDueReviewOut(BaseModel):
     source: str = "srs"
 
 
+class HifzJuzProgressOut(BaseModel):
+    juz: int
+    start_surah: int = 1
+    start_ayah: int = 1
+    total_ayahs: int = 0
+    clean_ayahs: int = 0
+
+
 class HifzDashboardOut(BaseModel):
     attempts: int = 0
     graded_words: int = 0
@@ -407,6 +415,9 @@ class HifzDashboardOut(BaseModel):
     due_ayahs: list[dict] = []
     plans: list[HifzPlanOut] = []
     weakest_ayahs: list[dict] = []
+    # داشبورد صفحهٔ مطالعه: نمره‌های امروز + پیشرفت هر جزء.
+    today_counts: HifzAttemptCounts = HifzAttemptCounts()
+    juz_progress: list[HifzJuzProgressOut] = []
 
 
 class HifzSuggestedCardOut(BaseModel):
