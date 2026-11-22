@@ -2,6 +2,8 @@
 
 پوشش:
 - media_tools_status با PATH خالی → همهٔ باینری‌ها missing و ready=False
+- نام مدل STT با متغیر محیطی FASTER_WHISPER_MODEL override می‌شود
+  (نبود/خالی/فاصله = پیش‌فرض small)
 - با باینری‌های stub روی PATH (+ زبان‌های tesseract) → ready=True
 - assert_media_tools_ready با ابزار غایب RuntimeError می‌دهد (fail loud)
 - ورکر media گیت on_startup دارد و با ابزار غایب بالا نمی‌آید؛
@@ -63,6 +65,29 @@ def test_status_all_missing(empty_path, monkeypatch):
     for tool in ("ffmpeg", "ffprobe", "tesseract", "pdftoppm", "faster-whisper"):
         assert tool in status["missing"]
     assert status["stt_model"] == "small"
+
+
+def test_stt_model_env_override(monkeypatch):
+    """FASTER_WHISPER_MODEL از محیط خوانده می‌شود؛ خالی/فاصله = small.
+
+    ثابت هنگام import خوانده می‌شود، پس اعمال override نیازمند reload
+    ماژول است؛ در پایان env پاک و ماژول به حالت پیش‌فرض برگردانده
+    می‌شود تا تست‌های دیگر آلوده نشوند.
+    """
+    import importlib
+
+    monkeypatch.setenv("FASTER_WHISPER_MODEL", "base")
+    importlib.reload(media_tools)
+    try:
+        assert media_tools.FASTER_WHISPER_MODEL == "base"
+        assert media_tools.media_tools_status()["stt_model"] == "base"
+        monkeypatch.setenv("FASTER_WHISPER_MODEL", "   ")
+        importlib.reload(media_tools)
+        assert media_tools.FASTER_WHISPER_MODEL == "small"
+    finally:
+        monkeypatch.delenv("FASTER_WHISPER_MODEL", raising=False)
+        importlib.reload(media_tools)
+    assert media_tools.FASTER_WHISPER_MODEL == "small"
 
 
 def test_status_ready_with_stubs(stub_bin_path, monkeypatch):

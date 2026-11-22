@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import os
 import shutil
 
 logger = logging.getLogger(__name__)
@@ -34,8 +35,14 @@ REQUIRED_TESSERACT_LANGS = ("fas", "ara", "eng")
 #: موتور STT و مدل آن — نام‌دار و پین‌شده (B-04). نسخهٔ خود پکیج در
 #: requirements.txt پین است (faster-whisper==1.2.1)؛ مدل از مخزن رسمی
 #: Systran روی HuggingFace با همین نام resolve می‌شود.
+#: نام مدل با متغیر محیطی FASTER_WHISPER_MODEL قابل override است
+#: (نبود/خالی/فاصله = پیش‌فرض «small»)؛ پروداکشنِ ریل‌وی روی سرویس
+#: ۱GB — که API و ورکر media در یک کانتینر اجرا می‌شوند — «base»
+#: می‌گذارد، چون small کنار API در حافظه جا نمی‌شود و OOM می‌خورد.
 STT_ENGINE = "faster-whisper"
-FASTER_WHISPER_MODEL = "small"
+FASTER_WHISPER_MODEL = (
+    os.environ.get("FASTER_WHISPER_MODEL", "").strip() or "small"
+)
 
 
 def faster_whisper_installed() -> bool:
