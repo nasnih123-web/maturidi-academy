@@ -813,6 +813,7 @@
     "metaDescription": "Digital dhikr counter with voice counting",
     "title": "Digital Tasbih",
     "subtitle": "Tap the large button — or press Space/Enter — to count.",
+    "tagline": "Speak a dhikr, find peace",
     "tapHint": "Tap",
     "targetLabel": "Target",
     "customTarget": "No target",
@@ -822,11 +823,15 @@
     "dailyTotals": "Daily totals",
     "sessionsCount": "sessions",
     "totalCount": "count",
+    "timesLabel": "times",
     "targetReached": "Masha'Allah! Target reached.",
+    "roundLabel": "Round",
+    "ofCount": "of",
     "voiceStart": "Start voice counting",
     "voiceStop": "Stop voice counting",
     "voiceUnsupported": "Your browser does not support voice counting.",
     "voiceListening": "Listening… each spoken dhikr counts.",
+    "voiceHeard": "Heard",
     "signInToSync": "No sessions yet. Sign in to sync your sessions.",
     "presets": [
       {
@@ -850,7 +855,9 @@
         "text": "أَسْتَغْفِرُ ٱللَّٰهَ"
       }
     ],
-    "todaySynced": "Synced today"
+    "todaySynced": "Synced today",
+    "verse": "أَلَا بِذِكْرِ ٱللَّهِ تَطْمَئِنُّ ٱلْقُلُوبُ",
+    "verseCaption": "Verily, in the remembrance of Allah do hearts find rest. (Quran 13:28)"
   },
   "adhan": {
     "metaTitle": "Prayer Times",

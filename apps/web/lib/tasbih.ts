@@ -47,6 +47,55 @@ export function targetReached(count: number, target: number | null): boolean {
   return target !== null && target > 0 && count >= target;
 }
 
+/**
+ * Pure: normalize Arabic/Persian text for speech-recognition matching.
+ *
+ * ASR transcripts (ar-SA) come back unvocalized with plain alefs and
+ * Arabic yeh, while the presets are fully vocalized («سُبْحَانَ ٱللَّٰهِ»).
+ * Both sides are folded to one canonical form: harakat (U+064B–U+0652),
+ * superscript alef (U+0670) and tatweel (U+0640) are stripped; the alef
+ * family (آ U+0622, أ U+0623, إ U+0625, ٱ U+0671) folds to ا (U+0627);
+ * Persian ی (U+06CC) folds to Arabic ي (U+064A); ة (U+0629) folds to
+ * ه (U+0647); punctuation is dropped and whitespace collapsed.
+ */
+export function normalizeArabicForMatch(text: string): string {
+  return text
+    .replace(/[ً-ْٰـ]/g, '')
+    .replace(/[آأإٱ]/g, 'ا')
+    .replace(/ی/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/\p{P}/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Pure: how many times the dhikr occurs in an ASR transcript.
+ *
+ * Counts non-overlapping occurrences on the normalized strings, and
+ * again on the fully space-stripped variants (ASR routinely merges
+ * «سبحان الله» into «سبحانالله» or splits words apart); the larger
+ * count wins. Returns 0 when either side normalizes to empty.
+ */
+export function countDhikrOccurrences(transcript: string, dhikrText: string): number {
+  const haystack = normalizeArabicForMatch(transcript);
+  const needle = normalizeArabicForMatch(dhikrText);
+  if (!haystack || !needle) return 0;
+  const countIn = (h: string, n: string): number => {
+    let count = 0;
+    let idx = h.indexOf(n);
+    while (idx !== -1) {
+      count += 1;
+      idx = h.indexOf(n, idx + n.length);
+    }
+    return count;
+  };
+  const spaced = countIn(haystack, needle);
+  const merged = countIn(haystack.replace(/ /g, ''), needle.replace(/ /g, ''));
+  return Math.max(spaced, merged);
+}
+
 interface LocalStore {
   sessions: DhikrSession[];
 }
