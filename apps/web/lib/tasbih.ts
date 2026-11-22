@@ -96,6 +96,28 @@ export function countDhikrOccurrences(transcript: string, dhikrText: string): nu
   return Math.max(spaced, merged);
 }
 
+/** Max length of a user-entered custom dhikr. */
+export const CUSTOM_DHIKR_MAX_LENGTH = 80;
+
+/**
+ * Pure: validate and append a user-entered custom dhikr.
+ *
+ * Trims the raw input; rejects empty input, input longer than
+ * CUSTOM_DHIKR_MAX_LENGTH, input that normalizes to nothing (e.g.
+ * punctuation only), and duplicates — compared on the normalized form,
+ * so «سُبْحَانَ ٱللَّٰهِ» and «سبحان الله» count as the same dhikr.
+ * On success returns a NEW array (the input list is never mutated)
+ * with the trimmed value appended; on rejection returns null.
+ */
+export function addCustomDhikr(list: string[], raw: string): string[] | null {
+  const value = raw.trim();
+  if (!value || value.length > CUSTOM_DHIKR_MAX_LENGTH) return null;
+  const needle = normalizeArabicForMatch(value);
+  if (!needle) return null;
+  if (list.some((item) => normalizeArabicForMatch(item) === needle)) return null;
+  return [...list, value];
+}
+
 interface LocalStore {
   sessions: DhikrSession[];
 }

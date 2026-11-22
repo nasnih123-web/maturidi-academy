@@ -53,6 +53,11 @@ export default async function TasbihPage({
           todaySynced: t('todaySynced'),
           verse: t('verse'),
           verseCaption: t('verseCaption'),
+          customTitle: t('customTitle'),
+          customPlaceholder: t('customPlaceholder'),
+          customAdd: t('customAdd'),
+          customRemove: t('customRemove'),
+          beadsWord: t('beadsWord'),
           presets: presets.map((p) => ({ key: p.key, text: p.text })),
         }}
       />

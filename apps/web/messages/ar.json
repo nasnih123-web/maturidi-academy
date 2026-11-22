@@ -857,7 +857,12 @@
     ],
     "todaySynced": "مُزامَن اليوم",
     "verse": "أَلَا بِذِكْرِ ٱللَّهِ تَطْمَئِنُّ ٱلْقُلُوبُ",
-    "verseCaption": "سورة الرعد، الآية ٢٨"
+    "verseCaption": "سورة الرعد، الآية ٢٨",
+    "customTitle": "ذكرك الخاص",
+    "customPlaceholder": "اكتب ذكرك الخاص…",
+    "customAdd": "إضافة الذكر",
+    "customRemove": "حذف الذكر",
+    "beadsWord": "حبة"
   },
   "adhan": {
     "metaTitle": "مواقيت الصلاة",
