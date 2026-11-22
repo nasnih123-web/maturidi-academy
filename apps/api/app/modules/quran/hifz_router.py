@@ -1684,6 +1684,12 @@ async def serve_stream(
                 words=counts["words"],
                 skipped=counts["skipped"],
                 audio_ms=session._audio_ms,
+                # دروازهٔ VAD (پیشنهاد ۱۲): False یعنی در کل نشست
+                # هیچ گفتاری به بازشناس نرسید — کلاینت «صدایی شنیده
+                # نشد» نشان می‌دهد، نه نمرهٔ خالی. بازشناسی که این
+                # ویژگی را ندارد (مسیر قدیمی)، True فرض می‌شود تا
+                # پایانِ نشست روی ساختِ رویداد نمیرد.
+                heard_speech=getattr(recognizer, "heard_speech", True),
             )
         except Exception:  # پایان نشست هرگز نباید روی ساخت رویداد بمیرد
             logger.debug("hifz session_ended emit failed", exc_info=True)

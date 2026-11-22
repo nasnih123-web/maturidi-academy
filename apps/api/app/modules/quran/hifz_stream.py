@@ -66,10 +66,9 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import struct
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -77,7 +76,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import APIError
 from app.models.models import HifzAttempt, User
 
-from . import alignment, hifz_engines, hifz_service
+from . import alignment, hifz_engines, hifz_service, hifz_vad
 from . import service as quran_service
 from .hifz_mapping import (
     MappingPendingError,
@@ -599,13 +598,9 @@ class SherpaPhonemeStream:
     """
 
     def __init__(self) -> None:
-        try:
-            import sherpa_onnx
-        except ImportError as exc:  # pragma: no cover - محیط بدون مدل
-            raise hifz_engines.EngineError(
-                "sherpa_onnx_not_installed",
-                "sherpa_onnx نصب نیست؛ موتور Zipformer پیکربندی نشده است.",
-            ) from exc
+        # نبودِ sherpa_onnx را `engine._load()` با خطای صادقانهٔ
+        # EngineError گزارش می‌کند؛ این‌جا فقط آداپتور و پوشهٔ مدل
+        # وارسی می‌شوند.
         engine = hifz_engines.get_engine("zipformer")
         if not isinstance(engine, hifz_engines.ZipformerEngine):
             raise hifz_engines.EngineError(
@@ -614,13 +609,23 @@ class SherpaPhonemeStream:
         model_dir, reason = hifz_engines._model_dir(engine.env_var)
         if model_dir is None:
             raise hifz_engines.EngineError("engine_not_configured", reason)
-        recognizer = sherpa_onnx.OnlineRecognizer.from_zipformer2_ctc(
-            tokens=os.path.join(model_dir, "tokens.txt"),
-            model=engine._onnx_path(model_dir),
-        )
+        # بازشناس، مشترکِ کلاس است (پیشنهاد ۸): `engine._load()`
+        # مدلِ ۷۲ مگابایتی را فقط یک بار می‌سازد؛ هر جریان فقط
+        # `create_stream()` تازه می‌گیرد و ~۲ ثانیه بارگذاری مدل
+        # از شروع هر نشستِ زنده حذف می‌شود. جریان‌های جدا، حالت
+        # جدا دارند و با هم قاطی نمی‌شوند (آزمون هم‌زمانی را ببین).
+        recognizer = engine._load()
         self._stream = recognizer.create_stream()
         self._recognizer = recognizer
         self._seen_tokens = 0
+        # نمونه‌های گفتاریِ خورانده‌شده (پس از دروازهٔ VAD)؛
+        # صفر ماندن یعنی در کل نشست هیچ گفتاری نرسید.
+        self._speech_samples = 0
+
+    @property
+    def heard_speech(self) -> bool:
+        """آیا دست‌کم یک قابِ گفتار به بازشناس رسیده است؟"""
+        return self._speech_samples > 0
 
     def _current_tokens(self) -> list[str]:
         """واج‌های تاکنون شناخته‌شده، از JSON نتیجهٔ رسمی sherpa 2.0.1."""
@@ -645,8 +650,19 @@ class SherpaPhonemeStream:
             return True
         return False
 
-    def feed(self, pcm16: bytes) -> list[str]:
-        """قاب صوتی Int16LE را بده، واج‌های تازه را بگیر."""
+    def feed(self, pcm16: bytes, *, vad: bool = True) -> list[str]:
+        """قاب صوتی Int16LE را بده، واج‌های تازه را بگیر.
+
+        با دروازهٔ VAD (پیشنهاد ۱۲): قاب‌های زیر آستانهٔ سکوت
+        حذف می‌شوند و به بازشناس نمی‌رسند — سکوت، واج نمی‌سازد
+        و کلمه‌ای را غلط نمی‌کند. warmup با vad=False صدا می‌زند:
+        سکوتِ گرم‌کردن عمدی است و باید به بازشناس برسد.
+        """
+        if vad:
+            pcm16 = hifz_vad.filter_silence(pcm16)
+            if not pcm16:
+                return []
+            self._speech_samples += len(pcm16) // 2
         count = len(pcm16) // 2
         samples = struct.unpack(f"<{count}h", pcm16[: count * 2])
         floats = [s / 32768.0 for s in samples]
@@ -669,18 +685,23 @@ class SherpaPhonemeStream:
         return fresh
 
     def warmup(self) -> float:
-        """گرم‌کردن واقعی بازشناس: نیم ثانیه سکوت را بده و دیکد کن.
+        """گرم‌کردن واقعی بازشناس: ۰٫۷ ثانیه سکوت را بده و دیکد کن.
 
         مسیر بومی (accept_waveform + decode) پیش از نخستین قابِ
         واقعی یک بار تمرین می‌شود تا `engine_ready` یعنی واقعاً
-        آماده، نه فقط ساخته‌شده. واجِ برگشتی (اگر بود) دور ریخته
+        آماده، نه فقط ساخته‌شده. نیم ثانیهٔ پیشین زیر آستانهٔ
+        `is_ready` (‎~۰٫۶ ثانیه، ‎~۶۱ فریم) می‌ماند و هیچ دیکدی
+        نمی‌کرد — گرم‌کردن فقط ۱ تا ۳ میلی‌ثانیه طول می‌کشید و
+        هیچ‌کاری نمی‌کرد؛ ۰٫۷ ثانیه از آستانه می‌گذرد و یک دیکد
+        واقعی انجام می‌شود. واجِ برگشتی (اگر بود) دور ریخته
         می‌شود — سکوت، کلمه نیست. برمی‌گرداند: میلی‌ثانیهٔ صرف‌شده.
         """
         import time
 
         started = time.perf_counter()
-        silence = b"\x00\x00" * 8000  # ۰٫۵ ثانیه در ۱۶ کیلوهرتز
-        self.feed(silence)
+        silence = b"\x00\x00" * 11200  # ۰٫۷ ثانیه در ۱۶ کیلوهرتز
+        # سکوتِ گرم‌کردن عمدی است: از دروازهٔ VAD رد نمی‌شود.
+        self.feed(silence, vad=False)
         return (time.perf_counter() - started) * 1000.0
 
 
@@ -2340,19 +2361,31 @@ class LiveSession:
             aligned, _ = alignment.align_words(
                 expected_words, heard, probs, self.green, self.amber
             )
-            # بسمله هرگز ذخیره/شمرده نمی‌شود (مشخصهٔ کاربر ۲۰۲۶-۱۱-۱۵):
-            # خوانده‌شده‌اش زنده تایپ شد (وضعیتِ `basmala`) ولی در
-            # نمرهٔ attempt نمی‌آید؛ نخوانده‌اش هم «جاافتاده» ذخیره
-            # نمی‌شود تا پس از بارگذاریِ دوباره تایپ‌شده دیده نشود.
-            # فیلتر پیش از `_store_grade` است تا ردیفِ نمره و ردیفِ
-            # خطا (تاریخچه) هیچ‌کدام برای بسمله ساخته نشود؛ شمارهٔ
-            # کلمه‌های دیگر مطلق است و جابه‌جا نمی‌شود. مجموعهٔ
-            # بسمله از خودِ نگاشت خوانده می‌شود، نه از شمارهٔ خام —
-            # آیهٔ ۱ِ بدونِ بسملهٔ پیش‌چسب، بسمله ندارد.
+            # بسملهٔ خوانده‌شده (پیشنهاد ۱۶): فقط وقتی زنده با
+            # وضعیتِ `basmala` تایپ شده، با همان وضعیت ذخیره
+            # می‌شود — نمایشی، بی‌نمره (prob صفر، بی‌خطا) تا پس
+            # از بارگذاریِ دوباره هم تایپ‌شده بماند و در شمارنده‌ها
+            # نیاید؛ نخوانده‌اش همچنان ذخیره نمی‌شود (نه
+            # «جاافتاده») تا پس از بارگذاری تایپ‌شده دیده نشود.
+            # فیلتر پیش از `_store_grade` است تا ردیفِ خطا
+            # (تاریخچه) برای بسمله ساخته نشود؛ شمارهٔ کلمه‌های
+            # دیگر مطلق است و جابه‌جا نمی‌شود. مجموعهٔ بسمله از
+            # خودِ نگاشت خوانده می‌شود، نه از شمارهٔ خام — آیهٔ
+            # ۱ِ بدونِ بسملهٔ پیش‌چسب، بسمله ندارد.
             basmala_idx = _basmala_word_indices(self.mapping, self.surah, ayah)
-            aligned = [
-                w for w in aligned if w.word_index not in basmala_idx
-            ]
+            kept: list[alignment.AlignedWord] = []
+            for w in aligned:
+                if w.word_index in basmala_idx:
+                    if self._cell_status.get((ayah, w.word_index)) == "basmala":
+                        kept.append(
+                            replace(
+                                w, status="basmala", prob=0.0,
+                                mistake_type=None,
+                            )
+                        )
+                    continue
+                kept.append(w)
+            aligned = kept
             extra = self._extras if pos == len(touched) - 1 else []
             stored = await hifz_service._store_grade(
                 self.db, self.attempt, self.surah, ayah, aligned, extra
@@ -2409,7 +2442,7 @@ async def start_live_session(
         raise hifz_engines.EngineError("engine_not_configured", reason)
     if mapping is None:
         mapping = require_phoneme_mapping()
-    green, amber = await hifz_service.get_thresholds(db)
+    green, amber = await hifz_service.get_thresholds(db, user.id)
     if hold_on_wrong is None:
         # پیام start نگفته: تنظیمِ ذخیرهٔ کاربر (`freeze_on_error`)
         # حاکم است — همان سوییچِ رابط که از فاز ۴ هست.

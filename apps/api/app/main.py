@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -232,8 +233,14 @@ app = FastAPI(
 )
 
 
-# ترتیب اجرا: RequestId (بیرونی‌ترین — اول) → BodySizeLimit → AccessLog → SecurityHeaders.
+# ترتیب اجرا: RequestId (بیرونی‌ترین — اول) → BodySizeLimit → AccessLog →
+# SecurityHeaders → GZip (درونی‌ترین — نزدیک روت؛ پاسخ را پیش از
+# برگشت از لایه‌ها فشرده می‌کند).
 # add_middleware در ابتدای صف می‌نشاند، پس آخرین فراخوانی بیرونی‌ترین است.
+# GZip (پیشنهاد ۱، سرعت حفاظ): زنجیرهٔ پیش‌بارگذاری نص، ~۸٫۵ مگابایت
+# JSON را بدون فشرده‌سازی می‌گرفت (نسبت اندازه‌گیری‌شده ۴٫۵ برابر)؛
+# پاسخ‌های بالای ۱KB که کلاینت gzip بخواهد، فشرده برمی‌گردند.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AccessLogMiddleware)
 app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)

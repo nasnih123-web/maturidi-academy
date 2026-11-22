@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import re
 from datetime import UTC, date
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.errors import APIError
 from app.models.models import User
 from app.modules.auth.dependencies import get_current_user, require_permission
 
@@ -67,11 +69,32 @@ async def get_surah(
     translation: str | None = Query(default=None, description="شناسهٔ edition ترجمه"),
     tafsir: str | None = Query(default=None, description="شناسهٔ edition تفسیر"),
     reciter: str | None = Query(default=None, description="شناسهٔ edition قاری (از قاری‌های فعال)"),
+    editions: str | None = Query(
+        default=None,
+        description=(
+            "فقط این editionها (کاما-جدا)، مثلاً quran-uthmani — "
+            "برای پیش‌بارگذاری سبک نص؛ بقیهٔ providerها خوانده نمی‌شوند"
+        ),
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """متن سوره (عثمانی) + ترجمه + تفسیر + صوت هر آیه — از provider."""
+    only_editions: list[str] | None = None
+    if editions is not None:
+        only_editions = [e.strip() for e in editions.split(",") if e.strip()]
+        if not only_editions or any(
+            not re.fullmatch(r"[A-Za-z0-9_.-]+", e) for e in only_editions
+        ):
+            raise APIError(
+                422, "invalid_edition", "شناسهٔ edition معتبر نیست"
+            )
     bundle = await service.get_surah_bundle(
-        db, number, translation=translation, tafsir=tafsir, reciter=reciter
+        db,
+        number,
+        translation=translation,
+        tafsir=tafsir,
+        reciter=reciter,
+        only_editions=only_editions,
     )
     return SurahDetailOut(
         surah=bundle["surah"],
