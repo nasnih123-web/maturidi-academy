@@ -138,8 +138,8 @@ export function HifzStudyHeader({
   surah: number;
   ayah: number;
   labels: HifzLabels;
-  /** Hamburger toggles the session-setup panel (the old
-      «surah · ayah ▾» toggle button is gone). */
+  /** Hamburger opens the hifz dashboard (2026-11-22, design 4);
+      the session-setup panel it used to open is deleted. */
   menuOpen: boolean;
   onOpenMenu: () => void;
   /** Opens the Quran search sheet (QuranSearchBox). */
