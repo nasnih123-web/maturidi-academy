@@ -136,6 +136,9 @@ export function ProVideoPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [bufferedEnd, setBufferedEnd] = useState(0);
+  // نسبت تصویر واقعی ویدیو (طرح ۱): قاب هم‌شکل خود ویدیو می‌شود تا
+  // ویدیوهای ۴:۳ یا عمودی توی قاب ۱۶:۹ ثابت کوچک و پیلارباکس نشوند.
+  const [ratio, setRatio] = useState<number | null>(null);
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
   const [rate, setRate] = useState(1);
@@ -264,6 +267,7 @@ export function ProVideoPlayer({
     setCurrentTime(0);
     setDuration(0);
     setBufferedEnd(0);
+    setRatio(null);
     setCountdown(null);
     setToast(null);
     pendingResume.current = null;
@@ -415,6 +419,10 @@ export function ProVideoPlayer({
     };
     const onMeta = () => {
       setDuration(Number.isFinite(el.duration) ? el.duration : 0);
+      if (el.videoWidth > 0 && el.videoHeight > 0) {
+        const r = el.videoWidth / el.videoHeight;
+        setRatio(Math.min(2.5, Math.max(0.5, r)));
+      }
       tryApplyResume();
     };
     const onProgress = () => {
@@ -644,6 +652,7 @@ export function ProVideoPlayer({
     <div
       ref={wrapRef}
       className={`vp-frame${showControls ? '' : ' vp-hide'}`}
+      style={ratio ? { aspectRatio: `${ratio}` } : undefined}
       tabIndex={0}
       onKeyDown={onKeyDown}
       onMouseMove={pokeControls}
