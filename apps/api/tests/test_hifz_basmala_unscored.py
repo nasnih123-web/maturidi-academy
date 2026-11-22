@@ -19,8 +19,12 @@
   ریخته می‌شود (ایراد ۱۴) و آیهٔ درست پیدا می‌شود.
 - نشست از وسطِ سوره بی‌بسمله: یافتنِ آغازین همهٔ آیاتِ سوره را
   می‌گردد و آیهٔ عقب‌تر را هم پیدا می‌کند.
-- finish: بسمله هرگز ذخیره نمی‌شود — نه خوانده‌شده‌اش
-  (به‌صورتِ درست) و نه نخوانده‌اش (به‌صورتِ جاافتاده).
+- finish (پیشنهاد ۱۶): بسملهٔ خوانده‌شده با وضعیتِ `basmala`
+  ذخیره می‌شود — نمایشی، بی‌نمره (prob صفر، بی‌خطا) و بیرونِ
+  شمارنده‌ها — تا پس از بارگذاریِ دوباره هم تایپ‌شده بماند؛
+  نخوانده‌اش همچنان ذخیره نمی‌شود (نه «جاافتاده»).
+- قیدِ دیتابیس: وضعیتِ نمره فقط پنج مقدار دارد
+  (correct | close | wrong | skipped | basmala).
 """
 
 from __future__ import annotations
@@ -216,9 +220,10 @@ async def test_mid_surah_start_locates_backward_ayah(_patch_services):
 
 
 @pytest.mark.asyncio
-async def test_finish_never_stores_basmala(_patch_services, monkeypatch):
-    """finish: بسمله هرگز ذخیره نمی‌شود — نه خوانده‌شده‌اش
-    (به‌صورتِ درست) و نه نخوانده‌اش (به‌صورتِ جاافتاده)."""
+async def test_finish_stores_recited_basmala_unscored(_patch_services, monkeypatch):
+    """finish (پیشنهاد ۱۶): بسملهٔ خوانده‌شده با وضعیتِ `basmala`
+    ذخیره می‌شود — نمایشی، بی‌نمره (prob صفر، بی‌خطا) و بیرونِ
+    شمارنده‌ها؛ نخوانده‌اش همچنان ذخیره نمی‌شود (نه «جاافتاده»)."""
     captured: list[list] = []
 
     async def fake_store(db, attempt, surah, ayah, aligned, extra):
@@ -239,9 +244,13 @@ async def test_finish_never_stores_basmala(_patch_services, monkeypatch):
         "wrong": 0,
         "skipped": 0,
     }
-    assert captured and all(
-        w.word_index >= 4 for aligned in captured for w in aligned
-    )
+    assert captured and len(captured) == 1
+    by_index = {w.word_index: w for w in captured[0]}
+    assert [by_index[i].status for i in (0, 1, 2, 3)] == ["basmala"] * 4
+    assert [by_index[i].status for i in (4, 5, 6)] == ["correct"] * 3
+    assert all(by_index[i].prob == 0.0 for i in (0, 1, 2, 3))
+    assert all(by_index[i].mistake_type is None for i in (0, 1, 2, 3))
+    assert all(by_index[i].heard == by_index[i].expected for i in (0, 1, 2, 3))
 
     # نخوانده: فقط آیهٔ ۱ — بسمله «جاافتاده» هم ذخیره نمی‌شود.
     captured.clear()
@@ -261,3 +270,50 @@ async def test_finish_never_stores_basmala(_patch_services, monkeypatch):
     assert not any(
         w.status == "skipped" for aligned in captured for w in aligned
     )
+
+
+@pytest.mark.asyncio
+async def test_word_score_status_check_constraint(db_session):
+    """قیدِ وضعیت: `basmala` پنجمین مقدارِ مجاز است؛ هر چیز
+    دیگر رد می‌شود."""
+    import sqlalchemy as sa
+
+    from app.models.models import HifzAttempt, HifzWordScore, User
+
+    user = User(
+        full_name="کاربر تست بسمله",
+        email=f"basmala-{uuid.uuid4().hex[:12]}@example.com",
+        password_hash="x",
+    )
+    db_session.add(user)
+    await db_session.flush()
+    attempt = HifzAttempt(user_id=user.id, surah=7)
+    db_session.add(attempt)
+    await db_session.flush()
+    db_session.add(
+        HifzWordScore(
+            attempt_id=attempt.id,
+            surah=7,
+            ayah=1,
+            word_index=0,
+            expected_text="بسم",
+            status="basmala",
+            prob=0.0,
+            heard="بسم",
+        )
+    )
+    await db_session.commit()
+    with pytest.raises(sa.exc.IntegrityError):
+        db_session.add(
+            HifzWordScore(
+                attempt_id=attempt.id,
+                surah=7,
+                ayah=1,
+                word_index=1,
+                expected_text="الله",
+                status="bogus",
+                prob=0.0,
+            )
+        )
+        await db_session.flush()
+    await db_session.rollback()

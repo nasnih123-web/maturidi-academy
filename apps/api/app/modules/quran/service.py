@@ -299,18 +299,38 @@ async def get_surah_bundle(
     translation: str | None = None,
     tafsir: str | None = None,
     reciter: str | None = None,
+    only_editions: list[str] | None = None,
 ) -> dict:
+    """بستهٔ سوره. `only_editions` (پیشنهاد ۲، سرعت حفاظ): فقط
+    editionهای خواسته‌شده خوانده می‌شوند — بقیهٔ providerها اصلاً
+    صدا زده نمی‌شوند. حلقهٔ پیش‌بارگذاری نص فقط متن عثمانی را
+    می‌خواهد (`quran-uthmani`) و با این پارامتر، ترجمه + تفسیر +
+    صوت (که ~۷۵٪ حجم پاسخ بود) از زنجیره حذف می‌شود. بدون آن،
+    رفتار دقیقاً مثل قبل است."""
     try:
         meta = get_surah(number)
     except ValueError:
         raise APIError(404, "surah_not_found", "سوره‌ای با این شماره وجود ندارد")
     sel = await _edition_selection(db, reciter=reciter)
+    groups = _group_editions_by_provider(
+        sel, translation=translation, tafsir=tafsir,
+    )
+    if only_editions is not None:
+        wanted = {e.strip() for e in only_editions if e.strip()}
+        filtered: list[tuple[str, dict]] = []
+        for pid, kwargs in groups:
+            kept = {k: v for k, v in kwargs.items() if v in wanted}
+            if kept:
+                filtered.append((pid, kept))
+        if not filtered:
+            raise APIError(
+                422, "unknown_edition", "شناسهٔ edition درخواستی شناخته‌شده نیست"
+            )
+        groups = filtered
     try:
         merged_ayahs: dict[int, dict] = {}
         edition_ids: list[str] = []
-        for pid, kwargs in _group_editions_by_provider(
-            sel, translation=translation, tafsir=tafsir,
-        ):
+        for pid, kwargs in groups:
             provider = _resolve_group_provider(sel, pid)
             data = await provider.fetch_surah(number, **kwargs)
             edition_ids.extend(data["edition_ids"])

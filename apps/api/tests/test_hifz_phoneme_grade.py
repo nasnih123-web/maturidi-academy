@@ -46,7 +46,9 @@ def _wav_bytes(frames: int = 1600) -> bytes:
         wav.setnchannels(1)
         wav.setsampwidth(2)
         wav.setframerate(16000)
-        wav.writeframes(b"\x00\x00" * frames)
+        # نمونه‌های ۱۰۰۰ (‎~−۳۰ dBFS): دروازهٔ VAD (پیشنهاد ۱۲) سکوت را
+        # با ۴۲۲ رد می‌کند، پس صوتِ تست باید انرژیِ گفتار داشته باشد.
+        wav.writeframes(b"\xe8\x03" * frames)
     return buf.getvalue()
 
 

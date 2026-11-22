@@ -402,6 +402,35 @@ async def test_mixed_provider_bundle_merges(tc, monkeypatch):
     assert by_ed["ar.alafasy"]["audio_url"].startswith("https://cdn.islamic.network")
 
 
+async def test_light_surah_bundle_returns_only_uthmani_text(tc, monkeypatch):
+    """پیشنهاد ۲: ?editions=quran-uthmani فقط متن عثمانی را برمی‌گرداند
+    و provider ترجمه/تفسیر/صوت اصلاً خوانده نمی‌شود (‌_get صفر بار)."""
+    calls = _patch_provider_get(monkeypatch, payload=_FAKE_EDITIONS_PAYLOAD)
+    r = await tc["client"].get(f"{BASE}/quran/surah/112?editions=quran-uthmani")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["edition_ids"] == ["quran-uthmani"]
+    assert len(body["ayahs"]) == 4
+    for ayah in body["ayahs"]:
+        assert [e["edition"] for e in ayah["editions"]] == ["quran-uthmani"]
+        assert ayah["editions"][0]["text"]
+    assert calls["n"] == 0
+
+
+async def test_light_surah_bundle_unknown_edition_422(tc):
+    r = await tc["client"].get(f"{BASE}/quran/surah/112?editions=no-such-edition")
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "unknown_edition"
+
+
+async def test_light_surah_bundle_invalid_edition_chars_422(tc):
+    r = await tc["client"].get(
+        f"{BASE}/quran/surah/112?editions=quran-uthmani;DROP"
+    )
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "invalid_edition"
+
+
 async def test_unknown_provider_in_selection_503(tc, db_session):
     try:
         await _stage(

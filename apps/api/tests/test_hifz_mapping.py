@@ -26,10 +26,13 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.modules.quran import hifz_mapping
 from app.modules.quran.hifz_mapping import (
     MappingPendingError,
     _align_segments,
+    _disk_cache_path,
     _levenshtein_bounded,
+    _mapping_fingerprint,
     _norm,
     _norm_relaxed,
     _segment_phonemes,
@@ -711,3 +714,104 @@ async def test_real_mapping_live_alignment_review_ayahs_emission_order(
     assert [w["expected"] for w in words] == session._words, (
         f"{surah}:{ayah} word order mismatch"
     )
+
+# ---------------------------------------------------------------------------
+# کش دیسکی نگاشت (پیشنهاد ۱۰، سرعت حفاظ)
+# ---------------------------------------------------------------------------
+
+
+def _small_entries():
+    words112 = _tanzil_ayah(112, 1).split()[4:]
+    words11 = _tanzil_ayah(1, 1).split()
+    return {
+        "1:1": _entry(words11),
+        "112:1": _entry(words112),
+    }
+
+
+def test_disk_cache_second_load_reads_from_disk_not_rebuild(
+    tmp_path, monkeypatch
+):
+    # بار اول می‌سازد و روی دیسک می‌نویسد؛ بار دوم (با کش حافظه‌ای
+    # خالی) باید از دیسک بخواند، نه از صفر بسازد: اگر ساخت دوباره
+    # صدا زده شود، _split_adjustedِ وصله‌شده منفجر می‌شود.
+    d = _write_fixture(tmp_path, _small_entries())
+    monkeypatch.setenv("QURAN_PHONEME_MAP_DIR", str(d))
+    first = load_phoneme_mapping()
+    fingerprint = _mapping_fingerprint(d)
+    assert fingerprint is not None
+    cache_file = _disk_cache_path(d, fingerprint)
+    assert cache_file.is_file(), "first load must write the disk cache"
+    first_segs = first.segments_for(112, 1)
+    assert first_segs is not None
+
+    hifz_mapping._cache.clear()
+    monkeypatch.setattr(
+        hifz_mapping,
+        "_split_adjusted",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("rebuild called despite disk cache")
+        ),
+    )
+    second = load_phoneme_mapping()
+    assert second.segments_for(112, 1) == first_segs
+    assert second.report.accepted_ayahs == first.report.accepted_ayahs
+
+
+def test_disk_cache_invalidates_when_source_file_changes(tmp_path, monkeypatch):
+    # هر تغییر بایت در فایل منبع، اثر انگشت را عوض می‌کند و کش کهنه
+    # هرگز برگردانده نمی‌شود: افزودن مدخل ۱۱۲:۲ باید در بار دوم
+    # دیده شود (ساختِ دوباره)، نه نگاشتِ کش‌شدهٔ قبل.
+    d = _write_fixture(tmp_path, _small_entries())
+    monkeypatch.setenv("QURAN_PHONEME_MAP_DIR", str(d))
+    first = load_phoneme_mapping()
+    assert first.segments_for(112, 2) is None
+    old_fingerprint = _mapping_fingerprint(d)
+
+    words1122 = _tanzil_ayah(112, 2).split()
+    data = json.loads(
+        (d / "ordered_quran_phonemes.json").read_text(encoding="utf-8")
+    )
+    data["112:2"] = _entry(words1122)
+    (d / "ordered_quran_phonemes.json").write_text(
+        json.dumps(data, ensure_ascii=False), encoding="utf-8"
+    )
+    # tokens.txt مصنوعی فقط حرف‌های مدخل‌های اول را دارد؛ «ص»ِ
+    # ۱۱۲:۲ را هم اضافه کن وگرنه DP به‌خاطر نماد ناشناخته رد می‌کند
+    # (و آزمون، بی‌ربط به کش، قرمز می‌شود).
+    token_lines = (d / "tokens.txt").read_text(encoding="utf-8").splitlines()
+    known = {line.split(" ", 1)[0] for line in token_lines if line.strip()}
+    needed = set()
+    for entry in data.values():
+        for w in entry["aya_phonemes_list"]:
+            needed.update(w)
+    next_id = len(token_lines)
+    for ch in sorted(needed - known):
+        token_lines.append(f"{ch} {next_id}")
+        next_id += 1
+    (d / "tokens.txt").write_text("\n".join(token_lines) + "\n", encoding="utf-8")
+    new_fingerprint = _mapping_fingerprint(d)
+    assert new_fingerprint != old_fingerprint
+
+    hifz_mapping._cache.clear()
+    second = load_phoneme_mapping()
+    assert second.segments_for(112, 2) is not None
+    assert second.segments_for(112, 1) == first.segments_for(112, 1)
+    assert _disk_cache_path(d, new_fingerprint).is_file()
+
+
+def test_corrupt_disk_cache_falls_back_to_rebuild(tmp_path, monkeypatch):
+    # کش خراب (بایت‌های آشغال) هرگز بوت را نمی‌شکند: بارگذاری به
+    # ساخت کامل برمی‌گردد و همان قطعه‌ها را می‌دهد.
+    d = _write_fixture(tmp_path, _small_entries())
+    monkeypatch.setenv("QURAN_PHONEME_MAP_DIR", str(d))
+    first = load_phoneme_mapping()
+    fingerprint = _mapping_fingerprint(d)
+    assert fingerprint is not None
+    cache_file = _disk_cache_path(d, fingerprint)
+    cache_file.write_bytes(b"not a pickle at all\x00\xff\x00")
+
+    hifz_mapping._cache.clear()
+    second = load_phoneme_mapping()
+    assert second.segments_for(112, 1) == first.segments_for(112, 1)
+    assert second.report.accepted_ayahs == first.report.accepted_ayahs
