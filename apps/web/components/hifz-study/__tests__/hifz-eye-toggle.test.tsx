@@ -75,12 +75,13 @@ describe('Hifz eye button (user 2026-11-12)', () => {
     assert.match(study, /setPickerOpen\(false\);\s*setEyeScope\(\{ kind, target \}\);\s*setEyeHidden\(true\);/);
   });
 
-  it('a surah picked in the setup panel becomes a surah scope, starting hidden', () => {
+  it('a surah picked in the picker navigates to its study page, whose deep link sets the surah scope', () => {
+    // The session-setup panel is gone (2026-11-22): surah selection
+    // lives in the picker sheet as a link to the surah's hifz page,
+    // and that deep link sets the initial scope to the surah (locked
+    // in the 'initial scope mirrors the deep link' test above).
     const study = readStudy();
-    assert.match(
-      study,
-      /setSurah\(n\);\s*setEyeScope\(\{ kind: 'surah', target: n \}\);\s*setEyeHidden\(true\);/,
-    );
+    assert.match(study, /surahHref=\{\(n\) => `\/\$\{locale\}\/quran\/\$\{n\}\?tab=hifz`\}/);
   });
 
   it('the eye applies in practice in every display mode, not in listen (round 2)', () => {
