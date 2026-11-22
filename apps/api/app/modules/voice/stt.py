@@ -23,6 +23,35 @@ def faster_whisper_available() -> bool:
     return importlib.util.find_spec("faster_whisper") is not None
 
 
+def _decode_audio(audio_bytes: bytes):
+    """دیکود صدا با PyAV به آرایهٔ float32 (۱۶kHz، مونو) برای whisper.
+
+    چرا خودمان دیکود می‌کنیم؟ دیکود داخلی faster-whisper 1.2.1 به
+    av.open آرگومان metadata_errors می‌دهد که در PyAV ≥13 حذف شده و
+    av در requirements پین نشده است (production روی av 19 است)؛ پس
+    رونویسی از مسیر داخلی whisper همیشه با TypeError می‌مرد. وقتی
+    ورودی مدل ndarray باشد، whisper مسیر دیکود داخلی‌اش را رد می‌کند
+    و مستقیم رونویسی می‌کند.
+    """
+    import io
+
+    import av
+    import numpy as np
+
+    chunks: list = []
+    with av.open(io.BytesIO(audio_bytes), mode="r") as container:
+        stream = container.streams.audio[0]
+        resampler = av.AudioResampler(format="fltp", layout="mono", rate=16000)
+        for frame in container.decode(stream):
+            for out_frame in resampler.resample(frame):
+                chunks.append(out_frame.to_ndarray().reshape(-1))
+        for out_frame in resampler.resample(None):
+            chunks.append(out_frame.to_ndarray().reshape(-1))
+    if not chunks:
+        return np.zeros(0, dtype=np.float32)
+    return np.concatenate(chunks).astype(np.float32)
+
+
 class STTProvider(Protocol):
     name: str
 
@@ -67,12 +96,10 @@ class FasterWhisperSTT:
         lang: str | None,
         timeout_s: float | None = None,
     ) -> dict:
-        import io
-
         def _run() -> dict:
             model = self._get_model()
             segments, info = model.transcribe(
-                io.BytesIO(audio_bytes),
+                _decode_audio(audio_bytes),
                 language=lang,  # None → تشخیص خودکار whisper
                 vad_filter=True,
             )
@@ -119,12 +146,10 @@ class FasterWhisperSTT:
         task="translate" خروجی انگلیسی whisper است (ترجمهٔ داخلی خود مدل).
         -> {"segments": [{"start","end","text"}], "language", "duration_s"}
         """
-        import io
-
         def _run() -> dict:
             model = self._get_model()
             segments, info = model.transcribe(
-                io.BytesIO(audio_bytes),
+                _decode_audio(audio_bytes),
                 language=lang,  # None → تشخیص خودکار whisper
                 task=task,
                 vad_filter=True,
