@@ -122,6 +122,8 @@ class AdminSubtitleItemOut(BaseModel):
     visibility: str
     created_at: datetime
     subtitles: dict[str, str]
+    # lang → دلیل خطای ذخیره‌شده؛ فقط برای ردیف‌های failed با error غیرخالی.
+    errors: dict[str, str] = Field(default_factory=dict)
 
 
 class PlaylistCreateIn(BaseModel):

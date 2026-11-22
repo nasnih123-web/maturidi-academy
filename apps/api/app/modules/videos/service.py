@@ -971,12 +971,15 @@ async def admin_subtitle_statuses(
     rows = list((await db.execute(stmt)).scalars().all())
     items = [i for i in rows if not subs.is_embed_external(i)][:limit]
     by_item: dict[uuid.UUID, dict[str, str]] = {}
+    errors_by_item: dict[uuid.UUID, dict[str, str]] = {}
     if items:
         sstmt = select(ItemSubtitle).where(
             ItemSubtitle.item_id.in_([i.id for i in items])
         )
         for row in (await db.execute(sstmt)).scalars().all():
             by_item.setdefault(row.item_id, {})[row.lang] = row.status
+            if row.status == "failed" and row.error:
+                errors_by_item.setdefault(row.item_id, {})[row.lang] = row.error
     out: list[dict] = []
     for item in items:
         have = by_item.get(item.id, {})
@@ -991,6 +994,7 @@ async def admin_subtitle_statuses(
                 "subtitles": {
                     lang: have.get(lang, "missing") for lang in SUBTITLE_LANGS
                 },
+                "errors": errors_by_item.get(item.id, {}),
             }
         )
     return out
