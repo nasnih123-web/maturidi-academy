@@ -3766,7 +3766,7 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
           repetition, listen controls) is a collapsible panel, CLOSED
           by default — the mushaf below is the first visible element
           on load. It opens from the hamburger in the top bar. */}
-            {/* The hamburger opens the hifz dashboard (2026-11-22, design 4):
+      {/* The hamburger opens the hifz dashboard (2026-11-22, design 4):
           it sits exactly where the session-setup panel sat (same fixed
           overlay slot below the header). The setup panel is deleted:
           range/repeat inputs and listen controls have no home here any
