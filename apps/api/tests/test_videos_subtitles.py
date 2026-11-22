@@ -757,9 +757,10 @@ class _FakeStreamResponse:
 
 class _FakeHTTPClient:
     chunks: ClassVar[list[bytes]] = []
+    last_kwargs: ClassVar[dict] = {}
 
     def __init__(self, *args, **kwargs):
-        pass
+        type(self).last_kwargs = kwargs
 
     async def __aenter__(self):
         return self
@@ -787,6 +788,25 @@ async def test_download_external_media_joins_chunks(monkeypatch):
     monkeypatch.setattr("httpx.AsyncClient", _FakeHTTPClient)
     data = await _download_external_media("https://cdn.example.com/x.mp4")
     assert data == b"abcdef"
+
+
+async def test_download_external_media_sends_descriptive_user_agent(
+    monkeypatch,
+):
+    # ویکی‌مدیا ایجنت پیش‌فرض httpx را ۴۰۳ می‌کند؛ دانلودر باید با
+    # User-Agent توصیفی سامانه برود (رگرسیون خطای زندهٔ ۲۰۲۶-۱۱-۲۲).
+    from app.modules.videos import tasks as video_tasks
+
+    _FakeHTTPClient.chunks = [b"ab"]
+    monkeypatch.setattr("httpx.AsyncClient", _FakeHTTPClient)
+    data = await video_tasks._download_external_media(
+        "https://upload.wikimedia.org/wikipedia/commons/transcoded/x.webm"
+    )
+    assert data == b"ab"
+    headers = _FakeHTTPClient.last_kwargs.get("headers") or {}
+    assert headers.get("User-Agent") == video_tasks._DOWNLOAD_USER_AGENT
+    assert headers["User-Agent"].startswith("MaturidiAcademy/")
+    assert "python-httpx" not in headers["User-Agent"]
 
 
 async def test_download_external_media_enforces_size_cap(monkeypatch):
