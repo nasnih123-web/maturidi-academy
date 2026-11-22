@@ -874,3 +874,166 @@ async def test_aparat_watch_payload_and_vtt_excluded(tc):
     assert watch.json()["subtitles"] == []
     res = await client.get(f"{BASE}/videos/{item_id}/subtitles/fa.vtt")
     assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# ویرایشگر زیرنویس CRM — parse وارون + GET/PUT سطرها
+# ---------------------------------------------------------------------------
+
+
+def test_parse_vtt_roundtrip():
+    from app.modules.videos.subtitles import build_vtt, parse_vtt
+
+    segments = [
+        {"start": 0.0, "end": 2.5, "text": "سلام و درود"},
+        {"start": 65.25, "end": 70.0, "text": "متن با <نشانه> و & نماد"},
+    ]
+    assert parse_vtt(build_vtt(segments)) == segments
+    assert parse_vtt(None) == []
+    assert parse_vtt("") == []
+    assert parse_vtt("WEBVTT\n") == []
+    # بلوک با زمان خراب رد می‌شود؛ بلوک سالم می‌ماند.
+    broken = (
+        "WEBVTT\n\n"
+        "00:00:AA.000 --> 00:00:02.000\nخراب\n\n"
+        "00:00:01.000 --> 00:00:02.000\nسالم\n"
+    )
+    assert parse_vtt(broken) == [{"start": 1.0, "end": 2.0, "text": "سالم"}]
+    # فرمت MM:SS هم خوانده می‌شود.
+    assert parse_vtt("WEBVTT\n\n01:30.500 --> 01:32.000\nمتن\n") == [
+        {"start": 90.5, "end": 92.0, "text": "متن"}
+    ]
+
+
+async def test_subtitle_editor_get_put_flow(tc):
+    client = tc["client"]
+    admin = await _admin(tc)
+    item_id = await _make_item(tc)
+    vtt = (
+        "WEBVTT\n\n"
+        "00:00:00.000 --> 00:00:02.500\nسلام و درود\n\n"
+        "00:00:02.500 --> 00:00:05.000\nمتن دوم\n"
+    )
+    await _seed_ready_subtitle(tc, item_id, "fa", vtt)
+
+    got = await client.get(
+        f"{BASE}/admin/videos/{item_id}/subtitles/fa", headers=admin
+    )
+    assert got.status_code == 200, got.text
+    payload = got.json()
+    assert payload["status"] == "ready"
+    assert payload["preview_url"] is None  # آپلودی: پیش‌نمایش ندارد
+    assert payload["cues"] == [
+        {"start": 0.0, "end": 2.5, "text": "سلام و درود"},
+        {"start": 2.5, "end": 5.0, "text": "متن دوم"},
+    ]
+
+    fixed = [
+        {"start": 0.0, "end": 2.5, "text": "سلام و درود بر شما"},
+        {"start": 2.5, "end": 5.0, "text": "متن دوم"},
+        {"start": 5.0, "end": 7.25, "text": "سطر تازه"},
+    ]
+    put = await client.put(
+        f"{BASE}/admin/videos/{item_id}/subtitles/fa",
+        headers=admin,
+        json={"cues": fixed},
+    )
+    assert put.status_code == 200, put.text
+    assert put.json()["status"] == "ready"
+    assert put.json()["cues"] == fixed
+
+    rows = await _subtitle_rows(tc, item_id)
+    assert rows["fa"]["status"] == "ready"
+    assert "سلام و درود بر شما" in (rows["fa"]["vtt"] or "")
+
+    public = await client.get(f"{BASE}/videos/{item_id}/subtitles/fa.vtt")
+    assert public.status_code == 200, public.text
+    assert "سطر تازه" in public.text
+
+
+async def test_subtitle_editor_guards(tc):
+    client = tc["client"]
+    admin = await _admin(tc)
+    plain = await _make_user(tc)
+    item_id = await _make_item(tc)
+    body = {"cues": [{"start": 0.0, "end": 1.0, "text": "سلام"}]}
+    url = f"{BASE}/admin/videos/{item_id}/subtitles/fa"
+
+    noauth = await client.put(url, json=body)
+    assert noauth.status_code in (401, 403)
+    forbidden = await client.put(url, headers=plain, json=body)
+    assert forbidden.status_code == 403
+
+    bad_lang = await client.get(
+        f"{BASE}/admin/videos/{item_id}/subtitles/xx", headers=admin
+    )
+    assert bad_lang.status_code == 422
+    assert bad_lang.json()["error"]["code"] == "subtitle_lang_unknown"
+
+    missing = await client.get(
+        f"{BASE}/admin/videos/{uuid.uuid4()}/subtitles/fa", headers=admin
+    )
+    assert missing.status_code == 404
+
+    empty = await client.put(url, headers=admin, json={"cues": []})
+    assert empty.status_code == 422
+    assert empty.json()["error"]["code"] == "subtitle_cues_empty"
+
+    bad_range = await client.put(
+        url,
+        headers=admin,
+        json={"cues": [{"start": 3.0, "end": 3.0, "text": "x"}]},
+    )
+    assert bad_range.status_code == 422
+    assert bad_range.json()["error"]["code"] == "subtitle_cue_range"
+
+    blank = await client.put(
+        url,
+        headers=admin,
+        json={"cues": [{"start": 0.0, "end": 1.0, "text": "  "}]},
+    )
+    assert blank.status_code == 422
+    assert blank.json()["error"]["code"] == "subtitle_cue_empty_text"
+
+
+async def test_subtitle_editor_rescues_failed_and_blocks_busy(tc):
+    client = tc["client"]
+    admin = await _admin(tc)
+    item_id = await _make_item(tc)
+    await _seed_subtitle_row(
+        tc, item_id, "ar", "failed",
+        error="translation_provider_not_configured",
+    )
+    await _seed_subtitle_row(tc, item_id, "en", "processing")
+
+    put = await client.put(
+        f"{BASE}/admin/videos/{item_id}/subtitles/ar",
+        headers=admin,
+        json={"cues": [{"start": 0.0, "end": 2.0, "text": "ترجمة يدوية"}]},
+    )
+    assert put.status_code == 200, put.text
+    rows = await _subtitle_rows(tc, item_id)
+    assert rows["ar"]["status"] == "ready"
+    assert rows["ar"]["error"] is None
+
+    busy = await client.put(
+        f"{BASE}/admin/videos/{item_id}/subtitles/en",
+        headers=admin,
+        json={"cues": [{"start": 0.0, "end": 2.0, "text": "x"}]},
+    )
+    assert busy.status_code == 409
+    assert busy.json()["error"]["code"] == "subtitle_generation_in_progress"
+
+
+async def test_subtitle_editor_preview_url_for_direct_file(tc):
+    client = tc["client"]
+    admin = await _admin(tc)
+    url = "https://upload.wikimedia.org/wikipedia/commons/x/clip.webm"
+    item_id = await _make_item(tc, media_key=None, external_url=url)
+    got = await client.get(
+        f"{BASE}/admin/videos/{item_id}/subtitles/fa", headers=admin
+    )
+    assert got.status_code == 200, got.text
+    assert got.json()["preview_url"] == url
+    assert got.json()["status"] == "missing"
+    assert got.json()["cues"] == []

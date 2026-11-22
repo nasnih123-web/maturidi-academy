@@ -1000,6 +1000,148 @@ async def admin_subtitle_statuses(
     return out
 
 
+async def _subtitle_row(
+    db: AsyncSession, item_id: uuid.UUID, lang: str
+) -> ItemSubtitle | None:
+    return (
+        await db.execute(
+            select(ItemSubtitle).where(
+                ItemSubtitle.item_id == item_id, ItemSubtitle.lang == lang
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def get_subtitle_cues(
+    db: AsyncSession, item_id: uuid.UUID, lang: str
+) -> dict:
+    """سطرهای زیرنویس یک زبان برای ویرایشگر CRM — parse از VTT ذخیره‌شده.
+
+    ردیف نباشد status="missing" و سطرها خالی‌اند (ویرایشگر می‌تواند
+    از صفر بنویسد)؛ preview_url فقط برای لینک مستقیم فایل پر می‌شود.
+    """
+    if lang not in SUBTITLE_LANGS:
+        raise APIError(
+            422, "subtitle_lang_unknown", "زبان زیرنویس ناشناخته است",
+            {"lang": lang},
+        )
+    item = await db.get(LibraryItem, item_id)
+    if item is None:
+        raise APIError(404, "item_not_found", "آیتم یافت نشد")
+    row = await _subtitle_row(db, item_id, lang)
+    return {
+        "item_id": item.id,
+        "lang": lang,
+        "status": row.status if row is not None else "missing",
+        "preview_url": (
+            item.external_url if subs.is_direct_file_external(item) else None
+        ),
+        "cues": subs.parse_vtt(row.vtt) if row is not None else [],
+    }
+
+
+async def save_subtitle_cues(
+    db: AsyncSession,
+    item_id: uuid.UUID,
+    lang: str,
+    cues_in: list,
+    *,
+    actor: User,
+    ip: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
+    """ذخیرهٔ ویرایش دستی زیرنویس (ویرایشگر CRM).
+
+    سطرها اعتبارسنجی می‌شوند (متن غیرخالی، پایان بعد از شروع)، بر اساس
+    شروع مرتب و با build_vtt به VTT تازه تبدیل می‌شوند و ردیف ready
+    می‌شود — خطای قبلی پاک می‌شود، پس زبان ناموفق هم با نوشتن دستی
+    قابل نجات است. ویرایش روی ترکِ در حال تولید ۴۰۹ است: جاب در راه
+    آن را بازنویسی می‌کند و ویرایش گم می‌شود.
+    """
+    if lang not in SUBTITLE_LANGS:
+        raise APIError(
+            422, "subtitle_lang_unknown", "زبان زیرنویس ناشناخته است",
+            {"lang": lang},
+        )
+    item = await db.get(LibraryItem, item_id)
+    if item is None:
+        raise APIError(404, "item_not_found", "آیتم یافت نشد")
+    if item.kind not in VIDEO_KINDS:
+        raise APIError(
+            422,
+            "not_a_video",
+            "زیرنویس فقط برای آیتم‌های ویدیویی است",
+            {"kind": item.kind},
+        )
+    if subs.is_embed_external(item):
+        raise APIError(
+            422,
+            "external_video",
+            "ویدیوی خارجی (یوتیوب/آپارات) زیرنویس دستی ندارد؛ "
+            "کپشن داخل خود منبع است",
+        )
+    row = await _subtitle_row(db, item_id, lang)
+    if row is not None and row.status in ("pending", "processing"):
+        raise APIError(
+            409,
+            "subtitle_generation_in_progress",
+            "تولید خودکار این زیرنویس در جریان است؛ پس از پایانش ویرایش کنید",
+        )
+    if not cues_in:
+        raise APIError(
+            422, "subtitle_cues_empty", "دست‌کم یک سطر زیرنویس لازم است"
+        )
+    clean: list[dict] = []
+    for i, cue in enumerate(cues_in):
+        text = (cue.text or "").strip()
+        if not text:
+            raise APIError(
+                422,
+                "subtitle_cue_empty_text",
+                "متن سطر زیرنویس خالی است",
+                {"index": i},
+            )
+        start = float(cue.start)
+        end = float(cue.end)
+        if start < 0 or end <= start:
+            raise APIError(
+                422,
+                "subtitle_cue_range",
+                "بازهٔ زمانی سطر نامعتبر است (پایان باید بعد از شروع باشد)",
+                {"index": i},
+            )
+        clean.append({"start": start, "end": end, "text": text})
+    clean.sort(key=lambda c: c["start"])
+    vtt = subs.build_vtt(clean)
+    if row is None:
+        row = ItemSubtitle(item_id=item.id, lang=lang)
+        db.add(row)
+    row.vtt = vtt
+    row.status = "ready"
+    row.error = None
+    await log_audit(
+        db,
+        actor_id=actor.id,
+        actor_type="admin",
+        action="videos.subtitles.edit",
+        entity_type="library_item",
+        entity_id=str(item.id),
+        new_values={"lang": lang, "cues": len(clean)},
+        ip=ip,
+        user_agent=user_agent,
+    )
+    await db.commit()
+    return {
+        "item_id": item.id,
+        "lang": lang,
+        "status": "ready",
+        "preview_url": (
+            item.external_url if subs.is_direct_file_external(item) else None
+        ),
+        "cues": subs.parse_vtt(vtt),
+    }
+
+
 async def list_candidates(
     db: AsyncSession, *, q: str | None = None, limit: int = 50
 ) -> list[dict]:

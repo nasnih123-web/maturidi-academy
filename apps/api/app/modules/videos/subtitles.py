@@ -120,6 +120,58 @@ def build_vtt(segments: list[dict]) -> str:
     return f"WEBVTT\n\n{body}\n" if body else "WEBVTT\n"
 
 
+def _parse_vtt_timestamp(raw: str) -> float | None:
+    """«HH:MM:SS.mmm» / «MM:SS.mmm» / «SS.mmm» → ثانیه (None اگر خراب)."""
+    parts = raw.strip().replace(",", ".").split(":")
+    try:
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        if len(parts) == 2:
+            return int(parts[0]) * 60 + float(parts[1])
+        if len(parts) == 1:
+            return float(parts[0])
+    except ValueError:
+        return None
+    return None
+
+
+def parse_vtt(vtt: str | None) -> list[dict]:
+    """متن WebVTT → سگمنت‌های [{start, end, text}] — وارون build_vtt.
+
+    برای ویرایشگر CRM: بلوک‌های بدون خط زمان یا با زمان خراب رد
+    می‌شوند؛ escapeهای build_vtt (&lt; &gt; &amp;) به متن خام
+    برمی‌گردند تا ویرایشگر متن واقعی را نشان دهد؛ خروجی بر اساس
+    شروع مرتب است.
+    """
+    if not vtt:
+        return []
+    segments: list[dict] = []
+    normalized = vtt.replace("\r\n", "\n").replace("\r", "\n")
+    for block in re.split(r"\n[ \t]*\n", normalized):
+        lines = block.split("\n")
+        timing_idx = next(
+            (i for i, line in enumerate(lines) if "-->" in line), None
+        )
+        if timing_idx is None:
+            continue
+        start_raw, _, end_raw = lines[timing_idx].partition("-->")
+        # بعد از زمان پایان ممکن است cue settings بیاید — فقط خود زمان.
+        end_token = end_raw.strip().split(" ")[0] if end_raw.strip() else ""
+        start = _parse_vtt_timestamp(start_raw)
+        end = _parse_vtt_timestamp(end_token)
+        if start is None or end is None:
+            continue
+        text = "\n".join(lines[timing_idx + 1 :]).strip()
+        text = (
+            text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+        )
+        if not text:
+            continue
+        segments.append({"start": start, "end": end, "text": text})
+    segments.sort(key=lambda seg: seg["start"])
+    return segments
+
+
 # ---------------------------------------------------------------------------
 # تنظیمات
 # ---------------------------------------------------------------------------

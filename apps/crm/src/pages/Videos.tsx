@@ -16,6 +16,7 @@ import {
   addPlaylistItem,
   createPlaylist,
   deletePlaylist,
+  fetchSubtitleCues,
   fetchSubtitleStatuses,
   fetchVideosSettings,
   generateSubtitles,
@@ -23,10 +24,13 @@ import {
   listPlaylists,
   removePlaylistItem,
   reorderPlaylistItems,
+  saveSubtitleCues,
   saveVideosSettings,
   updatePlaylist,
   SUBTITLE_LANGS,
   type AdminPlaylist,
+  type AdminSubtitleItem,
+  type SubtitleCue,
   type VideosSettingsValues,
 } from "../lib/videos";
 
@@ -745,6 +749,381 @@ function VideosSettingsCard(): React.ReactElement {
 }
 
 /* ------------------------------------------------------------------ */
+/* subtitle cue editor — اصلاح دستی زمان‌بندی و متن هر زبان            */
+/* ------------------------------------------------------------------ */
+
+interface CueDraft {
+  start: string;
+  end: string;
+  text: string;
+}
+
+function fmtCueTime(sec: number): string {
+  const safe = Number.isFinite(sec) && sec > 0 ? sec : 0;
+  const ms = Math.round(safe * 1000);
+  const p = (n: number, w = 2): string => String(n).padStart(w, "0");
+  return `${p(Math.floor(ms / 3600000))}:${p(Math.floor(ms / 60000) % 60)}:${p(Math.floor(ms / 1000) % 60)}.${p(ms % 1000, 3)}`;
+}
+
+function parseCueTime(raw: string): number | null {
+  const parts = raw.trim().replace(",", ".").split(":");
+  if (parts.length < 1 || parts.length > 3) return null;
+  const nums = parts.map((x) => Number(x));
+  if (nums.some((n) => !Number.isFinite(n) || n < 0)) return null;
+  if (nums.length === 3) return nums[0] * 3600 + nums[1] * 60 + nums[2];
+  if (nums.length === 2) return nums[0] * 60 + nums[1];
+  return nums[0];
+}
+
+function SubtitleEditor({
+  item,
+  onClose,
+}: {
+  item: AdminSubtitleItem;
+  onClose: () => void;
+}): React.ReactElement {
+  const { t, locale } = useI18n();
+  const queryClient = useQueryClient();
+  const [lang, setLang] = React.useState<string>("fa");
+  const cuesQuery = useQuery({
+    queryKey: ["videos-subtitle-cues", item.id, lang],
+    queryFn: () => fetchSubtitleCues(item.id, lang),
+  });
+  const [draft, setDraft] = React.useState<CueDraft[] | null>(null);
+  const [loadedKey, setLoadedKey] = React.useState<string>("");
+  const [sel, setSel] = React.useState(0);
+  const [note, setNote] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [now, setNow] = React.useState(0);
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  const stopAtRef = React.useRef<number | null>(null);
+
+  const dataKey = `${item.id}:${lang}`;
+  React.useEffect(() => {
+    if (cuesQuery.data && loadedKey !== dataKey) {
+      setDraft(
+        cuesQuery.data.cues.map((c) => ({
+          start: fmtCueTime(c.start),
+          end: fmtCueTime(c.end),
+          text: c.text,
+        })),
+      );
+      setLoadedKey(dataKey);
+      setSel(0);
+    }
+  }, [cuesQuery.data, dataKey, loadedKey]);
+
+  const cues = draft ?? [];
+  const previewUrl = cuesQuery.data?.preview_url ?? null;
+
+  const langLabel = (l: string): string =>
+    t(
+      `videos.lang${l === "fa" ? "Fa" : l === "ar" ? "Ar" : l === "en" ? "En" : l === "ur" ? "Ur" : "Dari"}`,
+    );
+
+  const patch = (i: number, part: Partial<CueDraft>): void => {
+    setDraft((prev) =>
+      (prev ?? []).map((c, idx) => (idx === i ? { ...c, ...part } : c)),
+    );
+    setNote(null);
+  };
+
+  const playCue = (i: number): void => {
+    const v = videoRef.current;
+    const c = cues[i];
+    if (!v || !c) return;
+    const s = parseCueTime(c.start);
+    const e = parseCueTime(c.end);
+    if (s === null || e === null) return;
+    stopAtRef.current = e;
+    v.currentTime = s;
+    void v.play();
+  };
+
+  const grab = (which: "start" | "end"): void => {
+    const v = videoRef.current;
+    if (!v || !cues[sel]) return;
+    patch(sel, { [which]: fmtCueTime(v.currentTime) });
+  };
+
+  const saveMut = useMutation({
+    mutationFn: (parsed: SubtitleCue[]) =>
+      saveSubtitleCues(item.id, lang, parsed),
+    onSuccess: (data) => {
+      setDraft(
+        data.cues.map((c) => ({
+          start: fmtCueTime(c.start),
+          end: fmtCueTime(c.end),
+          text: c.text,
+        })),
+      );
+      setNote(t("videos.saved"));
+      setError(null);
+      void queryClient.invalidateQueries({ queryKey: ["videos-subtitles"] });
+    },
+    onError: (err) => setError(errText(err)),
+  });
+
+  const onSave = (): void => {
+    const parsed: SubtitleCue[] = [];
+    for (const c of cues) {
+      const s = parseCueTime(c.start);
+      const e = parseCueTime(c.end);
+      if (s === null || e === null || e <= s || !c.text.trim()) {
+        setError(t("videos.subBadRow"));
+        return;
+      }
+      parsed.push({ start: s, end: e, text: c.text.trim() });
+    }
+    if (parsed.length === 0) {
+      setError(t("videos.subBadRow"));
+      return;
+    }
+    setError(null);
+    saveMut.mutate(parsed);
+  };
+
+  const switchLang = (l: string): void => {
+    setLang(l);
+    setDraft(null);
+    setLoadedKey("");
+    setNote(null);
+    setError(null);
+  };
+
+  const inputStyle: React.CSSProperties = {
+    padding: "0.45rem 0.5rem",
+    border: "1px solid var(--border, #e3ddcb)",
+    borderRadius: 8,
+    background: "transparent",
+    color: "inherit",
+    font: "inherit",
+    fontSize: "0.9rem",
+  };
+
+  return (
+    <div
+      style={{
+        borderTop: "1px solid var(--border, #e3ddcb)",
+        paddingTop: "1rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.8rem",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.6rem",
+          flexWrap: "wrap",
+        }}
+      >
+        <strong>
+          {t("videos.subEditorTitle")} —{" "}
+          {pickTitle(item.title, locale) || item.id}
+        </strong>
+        <span style={{ flex: 1 }} />
+        <Button variant="ghost" onClick={onClose}>
+          {t("videos.subClose")}
+        </Button>
+      </div>
+
+      <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+        {SUBTITLE_LANGS.map((l) => (
+          <Button
+            key={l}
+            variant={l === lang ? undefined : "ghost"}
+            onClick={() => switchLang(l)}
+          >
+            {langLabel(l)}
+          </Button>
+        ))}
+      </div>
+
+      {cuesQuery.isLoading ? (
+        <p className="hint">{t("videos.loading")}</p>
+      ) : cuesQuery.isError ? (
+        <p className="form-error">{t("videos.error")}</p>
+      ) : (
+        <>
+          {previewUrl ? (
+            <div
+              style={{
+                display: "flex",
+                gap: "1rem",
+                flexWrap: "wrap",
+                alignItems: "flex-start",
+              }}
+            >
+              <video
+                ref={videoRef}
+                src={previewUrl}
+                controls
+                preload="metadata"
+                style={{ width: 300, maxWidth: "100%", borderRadius: 10 }}
+                onTimeUpdate={(ev) => {
+                  const v = ev.currentTarget;
+                  setNow(v.currentTime);
+                  if (
+                    stopAtRef.current !== null &&
+                    v.currentTime >= stopAtRef.current
+                  ) {
+                    stopAtRef.current = null;
+                    v.pause();
+                  }
+                }}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.5rem",
+                }}
+              >
+                <span className="hint" style={{ margin: 0 }}>
+                  {t("videos.subPreviewNow")}
+                </span>
+                <strong dir="ltr" style={{ fontSize: "1.25rem" }}>
+                  {fmtCueTime(now)}
+                </strong>
+                <div style={{ display: "flex", gap: "0.4rem" }}>
+                  <Button variant="ghost" onClick={() => grab("start")}>
+                    {t("videos.subGrabStart")}
+                  </Button>
+                  <Button variant="ghost" onClick={() => grab("end")}>
+                    {t("videos.subGrabEnd")}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.5rem",
+            }}
+          >
+            {cues.map((c, i) => (
+              <div
+                key={i}
+                onClick={() => setSel(i)}
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  alignItems: "flex-start",
+                  border:
+                    i === sel
+                      ? "1.5px solid var(--gold, #d4af37)"
+                      : "1px solid var(--border, #e3ddcb)",
+                  borderRadius: 10,
+                  padding: "0.55rem",
+                }}
+              >
+                <span
+                  style={{
+                    fontWeight: 800,
+                    minWidth: "1.6rem",
+                    textAlign: "center",
+                    paddingTop: "0.5rem",
+                  }}
+                >
+                  {i + 1}
+                </span>
+                <input
+                  aria-label={t("videos.subColStart")}
+                  dir="ltr"
+                  style={{ ...inputStyle, width: "7.2rem" }}
+                  value={c.start}
+                  onChange={(e) => patch(i, { start: e.target.value })}
+                />
+                <input
+                  aria-label={t("videos.subColEnd")}
+                  dir="ltr"
+                  style={{ ...inputStyle, width: "7.2rem" }}
+                  value={c.end}
+                  onChange={(e) => patch(i, { end: e.target.value })}
+                />
+                <textarea
+                  aria-label={t("videos.subColText")}
+                  rows={2}
+                  style={{ ...inputStyle, flex: 1, resize: "vertical" }}
+                  value={c.text}
+                  onChange={(e) => patch(i, { text: e.target.value })}
+                />
+                {previewUrl ? (
+                  <Button
+                    variant="ghost"
+                    title={t("videos.subPlayCue")}
+                    onClick={() => playCue(i)}
+                  >
+                    ▶
+                  </Button>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  title={t("videos.subDeleteCue")}
+                  onClick={() =>
+                    setDraft((prev) =>
+                      (prev ?? []).filter((_, idx) => idx !== i),
+                    )
+                  }
+                >
+                  ✕
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "0.6rem",
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <Button
+              variant="ghost"
+              onClick={() => {
+                const last = cues[cues.length - 1];
+                const s = last ? (parseCueTime(last.end) ?? 0) : 0;
+                setDraft([
+                  ...cues,
+                  {
+                    start: fmtCueTime(s),
+                    end: fmtCueTime(s + 2),
+                    text: "",
+                  },
+                ]);
+                setSel(cues.length);
+              }}
+            >
+              {t("videos.subAddCue")}
+            </Button>
+            <span className="hint" style={{ margin: 0 }}>
+              {t("videos.subEditHint")}
+            </span>
+            <span style={{ flex: 1 }} />
+            <Button onClick={onSave} disabled={saveMut.isPending}>
+              {t("videos.subSaveCues")}
+            </Button>
+          </div>
+          {note ? (
+            <p className="hint" style={{ margin: 0 }}>
+              {note}
+            </p>
+          ) : null}
+          {error ? <p className="form-error">{error}</p> : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* subtitle status card (phase 3)                                      */
 /* ------------------------------------------------------------------ */
 
@@ -758,6 +1137,7 @@ function SubtitlesCard(): React.ReactElement {
     refetchInterval: 15000,
   });
   const [genError, setGenError] = React.useState<string | null>(null);
+  const [editing, setEditing] = React.useState<AdminSubtitleItem | null>(null);
   const genMut = useMutation({
     mutationFn: (id: string) => generateSubtitles(id),
     onSuccess: () => {
@@ -854,6 +1234,12 @@ function SubtitlesCard(): React.ReactElement {
                       <td style={cellStyle}>
                         <Button
                           variant="ghost"
+                          onClick={() => setEditing(item)}
+                        >
+                          {t("videos.subEdit")}
+                        </Button>
+                        <Button
+                          variant="ghost"
                           disabled={genMut.isPending}
                           onClick={() => genMut.mutate(item.id)}
                         >
@@ -867,6 +1253,12 @@ function SubtitlesCard(): React.ReactElement {
             </div>
           )}
           {genError ? <p className="form-error">{genError}</p> : null}
+          {editing ? (
+            <SubtitleEditor
+              item={editing}
+              onClose={() => setEditing(null)}
+            />
+          ) : null}
         </div>
       </CardContent>
     </Card>

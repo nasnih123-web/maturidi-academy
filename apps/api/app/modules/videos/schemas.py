@@ -126,6 +126,35 @@ class AdminSubtitleItemOut(BaseModel):
     errors: dict[str, str] = Field(default_factory=dict)
 
 
+class SubtitleCue(BaseModel):
+    """یک سطر زیرنویس در ویرایشگر CRM: بازهٔ زمانی (ثانیه) + متن."""
+
+    start: float
+    end: float
+    text: str
+
+
+class SubtitleCuesOut(BaseModel):
+    """سطرهای یک ترک زیرنویس برای ویرایشگر CRM.
+
+    preview_url فقط برای آیتم لینک مستقیم فایل پر می‌شود (همان نشانی
+    فایل)؛ آیتم‌های آپلودی پیش‌نمایش ندارند و ویرایشگر بدون آن هم
+    کامل کار می‌کند.
+    """
+
+    item_id: uuid.UUID
+    lang: str
+    status: str
+    preview_url: str | None = None
+    cues: list[SubtitleCue]
+
+
+class SubtitleCuesIn(BaseModel):
+    """ذخیرهٔ ویرایشگر: فهرست کامل سطرهای تازهٔ ترک (جایگزین قبلی)."""
+
+    cues: list[SubtitleCue] = Field(max_length=5000)
+
+
 class PlaylistCreateIn(BaseModel):
     title: LocalizedText
     description: LocalizedText | None = None

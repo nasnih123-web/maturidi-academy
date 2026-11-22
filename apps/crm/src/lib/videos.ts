@@ -157,6 +157,41 @@ export function generateSubtitles(
   );
 }
 
+/* ---------------------- subtitle cue editor ----------------------- */
+
+export interface SubtitleCue {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface SubtitleCues {
+  item_id: string;
+  lang: string;
+  status: SubtitleStatus;
+  /** Direct-file items only: the file URL, used as the editor preview. */
+  preview_url: string | null;
+  cues: SubtitleCue[];
+}
+
+export function fetchSubtitleCues(
+  itemId: string,
+  lang: string,
+): Promise<SubtitleCues> {
+  return apiFetch<SubtitleCues>(`${BASE}/${itemId}/subtitles/${lang}`);
+}
+
+export function saveSubtitleCues(
+  itemId: string,
+  lang: string,
+  cues: SubtitleCue[],
+): Promise<SubtitleCues> {
+  return apiFetch<SubtitleCues>(`${BASE}/${itemId}/subtitles/${lang}`, {
+    method: "PUT",
+    body: { cues },
+  });
+}
+
 /* ------------------------- videos.* settings ------------------------ */
 
 export interface VideosSettingsValues {
