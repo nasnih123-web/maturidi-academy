@@ -365,6 +365,67 @@ async def test_delete_is_soft_archive(tc):
         assert await db.get(LibraryItem, uuid.UUID(item_id)) is not None
 
 
+async def test_purge_archived_item_physically_deletes(tc):
+    """DELETE /permanent روی آیتم archived: رکورد و نسخه‌هایش فیزیکی پاک می‌شوند."""
+    client = tc["client"]
+    admin = await _make_user(tc, ("library.manage",))
+
+    r = await _upload(client, admin, "pdf", "doc.pdf", PDF_BYTES)
+    assert r.status_code == 201, r.text
+    item_id = r.json()["id"]
+
+    # ویرایش → یک نسخهٔ بایگانی‌شده ساخته می‌شود تا حذف نسخه‌ها هم پوشش داده شود
+    r = await client.put(
+        f"{BASE}/admin/library/items/{item_id}",
+        data={"metadata": json.dumps({"title": _L("عنوان ویرایش‌شده"), "note": "pre-purge edit"})},
+        headers=admin,
+    )
+    assert r.status_code == 200, r.text
+
+    # اول بایگانی نرم (DELETE معمولی)، بعد حذف دائمی
+    r = await client.delete(f"{BASE}/admin/library/items/{item_id}", headers=admin)
+    assert r.status_code == 200, r.text
+    r = await client.delete(f"{BASE}/admin/library/items/{item_id}/permanent", headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == item_id
+
+    from app.models.models import LibraryItem, LibraryItemVersion
+    async with tc["maker"]() as db:
+        assert await db.get(LibraryItem, uuid.UUID(item_id)) is None
+        versions = (await db.execute(
+            select(LibraryItemVersion).where(LibraryItemVersion.item_id == uuid.UUID(item_id))
+        )).scalars().all()
+        assert versions == []
+
+    r = await client.get(f"{BASE}/admin/library/items/{item_id}", headers=admin)
+    assert r.status_code == 404
+
+
+async def test_purge_requires_archived(tc):
+    """حذف دائمی روی آیتم بایگانی‌نشده → 409 و رکورد سر جایش می‌ماند."""
+    client = tc["client"]
+    admin = await _make_user(tc, ("library.manage",))
+
+    r = await _upload(client, admin, "pdf", "doc.pdf", PDF_BYTES)
+    assert r.status_code == 201, r.text
+    item_id = r.json()["id"]
+    r = await client.delete(f"{BASE}/admin/library/items/{item_id}/permanent", headers=admin)
+    assert r.status_code == 409, r.text
+    assert r.json()["error"]["code"] == "item_not_archived"
+
+    from app.models.models import LibraryItem
+    async with tc["maker"]() as db:
+        assert await db.get(LibraryItem, uuid.UUID(item_id)) is not None
+
+
+async def test_purge_unknown_item_404(tc):
+    """حذف دائمی آیتم ناموجود → 404."""
+    client = tc["client"]
+    admin = await _make_user(tc, ("library.manage",))
+    r = await client.delete(f"{BASE}/admin/library/items/{uuid.uuid4()}/permanent", headers=admin)
+    assert r.status_code == 404, r.text
+
+
 async def test_reprocess_enqueues_and_resets_status(tc):
     """POST /reprocess: وضعیت pending + صف‌بندی job (ورکر آفلاین هم خطا نیست)."""
     client = tc["client"]
