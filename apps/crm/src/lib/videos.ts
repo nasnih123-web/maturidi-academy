@@ -134,6 +134,8 @@ export interface AdminSubtitleItem {
   created_at: string;
   /** Per-language status for all five subtitle languages. */
   subtitles: Record<string, SubtitleStatus>;
+  /** Failure reason per language — present only for failed rows. */
+  errors?: Record<string, string>;
 }
 
 export interface SubtitleGenerateResult {

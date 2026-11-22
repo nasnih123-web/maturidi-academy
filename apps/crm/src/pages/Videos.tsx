@@ -779,6 +779,9 @@ function SubtitlesCard(): React.ReactElement {
     if (status === "pending" || status === "processing") {
       return <Badge tone="warning">{t("videos.subWorking")}</Badge>;
     }
+    if (status === "failed") {
+      return <Badge tone="danger">{t("videos.subFailed")}</Badge>;
+    }
     return <Badge>{t("videos.subMissing")}</Badge>;
   };
 
@@ -832,6 +835,20 @@ function SubtitlesCard(): React.ReactElement {
                       {SUBTITLE_LANGS.map((l) => (
                         <td key={l} style={cellStyle}>
                           {chip(item.subtitles[l] ?? "missing")}
+                          {item.errors?.[l] ? (
+                            <div
+                              style={{
+                                fontSize: "0.72rem",
+                                color: "var(--x-muted)",
+                                whiteSpace: "normal",
+                                maxWidth: 220,
+                                wordBreak: "break-word",
+                                marginTop: "0.25rem",
+                              }}
+                            >
+                              {item.errors[l]}
+                            </div>
+                          ) : null}
                         </td>
                       ))}
                       <td style={cellStyle}>

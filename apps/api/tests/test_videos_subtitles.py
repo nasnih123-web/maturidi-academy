@@ -531,6 +531,51 @@ async def test_admin_subtitle_statuses(tc):
     assert subs["en"] == "missing"
     assert subs["ur"] == "missing"
     assert subs["dari"] == "missing"
+    # هیچ ردیف failedای نیست → errors خالی
+    assert by_id[item_id]["errors"] == {}
+
+
+async def _seed_subtitle_row(tc, item_id: str, lang: str, status: str, error=None):
+    from app.models.models import ItemSubtitle
+
+    async with tc["maker"]() as db:
+        db.add(
+            ItemSubtitle(
+                item_id=uuid.UUID(item_id), lang=lang, status=status, error=error
+            )
+        )
+        await db.commit()
+
+
+async def test_admin_subtitle_statuses_include_errors(tc):
+    client = tc["client"]
+    admin = await _admin(tc)
+    item_id = await _make_item(tc)
+    # fa آماده، ar شکست با دلیل، en شکست بدون دلیل، ur در انتظار
+    await _seed_ready_subtitle(tc, item_id, "fa", "WEBVTT\n\nx\n")
+    await _seed_subtitle_row(
+        tc, item_id, "ar", "failed", "translation_provider_not_configured"
+    )
+    await _seed_subtitle_row(tc, item_id, "en", "failed", None)
+    await _seed_subtitle_row(tc, item_id, "ur", "pending")
+    clean_id = await _make_item(tc, title=_L("بدون خطا"))
+
+    res = await client.get(f"{BASE}/admin/videos/subtitles", headers=admin)
+    assert res.status_code == 200, res.text
+    by_id = {row["id"]: row for row in res.json()}
+
+    subs = by_id[item_id]["subtitles"]
+    assert subs["fa"] == "ready"
+    assert subs["ar"] == "failed"
+    assert subs["en"] == "failed"
+    assert subs["ur"] == "pending"
+    assert subs["dari"] == "missing"
+    # فقط ردیف failed با error غیرخالی در errors می‌آید — با متن دقیق
+    assert by_id[item_id]["errors"] == {
+        "ar": "translation_provider_not_configured"
+    }
+    # آیتم بدون ردیف failed → errors خالی
+    assert by_id[clean_id]["errors"] == {}
 
 
 # ---------------------------------------------------------------------------
