@@ -3461,6 +3461,7 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
     },
     [finishFlip],
   );
+  
   // Button flip: when the page index moves by one in mushaf mode,
   // turn the leaf from the frozen previous page to the live new one.
   useEffect(() => {
