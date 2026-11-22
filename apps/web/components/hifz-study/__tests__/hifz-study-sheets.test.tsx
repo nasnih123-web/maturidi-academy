@@ -407,10 +407,10 @@ describe('Recitation toolbar replaces the hifz bottom bar (user 2026-11-10)', ()
   it('globals.css carries the user design verbatim (scoped) + fixed positioning + clearance', () => {
     const css = readCss();
     // The user's gradient, gold-ringed mic and mobile sizes.
-        assert.match(css, /\#b6e2ca 0%,/);
-    assert.match(css, /\#087d43 17%,/);
-    assert.match(css, /\#006535 43%,/);
-    assert.match(css, /\#00703a 65%,/);
+        assert.match(css, /#b6e2ca 0%,/);
+    assert.match(css, /#087d43 17%,/);
+    assert.match(css, /#006535 43%,/);
+    assert.match(css, /#00703a 65%,/);
     assert.match(css, /\.quran-hifz-study \.mic-button \{/);
     assert.match(css, /width: 166px;/);
     assert.match(css, /border: 9px solid var\(--gold\);/);
@@ -437,17 +437,17 @@ describe('Recitation toolbar replaces the hifz bottom bar (user 2026-11-10)', ()
     // 11px -> 10px, waveform 19px -> 14px, gap 4px -> 2px,
     // min-width 76px -> 58px -> 56px, so the Latin text clears
     // the halo. The rule MUST use the 4-class selector — the
-    // toolbar-scoped \`.recitation-toolbar .progress-pill
-    // { font: inherit; }\` (3-class) otherwise wins and the
+    // toolbar-scoped `.recitation-toolbar .progress-pill
+    // { font: inherit; }` (3-class) otherwise wins and the
     // font-size never applies (measured 15.6px inherited, text
     // still touching the halo).
     assert.match(css, /\.quran-hifz-study \.recitation-toolbar \.toolbar-left \.progress-pill \{\s*min-width: 56px;\s*height: 42px;\s*font-size: 10px;\s*gap: 2px;\s*\}/);
     assert.match(css, /\.quran-hifz-study \.waveform \{\s*width: 14px;\s*height: 13px;\s*\}/);
     // Icon-visibility fix (same decision): the pre-existing base
-    // rule \`.quran-hifz-study button\` gives every button
-    // \`min-height: 44px\` + \`padding: 0 1rem\`, which collapses the
+    // rule `.quran-hifz-study button` gives every button
+    // `min-height: 44px` + `padding: 0 1rem`, which collapses the
     // small icon buttons' content box so the global
-    // \`max-inline-size: 100%\` clamps the SVGs to 0px (chevrons
+    // `max-inline-size: 100%` clamps the SVGs to 0px (chevrons
     // invisible) / 6px (eye, grid tiny) and stretches the circles
     // into ellipses. The toolbar resets both.
     assert.match(css, /\.quran-hifz-study \.recitation-toolbar \.tool-button \{\s*padding: 0;\s*min-height: 0;\s*\}/);
@@ -500,7 +500,7 @@ describe('Fixed hifz study page + sign-in toast (user 2026-11-10)', () => {
     // same label text (no hardcoded Persian) + a close button.
     assert.match(study, /displayMode === 'mushaf' && !authed && signInToastVisible/);
     assert.match(study, /className="hifz-signin-toast" role="status"/);
-    assert.match(study, /\<p\>\{labels\.signInHint\}\<\/p\>/);
+    assert.match(study, /<p>\{labels\.signInHint\}<\/p>/);
     assert.match(study, /aria-label=\{labels\.toastClose\}/);
     // Show once on load for guests (token read synchronously, same
     // source as the authed effect), auto-dismiss after ~6s, re-show
@@ -515,7 +515,7 @@ describe('Fixed hifz study page + sign-in toast (user 2026-11-10)', () => {
     // The study root itself is fixed to the viewport (the lock):
     // the document then has no scrollable overflow at all.
     // margin: 0 (regression fix 2026-11-11): the base rule carries
-    // \`margin: 0 calc(-1 \* clamp(1rem, 3vw, 2rem))\`, which made the
+    // `margin: 0 calc(-1 * clamp(1rem, 3vw, 2rem))`, which made the
     // fixed root 425px wide at x=-16 on a 393px viewport — the
     // horizontal overflow real mobile Chrome expands the layout
     // viewport for. A fixed root IS the viewport: no margin.
