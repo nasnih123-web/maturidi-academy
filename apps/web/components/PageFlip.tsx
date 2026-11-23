@@ -1,6 +1,6 @@
 // PageFlip — a real 3D page-turn leaf, shared by the hifz study page
 // (mushaf mode) and the general Quran reader (user 2026-11-22,
-// confirmed: real 3D flip, buttons + finger drag, left-to-right for
+// confirmed: real 3D flip, buttons + finger drag, right-to-left for
 // the next page, same flip in both sections).
 //
 // The scene stacks two layers in one grid cell: the incoming page
@@ -11,9 +11,9 @@
 // viewer sees the back of the turning page, like a real book.
 //
 // Direction (confirmed by the user): the NEXT page sweeps
-// left-to-right — the leaf rotates around its right edge and its
-// free left edge swings over to the right. The PREVIOUS page sweeps
-// right-to-left, around its left edge.
+// right-to-left — the leaf rotates around its left edge and its
+// free right edge swings over to the left. The PREVIOUS page sweeps
+// left-to-right, around its right edge.
 //
 // The component is purely presentational: the parent owns the flip
 // state (which pages, which progress) and decides when a flip
@@ -36,9 +36,9 @@ export const FLIP_DRAG_MAX = 0.9;
 /** Drag distance in px before a touch becomes a page-turn drag. */
 export const FLIP_DRAG_START_PX = 10;
 
-/** Next page (+1) sweeps left-to-right; previous page (-1) right-to-left. */
+/** Next page (+1) sweeps right-to-left; previous page (-1) left-to-right. */
 export function flipDirectionForDelta(delta: 1 | -1): PageFlipDirection {
-  return delta === 1 ? 'ltr' : 'rtl';
+  return delta === 1 ? 'rtl' : 'ltr';
 }
 
 /** True when the user asked the system to reduce motion: no flip, instant swap. */

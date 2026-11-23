@@ -763,7 +763,7 @@ function useReaderPageFlip(opts: {
       const commit = d.progress >= FLIP_DRAG_COMMIT || velocity > 0.5;
       const id = f.id;
       if (commit) {
-        flipPendingCommitRef.current = d.direction === 'ltr' ? 1 : -1;
+        flipPendingCommitRef.current = d.direction === 'rtl' ? 1 : -1;
         setFlip((cur) => (cur && cur.id === id ? { ...cur, progress: 1, animated: true } : cur));
       } else {
         setFlip((cur) => (cur && cur.id === id ? { ...cur, progress: 0, animated: true } : cur));
