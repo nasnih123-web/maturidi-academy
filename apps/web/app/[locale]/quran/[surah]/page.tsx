@@ -78,6 +78,7 @@ export default async function SurahPage({
     reciter?: string;
     ayah?: string;
     tab?: string;
+    cview?: string;
     view?: string;
     target?: string;
     mushaf?: string;
@@ -120,6 +121,14 @@ export default async function SurahPage({
   // Section deep-link: only the three real sections; anything else is عموم.
   const initialTab =
     searchParams.tab === 'hifz' || searchParams.tab === 'children' ? searchParams.tab : 'general';
+
+  // Children section's initial view from ?cview= (home/list/study/quiz).
+  const initialChildrenView =
+    searchParams.cview === 'list' ||
+    searchParams.cview === 'study' ||
+    searchParams.cview === 'quiz'
+      ? searchParams.cview
+      : 'home';
 
   // View-mode deep-link: only the four real modes besides سوره; anything
   // else is سوره. Target validated against the mode's range size.
@@ -183,8 +192,10 @@ export default async function SurahPage({
   // immutable at runtime) and the page is the binary search over it;
   // any failure here only drops the preloads, never the page — the
   // client loader fetches index + chunk lazily instead.
+  // The children tab (Phase 4) renders the same V2 1421 pages, so it
+  // preloads the same way.
   let initialV2Page: number | null = null;
-  if (initialTab === 'hifz') {
+  if (initialTab === 'hifz' || initialTab === 'children') {
     try {
       const index = await loadV2IndexFromDisk();
       if (index) {
@@ -207,9 +218,9 @@ export default async function SurahPage({
           downloads) and start with the first wave instead of after
           hydration. crossOrigin="anonymous" is required: without it
           the preload does not match the fetch() and the data
-          downloads twice. Only the hifz tab needs it — the umum
+          downloads twice. Only the hifz + children tabs need it — the umum
           reader loads V2 lazily on its own, only in page/range modes. */}
-      {initialTab === 'hifz' && (
+      {(initialTab === 'hifz' || initialTab === 'children') && (
         <>
           <link
             rel="preload"
@@ -235,6 +246,7 @@ export default async function SurahPage({
         settings={qs}
         initialAyah={initialAyah}
         initialTab={initialTab}
+        initialChildrenView={initialChildrenView}
         initialView={initialView}
         initialTarget={initialTarget}
         initialMushaf={initialMushaf}
@@ -477,6 +489,105 @@ export default async function SurahPage({
             listenResumeFrom: t('hifzListenResumeFrom'),
             listenLongPressSwitch: t('hifzListenLongPressSwitch'),
             listenReciters: [
+              { id: 'abdul_basit_mujawwad', label: t('hifzListenReciterAbdulBasitMujawwad') },
+              { id: 'abdul_basit', label: t('hifzListenReciterAbdulBasit') },
+              { id: 'sudais', label: t('hifzListenReciterSudais') },
+              { id: 'shatri', label: t('hifzListenReciterShatri') },
+              { id: 'hani_rifai', label: t('hifzListenReciterHaniRifai') },
+              { id: 'husary', label: t('hifzListenReciterHusary') },
+              { id: 'alafasy', label: t('hifzListenReciterAlafasy') },
+              { id: 'minshawi_mujawwad', label: t('hifzListenReciterMinshawiMujawwad') },
+              { id: 'minshawi', label: t('hifzListenReciterMinshawi') },
+              { id: 'shuraym', label: t('hifzListenReciterShuraym') },
+              { id: 'tablawi', label: t('hifzListenReciterTablawi') },
+              { id: 'husary_muallim', label: t('hifzListenReciterHusaryMuallim') },
+            ],
+          },
+          children: {
+            homeTitle: t('childrenHomeTitle'),
+            homeSubtitle: t('childrenHomeSubtitle'),
+            goalTitle: t('childrenGoalTitle'),
+            goalOf: t('childrenGoalOf'),
+            goalMet: t('childrenGoalMet'),
+            todayTitle: t('childrenTodayTitle'),
+            todayEmpty: t('childrenTodayEmpty'),
+            weekTitle: t('childrenWeekTitle'),
+            streakTitle: t('childrenStreakTitle'),
+            starsTitle: t('childrenStarsTitle'),
+            learnedTitle: t('childrenLearnedTitle'),
+            juzMapTitle: t('childrenJuzMapTitle'),
+            continueTitle: t('childrenContinueTitle'),
+            continueFrom: t('childrenContinueFrom'),
+            retryTitle: t('childrenRetryTitle'),
+            weakEmpty: t('childrenWeakEmpty'),
+            signInTitle: t('childrenSignInTitle'),
+            signInHint: t('childrenSignInHint'),
+            signInButton: t('childrenSignInButton'),
+            error: t('childrenError'),
+            retry: t('childrenRetry'),
+            listTitle: t('childrenListTitle'),
+            listSearchPlaceholder: t('childrenListSearchPlaceholder'),
+            filterAll: t('childrenFilterAll'),
+            filterJuz30: t('childrenFilterJuz30'),
+            filterCompleted: t('childrenFilterCompleted'),
+            filterLearning: t('childrenFilterLearning'),
+            listEmpty: t('childrenListEmpty'),
+            ayahCount: t('childrenAyahCount'),
+            surahNumber: t('childrenSurahNumber'),
+            tabHome: t('childrenTabHome'),
+            tabList: t('childrenTabList'),
+            tabStudy: t('childrenTabStudy'),
+            tabQuiz: t('childrenTabQuiz'),
+            studyTitle: t('childrenStudyTitle'),
+            pageLabel: t('childrenPageLabel'),
+            prevPage: t('childrenPrevPage'),
+            nextPage: t('childrenNextPage'),
+            play: t('childrenPlay'),
+            pause: t('childrenPause'),
+            resume: t('childrenResume'),
+            stop: t('childrenStop'),
+            prevAyah: t('childrenPrevAyah'),
+            nextAyah: t('childrenNextAyah'),
+            speed: t('childrenSpeed'),
+            repeat: t('childrenRepeat'),
+            repeatOff: t('childrenRepeatOff'),
+            repeatAyah: t('childrenRepeatAyah'),
+            repeatSurah: t('childrenRepeatSurah'),
+            volume: t('childrenVolume'),
+            reciter: t('childrenReciter'),
+            reciterPick: t('childrenReciterPick'),
+            reciterClose: t('childrenReciterClose'),
+            timingEstimated: t('childrenTimingEstimated'),
+            audioFailed: t('childrenAudioFailed'),
+            audioLoading: t('childrenAudioLoading'),
+            resumeFrom: t('childrenResumeFrom'),
+            videosTitle: t('childrenVideosTitle'),
+            videosEmpty: t('childrenVideosEmpty'),
+            videoWatch: t('childrenVideoWatch'),
+            offlineTitle: t('childrenOfflineTitle'),
+            offlineSurah: t('childrenOfflineSurah'),
+            offlineWhole: t('childrenOfflineWhole'),
+            offlineDownloading: t('childrenOfflineDownloading'),
+            offlineDone: t('childrenOfflineDone'),
+            offlineFailed: t('childrenOfflineFailed'),
+            offlineCancel: t('childrenOfflineCancel'),
+            offlineDownloaded: t('childrenOfflineDownloaded'),
+            offlineNote: t('childrenOfflineNote'),
+            pageFailed: t('childrenPageFailed'),
+            quizTitle: t('childrenQuizTitle'),
+            quizMcqTitle: t('childrenQuizMcqTitle'),
+            quizMatchingTitle: t('childrenQuizMatchingTitle'),
+            quizSubmit: t('childrenQuizSubmit'),
+            quizResult: t('childrenQuizResult'),
+            quizCorrect: t('childrenQuizCorrect'),
+            quizStarsEarned: t('childrenQuizStarsEarned'),
+            quizRetry: t('childrenQuizRetry'),
+            quizEmpty: t('childrenQuizEmpty'),
+            quizMatchingEmpty: t('childrenQuizMatchingEmpty'),
+            quizSignInHint: t('childrenQuizSignInHint'),
+            quizPickWord: t('childrenQuizPickWord'),
+            quizAllPaired: t('childrenQuizAllPaired'),
+            reciterNames: [
               { id: 'abdul_basit_mujawwad', label: t('hifzListenReciterAbdulBasitMujawwad') },
               { id: 'abdul_basit', label: t('hifzListenReciterAbdulBasit') },
               { id: 'sudais', label: t('hifzListenReciterSudais') },

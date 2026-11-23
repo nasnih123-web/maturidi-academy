@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "./api";
 import { readSettingsMap } from "./appearance";
+import type { LocalizedText } from "./contentApi";
 
 /**
  * Quran service — Phase 5 (Track 3, CRM).
@@ -592,4 +593,123 @@ export function parseAdhanDefaults(raw: string | null | undefined): AdhanDefault
     calculation_method: typeof r.calculation_method === "string" ? r.calculation_method : "",
     madhab: r.madhab === "shafi" ? "shafi" : "hanafi",
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Children section (Phase 4) — admin API                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Children videos + test questions, managed from the Quran page.
+ * Wire contract (apps/api/app/modules/quran/children/):
+ * - GET  /api/v1/quran/children/surahs/{n}/videos (public list)
+ * - POST /api/v1/admin/quran/children/surahs/{n}/videos {item_id, position}
+ * - DELETE /api/v1/admin/quran/children/surahs/{n}/videos/{item_id}
+ * - PUT  /api/v1/admin/quran/children/surahs/{n}/videos/order {item_ids}
+ * - GET  /api/v1/admin/quran/children/questions?surah={n}
+ * - POST /api/v1/admin/quran/children/questions {surah, question_type, payload, is_active}
+ * - PATCH /api/v1/admin/quran/children/questions/{id} {payload?, is_active?}
+ * - DELETE /api/v1/admin/quran/children/questions/{id}
+ * Videos are library items (link only — no upload here; the upload
+ * waits for the virus-scan method decision). Questions are auto MCQ
+ * (server-generated, read-only here) + CRM questions (mcq/matching).
+ */
+
+export interface ChildrenVideoItem {
+  id: string;
+  surah: number;
+  position: number;
+  item_id: string;
+  title: LocalizedText;
+  source: string;
+  source_label: string;
+  external_url: string | null;
+  embed_url: string | null;
+  stream_url: string | null;
+  duration_seconds: number | null;
+  cover_url: string | null;
+}
+
+export interface ChildrenQuestionItem {
+  id: string;
+  surah: number;
+  question_type: "mcq" | "matching";
+  source: "auto" | "crm";
+  payload: Record<string, unknown>;
+  is_active: boolean;
+}
+
+export async function fetchChildrenSurahVideos(
+  surah: number,
+): Promise<ChildrenVideoItem[]> {
+  return apiFetch<ChildrenVideoItem[]>(
+    `/api/v1/quran/children/surahs/${surah}/videos`,
+  );
+}
+
+export async function linkChildrenVideo(
+  surah: number,
+  itemId: string,
+): Promise<ChildrenVideoItem> {
+  return apiFetch<ChildrenVideoItem>(
+    `/api/v1/admin/quran/children/surahs/${surah}/videos`,
+    { method: "POST", body: { item_id: itemId, position: 0 } },
+  );
+}
+
+export async function unlinkChildrenVideo(
+  surah: number,
+  itemId: string,
+): Promise<void> {
+  await apiFetch<void>(
+    `/api/v1/admin/quran/children/surahs/${surah}/videos/${itemId}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function reorderChildrenVideos(
+  surah: number,
+  itemIds: string[],
+): Promise<void> {
+  await apiFetch<void>(
+    `/api/v1/admin/quran/children/surahs/${surah}/videos/order`,
+    { method: "PUT", body: { item_ids: itemIds } },
+  );
+}
+
+export async function fetchChildrenAdminQuestions(
+  surah?: number,
+): Promise<ChildrenQuestionItem[]> {
+  const q = surah ? `?surah=${surah}` : "";
+  return apiFetch<ChildrenQuestionItem[]>(
+    `/api/v1/admin/quran/children/questions${q}`,
+  );
+}
+
+export async function createChildrenQuestion(input: {
+  surah: number;
+  question_type: "mcq" | "matching";
+  payload: Record<string, unknown>;
+  is_active?: boolean;
+}): Promise<ChildrenQuestionItem> {
+  return apiFetch<ChildrenQuestionItem>(
+    "/api/v1/admin/quran/children/questions",
+    { method: "POST", body: { ...input, is_active: input.is_active ?? true } },
+  );
+}
+
+export async function updateChildrenQuestion(
+  id: string,
+  patch: { payload?: Record<string, unknown>; is_active?: boolean },
+): Promise<ChildrenQuestionItem> {
+  return apiFetch<ChildrenQuestionItem>(
+    `/api/v1/admin/quran/children/questions/${id}`,
+    { method: "PATCH", body: patch },
+  );
+}
+
+export async function deleteChildrenQuestion(id: string): Promise<void> {
+  await apiFetch<void>(`/api/v1/admin/quran/children/questions/${id}`, {
+    method: "DELETE",
+  });
 }
