@@ -138,6 +138,9 @@ import { normalizeQuranText, toLatinDigits } from '@/lib/quran-search';
 import type { QuranSettings } from '@/lib/settings';
 import { AyahCard, type AyahCardLabels } from './AyahCard';
 import { QuranHifzStudy, type HifzLabels } from './QuranHifzStudy';
+import { QuranChildren } from './QuranChildren';
+import type { ChildrenView } from './QuranChildrenDashboard';
+import type { ChildrenLabels } from '@/lib/quran-children';
 import { AyahNotes, type AyahNotesLabels } from './AyahNotes';
 import { QuranWaveform } from './QuranWaveform';
 import {
@@ -272,6 +275,8 @@ export interface QuranReaderLabels extends AyahCardLabels, AyahNotesLabels {
   childrenPlaceholder: string;
   /** Phase 3 hifz study labels (built in the RSC page from messages). */
   hifz: HifzLabels;
+  /** Phase 4 children section labels (built in the RSC page from messages). */
+  children: ChildrenLabels;
   madhhabLabel: string;
   madhhabHanafi: string;
   madhhabShafii: string;
@@ -845,6 +850,7 @@ export function QuranReader({
   settings,
   initialAyah,
   initialTab,
+  initialChildrenView,
   initialView,
   initialTarget,
   initialMushaf,
@@ -864,6 +870,8 @@ export function QuranReader({
   initialAyah: number | null;
   /** Section from ?tab= — the reader renders ONLY this section. */
   initialTab?: QuranSection;
+  /** Children section's initial view from ?cview= (home/list/study/quiz). */
+  initialChildrenView?: ChildrenView;
   /** Deep-link view from ?view= (validated server-side). */
   initialView?: QuranViewMode;
   /** Deep-link range target from ?target= (null = list state). */
@@ -889,8 +897,10 @@ export function QuranReader({
   // before QuranUmumReader, so this lives here, in the shared
   // shell. The <style> with the same component-level rules is
   // rendered in the hifz branch (adhan strip + atmosphere).
+  // The children section is a standalone screen like hifz, so it
+  // hides the chrome the same way.
   useEffect(() => {
-    if (section !== 'hifz') return;
+    if (section !== 'hifz' && section !== 'children') return;
     document.body.classList.add('quran-chrome-hidden');
     return () => {
       document.body.classList.remove('quran-chrome-hidden');
@@ -899,8 +909,8 @@ export function QuranReader({
 
   // Non-umum sections render ONLY their own content — no header,
   // no toolbar, no player, no modes, no other section's content.
-  // Hifz (Phase 3) is the real study screen; children is still an
-  // honest placeholder until its phase.
+  // Hifz (Phase 3) is the real study screen; children (Phase 4)
+  // is the real children section (dashboard / list / study / quiz).
   if (section === 'hifz') {
     // The study's first page must not depend on a client fetch: the
     // server already loaded this surah's ayah texts for the reader.
@@ -941,6 +951,37 @@ export function QuranReader({
           reciterPhotos={Object.fromEntries(
             reciters.map((r) => [r.id, r.photoUrl ?? null]),
           )}
+        />
+      </div>
+    );
+  }
+  if (section === 'children') {
+    // The study's first page must not depend on a client fetch: the
+    // server already loaded this surah's ayah texts (and per-ayah
+    // audio URLs, the interpolated-mode fallback) for the reader.
+    const initialTexts: Record<number, string> = {};
+    const ayahAudioUrls: Record<number, string | null> = {};
+    for (const a of ayahs) {
+      initialTexts[a.number] = a.text;
+      ayahAudioUrls[a.number] = a.audioUrl;
+    }
+    return (
+      <div className="quran-reader">
+        <QuranChildren
+          locale={locale}
+          surahNumber={surah.number}
+          surahNameAr={surah.nameAr}
+          ayahCount={surah.ayahCount}
+          initialAyah={initialAyah}
+          initialView={initialChildrenView ?? 'home'}
+          initialTexts={initialTexts}
+          ayahAudioUrls={ayahAudioUrls}
+          surahList={surahList}
+          labels={labels.children}
+          reciterPhotos={Object.fromEntries(
+            reciters.map((r) => [r.id, r.photoUrl ?? null]),
+          )}
+          bismillah={labels.bismillah}
         />
       </div>
     );
