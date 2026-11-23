@@ -19,7 +19,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import APIError
@@ -481,7 +481,7 @@ async def submit_quiz(
     if question_type == "mcq":
         stars = _mcq_stars(correct, total)
     else:
-        stars = 1 if correct >= total and total > 0 else 0
+        stars = 1 if correct >= total > 0 else 0
 
     progress = await _get_or_create_progress(db, user, surah)
     first_done_flag = "quiz_done" if question_type == "mcq" else "match_done"

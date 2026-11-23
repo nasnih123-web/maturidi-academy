@@ -478,7 +478,7 @@ async def test_dashboard_aggregates(tc):
     assert d["week"][-1]["is_today"] is True
     assert d["week"][-1]["active"] is True
     assert d["continue_surah"]["surah"] == 113
-    juz30 = [j for j in d["juz_progress"] if j["juz"] == 30][0]
+    juz30 = next(j for j in d["juz_progress"] if j["juz"] == 30)
     assert juz30["total_surahs"] == 37
     assert juz30["completed_surahs"] == 1
     assert juz30["state"] == "current"

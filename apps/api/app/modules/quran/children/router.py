@@ -20,6 +20,7 @@ from app.modules.auth.dependencies import get_current_user, require_permission
 from . import service
 from .schemas import (
     ChildrenDashboardOut,
+    ChildrenListenIn,
     ChildrenOfflinePackOut,
     ChildrenProgressOut,
     ChildrenQuestionCreateIn,
@@ -27,7 +28,6 @@ from .schemas import (
     ChildrenQuestionUpdateIn,
     ChildrenQuizSubmitIn,
     ChildrenQuizSubmitOut,
-    ChildrenListenIn,
     ChildrenVideoLinkIn,
     ChildrenVideoOrderIn,
     ChildrenVideoOut,
