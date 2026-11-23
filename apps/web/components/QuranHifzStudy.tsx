@@ -153,6 +153,7 @@ import { loadMushafLines, type MushafExactLine } from '@/lib/quran-mushaf-lines'
 import {
   loadV2Index,
   loadV2Page,
+  v2FirstAyahOfPage,
   v2FirstAyahOfSurahOnPage,
   v2PageAyahs,
   v2PageIndexForAyah,
@@ -3284,8 +3285,14 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
   // prev/next-page buttons. V2: load the neighbour page's chunk and
   // jump to its first ayah of this surah; old lines: scan the page
   // for this surah's first text line. Out of range (first/last
-  // page) or a page with no ayah of this surah: no-op, never an
-  // empty page or an error.
+  // page): no-op, never an empty page or an error. A page with no
+  // ayah of this surah is a surah boundary, not a wall (user
+  // 2026-11-23): cross it — the page's first ayah, with the surah
+  // reset to it (eye scope = new surah, hidden, like the «آیهٔ بعد»
+  // crossing in PR #165) — so turning keeps going to the end of the
+  // Quran (114:6). resumeAyahRef carries the landing ayah past the
+  // surah-change effect, which would otherwise restart at ayah 1
+  // (and the page with it) whenever the page starts mid-surah.
   const goToPage = useCallback(
     (delta: -1 | 1) => {
       if (activePageIndex === null) return;
@@ -3295,7 +3302,18 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
         void loadV2Page(target + 1).then((pg) => {
           if (!pg) return;
           const first = v2FirstAyahOfSurahOnPage(pg, surah);
-          if (first !== null) setAyah(first);
+          if (first !== null) {
+            setAyah(first);
+            return;
+          }
+          const pageFirst = v2FirstAyahOfPage(pg);
+          if (pageFirst === null || pageFirst.surah === surah) return;
+          resumeAyahRef.current = pageFirst.ayah;
+          setSurah(pageFirst.surah);
+          setEyeScope({ kind: 'surah', target: pageFirst.surah });
+          setEyeHidden(true);
+          setRevealedWords(new Set());
+          setAyah(pageFirst.ayah);
         });
         return;
       }
@@ -3309,6 +3327,19 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
             setAyah(a);
             return;
           }
+        }
+      }
+      for (const line of lines) {
+        if (line.t === 'text' && line.v) {
+          const [s, a] = line.v.split(':').map(Number);
+          if (s === surah) return;
+          resumeAyahRef.current = a;
+          setSurah(s);
+          setEyeScope({ kind: 'surah', target: s });
+          setEyeHidden(true);
+          setRevealedWords(new Set());
+          setAyah(a);
+          return;
         }
       }
     },
@@ -3592,7 +3623,7 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
       const commit = d.progress >= FLIP_DRAG_COMMIT || velocity > 0.5;
       const id = f.id;
       if (commit) {
-        flipPendingCommitRef.current = d.direction === 'ltr' ? 1 : -1;
+        flipPendingCommitRef.current = d.direction === 'rtl' ? 1 : -1;
         setFlip((cur) => (cur && cur.id === id ? { ...cur, progress: 1, animated: true } : cur));
       } else {
         setFlip((cur) => (cur && cur.id === id ? { ...cur, progress: 0, animated: true } : cur));
