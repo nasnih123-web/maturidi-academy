@@ -80,11 +80,11 @@ def _video_source(item: LibraryItem) -> tuple[str, str, str | None, str | None]:
     """(kind, label, embed_url, stream_url) — همان طبقه‌بندی سرویس ویدیوها."""
     if not item.external_url:
         return "upload", "فایل", None, None
-    if youtube.parse_youtube_video_id(item.external_url) is not None:
-        vid = youtube.parse_youtube_video_id(item.external_url)
+    vid = youtube.parse_youtube_video_id(item.external_url)
+    if vid is not None:
         return "youtube", "یوتیوب", youtube.embed_url(vid), None
-    if aparat.parse_aparat_video_hash(item.external_url) is not None:
-        h = aparat.parse_aparat_video_hash(item.external_url)
+    h = aparat.parse_aparat_video_hash(item.external_url)
+    if h is not None:
         return "aparat", "آپارات", aparat.embed_url(h), None
     return "direct", "لینک مستقیم", None, item.external_url
 
