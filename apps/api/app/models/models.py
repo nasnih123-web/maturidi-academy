@@ -873,6 +873,113 @@ class QuizAttempt(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class ChildrenSurahVideo(Base):
+    """پیوند ویدیوی کتابخانه به یک سوره — بخش کودکان.
+
+    ویدیوها همان LibraryItemها هستند (external_url: یوتیوب/لینک مستقیم)؛
+    این جدول فقط می‌گوید کدام آیتم برای کدام سوره نمایش داده شود و با چه
+    ترتیبی. آپلود فایل محلی در این فاز نیست (منتظر روش اسکن ویروس).
+    """
+
+    __tablename__ = "children_surah_videos"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    surah: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("library_items.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "surah", "item_id", name="uq_children_surah_videos_surah_item"
+        ),
+    )
+
+
+class ChildrenQuizQuestion(Base):
+    """سؤال آزمون کودکان برای یک سوره — فقط چندگزینه‌ای و جورکردنی.
+
+    source: auto (خودکار از متن سوره، قطعی) یا crm (مدیر ساخته).
+    payload برای mcq: {question: LocalizedText, options: [LocalizedText],
+    correct_index: int, explanation: LocalizedText | None}؛ برای
+    matching: {pairs: [{word: str, meaning: LocalizedText}]}.
+    آزمون خواندن و نمره (مثل حفاظ) در بخش کودکان نیست.
+    """
+
+    __tablename__ = "children_quiz_questions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    surah: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    question_type: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="crm")
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class ChildrenQuizAttempt(Base):
+    """تلاش کاربر در آزمون یک سوره — کودکان."""
+
+    __tablename__ = "children_quiz_attempts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=False, index=True
+    )
+    surah: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    question_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    question_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    answers: Mapped[dict] = mapped_column(JSONB, default=dict)
+    correct_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    stars: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class ChildrenProgress(Base):
+    """پیشرفت هر کاربر روی هر سوره — کودکان.
+
+    stars: ستاره‌های سوره (چندگزینه‌ای ۰ تا ۳ + جورکردنی ۰ یا ۱؛ در
+    فهرست حداکثر ۳ ستاره نشان داده می‌شود، جمع داشبورد بدون سقف).
+    status: not_started | learning | completed (کامل = ۳ ستارهٔ
+    چندگزینه‌ای + جورکردنی انجام‌شده).
+    """
+
+    __tablename__ = "children_progress"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=False, index=True
+    )
+    surah: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    stars: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="not_started", index=True
+    )
+    last_ayah: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    listened_ayahs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    quiz_done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    match_done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "surah", name="uq_children_progress_user_surah"
+        ),
+    )
+
+
 class VerificationCheck(Base):
     """راستی‌آزمایی محتوای پیست‌شده علیه دانش منتشرشده."""
 
