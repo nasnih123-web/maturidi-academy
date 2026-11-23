@@ -6,6 +6,10 @@
  * - API GETs under `/api/v1/` → network-first with cache fallback
  *   (stale data beats no data; POST/PUT/DELETE always go to network —
  *   mutations queue in IndexedDB via the sync runner instead).
+ * - Quran audio (children offline packs) → cache-first in
+ *   `ma-audio-v1` for the two public audio CDNs (see AUDIO_HOSTS).
+ *   The client downloads the same URL the player streams; the
+ *   worker serves the cached file when offline.
  * - Navigations → network-first; on failure serve the locale's cached
  *   `/[locale]/offline` page, else a tiny built-in localized fallback.
  *
@@ -15,6 +19,7 @@
 
 const SHELL_CACHE = "ma-shell-v1";
 const API_CACHE = "ma-api-v1";
+const AUDIO_CACHE = "ma-audio-v1";
 
 const PRECACHE = ["/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
 
@@ -78,7 +83,10 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((k) => k !== SHELL_CACHE && k !== API_CACHE)
+            .filter(
+              (k) =>
+                k !== SHELL_CACHE && k !== API_CACHE && k !== AUDIO_CACHE,
+            )
             .map((k) => caches.delete(k)),
         ),
       )
@@ -97,6 +105,33 @@ function isStaticAsset(url) {
 
 function isApiGet(url, request) {
   return url.pathname.startsWith("/api/v1/") && request.method === "GET";
+}
+
+// Quran audio lives on two public CDNs: AlQuran Cloud per-ayah files
+// (cdn.islamic.network — no CORS headers) and QuranicAudio surah
+// files for the timing endpoint (download.quranicaudio.com). The
+// children offline packs download these URLs and the worker caches
+// them so a downloaded surah plays offline. Responses may be opaque,
+// so cache on ok-or-opaque — and only for full (non-range)
+// responses: a partial 206 must never overwrite the full file.
+// A range request hits the cached full file (the element then
+// buffers sequentially from the start); online seeks pass through
+// to the network untouched.
+const AUDIO_HOSTS = new Set([
+  "cdn.islamic.network",
+  "download.quranicaudio.com",
+]);
+
+async function cacheFirstAudio(request) {
+  const cache = await caches.open(AUDIO_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const res = await fetch(request);
+  const isRange = request.headers.has("Range");
+  if ((res.ok || res.type === "opaque") && !isRange) {
+    cache.put(request, res.clone());
+  }
+  return res;
 }
 
 async function cacheFirst(request, cacheName) {
@@ -126,6 +161,12 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return; // mutations → network (sync runner queues them)
   const url = new URL(request.url);
+
+  if (AUDIO_HOSTS.has(url.hostname)) {
+    event.respondWith(cacheFirstAudio(request));
+    return;
+  }
+
   if (url.origin !== self.location.origin) return;
 
   if (isStaticAsset(url)) {
