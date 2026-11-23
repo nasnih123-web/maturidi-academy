@@ -496,16 +496,22 @@ async def test_rate_limit_voice_transcribe(tc):
 
     fatwa_service.reset_ai_limits()
     client = tc["client"]
-    statuses = []
-    for _ in range(8):
-        r = await client.post(
-            f"{BASE}/voice/transcribe",
-            files={"file": ("a.wav", _WAV, "audio/wav")},
-        )
-        statuses.append(r.status_code)
-    # ۵ تای اول: 503 صادقانه (STT پیکربندی نشده)؛ بعدش 429
-    assert 429 in statuses, f"no rate limit enforced: {statuses}"
-    assert statuses.index(429) >= 5, f"rate limit too early/late: {statuses}"
+    # سهمیهٔ دقیقه‌ای (۵) را درون‌فرایندی پر می‌کنیم و بعد فقط یک درخواست
+    # HTTP می‌فرستیم: اگر روتر واقعاً check_quota را صدا بزند، باید 429
+    # بدهد. روش قبلی (۸ درخواست HTTP پیاپی) به سرعت پاسخ‌ها وابسته بود:
+    # وقتی هر درخواست در CI کند می‌شود (دانلود مدل STT روی کش سرد،
+    # DNS اسکن ClamAV)، پنجرهٔ لغزان ۶۰ ثانیه‌ای منقضی می‌شود و 429 هرگز
+    # نمی‌آید — با اینکه limiter سالم است (همین کد بک‌اند روی همین برنچ
+    # در دو ران قبلی CI سبز بود). کلاینت تست ناشناس است و IP آن
+    # 127.0.0.1 است (همان کلیدی که روتر برای check_quota می‌سازد).
+    async with tc["maker"]() as db:
+        for _ in range(5):
+            await fatwa_service.check_quota(db, None, "127.0.0.1", "voice.transcribe")
+    r = await client.post(
+        f"{BASE}/voice/transcribe",
+        files={"file": ("a.wav", _WAV, "audio/wav")},
+    )
+    assert r.status_code == 429, f"no rate limit enforced: {r.status_code} {r.text[:200]}"
 
 
 async def test_rate_limit_voice_ask(tc):
@@ -514,14 +520,16 @@ async def test_rate_limit_voice_ask(tc):
 
     fatwa_service.reset_ai_limits()
     client = tc["client"]
-    statuses = []
-    for _ in range(8):
-        r = await client.post(
-            f"{BASE}/voice/ask",
-            files={"file": ("a.wav", _WAV, "audio/wav")},
-        )
-        statuses.append(r.status_code)
-    assert 429 in statuses, f"no rate limit enforced on voice/ask: {statuses}"
+    # مثل تست transcribe: سهمیه را درون‌فرایندی پر می‌کنیم تا تست به
+    # سرعت پاسخ‌های HTTP (و پنجرهٔ ۶۰ ثانیه‌ای) وابسته نباشد.
+    async with tc["maker"]() as db:
+        for _ in range(5):
+            await fatwa_service.check_quota(db, None, "127.0.0.1", "voice.ask")
+    r = await client.post(
+        f"{BASE}/voice/ask",
+        files={"file": ("a.wav", _WAV, "audio/wav")},
+    )
+    assert r.status_code == 429, f"no rate limit enforced on voice/ask: {r.status_code} {r.text[:200]}"
 
 
 async def test_rate_limit_login(tc):

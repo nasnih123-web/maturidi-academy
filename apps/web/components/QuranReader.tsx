@@ -65,7 +65,7 @@
  * on the reader page, per the user's explicit choice).
  */
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuranPlayback, type PlaybackStatus } from '@/lib/hooks/useQuranPlayback';
 import type { Ayah, Reciter, SurahDetail, SurahSummary } from '@/lib/quran';
@@ -145,6 +145,16 @@ import {
   toArabicIndicDigits,
   type MushafSurahGroup,
 } from './QuranMushafPage';
+import {
+  PageFlip,
+  FLIP_DRAG_COMMIT,
+  FLIP_DRAG_MAX,
+  FLIP_DRAG_START_PX,
+  FLIP_DURATION_MS,
+  flipDirectionForDelta,
+  prefersReducedMotion,
+  type PageFlipDirection,
+} from './PageFlip';
 import { QuranMushafPicker, type MushafPickerLabels } from './QuranMushafPicker';
 import {
   QuranPickerSheet,
@@ -531,6 +541,300 @@ type PlayAyah = Ayah & { surahNumber: number };
 
 function parseViewParam(v: string | null): QuranViewMode {
   return v === 'ayah' || v === 'juz' || v === 'hizb' || v === 'page' ? v : 'surah';
+}
+
+// 3D page turn (user 2026-11-22, confirmed) — the flip state machine
+// for one reader surface: the inline page views (displayPage) or the
+// reading overlay (readingPage). Same pattern as the hifz study page:
+// the flip is driven by the page identity, so every trigger (prev/next
+// buttons, keyboard, drag, ayah focus crossing a page boundary) turns
+// the same way — but only ADJACENT pages flip, and only within the
+// same view; a jump to a far page, or a view change, swaps instantly.
+// The outgoing page is a frozen snapshot of its display props; the
+// incoming page is the live render. Reduced motion: no flip at all.
+// The drag lifts the leaf to reveal blank paper (the next page's
+// groups are not built until the turn commits); the button flip
+// reveals the live new page as it turns.
+type ReaderFlipSnap = {
+  page: number;
+  view: string;
+  groups: MushafSurahGroup[];
+  exactLines: MushafExactLine[] | null;
+  juz: number | null;
+  hizb: number | null;
+  headerSurah: string;
+  highlightKey: string | null;
+  playingKey: string | null;
+  pageRenderer: 'standard' | 'digital-khatt' | 'digital-khatt-indopak' | 'qpc-v4';
+  hideText: boolean;
+  hideMeta: boolean;
+};
+
+type ReaderFlip = {
+  id: number;
+  from: ReaderFlipSnap;
+  // undefined = the live current page (button flip); null = blank
+  // paper (drag, neighbour not built yet).
+  toSnap: ReaderFlipSnap | null | undefined;
+  direction: PageFlipDirection;
+  progress: number;
+  animated: boolean;
+};
+
+type ReaderFlipHandlers = {
+  onPointerDown: (e: React.PointerEvent) => void;
+  onPointerMove: (e: React.PointerEvent) => void;
+  onPointerUp: (e: React.PointerEvent) => void;
+  onPointerCancel: () => void;
+};
+
+function useReaderPageFlip(opts: {
+  page: number | null;
+  view: string;
+  enabled: boolean;
+  snapshot: ReaderFlipSnap | null;
+  onCommit: (delta: 1 | -1) => void;
+  canTurn: (delta: 1 | -1) => boolean;
+}): {
+  flip: ReaderFlip | null;
+  handlers: ReaderFlipHandlers;
+  onTransitionEnd: () => void;
+} {
+  const [flip, setFlip] = useState<ReaderFlip | null>(null);
+  const flipRef = useRef<ReaderFlip | null>(null);
+  const flipIdRef = useRef(0);
+  const flipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flipSnapRef = useRef<ReaderFlipSnap | null>(null);
+  const flipSuppressRef = useRef<number | null>(null);
+  const flipPendingCommitRef = useRef<0 | 1 | -1>(0);
+  const dragRef = useRef<null | {
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startT: number;
+    active: boolean;
+    direction: PageFlipDirection | null;
+    progress: number;
+    width: number;
+  }>(null);
+  // Latest callbacks + page, for the stable finish/commit paths.
+  const commitRef = useRef(opts.onCommit);
+  const canTurnRef = useRef(opts.canTurn);
+  const pageRef = useRef(opts.page);
+  useEffect(() => {
+    flipRef.current = flip;
+  }, [flip]);
+  useEffect(() => {
+    commitRef.current = opts.onCommit;
+    canTurnRef.current = opts.canTurn;
+    pageRef.current = opts.page;
+  });
+
+  const finishFlip = useCallback((id: number) => {
+    const f = flipRef.current;
+    if (!f || f.id !== id) return;
+    if (flipTimeoutRef.current !== null) {
+      clearTimeout(flipTimeoutRef.current);
+      flipTimeoutRef.current = null;
+    }
+    const pending = flipPendingCommitRef.current;
+    flipPendingCommitRef.current = 0;
+    setFlip(null);
+    if (pending !== 0) {
+      flipSuppressRef.current = (pageRef.current ?? 0) + pending;
+      commitRef.current(pending);
+    }
+  }, []);
+  const scheduleFlipFinish = useCallback(
+    (id: number) => {
+      if (flipTimeoutRef.current !== null) clearTimeout(flipTimeoutRef.current);
+      flipTimeoutRef.current = setTimeout(() => finishFlip(id), FLIP_DURATION_MS + 200);
+    },
+    [finishFlip],
+  );
+
+  // Button flip: when the page identity moves by one, turn the leaf
+  // from the frozen previous page to the live new one.
+  useEffect(() => {
+    if (!opts.enabled || opts.page === null) return;
+    const prev = flipSnapRef.current;
+    if (!prev || prev.page === opts.page || prev.view !== opts.view) return;
+    const delta = opts.page - prev.page;
+    if (Math.abs(delta) !== 1 || prefersReducedMotion()) return;
+    if (flipSuppressRef.current === opts.page) {
+      flipSuppressRef.current = null;
+      return;
+    }
+    const id = ++flipIdRef.current;
+    setFlip({
+      id,
+      from: prev,
+      toSnap: undefined,
+      direction: flipDirectionForDelta(delta as 1 | -1),
+      progress: 0,
+      animated: true,
+    });
+    // Two frames so the leaf first paints at 0, then transitions to 1.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        setFlip((f) => (f && f.id === id ? { ...f, progress: 1 } : f));
+        scheduleFlipFinish(id);
+      }),
+    );
+  }, [opts.page, opts.view, opts.enabled, scheduleFlipFinish]);
+
+  // Keep the frozen snapshot of the page on screen. Declared after
+  // the trigger effect so it reads the old snapshot first (effects
+  // run in declaration order per commit).
+  useEffect(() => {
+    if (opts.snapshot) flipSnapRef.current = opts.snapshot;
+  }, [opts.snapshot]);
+
+  // Leaving the surface clears any flip.
+  useEffect(() => {
+    if (!opts.enabled) {
+      setFlip(null);
+      flipPendingCommitRef.current = 0;
+      dragRef.current = null;
+    }
+  }, [opts.enabled]);
+
+  // Drag to turn the page: a horizontal drag lifts the leaf with the
+  // finger — left = next page, right = previous page (RTL mushaf
+  // order). Past 30% (or a fast flick) the leaf flies the rest of the
+  // way and the page changes; otherwise it springs back. A tap never
+  // starts a drag (10px start threshold), and pointer capture is set
+  // only once the drag activates, so a tap's click still reaches the
+  // ayah underneath.
+  const onFlipPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (!opts.enabled || flipRef.current !== null || opts.page === null) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      dragRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startT: Date.now(),
+        active: false,
+        direction: null,
+        progress: 0,
+        width: 1,
+      };
+    },
+    [opts.enabled, opts.page],
+  );
+  const onFlipPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const d = dragRef.current;
+      if (!d || d.pointerId !== e.pointerId || !opts.enabled) return;
+      const dx = e.clientX - d.startX;
+      const dy = e.clientY - d.startY;
+      if (!d.active) {
+        if (Math.abs(dx) < FLIP_DRAG_START_PX || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+        const delta: 1 | -1 = dx < 0 ? 1 : -1;
+        if (!canTurnRef.current(delta)) return;
+        const snap = flipSnapRef.current;
+        if (!snap || snap.page !== opts.page || snap.view !== opts.view) return;
+        const direction = flipDirectionForDelta(delta);
+        d.active = true;
+        d.direction = direction;
+        d.width = e.currentTarget.clientWidth || 1;
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        const id = ++flipIdRef.current;
+        setFlip({ id, from: snap, toSnap: null, direction, progress: 0, animated: false });
+        return;
+      }
+      if (d.direction === null) return;
+      const progress = Math.min(Math.abs(dx) / (d.width || 1), FLIP_DRAG_MAX);
+      d.progress = progress;
+      setFlip((f) => (f ? { ...f, progress } : f));
+    },
+    [opts.enabled, opts.page, opts.view],
+  );
+  const onFlipPointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      if (!d || d.pointerId !== e.pointerId || !d.active || d.direction === null) return;
+      const f = flipRef.current;
+      if (!f) return;
+      const dt = Math.max(1, Date.now() - d.startT);
+      const velocity = Math.abs(e.clientX - d.startX) / dt;
+      const commit = d.progress >= FLIP_DRAG_COMMIT || velocity > 0.5;
+      const id = f.id;
+      if (commit) {
+        flipPendingCommitRef.current = d.direction === 'ltr' ? 1 : -1;
+        setFlip((cur) => (cur && cur.id === id ? { ...cur, progress: 1, animated: true } : cur));
+      } else {
+        setFlip((cur) => (cur && cur.id === id ? { ...cur, progress: 0, animated: true } : cur));
+      }
+      scheduleFlipFinish(id);
+    },
+    [scheduleFlipFinish],
+  );
+  const onFlipPointerCancel = useCallback(() => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (!d || !d.active) return;
+    const f = flipRef.current;
+    if (!f) return;
+    // The browser took over (vertical scroll): spring the leaf back, no page change.
+    const id = f.id;
+    setFlip((cur) => (cur && cur.id === id ? { ...cur, progress: 0, animated: true } : cur));
+    scheduleFlipFinish(id);
+  }, [scheduleFlipFinish]);
+  const onTransitionEnd = useCallback(() => {
+    const f = flipRef.current;
+    if (f) finishFlip(f.id);
+  }, [finishFlip]);
+
+  return {
+    flip,
+    handlers: {
+      onPointerDown: onFlipPointerDown,
+      onPointerMove: onFlipPointerMove,
+      onPointerUp: onFlipPointerUp,
+      onPointerCancel: onFlipPointerCancel,
+    },
+    onTransitionEnd,
+  };
+}
+
+// The flip zone around one printed page: the live page is the child;
+// while a flip is active it becomes the scene's incoming layer under
+// the turning leaf. Reader paper (#f7f1dd), scene hugging the card.
+function ReaderPageFlipZone(props: {
+  flip: ReaderFlip | null;
+  renderFrom: (snap: ReaderFlipSnap) => ReactNode;
+  onTransitionEnd: () => void;
+  handlers: ReaderFlipHandlers;
+  children: ReactNode;
+}) {
+  const { flip, renderFrom, onTransitionEnd, handlers, children } = props;
+  return (
+    <div className="page-flip-wrap" {...handlers}>
+      {flip ? (
+        <PageFlip
+          from={renderFrom(flip.from)}
+          to={
+            flip.toSnap === undefined
+              ? children
+              : flip.toSnap === null
+                ? null
+                : renderFrom(flip.toSnap)
+          }
+          direction={flip.direction}
+          progress={flip.progress}
+          animated={flip.animated}
+          onTransitionEnd={onTransitionEnd}
+          paper="#f7f1dd"
+          className="page-flip-scene--fit"
+        />
+      ) : (
+        children
+      )}
+    </div>
+  );
 }
 
 export function QuranReader({
@@ -2071,6 +2375,208 @@ function QuranUmumReader({
         ? listTitle
         : surah.nameAr;
   const pageHizb = toDisplayHizb(pageMeta.hizb);
+
+  // 3D page turn (user 2026-11-22, confirmed): the same real flip as
+  // the hifz study page, in the general section — the inline page
+  // views (page / juz / hizb / ayah) and the reading overlay.
+  // The turning leaf is a FRESH QuranMushafPage: its async state
+  // (SVG file, V4/DK layout) starts empty, so it must render from
+  // the snapshot's ready text (exactLines/groups) — never wait on
+  // the SVG, or the leaf is a blank sliver for the whole turn
+  // (verified 2026-11-22: 13×107px, page gone). So: no svgPage and
+  // the standard renderer (the V4/DK branches would show their
+  // blank loading shells instead of text). The one exception is a
+  // snapshot with no text at all (non-Hafs page: groups [] and
+  // exactLines null) — there the SVG is the only content, so it
+  // keeps svgPage.
+  const renderReaderFlipPage = useCallback(
+    (snap: ReaderFlipSnap) => (
+      <QuranMushafPage
+        groups={snap.groups}
+        exactLines={snap.exactLines}
+        pageNumber={snap.page}
+        juz={snap.juz}
+        hizb={snap.hizb}
+        headerSurah={snap.headerSurah}
+        headerSurahTemplate={labels.mushafHeaderSurah}
+        pageCurrent={labels.pageCurrent}
+        juzCurrent={labels.juzCurrent}
+        hizbCurrent={labels.hizbCurrent}
+        bismillah={labels.bismillah}
+        scriptClass={scriptClass}
+        playingKey={snap.playingKey}
+        highlightKey={snap.highlightKey}
+        hideText={snap.hideText}
+        hideMeta={snap.hideMeta}
+        onPlayAyah={() => {}}
+        svgPage={snap.groups.length === 0 && snap.exactLines === null}
+        pageRenderer="standard"
+        mushafKey={mushafKey}
+        resolveSurahName={surahNameAr}
+        svgFallbackNote={labels.svgFallbackNote}
+        svgUnavailableNote={labels.svgUnavailableNote}
+      />
+    ),
+    [labels, scriptClass, mushafKey, surahNameAr],
+  );
+
+  // The inline page's display props, for the flip snapshot. Mirrors
+  // the three QuranMushafPage sites (page / juz+hizb / ayah): the
+  // non-Hafs page branch renders its own SVG with empty groups.
+  const inlineSnap: ReaderFlipSnap | null = (() => {
+    if (displayPage === null) return null;
+    if (viewMode === 'ayah' && mushafKey !== DEFAULT_SVG_MUSHAF) return null;
+    if (viewMode === 'page' && mushafKey !== DEFAULT_SVG_MUSHAF) {
+      if (rangeTarget === null) return null;
+      return {
+        page: rangeTarget,
+        view: viewMode,
+        groups: [],
+        exactLines: null,
+        juz: null,
+        hizb: null,
+        headerSurah: '',
+        highlightKey: svgSelectedKey,
+        playingKey: null,
+        pageRenderer,
+        hideText,
+        hideMeta: false,
+      };
+    }
+    const groups = displayPageGroups ?? rangeGroups;
+    if (!groups || groups.length === 0) return null;
+    return {
+      page: displayPage,
+      view: viewMode,
+      groups,
+      exactLines,
+      juz: mushafKey !== DEFAULT_SVG_MUSHAF ? null : pageMeta.juz,
+      hizb: mushafKey !== DEFAULT_SVG_MUSHAF ? null : pageHizb,
+      headerSurah: groups[groups.length - 1].surahNameAr,
+      highlightKey:
+        viewMode === 'ayah' && focusedAyah
+          ? `${surah.number}:${focusedAyah.standardNumber}`
+          : mushafKey !== DEFAULT_SVG_MUSHAF
+            ? svgSelectedKey
+            : (svgSelectedKey ?? playingKey),
+      playingKey: mushafKey !== DEFAULT_SVG_MUSHAF ? null : playingKey,
+      pageRenderer,
+      hideText,
+      hideMeta: false,
+    };
+  })();
+
+  // The overlay page's display props, for its flip snapshot.
+  const overlaySnap: ReaderFlipSnap | null =
+    readingOpen && readingPage !== null && readingGroups
+      ? {
+          page: readingPage,
+          view: 'overlay',
+          groups: readingGroups,
+          exactLines: readingLines,
+          juz: readingMeta.juz,
+          hizb: readingHizb,
+          headerSurah: readingSurahName,
+          highlightKey: mushafKey === DEFAULT_SVG_MUSHAF ? playingKey : svgSelectedKey,
+          playingKey,
+          pageRenderer,
+          hideText,
+          hideMeta: true,
+        }
+      : null;
+
+  // Inline page navigation for a drag commit, per view: the page view
+  // jumps by page number, juz/hizb step inside their page list, and
+  // the ayah view moves the focus to the target page's first ayah of
+  // this surah (a cross-surah target springs back instead).
+  const navigateInlinePage = (delta: 1 | -1) => {
+    if (displayPage === null) return;
+    if (viewMode === 'page') {
+      if (rangeTarget === null) return;
+      const t = rangeTarget + delta;
+      if (t >= 1 && t <= RANGE_COUNTS.page) setRangeTarget(t);
+      return;
+    }
+    if (viewMode === 'juz') {
+      const i = juzPagesList.indexOf(displayPage);
+      const t = juzPagesList[i + delta];
+      if (t !== undefined) setJuzPage(t);
+      return;
+    }
+    if (viewMode === 'hizb') {
+      const i = hizbPagesList.indexOf(displayPage);
+      const t = hizbPagesList[i + delta];
+      if (t !== undefined) setHizbPage(t);
+      return;
+    }
+    if (viewMode === 'ayah') {
+      const target = displayPage + delta;
+      if (target < 1 || target > RANGE_COUNTS.page || !boundaries) return;
+      const span = rangeSpan(boundaries, 'page', target);
+      if (!span || span.start.surah !== surah.number) return;
+      const idx = visible.findIndex((d) => d.standardNumber === span.start.ayah);
+      if (idx >= 0) setFocusedDisplayIdx(idx);
+    }
+  };
+  const canTurnInlinePage = (delta: 1 | -1): boolean => {
+    if (displayPage === null) return false;
+    if (viewMode === 'page')
+      return rangeTarget !== null && rangeTarget + delta >= 1 && rangeTarget + delta <= RANGE_COUNTS.page;
+    if (viewMode === 'juz') {
+      const i = juzPagesList.indexOf(displayPage);
+      return i + delta >= 0 && i + delta < juzPagesList.length;
+    }
+    if (viewMode === 'hizb') {
+      const i = hizbPagesList.indexOf(displayPage);
+      return i + delta >= 0 && i + delta < hizbPagesList.length;
+    }
+    if (viewMode === 'ayah') {
+      const target = displayPage + delta;
+      if (target < 1 || target > RANGE_COUNTS.page || !boundaries) return false;
+      const span = rangeSpan(boundaries, 'page', target);
+      return (
+        !!span &&
+        span.start.surah === surah.number &&
+        visible.some((d) => d.standardNumber === span.start.ayah)
+      );
+    }
+    return false;
+  };
+
+  const inlineFlip = useReaderPageFlip({
+    page: displayPage,
+    view: viewMode,
+    enabled: showsMushafPage && !(viewMode === 'ayah' && mushafKey !== DEFAULT_SVG_MUSHAF),
+    snapshot: inlineSnap,
+    onCommit: navigateInlinePage,
+    canTurn: canTurnInlinePage,
+  });
+  const overlayFlip = useReaderPageFlip({
+    page: readingPage,
+    view: 'overlay',
+    enabled: readingOpen && !spreadOn,
+    snapshot: overlaySnap,
+    onCommit: (delta) => {
+      if (readingPage === null) return;
+      setReadingPage(Math.min(RANGE_COUNTS.page, Math.max(1, readingPage + delta)));
+    },
+    canTurn: (delta) =>
+      readingPage !== null &&
+      readingPage + delta >= 1 &&
+      readingPage + delta <= RANGE_COUNTS.page,
+  });
+  const inlineZoneProps = {
+    flip: inlineFlip.flip,
+    renderFrom: renderReaderFlipPage,
+    onTransitionEnd: inlineFlip.onTransitionEnd,
+    handlers: inlineFlip.handlers,
+  };
+  const overlayZoneProps = {
+    flip: overlayFlip.flip,
+    renderFrom: renderReaderFlipPage,
+    onTransitionEnd: overlayFlip.onTransitionEnd,
+    handlers: overlayFlip.handlers,
+  };
   const topChipMeta =
     isRangeMode && rangeTarget !== null
       ? [
@@ -3022,6 +3528,7 @@ function QuranUmumReader({
               leak under another key. The header's surah comes from
               the page's own ayah list; juz/hizb are omitted (this
               mushaf's per-page juz/hizb is not in the data used). */}
+              <ReaderPageFlipZone {...inlineZoneProps}>
               <QuranMushafPage
                 groups={[]}
                 exactLines={null}
@@ -3047,6 +3554,7 @@ function QuranUmumReader({
                 svgFallbackNote={labels.svgFallbackNote}
                 svgUnavailableNote={labels.svgUnavailableNote}
               />
+              </ReaderPageFlipZone>
             </>
           ) : rangeLoading ||
             !rangeGroups ||
@@ -3117,6 +3625,7 @@ function QuranUmumReader({
                   </button>
                 </div>
               ) : null}
+              <ReaderPageFlipZone {...inlineZoneProps}>
               <QuranMushafPage
                 groups={displayPageGroups ?? rangeGroups}
                 exactLines={exactLines}
@@ -3177,6 +3686,7 @@ function QuranUmumReader({
                 svgFallbackNote={labels.svgFallbackNote}
                 svgUnavailableNote={labels.svgUnavailableNote}
               />
+              </ReaderPageFlipZone>
             </>
           ) : (
             <div className="ayah-list">
@@ -3497,6 +4007,7 @@ function QuranUmumReader({
               </p>
             ) : (
               <>
+                <ReaderPageFlipZone {...inlineZoneProps}>
                 <QuranMushafPage
                   groups={displayPageGroups}
                   exactLines={exactLines}
@@ -3537,6 +4048,7 @@ function QuranUmumReader({
                   svgFallbackNote={labels.svgFallbackNote}
                   svgUnavailableNote={labels.svgUnavailableNote}
                 />
+                </ReaderPageFlipZone>
                 {(() => {
                   const sajda = isSajda(surah.number, focusedAyah.standardNumber, madhhab)
                     ? sajdaTitle
@@ -3789,7 +4301,9 @@ function QuranUmumReader({
                           {facingPageElement}
                         </div>
                       ) : (
-                        readingPageElement
+                        <ReaderPageFlipZone {...overlayZoneProps}>
+                          {readingPageElement}
+                        </ReaderPageFlipZone>
                       )}
                     </div>
                     {panelOpen ? (

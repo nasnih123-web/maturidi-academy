@@ -179,6 +179,16 @@ import { colorizeTajweedWord } from '@/lib/quran-tajweed';
 import { editionDisplayName } from '@/lib/quran-editions';
 import { rangeContaining, type RangeKind } from '@/lib/quran-view-modes';
 import { buildPageRender, buildV2PageRender, pageIndexFor } from '@/lib/hifz-page-render';
+import {
+  PageFlip,
+  FLIP_DRAG_COMMIT,
+  FLIP_DRAG_MAX,
+  FLIP_DRAG_START_PX,
+  FLIP_DURATION_MS,
+  flipDirectionForDelta,
+  prefersReducedMotion,
+  type PageFlipDirection,
+} from './PageFlip';
 import { encodeWav } from '@/lib/hifz-wav';
 import type {
   LineWordSlot,
@@ -3373,38 +3383,239 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
     [v2Index, mushafPages],
   );
 
-  // Swipe to turn the page (mushaf mode only): a horizontal swipe
-  // of 50px+ that dominates the vertical movement turns the page —
-  // left = next page, right = previous page (RTL mushaf order).
-  // Vertical scrolling is untouched (touch-action: pan-y on the
-  // section) and a tap on a word never fires a swipe: the threshold
-  // plus a 500ms tap-suppression window (see lastSwipeAtRef) keep
-  // word taps, peek taps and practice-word selection intact.
-  const swipeStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
-  const onPageTouchStart = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length !== 1) {
-      swipeStartRef.current = null;
+  // 3D page turn (user 2026-11-22, confirmed): a real flip when the
+  // printed page changes in mushaf mode, by the ««/« buttons and by
+  // dragging a finger on the page. The flip is driven by the page
+  // index, not by any one button, so every trigger (chevrons, drag,
+  // picker jump, dashboard jump) turns the same way — but only
+  // ADJACENT pages flip; a jump to a far page swaps instantly, like
+  // opening a book at a bookmark. The outgoing page is a frozen
+  // snapshot (its lines at the moment it was on screen), the incoming
+  // page is the live render. Reduced motion: no flip at all. The drag
+  // lifts the page to reveal blank paper (the next page's glyphs are
+  // not loaded until the turn commits); the button flip reveals the
+  // live new page as it turns.
+  type HifzFlipSnap = { pIdx: number; lines: RenderLine[] };
+  type HifzFlip = {
+    id: number;
+    from: HifzFlipSnap;
+    // undefined = the live current page (button flip); null = blank
+    // paper (drag, neighbour not loaded yet).
+    toSnap: HifzFlipSnap | null | undefined;
+    direction: PageFlipDirection;
+    progress: number;
+    animated: boolean;
+  };
+  const [flip, setFlip] = useState<HifzFlip | null>(null);
+  const flipRef = useRef<HifzFlip | null>(null);
+  const flipIdRef = useRef(0);
+  const flipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flipSnapRef = useRef<HifzFlipSnap | null>(null);
+  // A drag commit already animated this page change; the page-index
+  // effect below must not start a second flip for it.
+  const flipSuppressRef = useRef<number | null>(null);
+  // A drag that committed, waiting for the leaf to finish turning
+  // before the page actually changes: +1 next, -1 previous.
+  const flipPendingCommitRef = useRef<0 | 1 | -1>(0);
+  const dragRef = useRef<null | {
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startT: number;
+    active: boolean;
+    direction: PageFlipDirection | null;
+    progress: number;
+    width: number;
+  }>(null);
+  // The real section is on screen only when this page's V4 glyphs
+  // are ready (otherwise the placeholder lines show); a flip must
+  // only start from a page the user actually saw.
+  const pageSectionReady = !usedV2 || (v4Glyphs !== undefined && v4FontReady);
+  useEffect(() => {
+    flipRef.current = flip;
+  }, [flip]);
+
+  // Finish a flip: clear it, and if a drag committed, change the page now.
+  const finishFlip = useCallback(
+    (id: number) => {
+      const f = flipRef.current;
+      if (!f || f.id !== id) return;
+      if (flipTimeoutRef.current !== null) {
+        clearTimeout(flipTimeoutRef.current);
+        flipTimeoutRef.current = null;
+      }
+      const pending = flipPendingCommitRef.current;
+      flipPendingCommitRef.current = 0;
+      setFlip(null);
+      if (pending !== 0) {
+        flipSuppressRef.current = (activePageIndex ?? 0) + pending;
+        goToPage(pending);
+      }
+    },
+    [activePageIndex, goToPage],
+  );
+  const scheduleFlipFinish = useCallback(
+    (id: number) => {
+      if (flipTimeoutRef.current !== null) clearTimeout(flipTimeoutRef.current);
+      flipTimeoutRef.current = setTimeout(() => finishFlip(id), FLIP_DURATION_MS + 200);
+    },
+    [finishFlip],
+  );
+
+  // Button flip: when the page index moves by one in mushaf mode,
+  // turn the leaf from the frozen previous page to the live new one.
+  useEffect(() => {
+    if (displayMode !== 'mushaf' || activePageIndex === null || !pageSectionReady) return;
+    const prev = flipSnapRef.current;
+    if (!prev || prev.pIdx === activePageIndex) return;
+    const delta = activePageIndex - prev.pIdx;
+    if (Math.abs(delta) !== 1 || prefersReducedMotion()) return;
+    if (flipSuppressRef.current === activePageIndex) {
+      flipSuppressRef.current = null;
       return;
     }
-    const t = e.touches[0];
-    swipeStartRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
-  }, []);
-  const onPageTouchEnd = useCallback(
-    (e: React.TouchEvent) => {
-      const start = swipeStartRef.current;
-      swipeStartRef.current = null;
-      if (!start || e.changedTouches.length !== 1) return;
-      const t = e.changedTouches[0];
-      const dx = t.clientX - start.x;
-      const dy = t.clientY - start.y;
-      if (Math.abs(dx) < 50) return;
-      if (Math.abs(dx) < Math.abs(dy) * 1.5) return;
-      if (Date.now() - start.t > 1000) return;
-      lastSwipeAtRef.current = Date.now();
-      goToPage(dx < 0 ? 1 : -1);
+    const id = ++flipIdRef.current;
+    setFlip({
+      id,
+      from: prev,
+      toSnap: undefined,
+      direction: flipDirectionForDelta(delta as 1 | -1),
+      progress: 0,
+      animated: true,
+    });
+    // Two frames so the leaf first paints at 0, then transitions to 1.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        setFlip((f) => (f && f.id === id ? { ...f, progress: 1 } : f));
+        scheduleFlipFinish(id);
+      }),
+    );
+  }, [activePageIndex, displayMode, pageSectionReady, scheduleFlipFinish]);
+
+  // Keep the frozen snapshot of the page on screen: the flip's
+  // outgoing leaf renders from this, never from live state.
+  // Declared after the trigger effect so it reads the old snapshot
+  // first (effects run in declaration order per commit).
+  useEffect(() => {
+    if (activePageIndex === null || !pageSectionReady) return;
+    flipSnapRef.current = { pIdx: activePageIndex, lines: renderLines };
+  }, [activePageIndex, renderLines, pageSectionReady]);
+
+  // Leaving mushaf mode clears any flip (a progress-1 leaf would
+  // otherwise cover the page with paper when the user comes back).
+  useEffect(() => {
+    if (displayMode !== 'mushaf') {
+      setFlip(null);
+      flipPendingCommitRef.current = 0;
+      dragRef.current = null;
+    }
+  }, [displayMode]);
+
+  // Drag to turn the page (mushaf mode only): a horizontal drag on
+  // the page lifts the leaf with the finger — left = next page,
+  // right = previous page (the same RTL mushaf order as the old
+  // swipe). Past 30% (or a fast flick) the leaf flies the rest of
+  // the way and the page changes; otherwise it springs back. A tap
+  // never starts a drag (10px start threshold), and the 500ms
+  // tap-suppression window (lastSwipeAtRef) keeps word taps, peek
+  // taps and practice-word selection intact, exactly like the old swipe.
+  const onFlipPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (
+        displayMode !== 'mushaf' ||
+        flipRef.current !== null ||
+        activePageIndex === null ||
+        !pageSectionReady
+      )
+        return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      dragRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startT: Date.now(),
+        active: false,
+        direction: null,
+        progress: 0,
+        width: 1,
+      };
     },
-    [goToPage],
+    [displayMode, activePageIndex, pageSectionReady],
   );
+  const onFlipPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const d = dragRef.current;
+      if (!d || d.pointerId !== e.pointerId || displayMode !== 'mushaf') return;
+      const dx = e.clientX - d.startX;
+      const dy = e.clientY - d.startY;
+      if (!d.active) {
+        if (Math.abs(dx) < FLIP_DRAG_START_PX || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+        // Horizontal drag dominates: lift the leaf. Out of range
+        // (first/last page) the finger does nothing, like a book's
+        // first/last page.
+        const delta: 1 | -1 = dx < 0 ? 1 : -1;
+        const target = (activePageIndex ?? 0) + delta;
+        const pageCount = useV2
+          ? (v2Index?.pageCount ?? 0)
+          : (mushafPages?.length ?? 0);
+        if (target < 0 || target >= pageCount) return;
+        const snap = flipSnapRef.current;
+        if (!snap || snap.pIdx !== activePageIndex) return;
+        const direction: PageFlipDirection = flipDirectionForDelta(delta);
+        d.active = true;
+        d.direction = direction;
+        d.width = e.currentTarget.clientWidth || 1;
+        // Capture only now that it is a drag, never on tap: a tap's
+        // click must still reach the word underneath.
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        const id = ++flipIdRef.current;
+        setFlip({ id, from: snap, toSnap: null, direction, progress: 0, animated: false });
+        return;
+      }
+      if (d.direction === null) return;
+      const progress = Math.min(Math.abs(dx) / (d.width || 1), FLIP_DRAG_MAX);
+      d.progress = progress;
+      setFlip((f) => (f ? { ...f, progress } : f));
+    },
+    [displayMode, activePageIndex, useV2, v2Index, mushafPages],
+  );
+  const onFlipPointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      if (!d || d.pointerId !== e.pointerId || !d.active || d.direction === null) return;
+      const f = flipRef.current;
+      if (!f) return;
+      lastSwipeAtRef.current = Date.now();
+      const dt = Math.max(1, Date.now() - d.startT);
+      const velocity = Math.abs(e.clientX - d.startX) / dt;
+      const commit = d.progress >= FLIP_DRAG_COMMIT || velocity > 0.5;
+      const id = f.id;
+      if (commit) {
+        flipPendingCommitRef.current = d.direction === 'ltr' ? 1 : -1;
+        setFlip((cur) => (cur && cur.id === id ? { ...cur, progress: 1, animated: true } : cur));
+      } else {
+        setFlip((cur) => (cur && cur.id === id ? { ...cur, progress: 0, animated: true } : cur));
+      }
+      scheduleFlipFinish(id);
+    },
+    [scheduleFlipFinish],
+  );
+  const onFlipPointerCancel = useCallback(() => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (!d || !d.active) return;
+    const f = flipRef.current;
+    if (!f) return;
+    // The browser took over (vertical scroll): spring the leaf back, no page change.
+    const id = f.id;
+    setFlip((cur) => (cur && cur.id === id ? { ...cur, progress: 0, animated: true } : cur));
+    scheduleFlipFinish(id);
+  }, [scheduleFlipFinish]);
+  const onFlipTransitionEnd = useCallback(() => {
+    const f = flipRef.current;
+    if (f) finishFlip(f.id);
+  }, [finishFlip]);
 
   // Phase 7: Escape closes any open sheet (keyboard path to
   // match the backdrop tap + the close button; no focus trap yet —
@@ -3457,8 +3668,6 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
           : 'hifz-line-page'
       }
       aria-label={labels.title}
-      onTouchStart={displayMode === 'mushaf' ? onPageTouchStart : undefined}
-      onTouchEnd={displayMode === 'mushaf' ? onPageTouchEnd : undefined}
     >
       {/* Wave 2 (2026-11-09): the caption ("surah · page N") is
           gone — it duplicated the sticky header card, which already
@@ -3852,40 +4061,67 @@ if (eyeHidden && !revealedWords.has(eyeKey)) {
           renders the page at once, in Tanzil text (v4FontLoaded false
           keeps every word on the text path). The old-lines fallback
           (usedV2 false) never waits on V4. */}
-      {pageReady &&
-        textsReady &&
-        displayMode === 'mushaf' &&
-        usedV2 &&
-        (v4Glyphs === undefined || !v4FontReady) && (
-          <section className="hifz-line-page" aria-busy="true" aria-label={labels.title}>
-            {/* No caption here either (Wave 2): the placeholder
-                must match the real section's layout exactly, or
-                the page jumps when the glyphs arrive. */}
-            {renderLines.map((line) => (
-              <p
-                key={line.key}
-                className={
-                  line.kind === 'header'
-                    ? 'hifz-line hifz-line-header'
-                    : line.kind === 'basmala'
-                      ? 'hifz-line hifz-line-basmala'
-                      : 'hifz-line'
-                }
-                aria-hidden="true"
-              >
-                {'\u00a0'}
-              </p>
-            ))}
-            <p className="hifz-page-footer" aria-hidden="true">
-              {toArabicIndic((activePageIndex ?? 0) + 1)}
-            </p>
-          </section>
-        )}
-      {pageReady &&
-        textsReady &&
-        displayMode === 'mushaf' &&
-        (!usedV2 || (v4Glyphs !== undefined && v4FontReady)) &&
-        renderPageSection(activePageIndex ?? 0, renderLines, 'mushaf')}
+      {displayMode === 'mushaf' && (flip !== null || (pageReady && textsReady)) && (
+        <div
+          className="page-flip-wrap"
+          onPointerDown={onFlipPointerDown}
+          onPointerMove={onFlipPointerMove}
+          onPointerUp={onFlipPointerUp}
+          onPointerCancel={onFlipPointerCancel}
+        >
+          {flip ? (
+            <PageFlip
+              from={renderPageSection(flip.from.pIdx, flip.from.lines, 'flip-from')}
+              to={
+                flip.toSnap === undefined
+                  ? renderPageSection(activePageIndex ?? 0, renderLines, 'mushaf')
+                  : flip.toSnap === null
+                    ? null
+                    : renderPageSection(flip.toSnap.pIdx, flip.toSnap.lines, 'flip-to')
+              }
+              direction={flip.direction}
+              progress={flip.progress}
+              animated={flip.animated}
+              onTransitionEnd={onFlipTransitionEnd}
+            />
+          ) : (
+            <>
+              {pageReady &&
+                textsReady &&
+                usedV2 &&
+                (v4Glyphs === undefined || !v4FontReady) && (
+                  <section className="hifz-line-page" aria-busy="true" aria-label={labels.title}>
+                    {/* No caption here either (Wave 2): the placeholder
+                        must match the real section's layout exactly, or
+                        the page jumps when the glyphs arrive. */}
+                    {renderLines.map((line) => (
+                      <p
+                        key={line.key}
+                        className={
+                          line.kind === 'header'
+                            ? 'hifz-line hifz-line-header'
+                            : line.kind === 'basmala'
+                              ? 'hifz-line hifz-line-basmala'
+                              : 'hifz-line'
+                        }
+                        aria-hidden="true"
+                      >
+                        {'\u00a0'}
+                      </p>
+                    ))}
+                    <p className="hifz-page-footer" aria-hidden="true">
+                      {toArabicIndic((activePageIndex ?? 0) + 1)}
+                    </p>
+                  </section>
+                )}
+              {pageReady &&
+                textsReady &&
+                (!usedV2 || (v4Glyphs !== undefined && v4FontReady)) &&
+                renderPageSection(activePageIndex ?? 0, renderLines, 'mushaf')}
+            </>
+          )}
+        </div>
+      )}
       {/* Nass (2026-11-16, user order; whole Quran 2026-11-21): the
           whole Quran as scrolling mushaf pages — one full page
           section per printed page (surah-header frame + page
