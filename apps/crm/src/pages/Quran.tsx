@@ -3,12 +3,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Button } from "@maturidi/ui-web";
 import { LOCALES, useI18n, type Locale } from "../lib/i18n";
 import { apiFetch } from "../lib/api";
+import { useLibraryItemsQuery } from "../lib/library";
 import {
   DEFAULT_MUNAJAT_WINDOW,
   DEFAULT_PLAYBACK,
   QURAN_SETTINGS_KEYS,
+  createChildrenQuestion,
+  deleteChildrenQuestion,
   errText,
+  fetchChildrenAdminQuestions,
+  fetchChildrenSurahVideos,
   isTimeString,
+  linkChildrenVideo,
   moveString,
   parseActiveLanguages,
   parseAsrEngine,
@@ -28,10 +34,15 @@ import {
   parseProvidersByType,
   parseWaveformStyle,
   parseStringList,
+  reorderChildrenVideos,
   setCustomProviderKey,
+  unlinkChildrenVideo,
+  updateChildrenQuestion,
   useQuranProvidersQuery,
   useQuranSettingsQuery,
   useWriteQuranKeys,
+  type ChildrenQuestionItem,
+  type ChildrenVideoItem,
   type CustomProviderInfo,
   type AsrEngineId,
   type DisplayFont,
@@ -70,20 +81,21 @@ import {
  * There is deliberately no text-editing affordance for ayahs anywhere here.
  */
 
-type QuranTab = "providers" | "display" | "munajat" | "hifz";
-const TABS: QuranTab[] = ["providers", "display", "munajat", "hifz"];
+type QuranTab = "providers" | "display" | "munajat" | "hifz" | "children";
+const TABS: QuranTab[] = ["providers", "display", "munajat", "hifz", "children"];
 
 const TAB_KEY: Record<QuranTab, string> = {
   providers: "quran.tabProviders",
   display: "quran.tabDisplay",
   munajat: "quran.tabMunajat",
   hifz: "quran.tabHifz",
+  children: "quran.tabChildren",
 };
 
 function initialTab(): QuranTab {
   try {
     const t = new URLSearchParams(window.location.search).get("tab");
-    if (t === "display" || t === "munajat" || t === "providers" || t === "hifz") return t;
+    if (t === "display" || t === "munajat" || t === "providers" || t === "hifz" || t === "children") return t;
   } catch {
     // ignore
   }
@@ -1506,6 +1518,504 @@ function HifzPanel(): React.ReactElement {
   );
 }
 
+/* children (فاز ۴ قرآن) — ویدیوهای هر سوره + سؤال‌های آزمون        */
+/* ------------------------------------------------------------------ */
+
+/** Localized-text dict (or plain string) → display string, fa-first. */
+function childrenLtText(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (v && typeof v === "object") {
+    const d = v as Record<string, unknown>;
+    for (const k of ["fa", "ar", "en"]) {
+      if (typeof d[k] === "string" && d[k]) return d[k] as string;
+    }
+  }
+  return "";
+}
+
+function ChildrenPanel(): React.ReactElement {
+  const { t, locale } = useI18n();
+  const queryClient = useQueryClient();
+  const [surahInput, setSurahInput] = React.useState("1");
+  const surah = (() => {
+    const n = Number(surahInput);
+    return Number.isInteger(n) && n >= 1 && n <= 114 ? n : 1;
+  })();
+  const surahValid =
+    Number.isInteger(Number(surahInput)) &&
+    Number(surahInput) >= 1 &&
+    Number(surahInput) <= 114;
+  const [linkItemId, setLinkItemId] = React.useState("");
+  const [qType, setQType] = React.useState<"mcq" | "matching">("mcq");
+  const [mcqQ, setMcqQ] = React.useState({ fa: "", ar: "", en: "" });
+  const [mcqOptions, setMcqOptions] = React.useState(["", "", "", ""]);
+  const [mcqCorrect, setMcqCorrect] = React.useState(0);
+  const [matchPairs, setMatchPairs] = React.useState([
+    { word: "", meaning: "" },
+    { word: "", meaning: "" },
+  ]);
+  const [formError, setFormError] = React.useState<string | null>(null);
+
+  const videos = useQuery({
+    queryKey: ["children-videos", surah],
+    queryFn: () => fetchChildrenSurahVideos(surah),
+  });
+  const questions = useQuery({
+    queryKey: ["children-questions", surah],
+    queryFn: () => fetchChildrenAdminQuestions(surah),
+  });
+  const libraryVideos = useLibraryItemsQuery({ kind: "video", limit: 50 });
+
+  const invalidate = React.useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["children-videos", surah] });
+    void queryClient.invalidateQueries({
+      queryKey: ["children-questions", surah],
+    });
+  }, [queryClient, surah]);
+
+  const linkVideo = useMutation({
+    mutationFn: (itemId: string) => linkChildrenVideo(surah, itemId),
+    onSuccess: () => {
+      setLinkItemId("");
+      invalidate();
+    },
+  });
+  const unlinkVideo = useMutation({
+    mutationFn: (itemId: string) => unlinkChildrenVideo(surah, itemId),
+    onSuccess: invalidate,
+  });
+  const reorderVideos = useMutation({
+    mutationFn: (ids: string[]) => reorderChildrenVideos(surah, ids),
+    onSuccess: invalidate,
+  });
+  const createQuestion = useMutation({
+    mutationFn: (input: {
+      surah: number;
+      question_type: "mcq" | "matching";
+      payload: Record<string, unknown>;
+    }) => createChildrenQuestion(input),
+    onSuccess: () => {
+      setMcqQ({ fa: "", ar: "", en: "" });
+      setMcqOptions(["", "", "", ""]);
+      setMcqCorrect(0);
+      setMatchPairs([
+        { word: "", meaning: "" },
+        { word: "", meaning: "" },
+      ]);
+      setFormError(null);
+      invalidate();
+    },
+    onError: (err) => setFormError(errText(err)),
+  });
+  const deleteQuestion = useMutation({
+    mutationFn: (id: string) => deleteChildrenQuestion(id),
+    onSuccess: invalidate,
+  });
+  const toggleQuestion = useMutation({
+    mutationFn: (q: ChildrenQuestionItem) =>
+      updateChildrenQuestion(q.id, { is_active: !q.is_active }),
+    onSuccess: invalidate,
+  });
+
+  const linkedIds = new Set((videos.data ?? []).map((v) => v.item_id));
+  const candidates = (libraryVideos.data?.items ?? []).filter(
+    (it) => it.kind === "video" && !linkedIds.has(it.id),
+  );
+  const videoTitle = (v: ChildrenVideoItem): string =>
+    v.title[locale] || v.title.fa || v.title.en || "—";
+
+  const moveVideo = (index: number, dir: -1 | 1): void => {
+    const list = videos.data ?? [];
+    const next = [...list];
+    const j = index + dir;
+    if (j < 0 || j >= next.length) return;
+    [next[index], next[j]] = [next[j], next[index]];
+    reorderVideos.mutate(next.map((v) => v.item_id));
+  };
+
+  const questionText = (q: ChildrenQuestionItem): string => {
+    if (q.question_type === "mcq") {
+      return childrenLtText(
+        (q.payload as Record<string, unknown>).question,
+      );
+    }
+    const pairs = (q.payload as Record<string, unknown>).pairs;
+    if (Array.isArray(pairs)) {
+      return pairs
+        .map((p) => (p as { word?: unknown }).word)
+        .filter((w): w is string => typeof w === "string" && w !== "")
+        .join("، ");
+    }
+    return "";
+  };
+
+  const submitQuestion = (): void => {
+    setFormError(null);
+    if (qType === "mcq") {
+      const options = mcqOptions.map((o) => o.trim()).filter(Boolean);
+      if (!mcqQ.fa.trim() || options.length < 2) {
+        setFormError(t("quran.childrenFormInvalid"));
+        return;
+      }
+      createQuestion.mutate({
+        surah,
+        question_type: "mcq",
+        payload: {
+          question: {
+            fa: mcqQ.fa.trim(),
+            ar: mcqQ.ar.trim(),
+            en: mcqQ.en.trim(),
+          },
+          options: options.map((o) => ({ fa: o })),
+          correct_index: Math.min(mcqCorrect, options.length - 1),
+        },
+      });
+      return;
+    }
+    const pairs = matchPairs
+      .map((p) => ({ word: p.word.trim(), meaning: p.meaning.trim() }))
+      .filter((p) => p.word && p.meaning);
+    if (pairs.length < 2) {
+      setFormError(t("quran.childrenFormInvalid"));
+      return;
+    }
+    createQuestion.mutate({
+      surah,
+      question_type: "matching",
+      payload: {
+        pairs: pairs.map((p) => ({ word: p.word, meaning: { fa: p.meaning } })),
+      },
+    });
+  };
+
+  return (
+    <section className="panel" aria-label={t("quran.tabChildren")}>
+      <div className="panel-head">
+        <h2>{t("quran.tabChildren")}</h2>
+        <span className="panel-hint">{t("quran.childrenHint")}</span>
+      </div>
+
+      <div className="form-row">
+        <label>
+          {t("quran.childrenSurahLabel")}
+          <input
+            type="number"
+            min={1}
+            max={114}
+            value={surahInput}
+            onChange={(e) => setSurahInput(e.target.value)}
+          />
+        </label>
+      </div>
+      {!surahValid && (
+        <p className="form-error">{t("quran.childrenSurahInvalid")}</p>
+      )}
+
+      <h3 style={{ marginTop: "2rem" }}>{t("quran.childrenVideosTitle")}</h3>
+      {videos.isLoading && <p className="hint">{t("common.loading")}</p>}
+      {videos.isError && <p className="form-error">{t("common.error")}</p>}
+      {videos.data && videos.data.length === 0 && (
+        <p className="hint">{t("quran.childrenVideosEmpty")}</p>
+      )}
+      {videos.data && videos.data.length > 0 && (
+        <table className="table">
+          <thead>
+            <tr>
+              <th>{t("quran.childrenVideoTitle")}</th>
+              <th>{t("quran.childrenVideoSource")}</th>
+              <th>{t("quran.childrenVideoOrder")}</th>
+              <th>{t("quran.childrenVideoRemove")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {videos.data.map((v, i) => (
+              <tr key={v.id}>
+                <td>{videoTitle(v)}</td>
+                <td>{v.source_label}</td>
+                <td>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={i === 0 || reorderVideos.isPending}
+                    onClick={() => moveVideo(i, -1)}
+                  >
+                    ↑
+                  </Button>{" "}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={
+                      i === videos.data.length - 1 || reorderVideos.isPending
+                    }
+                    onClick={() => moveVideo(i, 1)}
+                  >
+                    ↓
+                  </Button>
+                </td>
+                <td>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={unlinkVideo.isPending}
+                    onClick={() => {
+                      if (!window.confirm(t("quran.childrenVideoRemoveConfirm")))
+                        return;
+                      unlinkVideo.mutate(v.item_id);
+                    }}
+                  >
+                    {t("quran.childrenVideoRemove")}
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {(linkVideo.isError || unlinkVideo.isError || reorderVideos.isError) && (
+        <p className="form-error">
+          {errText(
+            linkVideo.error ?? unlinkVideo.error ?? reorderVideos.error,
+          )}
+        </p>
+      )}
+
+      <div className="form-row" style={{ marginTop: "0.75rem" }}>
+        <label>
+          {t("quran.childrenLinkLabel")}
+          <select
+            value={linkItemId}
+            onChange={(e) => setLinkItemId(e.target.value)}
+          >
+            <option value="">{t("quran.childrenLinkPick")}</option>
+            {candidates.map((it) => (
+              <option key={it.id} value={it.id}>
+                {it.title[locale] || it.title.fa || it.title.en || it.id}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Button
+          size="sm"
+          disabled={!linkItemId || linkVideo.isPending}
+          onClick={() => linkVideo.mutate(linkItemId)}
+        >
+          {t("quran.childrenLinkButton")}
+        </Button>
+      </div>
+      <p className="hint">{t("quran.childrenLinkHint")}</p>
+
+      <h3 style={{ marginTop: "2rem" }}>{t("quran.childrenQuestionsTitle")}</h3>
+      {questions.isLoading && <p className="hint">{t("common.loading")}</p>}
+      {questions.isError && <p className="form-error">{t("common.error")}</p>}
+      {questions.data && questions.data.length === 0 && (
+        <p className="hint">{t("quran.childrenQuestionsEmpty")}</p>
+      )}
+      {questions.data && questions.data.length > 0 && (
+        <table className="table">
+          <thead>
+            <tr>
+              <th>{t("quran.childrenQuestionType")}</th>
+              <th>{t("quran.childrenQuestionText")}</th>
+              <th>{t("quran.childrenQuestionSource")}</th>
+              <th>{t("quran.childrenQuestionActive")}</th>
+              <th>{t("quran.childrenQuestionDelete")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {questions.data.map((q) => (
+              <tr key={q.id}>
+                <td>
+                  {q.question_type === "mcq"
+                    ? t("quran.childrenTypeMcq")
+                    : t("quran.childrenTypeMatching")}
+                </td>
+                <td>{questionText(q) || "—"}</td>
+                <td>
+                  {q.source === "auto"
+                    ? t("quran.childrenSourceAuto")
+                    : t("quran.childrenSourceCrm")}
+                </td>
+                <td>
+                  {q.source === "crm" ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={toggleQuestion.isPending}
+                      onClick={() => toggleQuestion.mutate(q)}
+                    >
+                      {q.is_active
+                        ? t("quran.childrenActiveYes")
+                        : t("quran.childrenActiveNo")}
+                    </Button>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td>
+                  {q.source === "crm" ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={deleteQuestion.isPending}
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            t("quran.childrenQuestionDeleteConfirm"),
+                          )
+                        )
+                          return;
+                        deleteQuestion.mutate(q.id);
+                      }}
+                    >
+                      {t("quran.childrenQuestionDelete")}
+                    </Button>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <h3 style={{ marginTop: "2rem" }}>{t("quran.childrenNewQuestion")}</h3>
+      <div className="form-row">
+        <label>
+          {t("quran.childrenQuestionType")}
+          <select
+            value={qType}
+            onChange={(e) =>
+              setQType(e.target.value as "mcq" | "matching")
+            }
+          >
+            <option value="mcq">{t("quran.childrenTypeMcq")}</option>
+            <option value="matching">{t("quran.childrenTypeMatching")}</option>
+          </select>
+        </label>
+      </div>
+      {qType === "mcq" ? (
+        <>
+          <div className="form-row">
+            <label>
+              {t("quran.childrenMcqQuestionFa")}
+              <input
+                type="text"
+                value={mcqQ.fa}
+                onChange={(e) => setMcqQ((q) => ({ ...q, fa: e.target.value }))}
+              />
+            </label>
+            <label>
+              {t("quran.childrenMcqQuestionAr")}
+              <input
+                type="text"
+                value={mcqQ.ar}
+                onChange={(e) => setMcqQ((q) => ({ ...q, ar: e.target.value }))}
+              />
+            </label>
+            <label>
+              {t("quran.childrenMcqQuestionEn")}
+              <input
+                type="text"
+                value={mcqQ.en}
+                onChange={(e) => setMcqQ((q) => ({ ...q, en: e.target.value }))}
+              />
+            </label>
+          </div>
+          <div className="form-row">
+            {mcqOptions.map((opt, i) => (
+              <label key={i}>
+                {t("quran.childrenMcqOption")} {i + 1}
+                <input
+                  type="text"
+                  value={opt}
+                  onChange={(e) =>
+                    setMcqOptions((o) => {
+                      const next = [...o];
+                      next[i] = e.target.value;
+                      return next;
+                    })
+                  }
+                />
+              </label>
+            ))}
+            <label>
+              {t("quran.childrenMcqCorrect")}
+              <select
+                value={mcqCorrect}
+                onChange={(e) => setMcqCorrect(Number(e.target.value))}
+              >
+                {mcqOptions.map((_, i) => (
+                  <option key={i} value={i}>
+                    {i + 1}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </>
+      ) : (
+        <>
+          {matchPairs.map((pair, i) => (
+            <div className="form-row" key={i}>
+              <label>
+                {t("quran.childrenMatchWord")} {i + 1}
+                <input
+                  type="text"
+                  value={pair.word}
+                  onChange={(e) =>
+                    setMatchPairs((ps) => {
+                      const next = [...ps];
+                      next[i] = { ...next[i], word: e.target.value };
+                      return next;
+                    })
+                  }
+                />
+              </label>
+              <label>
+                {t("quran.childrenMatchMeaning")} {i + 1}
+                <input
+                  type="text"
+                  value={pair.meaning}
+                  onChange={(e) =>
+                    setMatchPairs((ps) => {
+                      const next = [...ps];
+                      next[i] = { ...next[i], meaning: e.target.value };
+                      return next;
+                    })
+                  }
+                />
+              </label>
+            </div>
+          ))}
+          <div className="form-row">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={matchPairs.length >= 6}
+              onClick={() =>
+                setMatchPairs((ps) => [...ps, { word: "", meaning: "" }])
+              }
+            >
+              {t("quran.childrenMatchAdd")}
+            </Button>
+          </div>
+        </>
+      )}
+      {formError && <p className="form-error">{formError}</p>}
+      <div className="form-row">
+        <Button
+          size="sm"
+          disabled={createQuestion.isPending}
+          onClick={submitQuestion}
+        >
+          {t("quran.childrenCreateQuestion")}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 /* page                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -1561,6 +2071,7 @@ export default function Quran(): React.ReactElement {
       {tab === "display" && <DisplayPanel />}
       {tab === "munajat" && <MunajatPanel />}
       {tab === "hifz" && <HifzPanel />}
+      {tab === "children" && <ChildrenPanel />}
     </div>
   );
 }
